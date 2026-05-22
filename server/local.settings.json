@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "STORAGE_ACCOUNT_NAME": "photostorage",
+    "STORAGE_ACCOUNT_KEY": "yB2GI2pMmjYLLaGdr2UGmyxMLu4sloNL0m/fhow5S0mBhtXeNWTW2jjowy44cZZSd+fA0FgTVm/5+AStZzJCWg==",
+    "STORAGE_CONTAINER_NAME": "photos"
+  },
+  "Host": {
+    "CORS": "*"
+  }
+}
