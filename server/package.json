@@ -1,0 +1,21 @@
+{
+  "name": "cloudphoto-server",
+  "version": "1.0.0",
+  "description": "Cloud Photo Server - Azure Functions",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prestart": "npm run build",
+    "start": "func start",
+    "dev": "npm run build && func start"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.3.0",
+    "@azure/storage-blob": "^12.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
