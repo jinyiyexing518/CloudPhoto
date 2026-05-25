@@ -117,12 +117,21 @@ export async function uploadPhoto(
   if (subject) params.set("subject", subject);
   if (folder) params.set("folder", folder);
   if (groupId) params.set("groupId", groupId);
-  const response = await fetch(`${API_BASE}/photos/upload?${params.toString()}`, {
-    method: "POST",
-    headers: authHeaders({ "Content-Type": file.type || "application/octet-stream" }),
-    body: file,
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/upload?${params.toString()}`,
+    {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": file.type || "application/octet-stream" }),
+      body: file,
+    },
+    60000,
+  ).catch((e: unknown) => {
+    throw new Error((e instanceof Error && e.name === "AbortError") ? `上传超时: ${file.name}` : "网络错误");
   });
-  if (!response.ok) throw new Error("Failed to upload photo");
+  if (!response.ok) {
+    const msg = await response.json().catch(() => ({ error: "Upload failed" }));
+    throw new Error((msg as { error?: string }).error ?? `上传失败: ${file.name}`);
+  }
   return response.json() as Promise<Photo>;
 }
 

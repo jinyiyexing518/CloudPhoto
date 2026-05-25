@@ -9,7 +9,7 @@ interface Props {
   onDelete: (name: string) => void;
   onSubjectUpdate: (name: string, subject: string) => void;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploading: boolean;
+  uploadProgress: { done: number; total: number; folder: string } | null;
   userName?: string;
 }
 
@@ -18,7 +18,7 @@ export default function FolderView({
   onDelete,
   onSubjectUpdate,
   onUploadToFolder,
-  uploading,
+  uploadProgress,
   userName,
 }: Props) {
   const fromPhotos = [...new Set(photos.map((p) => p.folder?.trim() || ""))];
@@ -79,7 +79,7 @@ export default function FolderView({
           onDelete={onDelete}
           onSubjectUpdate={onSubjectUpdate}
           onUploadToFolder={onUploadToFolder}
-          uploading={uploading}
+          uploadProgress={uploadProgress}
           userName={userName}
         />
       ))}
@@ -96,14 +96,16 @@ interface SectionProps {
   onDelete: (name: string) => void;
   onSubjectUpdate: (name: string, subject: string) => void;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploading: boolean;
+  uploadProgress: { done: number; total: number; folder: string } | null;
   userName?: string;
 }
 
 function FolderSection({
   folderName, folderKey, photos,
-  onDelete, onSubjectUpdate, onUploadToFolder, uploading, userName,
+  onDelete, onSubjectUpdate, onUploadToFolder, uploadProgress, userName,
 }: SectionProps) {
+  const isMyUpload = uploadProgress?.folder === folderKey;
+  const anyUploading = uploadProgress !== null;
   const inputRef = useRef<HTMLInputElement>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
@@ -168,13 +170,22 @@ function FolderSection({
               maxLength={80}
             />
             <div
-              className={`folder-upload-card${uploading ? " folder-upload-card--loading" : ""}`}
-              onClick={() => !uploading && inputRef.current?.click()}
+              className={`folder-upload-card${anyUploading ? " folder-upload-card--loading" : ""}`}
+              onClick={() => !anyUploading && inputRef.current?.click()}
               title={`上传到 ${folderName}`}
               role="button"
             >
-              <span className="folder-upload-icon">{uploading ? "⏳" : "+"}</span>
-              <span className="folder-upload-label">添加照片</span>
+              {isMyUpload && uploadProgress ? (
+                <>
+                  <span className="folder-upload-icon">⏳</span>
+                  <span className="folder-upload-label">{uploadProgress.done}/{uploadProgress.total}</span>
+                </>
+              ) : (
+                <>
+                  <span className="folder-upload-icon">{anyUploading ? "⏳" : "+"}</span>
+                  <span className="folder-upload-label">添加照片</span>
+                </>
+              )}
               <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
             </div>
           </div>

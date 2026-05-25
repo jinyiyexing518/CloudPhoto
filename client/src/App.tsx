@@ -20,7 +20,7 @@ function AppContent() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
 
   // Derived lists for filter dropdowns
@@ -63,18 +63,21 @@ function AppContent() {
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
 
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
-    setUploading(true);
-    try {
-      await Promise.all(
-        Array.from(files).map((file) =>
-          uploadPhoto(file, user?.displayName || undefined, subject || undefined, folder || undefined, currentGroupId || undefined)
-        )
-      );
-      await fetchPhotos();
-    } catch {
-      setError("Failed to upload photo(s)");
-    } finally {
-      setUploading(false);
+    const fileArray = Array.from(files);
+    setUploadProgress({ done: 0, total: fileArray.length, folder });
+    const failed: string[] = [];
+    for (let i = 0; i < fileArray.length; i++) {
+      try {
+        await uploadPhoto(fileArray[i], user?.displayName || undefined, subject || undefined, folder || undefined, currentGroupId || undefined);
+      } catch {
+        failed.push(fileArray[i].name);
+      }
+      setUploadProgress({ done: i + 1, total: fileArray.length, folder });
+    }
+    await fetchPhotos();
+    setUploadProgress(null);
+    if (failed.length > 0) {
+      setError(`上传失败 (${failed.length}/${fileArray.length}): ${failed.join(", ")}`);
     }
   };
 
@@ -172,7 +175,7 @@ function AppContent() {
             onDelete={handleDelete}
             onSubjectUpdate={handleSubjectUpdate}
             onUploadToFolder={handleUploadToFolder}
-            uploading={uploading}
+            uploadProgress={uploadProgress}
             userName={user?.displayName}
           />
         )}
