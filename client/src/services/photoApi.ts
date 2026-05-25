@@ -1,5 +1,11 @@
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
 
+function fetchWithTimeout(input: RequestInfo, init?: RequestInit, ms = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
 // ---- Auth token helpers ----
 export function getToken(): string | null {
   return localStorage.getItem("cloudphoto_token");
@@ -26,11 +32,11 @@ export interface AuthResponse {
 }
 
 export async function loginApi(username: string, password: string): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE}/auth/login`, {
+  const res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
-  });
+  }).catch((e: unknown) => { throw new Error((e instanceof Error && e.name === "AbortError") ? "登录超时，请稍后重试" : "网络错误"); });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Login failed" }));
     throw new Error((err as { error?: string }).error ?? "Login failed");
@@ -44,11 +50,11 @@ export async function registerApi(data: {
   displayName: string;
   password: string;
 }): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE}/auth/register`, {
+  const res = await fetchWithTimeout(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
-  });
+  }).catch((e: unknown) => { throw new Error((e instanceof Error && e.name === "AbortError") ? "注册超时，请稍后重试" : "网络错误"); });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Registration failed" }));
     throw new Error((err as { error?: string }).error ?? "Registration failed");
@@ -57,9 +63,9 @@ export async function registerApi(data: {
 }
 
 export async function getMeApi(): Promise<AuthUser> {
-  const res = await fetch(`${API_BASE}/auth/me`, {
+  const res = await fetchWithTimeout(`${API_BASE}/auth/me`, {
     headers: authHeaders(),
-  });
+  }).catch(() => { throw new Error("Unauthorized"); });
   if (!res.ok) throw new Error("Unauthorized");
   return res.json() as Promise<AuthUser>;
 }
