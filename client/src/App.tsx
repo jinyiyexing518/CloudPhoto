@@ -1,35 +1,75 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { listPhotos, uploadPhoto, deletePhoto, Photo } from "./services/photoApi";
-import PhotoGallery from "./components/PhotoGallery";
-import UploadArea from "./components/UploadArea";
+import PhotoGallery from "./components/gallery/PhotoGallery";
+import FolderView from "./components/gallery/FolderView";
+import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
+import GroupSwitcher from "./components/groups/GroupSwitcher";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { GroupProvider, useGroup } from "./contexts/GroupContext";
+import AuthPage from "./components/auth/AuthPage";
+import AddAdminDialog from "./components/auth/AddAdminDialog";
 
-function App() {
+const SUPER_ADMIN = "zhangchi";
+type ViewTab = "timeline" | "folder";
+
+function AppContent() {
+  const { user, logout } = useAuth();
+  const { currentGroupId } = useGroup();
+  const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState<ViewTab>("timeline");
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [filters, setFilters] = useState<FilterState>(emptyFilter);
+
+  // Derived lists for filter dropdowns
+  const uploaders = useMemo(
+    () => [...new Set(photos.map((p) => p.createdBy).filter(Boolean) as string[])].sort(),
+    [photos]
+  );
+  const subjects = useMemo(
+    () => [...new Set(photos.map((p) => p.subject).filter(Boolean) as string[])].sort(),
+    [photos]
+  );
+
+  const filteredPhotos = useMemo(() => {
+    return photos.filter((p) => {
+      const name = (p.originalName || p.name.replace(/^\d+-/, "")).toLowerCase();
+      const date = p.createdAt ?? p.lastModified;
+
+      if (filters.name && !name.includes(filters.name.toLowerCase())) return false;
+      if (filters.subject && !(p.subject ?? "").toLowerCase().includes(filters.subject.toLowerCase())) return false;
+      if (filters.uploader && p.createdBy !== filters.uploader) return false;
+      if (filters.dateFrom && date && date.slice(0, 10) < filters.dateFrom) return false;
+      if (filters.dateTo && date && date.slice(0, 10) > filters.dateTo) return false;
+      return true;
+    });
+  }, [photos, filters]);
 
   const fetchPhotos = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await listPhotos();
+      const data = await listPhotos(currentGroupId);
       setPhotos(data);
     } catch {
       setError("Failed to load photos. Make sure the server is running.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentGroupId]);
 
-  useEffect(() => {
-    void fetchPhotos();
-  }, [fetchPhotos]);
+  useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
 
-  const handleUpload = async (files: FileList) => {
+  const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
     setUploading(true);
     try {
-      await Promise.all(Array.from(files).map((file) => uploadPhoto(file)));
+      await Promise.all(
+        Array.from(files).map((file) =>
+          uploadPhoto(file, user?.displayName || undefined, subject || undefined, folder || undefined, currentGroupId || undefined)
+        )
+      );
       await fetchPhotos();
     } catch {
       setError("Failed to upload photo(s)");
@@ -47,15 +87,57 @@ function App() {
     }
   };
 
+  const handleSubjectUpdate = (name: string, subject: string) => {
+    setPhotos((prev) =>
+      prev.map((p) => (p.name === name ? { ...p, subject } : p))
+    );
+  };
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>Cloud Photo</h1>
+        <GroupSwitcher />
         <span className="photo-count">{photos.length} photos</span>
+        <div className="user-badge">
+          <span className="user-name-btn">
+            👤 {user?.displayName}
+            {user?.role === "admin" && <span className="role-badge">Admin</span>}
+          </span>
+          {user?.username === SUPER_ADMIN && (
+            <button className="add-admin-btn" onClick={() => setShowAddAdmin(true)} title="添加 Admin">
+              + Admin
+            </button>
+          )}
+          <button className="logout-btn" onClick={logout} title="退出登录">退出</button>
+        </div>
       </header>
 
+      {showAddAdmin && <AddAdminDialog onClose={() => setShowAddAdmin(false)} />}
+
       <main className="app-main">
-        <UploadArea onUpload={handleUpload} uploading={uploading} />
+        {/* Tab bar */}
+        <div className="view-tabs">
+          <button
+            className={`view-tab${activeTab === "timeline" ? " active" : ""}`}
+            onClick={() => setActiveTab("timeline")}
+          >
+            🕐 时间线
+          </button>
+          <button
+            className={`view-tab${activeTab === "folder" ? " active" : ""}`}
+            onClick={() => setActiveTab("folder")}
+          >
+            📁 文件夹
+          </button>
+        </div>
+
+        {/* Timeline hint */}
+        {activeTab === "timeline" && (
+          <div className="timeline-upload-hint">
+            📁 请切换到「<button className="hint-tab-link" onClick={() => setActiveTab("folder")}>文件夹</button>」视图来添加照片
+          </div>
+        )}
 
         {error && (
           <div className="error-banner">
@@ -64,14 +146,59 @@ function App() {
           </div>
         )}
 
+        {activeTab === "timeline" && (
+          <FilterBar
+            filters={filters}
+            onChange={setFilters}
+            uploaders={uploaders}
+            subjects={subjects}
+            total={photos.length}
+            filtered={filteredPhotos.length}
+          />
+        )}
+
         {loading ? (
           <div className="loading">Loading photos...</div>
+        ) : activeTab === "timeline" ? (
+          <PhotoGallery
+            photos={filteredPhotos}
+            onDelete={handleDelete}
+            onSubjectUpdate={handleSubjectUpdate}
+            userName={user?.displayName}
+          />
         ) : (
-          <PhotoGallery photos={photos} onDelete={handleDelete} />
+          <FolderView
+            photos={photos}
+            onDelete={handleDelete}
+            onSubjectUpdate={handleSubjectUpdate}
+            onUploadToFolder={handleUploadToFolder}
+            uploading={uploading}
+            userName={user?.displayName}
+          />
         )}
       </main>
     </div>
   );
 }
 
-export default App;
+function App() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="auth-page"><div className="auth-card"><div className="loading">Loading…</div></div></div>;
+  }
+
+  return user ? <AppContent /> : <AuthPage />;
+}
+
+function AppWithProvider() {
+  return (
+    <AuthProvider>
+      <GroupProvider>
+        <App />
+      </GroupProvider>
+    </AuthProvider>
+  );
+}
+
+export default AppWithProvider;

@@ -4,7 +4,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName } from "../utils/blobStorage";
+import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
 
 app.http("deletePhoto", {
   methods: ["DELETE"],
