@@ -1577,3 +1577,111 @@ body {
   font-size: 0.85rem;
   margin-bottom: 4px;
 }
+
+/* ============================================================
+   Mobile responsive  (≤ 680px)
+   ============================================================ */
+@media (max-width: 680px) {
+
+  /* ── Header ── */
+  .app-header {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    gap: 6px 10px;
+  }
+
+  .app-header h1 {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+
+  /* GroupSwitcher fills the rest of the first row */
+  .group-switcher {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .group-switcher-btn {
+    font-size: 0.82rem;
+    padding: 5px 10px;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* Dropdown must not overflow screen */
+  .group-dropdown {
+    max-width: calc(100vw - 24px);
+    left: 0;
+    right: 0;
+  }
+
+  /* photo-count is redundant on mobile */
+  .photo-count { display: none; }
+
+  /* user-badge wraps to second row, right-aligned */
+  .user-badge {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .user-name-btn  { font-size: 0.75rem; padding: 3px 8px; }
+  .add-admin-btn  { font-size: 0.75rem; padding: 3px 8px; }
+  .logout-btn     { font-size: 0.75rem; padding: 3px 8px; }
+
+  /* ── Main content ── */
+  .app-main {
+    padding: 12px;
+    gap: 14px;
+  }
+
+  /* ── View tabs ── */
+  .view-tab { padding: 8px 14px; font-size: 0.85rem; }
+
+  /* ── Photo grid: 2 columns on mobile ── */
+  .photo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  /* ── Folder ── */
+  .folder-section-grid { padding: 10px; }
+  .folder-section-header { padding: 10px 12px; }
+  .folder-section-name { font-size: 0.88rem; }
+
+  .folder-new-btn { font-size: 0.82rem; padding: 6px 12px; }
+  .folder-name-input { width: 160px; }
+
+  /* ── Upload group in folder ── */
+  .folder-upload-card { min-height: 100px; }
+
+  /* ── Filter bar ── */
+  .filter-main-row { flex-wrap: wrap; }
+  .filter-panel { flex-direction: column; gap: 8px; }
+  .filter-field { min-width: unset; width: 100%; }
+
+  /* ── Dialogs: full-width on small screens ── */
+  .add-admin-dialog        { max-width: calc(100vw - 32px); }
+  .group-settings-dialog   { width: calc(100vw - 16px); }
+
+  /* ── Auth card ── */
+  .auth-card { padding: 28px 20px 24px; }
+
+  /* ── Modal image ── */
+  .modal-content img {
+    max-width: 100vw;
+    max-height: calc(100vh - 120px);
+  }
+
+  .modal-detail-grid { font-size: 0.75rem; }
+}
+
+/* Tablet (681px – 900px): slightly wider grid */
+@media (min-width: 681px) and (max-width: 900px) {
+  .photo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+  .app-main { padding: 16px; }
+}
+
