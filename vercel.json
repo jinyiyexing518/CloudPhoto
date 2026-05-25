@@ -1,4 +1,5 @@
 {
+  "installCommand": "cd client && yarn install",
   "buildCommand": "cd client && yarn build",
   "outputDirectory": "client/dist",
   "rewrites": [
