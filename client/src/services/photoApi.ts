@@ -151,6 +151,23 @@ export async function updatePhotoSubject(
   if (!response.ok) throw new Error("Failed to update subject");
 }
 
+export async function movePhotoToFolder(
+  name: string,
+  folder: string,
+  movedBy?: string
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/${encodeURIComponent(name)}/metadata`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ folder, updatedBy: movedBy }),
+    },
+    15000,
+  );
+  if (!response.ok) throw new Error("Failed to move photo");
+}
+
 export async function deletePhoto(name: string): Promise<void> {
   const response = await fetch(
     `${API_BASE}/photos/${encodeURIComponent(name)}`,

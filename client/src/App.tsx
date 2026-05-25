@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { listPhotos, uploadPhoto, deletePhoto, Photo } from "./services/photoApi";
+import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, Photo } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
@@ -96,6 +96,17 @@ function AppContent() {
     );
   };
 
+  const handleMovePhoto = async (name: string, toFolder: string) => {
+    // Optimistic update
+    setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
+    try {
+      await movePhotoToFolder(name, toFolder, user?.displayName || undefined);
+    } catch {
+      setError("移动照片失败");
+      await fetchPhotos(); // revert on failure
+    }
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -176,6 +187,7 @@ function AppContent() {
             onSubjectUpdate={handleSubjectUpdate}
             onUploadToFolder={handleUploadToFolder}
             uploadProgress={uploadProgress}
+            onMovePhoto={handleMovePhoto}
             userName={user?.displayName}
           />
         )}

@@ -10,6 +10,7 @@ interface Props {
   onSubjectUpdate: (name: string, subject: string) => void;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
+  onMovePhoto: (name: string, toFolder: string) => Promise<void>;
   userName?: string;
 }
 
@@ -19,6 +20,7 @@ export default function FolderView({
   onSubjectUpdate,
   onUploadToFolder,
   uploadProgress,
+  onMovePhoto,
   userName,
 }: Props) {
   const fromPhotos = [...new Set(photos.map((p) => p.folder?.trim() || ""))];
@@ -80,6 +82,7 @@ export default function FolderView({
           onSubjectUpdate={onSubjectUpdate}
           onUploadToFolder={onUploadToFolder}
           uploadProgress={uploadProgress}
+          onMovePhoto={onMovePhoto}
           userName={userName}
         />
       ))}
@@ -97,15 +100,18 @@ interface SectionProps {
   onSubjectUpdate: (name: string, subject: string) => void;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
+  onMovePhoto: (name: string, toFolder: string) => Promise<void>;
   userName?: string;
 }
 
 function FolderSection({
   folderName, folderKey, photos,
-  onDelete, onSubjectUpdate, onUploadToFolder, uploadProgress, userName,
+  onDelete, onSubjectUpdate, onUploadToFolder, uploadProgress, onMovePhoto, userName,
 }: SectionProps) {
   const isMyUpload = uploadProgress?.folder === folderKey;
   const anyUploading = uploadProgress !== null;
+  const dragCount = useRef(0);
+  const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
@@ -140,7 +146,21 @@ function FolderSection({
   };
 
   return (
-    <section className="folder-section">
+    <section
+      className={`folder-section${isDragOver ? " folder-drag-over" : ""}`}
+      style={isDragOver ? { outline: "2px dashed #4a90e2", borderRadius: "8px" } : undefined}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+      onDragEnter={(e) => { e.preventDefault(); dragCount.current++; setIsDragOver(true); }}
+      onDragLeave={() => { dragCount.current--; if (dragCount.current === 0) setIsDragOver(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        dragCount.current = 0;
+        setIsDragOver(false);
+        const name = e.dataTransfer.getData("photoName");
+        const from = e.dataTransfer.getData("fromFolder");
+        if (name && from !== folderKey) void onMovePhoto(name, folderKey);
+      }}
+    >
       <div className="folder-section-header" onClick={() => setCollapsed((v) => !v)}>
         <span className="folder-icon">{collapsed ? "📁" : "📂"}</span>
         <span className="folder-section-name">{folderName}</span>
@@ -151,12 +171,22 @@ function FolderSection({
       {!collapsed && (
         <div className="photo-grid folder-section-grid">
           {photos.map((photo) => (
-            <PhotoCard
+            <div
               key={photo.name}
-              photo={photo}
-              onClick={() => openModal(photo)}
-              onDelete={() => onDelete(photo.name)}
-            />
+              draggable
+              style={{ cursor: "grab" }}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("photoName", photo.name);
+                e.dataTransfer.setData("fromFolder", folderKey);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+            >
+              <PhotoCard
+                photo={photo}
+                onClick={() => openModal(photo)}
+                onDelete={() => onDelete(photo.name)}
+              />
+            </div>
           ))}
 
           {/* Subject input + upload card */}
