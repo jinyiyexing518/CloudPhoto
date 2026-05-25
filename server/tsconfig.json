@@ -7,7 +7,7 @@
     "sourceMap": true,
     "strict": true,
     "moduleResolution": "node10",
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
