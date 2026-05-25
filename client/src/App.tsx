@@ -97,10 +97,12 @@ function AppContent() {
   };
 
   const handleMovePhoto = async (name: string, toFolder: string) => {
-    // Optimistic update
+    // Optimistic update (folder display only; name updated after server confirms)
     setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
     try {
-      await movePhotoToFolder(name, toFolder, user?.displayName || undefined);
+      const { newName } = await movePhotoToFolder(name, toFolder, user?.displayName || undefined);
+      // Sync state with actual new blob path
+      setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, name: newName, folder: toFolder } : p));
     } catch {
       setError("移动照片失败");
       await fetchPhotos(); // revert on failure

@@ -37,5 +37,7 @@ export function generateSasUrl(blobName: string, expiryHours = 2): string {
     credential
   );
 
-  return `https://${accountName}.blob.core.windows.net/${containerName}/${encodeURIComponent(blobName)}?${sasParams}`;
+  // Encode each path segment separately to preserve virtual-directory slashes
+  const encodedPath = blobName.split("/").map(encodeURIComponent).join("/");
+  return `https://${accountName}.blob.core.windows.net/${containerName}/${encodedPath}?${sasParams}`;
 }

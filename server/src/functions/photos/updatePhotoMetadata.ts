@@ -9,16 +9,16 @@ import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
 app.http("updatePhotoMetadata", {
   methods: ["PATCH"],
   authLevel: "anonymous",
-  route: "photos/{name}/metadata",
+  route: "photos/metadata",
   handler: async (
     request: HttpRequest,
     context: InvocationContext
   ): Promise<HttpResponseInit> => {
     try {
-      const blobName = request.params.name;
+      const blobName = request.query.get("name");
+      if (!blobName) return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "name required" }) };
       const body = (await request.json()) as {
         subject?: string;
-        folder?: string;
         updatedBy?: string;
       };
 
@@ -33,7 +33,6 @@ app.http("updatePhotoMetadata", {
       const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
       const now = new Date().toISOString();
       if (body.subject !== undefined) existing.subject = b64(body.subject);
-      if (body.folder !== undefined) existing.folder = b64(body.folder);
       if (body.updatedBy) existing.lastModifiedBy = b64(body.updatedBy);
       existing.lastModifiedAt = now;
 

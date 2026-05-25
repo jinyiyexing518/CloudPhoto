@@ -36,7 +36,7 @@ export async function loginApi(username: string, password: string): Promise<Auth
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
-  }).catch((e: unknown) => { throw new Error((e instanceof Error && e.name === "AbortError") ? "登录超时，请稍后重试" : "网络错误"); });
+  }, 30000).catch((e: unknown) => { throw new Error((e instanceof Error && e.name === "AbortError") ? "登录响应超时，服务器可能正在启动，请稍后重试" : "网络错误"); });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Login failed" }));
     throw new Error((err as { error?: string }).error ?? "Login failed");
@@ -141,7 +141,7 @@ export async function updatePhotoSubject(
   updatedBy?: string
 ): Promise<void> {
   const response = await fetch(
-    `${API_BASE}/photos/${encodeURIComponent(name)}/metadata`,
+    `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
     {
       method: "PATCH",
       headers: authHeaders({ "Content-Type": "application/json" }),
@@ -153,24 +153,25 @@ export async function updatePhotoSubject(
 
 export async function movePhotoToFolder(
   name: string,
-  folder: string,
+  toFolder: string,
   movedBy?: string
-): Promise<void> {
+): Promise<{ newName: string }> {
   const response = await fetchWithTimeout(
-    `${API_BASE}/photos/${encodeURIComponent(name)}/metadata`,
+    `${API_BASE}/photos/move`,
     {
-      method: "PATCH",
+      method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ folder, updatedBy: movedBy }),
+      body: JSON.stringify({ name, toFolder, updatedBy: movedBy }),
     },
-    15000,
-  );
+    30000,
+  ).catch((e: unknown) => { throw new Error((e instanceof Error && e.name === "AbortError") ? "移动超时" : "网络错误"); });
   if (!response.ok) throw new Error("Failed to move photo");
+  return response.json() as Promise<{ newName: string }>;
 }
 
 export async function deletePhoto(name: string): Promise<void> {
   const response = await fetch(
-    `${API_BASE}/photos/${encodeURIComponent(name)}`,
+    `${API_BASE}/photos?name=${encodeURIComponent(name)}`,
     { method: "DELETE", headers: authHeaders() }
   );
   if (!response.ok) throw new Error("Failed to delete photo");

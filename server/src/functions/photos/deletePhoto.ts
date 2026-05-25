@@ -9,12 +9,12 @@ import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
 app.http("deletePhoto", {
   methods: ["DELETE"],
   authLevel: "anonymous",
-  route: "photos/{name}",
+  route: "photos",
   handler: async (
     request: HttpRequest,
     context: InvocationContext
   ): Promise<HttpResponseInit> => {
-    const blobName = request.params["name"];
+    const blobName = request.query.get("name");
 
     if (!blobName) {
       return {

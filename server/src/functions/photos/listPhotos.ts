@@ -47,6 +47,13 @@ app.http("listPhotos", {
         blobServiceClient.getContainerClient(containerName);
       await containerClient.createIfNotExists();
 
+      // Prefix-based listing — no full-container scan needed
+      const prefix = groupId
+        ? `groups/${groupId}/`
+        : payload.role === "admin"
+          ? "personal/"
+          : `personal/${payload.userId}/`;
+
       const photos: Array<{
         name: string;
         originalName: string | undefined;
@@ -63,33 +70,20 @@ app.http("listPhotos", {
         lastModifiedBy: string | undefined;
       }> = [];
 
-      for await (const blob of containerClient.listBlobsFlat({ includeMetadata: true })) {
-        const blobGroupId = blob.metadata?.groupId ?? "";
-        // Filter: personal (groupId="") shows blobs with no/empty groupId;
-        // group shows blobs matching the groupId
-        if (blobGroupId !== groupId) continue;
-
-        // Private photos: only owner can see (admin sees all)
-        if (!blobGroupId && payload.role !== "admin") {
-          const blobCreatedById = blob.metadata?.createdById;
-          if (blobCreatedById && blobCreatedById !== payload.userId) continue;
-        }
+      for await (const blob of containerClient.listBlobsFlat({ prefix, includeMetadata: true })) {
+        // Path format: personal/{userId}/{folder}/{filename}  or  groups/{groupId}/{folder}/{filename}
+        const segs = blob.name.split("/");
+        if (segs.length < 4) continue;
+        const folderRaw = segs[2];
+        const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
+        const folder = folderRaw === "_" ? "" : folderRaw;
 
         photos.push({
           name: blob.name,
-          originalName: (() => {
-            const raw = blob.metadata?.originalName;
-            if (!raw) return undefined;
-            try {
-              const decoded = Buffer.from(raw, "base64").toString("utf8");
-              return decoded || undefined;
-            } catch {
-              return undefined;
-            }
-          })(),
+          originalName: decodeMeta(blob.metadata?.originalName),
           subject: decodeMeta(blob.metadata?.subject),
-          folder: decodeMeta(blob.metadata?.folder),
-          groupId: blobGroupId || undefined,
+          folder,
+          groupId: blobGroupId,
           url: generateSasUrl(blob.name),
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,

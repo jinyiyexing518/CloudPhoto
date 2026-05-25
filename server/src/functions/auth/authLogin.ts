@@ -25,8 +25,8 @@ app.http("authLogin", {
 
       const user = result.resources[0];
       if (!user) {
-        return { status: 401, headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "Invalid username or password" }) };
+        return { status: 404, headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "该账号不存在，请先注册" }) };
       }
 
       const valid = await compare(password, user.passwordHash);

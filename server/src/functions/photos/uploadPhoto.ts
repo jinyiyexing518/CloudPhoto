@@ -31,9 +31,11 @@ app.http("uploadPhoto", {
       const folder = request.query.get("folder") ?? "";
       const groupId = request.query.get("groupId") ?? "";
 
-      // Only strip chars that are truly invalid in Azure blob names or HTTP paths
       const safeName = filename.replace(/[\/\\\0]/g, "_");
-      const blobName = `${Date.now()}-${safeName}`;
+      // Path-based: personal/{userId}/{folder}/{ts}-{name}  or  groups/{groupId}/{folder}/{ts}-{name}
+      const safeFolderName = folder.replace(/[\/\\\0<>"\|?*:]/g, "_").trim() || "_";
+      const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
+      const blobName = `${scope}/${safeFolderName}/${Date.now()}-${safeName}`;
       const now = new Date().toISOString();
 
       const blobServiceClient = getBlobServiceClient();
@@ -51,8 +53,6 @@ app.http("uploadPhoto", {
         metadata: {
           originalName: b64(filename),
           subject: b64(subject),
-          folder: b64(folder),
-          groupId,
           createdBy: b64(uploadedBy),
           createdById: payload.userId,
           createdAt: now,
@@ -68,7 +68,7 @@ app.http("uploadPhoto", {
           name: blobName,
           originalName: filename,
           subject,
-          folder,
+          folder: safeFolderName === "_" ? "" : safeFolderName,
           groupId: groupId || undefined,
           url: generateSasUrl(blobName),
           size: arrayBuffer.byteLength,
