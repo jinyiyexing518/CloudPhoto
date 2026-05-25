@@ -1,0 +1,141 @@
+import { CosmosClient, Container } from "@azure/cosmos";
+
+const endpoint = process.env.COSMOS_ENDPOINT as string;
+const key = process.env.COSMOS_KEY as string;
+const databaseId = process.env.COSMOS_DATABASE ?? "cloudphoto";
+
+let _client: CosmosClient | null = null;
+
+function getClient(): CosmosClient {
+  if (!_client) {
+    _client = new CosmosClient({ endpoint, key });
+  }
+  return _client;
+}
+
+export async function getUsersContainer(): Promise<Container> {
+  const client = getClient();
+  const { database } = await client.databases.createIfNotExists({ id: databaseId });
+  const { container } = await database.containers.createIfNotExists({
+    id: "users",
+    partitionKey: { paths: ["/id"] },
+    uniqueKeyPolicy: {
+      uniqueKeys: [
+        { paths: ["/username"] },
+        { paths: ["/email"] },
+      ],
+    },
+  });
+  return container;
+}
+
+export async function isAdminCandidate(email: string, username: string): Promise<boolean> {
+  const client = getClient();
+  const database = client.database(databaseId);
+  const container = database.container("admins");
+  const { resources } = await container.items
+    .query({
+      query: "SELECT VALUE COUNT(1) FROM c WHERE c.email = @email OR c.username = @username",
+      parameters: [
+        { name: "@email", value: email },
+        { name: "@username", value: username },
+      ],
+    })
+    .fetchAll();
+  return (resources[0] as number) > 0;
+}
+
+export async function getAdminsContainer(): Promise<Container> {
+  const client = getClient();
+  const database = client.database(databaseId);
+  return database.container("admins");
+}
+
+export interface UserDoc {
+  id: string;
+  username: string;
+  email: string;
+  displayName: string;
+  passwordHash: string;
+  avatar?: string;
+  role: "admin" | "viewer";
+  privateFolders: string[];
+  createdAt: string;
+  lastLoginAt: string;
+}
+
+export interface GroupMember {
+  userId: string;
+  username: string;
+  email: string;
+  displayName: string;
+  role: "admin" | "member";
+  joinedAt: string;
+  addedBy: string;
+}
+
+export interface GroupDoc {
+  id: string;
+  name: string;
+  description?: string;
+  createdBy: string;
+  createdAt: string;
+  members: GroupMember[];
+  folders: string[];
+}
+
+export async function getGroupsContainer(): Promise<Container> {
+  const client = getClient();
+  const { database } = await client.databases.createIfNotExists({ id: databaseId });
+  const { container } = await database.containers.createIfNotExists({
+    id: "groups",
+    partitionKey: { paths: ["/id"] },
+  });
+  return container;
+}
+
+export async function getUserById(userId: string): Promise<UserDoc | null> {
+  try {
+    const container = await getUsersContainer();
+    const { resource } = await container.item(userId, userId).read<UserDoc>();
+    return resource ?? null;
+  } catch { return null; }
+}
+
+export async function isGroupMember(groupId: string, userId: string): Promise<boolean> {
+  try {
+    const container = await getGroupsContainer();
+    const { resource } = await container.item(groupId, groupId).read<GroupDoc>();
+    return resource?.members.some((m) => m.userId === userId) ?? false;
+  } catch { return false; }
+}
+
+export async function isGroupAdmin(groupId: string, userId: string): Promise<boolean> {
+  try {
+    const container = await getGroupsContainer();
+    const { resource } = await container.item(groupId, groupId).read<GroupDoc>();
+    return resource?.members.some((m) => m.userId === userId && m.role === "admin") ?? false;
+  } catch { return false; }
+}
+
+export async function addFolderToGroup(groupId: string, folderName: string): Promise<void> {
+  try {
+    const container = await getGroupsContainer();
+    const { resource: group } = await container.item(groupId, groupId).read<GroupDoc>();
+    if (!group || group.folders.includes(folderName)) return;
+    const updated: GroupDoc = { ...group, folders: [...group.folders, folderName] };
+    await container.item(groupId, groupId).replace(updated);
+  } catch { /* ignore */ }
+}
+
+export async function addPrivateFolder(userId: string, folderName: string): Promise<void> {
+  try {
+    const container = await getUsersContainer();
+    const { resource: user } = await container.item(userId, userId).read<UserDoc>();
+    if (!user) return;
+    const folders = user.privateFolders ?? [];
+    if (folders.includes(folderName)) return;
+    const updated: UserDoc = { ...user, privateFolders: [...folders, folderName] };
+    await container.item(userId, userId).replace(updated);
+  } catch { /* ignore */ }
+}

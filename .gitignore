@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 
+# Vite cache
+.vite/
+
 # Azure Functions local settings (contains secrets)
 local.settings.json
 
