@@ -1,0 +1,7 @@
+{
+  "name": "cloudphoto",
+  "private": true,
+  "scripts": {
+    "build": "cd client && yarn install && yarn build"
+  }
+}

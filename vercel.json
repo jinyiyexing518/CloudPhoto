@@ -1,4 +1,6 @@
 {
+  "buildCommand": "yarn build",
+  "outputDirectory": "client/dist",
   "rewrites": [
     {
       "source": "/api/:path*",
