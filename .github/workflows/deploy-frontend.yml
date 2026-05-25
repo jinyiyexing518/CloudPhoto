@@ -45,9 +45,9 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
-          app_location: client
-          output_location: dist
-          skip_app_build: true   # we built manually above to inject env vars
+          app_location: client/dist   # deploy pre-built output directly
+          output_location: ""
+          skip_app_build: true        # we built manually above to inject env vars
 
   close_pull_request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
