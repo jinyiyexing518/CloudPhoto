@@ -44,17 +44,19 @@ app.http("uploadPhoto", {
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
       const arrayBuffer = await request.arrayBuffer();
 
+      // Azure Blob metadata only allows ASCII — base64-encode all free-text fields
+      const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
       await blockBlobClient.uploadData(Buffer.from(arrayBuffer), {
         blobHTTPHeaders: { blobContentType: contentType },
         metadata: {
-          originalName: Buffer.from(filename).toString("base64"),
-          subject,
-          folder,
+          originalName: b64(filename),
+          subject: b64(subject),
+          folder: b64(folder),
           groupId,
-          createdBy: uploadedBy,
+          createdBy: b64(uploadedBy),
           createdById: payload.userId,
           createdAt: now,
-          lastModifiedBy: uploadedBy,
+          lastModifiedBy: b64(uploadedBy),
           lastModifiedAt: now,
         },
       });

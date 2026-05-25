@@ -12,6 +12,17 @@ import {
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
 
+// Azure Blob metadata is ASCII-only; free-text fields are stored as base64
+function decodeMeta(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const decoded = Buffer.from(raw, "base64").toString("utf8");
+    return decoded || undefined;
+  } catch {
+    return raw || undefined;
+  }
+}
+
 app.http("listPhotos", {
   methods: ["GET"],
   authLevel: "anonymous",
@@ -76,17 +87,17 @@ app.http("listPhotos", {
               return undefined;
             }
           })(),
-          subject: blob.metadata?.subject,
-          folder: blob.metadata?.folder,
+          subject: decodeMeta(blob.metadata?.subject),
+          folder: decodeMeta(blob.metadata?.folder),
           groupId: blobGroupId || undefined,
           url: generateSasUrl(blob.name),
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,
           createdAt: blob.metadata?.createdAt,
-          createdBy: blob.metadata?.createdBy,
+          createdBy: decodeMeta(blob.metadata?.createdBy),
           lastModifiedAt: blob.metadata?.lastModifiedAt,
-          lastModifiedBy: blob.metadata?.lastModifiedBy,
+          lastModifiedBy: decodeMeta(blob.metadata?.lastModifiedBy),
         });
       }
 

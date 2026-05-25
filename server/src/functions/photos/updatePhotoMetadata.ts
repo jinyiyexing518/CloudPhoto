@@ -29,9 +29,10 @@ app.http("updatePhotoMetadata", {
       const props = await blockBlobClient.getProperties();
       const existing: Record<string, string> = { ...(props.metadata ?? {}) };
 
+      const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
       const now = new Date().toISOString();
-      if (body.subject !== undefined) existing.subject = body.subject;
-      if (body.updatedBy) existing.lastModifiedBy = body.updatedBy;
+      if (body.subject !== undefined) existing.subject = b64(body.subject);
+      if (body.updatedBy) existing.lastModifiedBy = b64(body.updatedBy);
       existing.lastModifiedAt = now;
 
       await blockBlobClient.setMetadata(existing);
