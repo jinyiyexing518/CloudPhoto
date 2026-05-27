@@ -2,8 +2,8 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/fu
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { getAdminsContainer } from "../../utils/cosmosClient";
 
-// Only this account can manage the admins list
-const SUPER_ADMIN_USERNAME = "zhangchi";
+// Only this account can manage the admins list (override via SUPER_ADMIN_USERNAME env var)
+const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME ?? "zhangchi";
 
 app.http("authAddAdmin", {
   methods: ["POST"],

@@ -1,9 +1,15 @@
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
 
+// ---- 401 auto-logout handler ----
+let _onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: () => void): void { _onUnauthorized = fn; }
+
 function fetchWithTimeout(input: RequestInfo, init?: RequestInit, ms = 15000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
-  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));
+  return fetch(input, { ...init, signal: controller.signal })
+    .then((res) => { if (res.status === 401) _onUnauthorized?.(); return res; })
+    .finally(() => clearTimeout(id));
 }
 
 // ---- Auth token helpers ----
@@ -100,7 +106,7 @@ export interface Photo {
 
 export async function listPhotos(groupId = ""): Promise<Photo[]> {
   const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
-  const response = await fetch(url, { headers: authHeaders() });
+  const response = await fetchWithTimeout(url, { headers: authHeaders() });
   if (!response.ok) throw new Error("Failed to fetch photos");
   return response.json() as Promise<Photo[]>;
 }
@@ -140,7 +146,7 @@ export async function updatePhotoSubject(
   subject: string,
   updatedBy?: string
 ): Promise<void> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
     {
       method: "PATCH",
@@ -170,7 +176,7 @@ export async function movePhotoToFolder(
 }
 
 export async function deletePhoto(name: string): Promise<void> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${API_BASE}/photos?name=${encodeURIComponent(name)}`,
     { method: "DELETE", headers: authHeaders() }
   );
@@ -182,7 +188,7 @@ export async function renamePhoto(
   newOriginalName: string,
   updatedBy?: string,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
     {
       method: "PATCH",

@@ -5,6 +5,7 @@ import {
   InvocationContext,
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
+import { extractTokenFromHeader } from "../../utils/jwtUtils";
 
 app.http("updatePhotoMetadata", {
   methods: ["PATCH"],
@@ -14,6 +15,8 @@ app.http("updatePhotoMetadata", {
     request: HttpRequest,
     context: InvocationContext
   ): Promise<HttpResponseInit> => {
+    const payload = extractTokenFromHeader(request.headers.get("authorization") ?? "");
+    if (!payload) return { status: 401, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Unauthorized" }) };
     try {
       const blobName = request.query.get("name");
       if (!blobName) return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "name required" }) };

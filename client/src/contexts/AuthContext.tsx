@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { AuthUser, AuthResponse, loginApi, registerApi, getMeApi } from "../services/photoApi";
+import { AuthUser, AuthResponse, loginApi, registerApi, getMeApi, setUnauthorizedHandler } from "../services/photoApi";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -49,6 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
   }, []);
+
+  // Auto-logout when any API call receives 401 (token expired)
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+  }, [logout]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout }}>

@@ -95,6 +95,8 @@ interface Props {
   uploadProgress: { done: number; total: number; folder: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<void>;
   userName?: string;
+  /** Unique key for localStorage persistence (e.g. groupId or "personal") */
+  contextKey?: string;
 }
 
 // ─── FolderView (root navigator) ─────────────────────────────────────────────
@@ -108,11 +110,33 @@ export default function FolderView({
   uploadProgress,
   onMovePhoto,
   userName,
+  contextKey = "personal",
 }: Props) {
   const [currentPath, setCurrentPath] = useState<string | null>(null); // null = root
   const [extraFolders, setExtraFolders] = useState<string[]>([]);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+
+  // Restore extra (empty) folders from localStorage when context changes
+  useEffect(() => {
+    const stored = localStorage.getItem(`cf_xf_${contextKey}`);
+    try { setExtraFolders(stored ? (JSON.parse(stored) as string[]) : []); } catch { setExtraFolders([]); }
+    setCurrentPath(null);
+  }, [contextKey]);
+
+  // Persist extra folders whenever they change
+  useEffect(() => {
+    localStorage.setItem(`cf_xf_${contextKey}`, JSON.stringify(extraFolders));
+  }, [extraFolders, contextKey]);
+
+  // Remove extra folders that now have real photos (they’re no longer "empty")
+  useEffect(() => {
+    const photoFolderSet = new Set(photos.map((p) => p.folder?.trim() ?? ""));
+    setExtraFolders((prev) => {
+      const cleaned = prev.filter((f) => !photoFolderSet.has(f));
+      return cleaned.length === prev.length ? prev : cleaned;
+    });
+  }, [photos]);
 
   const subFolders = getImmediateSubFolders(photos, extraFolders, currentPath);
   const hasUncategorized =
@@ -322,6 +346,21 @@ function FolderContent({
   const isMyUpload = uploadProgress?.folder === currentPath;
   const anyUploading = uploadProgress !== null;
 
+  // Batch selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchMoveTo, setBatchMoveTo] = useState(MOVE_UNSELECTED);
+  const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); setBatchMoveTo(MOVE_UNSELECTED); };
+  const toggleSelect = (name: string) => {
+    setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
+  };
+  const handleBatchDelete = () => { for (const name of selected) onDelete(name); exitSelectMode(); };
+  const handleBatchMove = async () => {
+    if (batchMoveTo === MOVE_UNSELECTED) return;
+    for (const name of selected) await onMovePhoto(name, batchMoveTo);
+    exitSelectMode();
+  };
+
   const openModal = (photo: Photo) => {
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -403,7 +442,37 @@ function FolderContent({
       }}
     >
       <div className="photo-grid folder-section-grid">
-        {/* Sub-folder cards first */}
+        {/* Batch toolbar */}
+        {directPhotos.length > 0 && (
+          <div className="gallery-batch-toolbar" style={{ gridColumn: "1 / -1" }}>
+            <button
+              className={`batch-select-btn${selectMode ? " active" : ""}`}
+              onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+            >
+              {selectMode ? `取消选择` : "批量选择"}
+            </button>
+            {selectMode && <span className="batch-count">已选 {selected.size} 张</span>}
+            {selectMode && selected.size > 0 && (
+              <>
+                <button className="batch-delete-btn" onClick={handleBatchDelete}>删除 ({selected.size})</button>
+                <select
+                  className="modal-move-select"
+                  value={batchMoveTo}
+                  onChange={(e) => setBatchMoveTo(e.target.value)}
+                >
+                  <option value={MOVE_UNSELECTED}>移动到…</option>
+                  {allFolderPaths.map((f) => (
+                    <option key={f} value={f}>{f === "" ? "(未分类)" : f}</option>
+                  ))}
+                </select>
+                {batchMoveTo !== MOVE_UNSELECTED && (
+                  <button className="batch-select-btn" onClick={() => void handleBatchMove()}>确认移动</button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {/* Sub-folder cards first */}}
         {subFolders.map((sub) => (
           <FolderCard
             key={sub}
@@ -428,8 +497,10 @@ function FolderContent({
           >
             <PhotoCard
               photo={photo}
-              onClick={() => openModal(photo)}
+              onClick={() => !selectMode && openModal(photo)}
               onDelete={() => onDelete(photo.name)}
+              selected={selectMode ? selected.has(photo.name) : undefined}
+              onSelect={selectMode ? (e) => { e.stopPropagation(); toggleSelect(photo.name); } : undefined}
             />
           </div>
         ))}

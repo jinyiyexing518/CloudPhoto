@@ -63,21 +63,33 @@ function AppContent() {
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
 
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
+    const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
+    const MAX_SIZE_BYTES = 20 * 1024 * 1024;
     const fileArray = Array.from(files);
-    setUploadProgress({ done: 0, total: fileArray.length, folder });
+    const invalidType = fileArray.filter((f) => !ALLOWED_TYPES.has(f.type));
+    const oversized = fileArray.filter((f) => ALLOWED_TYPES.has(f.type) && f.size > MAX_SIZE_BYTES);
+    if (invalidType.length > 0 || oversized.length > 0) {
+      const msgs: string[] = [];
+      if (invalidType.length) msgs.push(`非图片文件: ${invalidType.map((f) => f.name).join(", ")}`);
+      if (oversized.length) msgs.push(`文件过大(>20MB): ${oversized.map((f) => f.name).join(", ")}`);
+      setError(msgs.join("; "));
+    }
+    const valid = fileArray.filter((f) => ALLOWED_TYPES.has(f.type) && f.size <= MAX_SIZE_BYTES);
+    if (valid.length === 0) return;
+    setUploadProgress({ done: 0, total: valid.length, folder });
     const failed: string[] = [];
-    for (let i = 0; i < fileArray.length; i++) {
+    for (let i = 0; i < valid.length; i++) {
       try {
-        await uploadPhoto(fileArray[i], user?.displayName || undefined, subject || undefined, folder || undefined, currentGroupId || undefined);
+        await uploadPhoto(valid[i], user?.displayName || undefined, subject || undefined, folder || undefined, currentGroupId || undefined);
       } catch {
-        failed.push(fileArray[i].name);
+        failed.push(valid[i].name);
       }
-      setUploadProgress({ done: i + 1, total: fileArray.length, folder });
+      setUploadProgress({ done: i + 1, total: valid.length, folder });
     }
     await fetchPhotos();
     setUploadProgress(null);
     if (failed.length > 0) {
-      setError(`上传失败 (${failed.length}/${fileArray.length}): ${failed.join(", ")}`);
+      setError(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`);
     }
   };
 
@@ -199,6 +211,7 @@ function AppContent() {
             uploadProgress={uploadProgress}
             onMovePhoto={handleMovePhoto}
             userName={user?.displayName}
+            contextKey={currentGroupId || "personal"}
           />
         )}
       </main>

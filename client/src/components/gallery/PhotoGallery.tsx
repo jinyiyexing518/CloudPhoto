@@ -54,6 +54,18 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
   const [savingName, setSavingName] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  // Batch selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
+  const togglePhoto = (name: string) => {
+    setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
+  };
+  const handleBatchDelete = () => {
+    for (const name of selected) onDelete(name);
+    exitSelectMode();
+  };
+
   const openModal = (photo: Photo) => {
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -114,6 +126,23 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
 
   return (
     <>
+      {/* Batch selection toolbar */}
+      <div className="gallery-batch-toolbar">
+        <button
+          className={`batch-select-btn${selectMode ? " active" : ""}`}
+          onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+        >
+          {selectMode ? `取消选择` : "批量选择"}
+        </button>
+        {selectMode && (
+          <span className="batch-count">已选 {selected.size} 张</span>
+        )}
+        {selectMode && selected.size > 0 && (
+          <button className="batch-delete-btn" onClick={handleBatchDelete}>
+            删除 ({selected.size})
+          </button>
+        )}
+      </div>
       {groups.map((group) => (
         <section key={group.key} className="date-group">
           <h2 className="date-group-label">
@@ -126,8 +155,10 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
               <PhotoCard
                 key={photo.name}
                 photo={photo}
-                onClick={() => openModal(photo)}
+                onClick={() => !selectMode && openModal(photo)}
                 onDelete={() => onDelete(photo.name)}
+                selected={selectMode ? selected.has(photo.name) : undefined}
+                onSelect={selectMode ? (e) => { e.stopPropagation(); togglePhoto(photo.name); } : undefined}
               />
             ))}
           </div>

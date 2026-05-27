@@ -5,6 +5,7 @@ import {
   InvocationContext,
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
+import { extractTokenFromHeader } from "../../utils/jwtUtils";
 
 app.http("deletePhoto", {
   methods: ["DELETE"],
@@ -14,6 +15,9 @@ app.http("deletePhoto", {
     request: HttpRequest,
     context: InvocationContext
   ): Promise<HttpResponseInit> => {
+    const payload = extractTokenFromHeader(request.headers.get("authorization") ?? "");
+    if (!payload) return { status: 401, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Unauthorized" }) };
+
     const blobName = request.query.get("name");
 
     if (!blobName) {

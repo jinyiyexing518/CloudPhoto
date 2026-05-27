@@ -11,6 +11,12 @@ import {
 } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 
+const ALLOWED_UPLOAD_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/gif",
+  "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff",
+]);
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
+
 app.http("uploadPhoto", {
   methods: ["POST"],
   authLevel: "anonymous",
@@ -26,6 +32,9 @@ app.http("uploadPhoto", {
         request.query.get("filename") ?? `photo-${Date.now()}.jpg`;
       const contentType =
         request.headers.get("content-type") ?? "image/jpeg";
+      if (!ALLOWED_UPLOAD_MIME.has(contentType.split(";")[0].trim())) {
+        return { status: 415, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "只支持图片文件 (JPEG, PNG, GIF, WebP, HEIC 等)" }) };
+      }
       const uploadedBy = request.query.get("uploadedBy") ?? "unknown";
       const subject = request.query.get("subject") ?? "";
       const folder = request.query.get("folder") ?? "";
@@ -52,6 +61,9 @@ app.http("uploadPhoto", {
 
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
       const arrayBuffer = await request.arrayBuffer();
+      if (arrayBuffer.byteLength > MAX_UPLOAD_BYTES) {
+        return { status: 413, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "文件过大，最大支持 20 MB" }) };
+      }
 
       // Azure Blob metadata only allows ASCII — base64-encode all free-text fields
       const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");

@@ -5,9 +5,12 @@ interface Props {
   photo: Photo;
   onClick: () => void;
   onDelete: () => void;
+  /** When defined, card is in selection mode: clicking selects/deselects */
+  selected?: boolean;
+  onSelect?: (e: React.MouseEvent) => void;
 }
 
-export default function PhotoCard({ photo, onClick, onDelete }: Props) {
+export default function PhotoCard({ photo, onClick, onDelete, selected, onSelect }: Props) {
   const [showConfirm, setShowConfirm] = useState(false);
   const displayName = photo.originalName || photo.name.replace(/^\d+-/, "");
   const uploadTime = photo.createdAt
@@ -18,14 +21,23 @@ export default function PhotoCard({ photo, onClick, onDelete }: Props) {
 
   return (
     <>
-      <div className="photo-card">
-        <div className="photo-thumbnail" onClick={onClick}>
+      <div
+        className={`photo-card${selected ? " photo-card--selected" : ""}`}
+        onClick={onSelect}
+      >
+        {onSelect !== undefined && (
+          <div className={`photo-select-badge${selected ? " photo-select-badge--on" : ""}`}>
+            {selected ? "✓" : ""}
+          </div>
+        )}
+        <div className="photo-thumbnail" onClick={onSelect ?? onClick}>
           <img src={photo.url} alt={displayName} loading="lazy" />
         </div>
         <div className="photo-info">
           <span className="photo-name" title={displayName}>
             {displayName}
           </span>
+          {!onSelect && (
           <button
             className="delete-btn"
             title="Delete photo"
@@ -36,6 +48,7 @@ export default function PhotoCard({ photo, onClick, onDelete }: Props) {
           >
             🗑
           </button>
+          )}
         </div>
         {(uploadTime || photo.createdBy || photo.subject) && (
           <div className="photo-meta">
