@@ -44,7 +44,8 @@ app.http("movePhoto", {
         };
       }
 
-      // Path: {scope}/{ownerId}/{folder}/{timestamp}-{filename}  (always 4+ segments)
+      // Path: {scope}/{ownerId}/{folderPath...}/{filename}  (4+ segments)
+      // filename is always the last segment; folderPath can span multiple segments for sub-folders
       const segs = name.split("/");
       if (segs.length < 4) {
         return {
@@ -54,11 +55,18 @@ app.http("movePhoto", {
         };
       }
 
-      const [scope, ownerId, , ...fileParts] = segs; // skip old folder segment
-      const filename = fileParts.join("/");
-      const safeFolderName =
-        (toFolder || "").replace(/[\/\\\0<>"|?*:]/g, "_").trim() || "_";
-      const newBlobName = `${scope}/${ownerId}/${safeFolderName}/${filename}`;
+      const scope = segs[0];
+      const ownerId = segs[1];
+      const filename = segs[segs.length - 1]; // last segment is always the file
+      // Sanitise each segment of the target folder path (allow "/" as path separator)
+      const safeFolderPath = toFolder
+        ? toFolder
+            .split("/")
+            .map((seg) => seg.replace(/[\\\0<>"|?*:]/g, "_").trim())
+            .filter(Boolean)
+            .join("/")
+        : "_";
+      const newBlobName = `${scope}/${ownerId}/${safeFolderPath}/${filename}`;
 
       if (newBlobName === name) {
         return {

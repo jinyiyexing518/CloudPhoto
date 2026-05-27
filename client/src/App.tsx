@@ -96,6 +96,12 @@ function AppContent() {
     );
   };
 
+  const handleRenamePhoto = (name: string, newOriginalName: string) => {
+    setPhotos((prev) =>
+      prev.map((p) => (p.name === name ? { ...p, originalName: newOriginalName } : p))
+    );
+  };
+
   const handleMovePhoto = async (name: string, toFolder: string) => {
     // Optimistic update (folder display only; name updated after server confirms)
     setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
@@ -180,6 +186,7 @@ function AppContent() {
             photos={filteredPhotos}
             onDelete={handleDelete}
             onSubjectUpdate={handleSubjectUpdate}
+            onRenamePhoto={handleRenamePhoto}
             userName={user?.displayName}
           />
         ) : (
@@ -187,6 +194,7 @@ function AppContent() {
             photos={photos}
             onDelete={handleDelete}
             onSubjectUpdate={handleSubjectUpdate}
+            onRenamePhoto={handleRenamePhoto}
             onUploadToFolder={handleUploadToFolder}
             uploadProgress={uploadProgress}
             onMovePhoto={handleMovePhoto}

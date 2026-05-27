@@ -74,7 +74,10 @@ app.http("listPhotos", {
         // Path format: personal/{userId}/{folder}/{filename}  or  groups/{groupId}/{folder}/{filename}
         const segs = blob.name.split("/");
         if (segs.length < 4) continue;
-        const folderRaw = segs[2];
+        // folder = every segment between ownerId and the filename (last segment)
+        // supports arbitrarily nested sub-folders; backwards-compat with 4-segment paths
+        const folderSegs = segs.slice(2, segs.length - 1);
+        const folderRaw = folderSegs.join("/");
         const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
         const folder = folderRaw === "_" ? "" : folderRaw;
 

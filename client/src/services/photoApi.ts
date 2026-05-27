@@ -176,3 +176,44 @@ export async function deletePhoto(name: string): Promise<void> {
   );
   if (!response.ok) throw new Error("Failed to delete photo");
 }
+
+export async function renamePhoto(
+  name: string,
+  newOriginalName: string,
+  updatedBy?: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ originalName: newOriginalName, updatedBy }),
+    },
+  );
+  if (!response.ok) throw new Error("Failed to rename photo");
+}
+
+export async function downloadPhotoApi(
+  name: string,
+  filename: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/download?name=${encodeURIComponent(name)}`,
+    { headers: authHeaders() },
+    60000,
+  ).catch((e: unknown) => {
+    throw new Error(
+      e instanceof Error && e.name === "AbortError" ? "下载超时" : "网络错误",
+    );
+  });
+  if (!response.ok) throw new Error("Download failed");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

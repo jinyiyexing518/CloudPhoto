@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Photo, updatePhotoSubject } from "../../services/photoApi";
+import { Photo, updatePhotoSubject, renamePhoto as apiRenamePhoto, downloadPhotoApi } from "../../services/photoApi";
 import PhotoCard from "./PhotoCard";
 
 interface Props {
   photos: Photo[];
   onDelete: (name: string) => void;
   onSubjectUpdate: (name: string, subject: string) => void;
+  onRenamePhoto: (name: string, newOriginalName: string) => void;
   userName?: string;
 }
 
@@ -43,16 +44,23 @@ function groupByDate(photos: Photo[]): DateGroup[] {
   return groups;
 }
 
-export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, userName }: Props) {
+export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRenamePhoto, userName }: Props) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
   const [savingSubject, setSavingSubject] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const openModal = (photo: Photo) => {
     setSelectedPhoto(photo);
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
+    setEditingName(false);
+    setNameInput(photo.originalName || photo.name.replace(/^\d+-/, ""));
+    setDownloading(false);
   };
 
   const saveSubject = async () => {
@@ -65,6 +73,32 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, userNa
       setEditingSubject(false);
     } finally {
       setSavingSubject(false);
+    }
+  };
+
+  const saveName = async () => {
+    if (!selectedPhoto) return;
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    setSavingName(true);
+    try {
+      await apiRenamePhoto(selectedPhoto.name, trimmed, userName);
+      onRenamePhoto(selectedPhoto.name, trimmed);
+      setSelectedPhoto({ ...selectedPhoto, originalName: trimmed });
+      setEditingName(false);
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!selectedPhoto) return;
+    setDownloading(true);
+    try {
+      const filename = selectedPhoto.originalName || selectedPhoto.name.replace(/^\d+-/, "");
+      await downloadPhotoApi(selectedPhoto.name, filename);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -118,11 +152,41 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, userNa
             <img src={selectedPhoto.url} alt={selectedPhoto.name} />
             <div className="modal-info">
               <div className="modal-info-row">
-                <span className="modal-filename">
-                  {selectedPhoto.originalName || selectedPhoto.name.replace(/^\d+-/, "")}
-                </span>
+                {editingName ? (
+                  <span className="modal-subject-cell" style={{ flex: 1 }}>
+                    <input
+                      autoFocus
+                      className="modal-subject-input"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void saveName();
+                        if (e.key === "Escape") setEditingName(false);
+                      }}
+                      maxLength={120}
+                    />
+                    <button className="modal-subject-save" onClick={() => void saveName()} disabled={savingName}>
+                      {savingName ? "..." : "保存"}
+                    </button>
+                    <button className="modal-subject-cancel" onClick={() => setEditingName(false)}>✕</button>
+                  </span>
+                ) : (
+                  <span className="modal-filename">
+                    {selectedPhoto.originalName || selectedPhoto.name.replace(/^\d+-/, "")}
+                    <button className="modal-edit-btn" title="重命名" onClick={() => setEditingName(true)}>✏</button>
+                  </span>
+                )}
                 <span className="modal-size">{formatSize(selectedPhoto.size)}</span>
               </div>
+
+              {/* Download button */}
+              <button
+                className="modal-download-btn"
+                onClick={() => void handleDownload()}
+                disabled={downloading}
+              >
+                {downloading ? "⏳ 下载中…" : "⬇ 下载照片"}
+              </button>
               <div className="modal-detail-grid">
                 <span className="modal-detail-label">Subject</span>
                 <span className="modal-detail-value modal-subject-cell">

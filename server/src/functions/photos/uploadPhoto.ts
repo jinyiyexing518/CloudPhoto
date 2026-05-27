@@ -32,10 +32,17 @@ app.http("uploadPhoto", {
       const groupId = request.query.get("groupId") ?? "";
 
       const safeName = filename.replace(/[\/\\\0]/g, "_");
-      // Path-based: personal/{userId}/{folder}/{ts}-{name}  or  groups/{groupId}/{folder}/{ts}-{name}
-      const safeFolderName = folder.replace(/[\/\\\0<>"\|?*:]/g, "_").trim() || "_";
+      // Path-based with sub-folder support: personal/{userId}/{folderPath}/{ts}-{name}
+      // folderPath may contain "/" for nested sub-folders; each segment is sanitised individually
+      const safeFolderPath = folder
+        ? folder
+            .split("/")
+            .map((seg) => seg.replace(/[\\\0<>"|?*:]/g, "_").trim())
+            .filter(Boolean)
+            .join("/")
+        : "_";
       const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
-      const blobName = `${scope}/${safeFolderName}/${Date.now()}-${safeName}`;
+      const blobName = `${scope}/${safeFolderPath}/${Date.now()}-${safeName}`;
       const now = new Date().toISOString();
 
       const blobServiceClient = getBlobServiceClient();
@@ -68,7 +75,7 @@ app.http("uploadPhoto", {
           name: blobName,
           originalName: filename,
           subject,
-          folder: safeFolderName === "_" ? "" : safeFolderName,
+          folder: safeFolderPath === "_" ? "" : safeFolderPath,
           groupId: groupId || undefined,
           url: generateSasUrl(blobName),
           size: arrayBuffer.byteLength,
