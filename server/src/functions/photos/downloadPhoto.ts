@@ -53,7 +53,7 @@ app.http("downloadPhoto", {
       // Buffer the stream (images are typically < 20 MB)
       const chunks: Buffer[] = [];
       for await (const chunk of downloadResponse.readableStreamBody!) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as ArrayBuffer));
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as ArrayBuffer));
       }
       const body = Buffer.concat(chunks);
 
