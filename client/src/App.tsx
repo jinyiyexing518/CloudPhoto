@@ -267,6 +267,7 @@ function AppContent() {
           />
         ) : (
           <FolderView
+            key={currentGroupId || "personal"}
             photos={photos}
             onDelete={handleDelete}
             onSubjectUpdate={handleSubjectUpdate}
