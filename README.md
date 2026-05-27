@@ -40,8 +40,9 @@ build time (defaults to `/api`).
 - **Delegation key caching** — Azure User Delegation Key cached in-process and reused while > 10 min validity remains, eliminating one control-plane call per photo-list request
 - **Role system** — global `admin` / `viewer`; per-group `admin` / `member`
 - **Private photo space** — personal folders visible only to the owner (admin sees all)
-- **Group sharing** — create groups, add members by username, share photos within groups
+- **Group sharing** — create groups, add members by username; on add, an invitation email is automatically sent to the new member via Azure Communication Services (gracefully skipped if ACS is not configured)
 - **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation; drag-and-drop between folders; extra folders persisted in `localStorage` per context
+- **Session persistence** — last-used group space and current folder path are remembered in `localStorage` per user; page refresh returns you exactly where you were
 - **Batch operations** — multi-select mode with batch delete and batch move to folder
 - **Multi-photo upload** — select multiple photos at once; sequential upload with per-folder progress (`⏳ 2/5`); partial-failure reporting; client-side MIME type + 20 MB size guard before upload
 - **Photo download** — download original file directly from the browser (mobile & desktop)
@@ -320,6 +321,9 @@ Open [http://localhost:3000](http://localhost:3000).
 | `STORAGE_ACCOUNT_NAME` | `photostorage` |
 | `STORAGE_CONTAINER_NAME` | `photos` |
 | `SUPER_ADMIN_USERNAME` | Super-admin username |
+| `ACS_CONNECTION_STRING` | Azure Communication Services connection string (optional — for email invites) |
+| `ACS_SENDER_ADDRESS` | Verified sender address for ACS email (optional) |
+| `APP_BASE_URL` | Public URL of the app, included in invite emails (optional, e.g. `https://yourapp.azurestaticapps.net`) |
 
 > `STORAGE_ACCOUNT_KEY` and `COSMOS_KEY` are **not needed** — the Function App uses Managed Identity.
 

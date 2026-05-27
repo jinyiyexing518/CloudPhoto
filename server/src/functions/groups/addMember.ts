@@ -1,6 +1,7 @@
 ﻿import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { getGroupsContainer, getUsersContainer, isGroupAdmin, GroupDoc, GroupMember } from "../../utils/cosmosClient";
+import { sendGroupInviteEmail } from "../../utils/emailUtils";
 
 app.http("addMember", {
   methods: ["POST"],
@@ -46,6 +47,15 @@ app.http("addMember", {
 
     const updated: GroupDoc = { ...group, members: [...group.members, newMember] };
     await groupsContainer.item(groupId, groupId).replace(updated);
+
+    // Fire-and-forget email notification — does not block the response
+    const inviter = group.members.find((m) => m.userId === payload.userId);
+    void sendGroupInviteEmail({
+      toEmail: user.email,
+      toName: user.displayName,
+      groupName: group.name,
+      inviterName: inviter?.displayName ?? payload.userId,
+    });
 
     return { status: 201, headers: { "Content-Type": "application/json" }, body: JSON.stringify(newMember) };
   },

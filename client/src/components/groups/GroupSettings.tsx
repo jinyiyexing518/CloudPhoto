@@ -69,9 +69,11 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
     setAddingMember(true);
     setAddError("");
     try {
-      await addMemberApi(groupId, addUsername.trim());
+      const newMember = await addMemberApi(groupId, addUsername.trim());
       setAddUsername("");
       await loadGroup();
+      // Show confirmation — server fires email notification if ACS is configured
+      setAddError(`✅ 已添加 ${newMember.displayName}（@${newMember.username}）${newMember.email ? `，邀请邮件已发送至 ${newMember.email}` : ""}`);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "添加失败");
     } finally {
@@ -174,7 +176,14 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                   {addingMember ? "…" : "添加"}
                 </button>
               </form>
-              {addError && <div className="auth-error" style={{ marginTop: 6 }}>{addError}</div>}
+              {addError && (
+                <div
+                  className={addError.startsWith("✅") ? "group-add-success" : "auth-error"}
+                  style={{ marginTop: 6 }}
+                >
+                  {addError}
+                </div>
+              )}
             </section>
 
             {/* ─── Danger zone ─── */}

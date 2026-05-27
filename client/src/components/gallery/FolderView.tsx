@@ -119,17 +119,28 @@ export default function FolderView({
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
 
-  // Restore extra (empty) folders from localStorage when context changes
+  // Restore extra (empty) folders and last-visited path from localStorage when context changes
   useEffect(() => {
     const stored = localStorage.getItem(`cf_xf_${contextKey}`);
     try { setExtraFolders(stored ? (JSON.parse(stored) as string[]) : []); } catch { setExtraFolders([]); }
-    setCurrentPath(null);
+    // null = root (key absent), "" = uncategorised, "folderName" = folder
+    const storedPath = localStorage.getItem(`cf_path_${contextKey}`);
+    setCurrentPath(storedPath !== null ? storedPath : null);
   }, [contextKey]);
 
   // Persist extra folders whenever they change
   useEffect(() => {
     localStorage.setItem(`cf_xf_${contextKey}`, JSON.stringify(extraFolders));
   }, [extraFolders, contextKey]);
+
+  // Persist current path whenever it changes
+  useEffect(() => {
+    if (currentPath === null) {
+      localStorage.removeItem(`cf_path_${contextKey}`);
+    } else {
+      localStorage.setItem(`cf_path_${contextKey}`, currentPath);
+    }
+  }, [currentPath, contextKey]);
 
   // Remove extra folders that now have real photos (they’re no longer "empty")
   useEffect(() => {
