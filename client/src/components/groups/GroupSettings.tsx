@@ -69,11 +69,15 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
     setAddingMember(true);
     setAddError("");
     try {
-      const newMember = await addMemberApi(groupId, addUsername.trim());
+      const result = await addMemberApi(groupId, addUsername.trim());
       setAddUsername("");
-      await loadGroup();
-      // Show confirmation — server fires email notification if ACS is configured
-      setAddError(`✅ 已添加 ${newMember.displayName}（@${newMember.username}）${newMember.email ? `，邀请邮件已发送至 ${newMember.email}` : ""}`);
+      // 202 = pre-invite sent (email not registered yet)
+      if (result.message) {
+        setAddError(`✅ ${result.message}`);
+      } else {
+        await loadGroup();
+        setAddError(`✅ 已添加 ${result.displayName}（@${result.username}）${result.email ? `，邀请邮件已发送至 ${result.email}` : ""}`);
+      }
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "添加失败");
     } finally {
@@ -167,7 +171,7 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                 <input
                   type="text"
                   className="group-add-input"
-                  placeholder="输入用户名添加成员"
+                  placeholder="用户名或邮箱地址"
                   value={addUsername}
                   onChange={(e) => setAddUsername(e.target.value)}
                   maxLength={40}
