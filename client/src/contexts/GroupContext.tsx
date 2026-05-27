@@ -8,6 +8,7 @@ interface GroupContextValue {
   setCurrentGroupId: (id: string) => void;
   refreshGroups: () => Promise<void>;
   loadingGroups: boolean;
+  groupsLoaded: boolean;
 }
 
 const GroupContext = createContext<GroupContextValue>({
@@ -16,6 +17,7 @@ const GroupContext = createContext<GroupContextValue>({
   setCurrentGroupId: () => {},
   refreshGroups: async () => {},
   loadingGroups: false,
+  groupsLoaded: false,
 });
 
 export function GroupProvider({ children }: { children: ReactNode }) {
@@ -84,7 +86,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
   }, [groups, groupsLoaded, currentGroupId, setCurrentGroupId]);
 
   return (
-    <GroupContext.Provider value={{ groups, currentGroupId, setCurrentGroupId, refreshGroups, loadingGroups }}>
+    <GroupContext.Provider value={{ groups, currentGroupId, setCurrentGroupId, refreshGroups, loadingGroups, groupsLoaded }}>
       {children}
     </GroupContext.Provider>
   );

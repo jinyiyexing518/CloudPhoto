@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, Photo } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
@@ -17,10 +17,23 @@ type ViewTab = "timeline" | "folder";
 
 function AppContent() {
   const { user, logout } = useAuth();
-  const { currentGroupId } = useGroup();
+  const { currentGroupId, groups, groupsLoaded } = useGroup();
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Location banner: shown briefly when entering a group or personal space
+  const [locationBanner, setLocationBanner] = useState<string | null>(null);
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!groupsLoaded) return;
+    const group = groups.find((g) => g.id === currentGroupId);
+    const label = currentGroupId === "" ? "📷 个人空间" : `👥 ${group?.name ?? "群组"}`;
+    setLocationBanner(label);
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    bannerTimer.current = setTimeout(() => setLocationBanner(null), 2200);
+    return () => { if (bannerTimer.current) clearTimeout(bannerTimer.current); };
+  }, [currentGroupId, groupsLoaded]); // groups intentionally omitted — only care when user switches
 
   // Invite token from URL ?invite=<token>
   const [inviteToken, setInviteToken] = useState<string | null>(() => {
@@ -171,6 +184,11 @@ function AppContent() {
 
   return (
     <div className="app">
+      {locationBanner && (
+        <div className="location-banner" key={locationBanner}>
+          {locationBanner}
+        </div>
+      )}
       <header className="app-header">
         <h1>Cloud Photo</h1>
         <GroupSwitcher />
