@@ -20,7 +20,17 @@ function AppContent() {
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [activeTab, setActiveTab] = useState<ViewTab>("timeline");
+
+  // Persist active tab per user across refreshes
+  const tabKey = `cf_tab_${user?.username ?? "guest"}`;
+  const [activeTab, setActiveTab] = useState<ViewTab>(() => {
+    const stored = localStorage.getItem(tabKey);
+    return stored === "folder" ? "folder" : "timeline";
+  });
+  const switchTab = (tab: ViewTab) => {
+    setActiveTab(tab);
+    localStorage.setItem(tabKey, tab);
+  };
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -163,13 +173,13 @@ function AppContent() {
         <div className="view-tabs">
           <button
             className={`view-tab${activeTab === "timeline" ? " active" : ""}`}
-            onClick={() => setActiveTab("timeline")}
+            onClick={() => switchTab("timeline")}
           >
             🕐 时间线
           </button>
           <button
             className={`view-tab${activeTab === "folder" ? " active" : ""}`}
-            onClick={() => setActiveTab("folder")}
+            onClick={() => switchTab("folder")}
           >
             📁 文件夹
           </button>
@@ -178,7 +188,7 @@ function AppContent() {
         {/* Timeline hint */}
         {activeTab === "timeline" && (
           <div className="timeline-upload-hint">
-            📁 请切换到「<button className="hint-tab-link" onClick={() => setActiveTab("folder")}>文件夹</button>」视图来添加照片
+            📁 请切换到「<button className="hint-tab-link" onClick={() => switchTab("folder")}>文件夹</button>」视图来添加照片
           </div>
         )}
 
