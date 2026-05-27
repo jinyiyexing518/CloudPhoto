@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Photo, updatePhotoSubject, renamePhoto as apiRenamePhoto, downloadPhotoApi } from "../../services/photoApi";
 import PhotoCard from "./PhotoCard";
+import { useToast } from "../../contexts/ToastContext";
 
 interface Props {
   photos: Photo[];
@@ -45,6 +46,8 @@ function groupByDate(photos: Photo[]): DateGroup[] {
 }
 
 export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRenamePhoto, userName }: Props) {
+  const showToast = useToast();
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
@@ -57,16 +60,62 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
   // Batch selection
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+  const allSelected = selected.size > 0 && selected.size === photos.length;
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
   const togglePhoto = (name: string) => {
     setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
   };
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(photos.map((p) => p.name)));
+    }
+  };
   const handleBatchDelete = () => {
     for (const name of selected) onDelete(name);
+    showToast(`已删除 ${selected.size} 张照片`, "success");
     exitSelectMode();
+    setShowBatchConfirm(false);
   };
 
+  // Flat photo list for keyboard navigation (ordered as displayed: by date desc)
+  const flatPhotos = useMemo(() => {
+    return [...photos].sort((a, b) => {
+      const da = (a.createdAt ?? a.lastModified) ?? "";
+      const db = (b.createdAt ?? b.lastModified) ?? "";
+      return db.localeCompare(da);
+    });
+  }, [photos]);
+
+  const navigateToPhoto = useCallback((idx: number) => {
+    const photo = flatPhotos[idx];
+    if (!photo) return;
+    setSelectedIdx(idx);
+    setSelectedPhoto(photo);
+    setEditingSubject(false);
+    setSubjectInput(photo.subject ?? "");
+    setEditingName(false);
+    setNameInput(photo.originalName || photo.name.replace(/^\d+-/, ""));
+    setDownloading(false);
+  }, [flatPhotos]);
+
+  // Keyboard navigation when modal is open
+  useEffect(() => {
+    if (selectedIdx === null) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setSelectedIdx(null); setSelectedPhoto(null); }
+      if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1);
+      if (e.key === "ArrowRight" && selectedIdx < flatPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedIdx, flatPhotos.length, navigateToPhoto]);
+
   const openModal = (photo: Photo) => {
+    const idx = flatPhotos.findIndex((p) => p.name === photo.name);
+    setSelectedIdx(idx >= 0 ? idx : null);
     setSelectedPhoto(photo);
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
@@ -117,7 +166,9 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
   if (photos.length === 0) {
     return (
       <div className="empty-gallery">
-        <p>No photos yet. Upload some photos to get started!</p>
+        <div className="empty-gallery-icon">📷</div>
+        <p className="empty-gallery-title">还没有照片</p>
+        <p className="empty-gallery-sub">切换到「文件夹」视图，选择文件夹后上传照片</p>
       </div>
     );
   }
@@ -135,10 +186,15 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
           {selectMode ? `取消选择` : "批量选择"}
         </button>
         {selectMode && (
-          <span className="batch-count">已选 {selected.size} 张</span>
+          <>
+            <button className="batch-select-btn" onClick={toggleSelectAll}>
+              {allSelected ? "取消全选" : "全选"}
+            </button>
+            <span className="batch-count">已选 {selected.size} 张</span>
+          </>
         )}
         {selectMode && selected.size > 0 && (
-          <button className="batch-delete-btn" onClick={handleBatchDelete}>
+          <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>
             删除 ({selected.size})
           </button>
         )}
@@ -168,7 +224,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
       {selectedPhoto && (
         <div
           className="modal-overlay"
-          onClick={() => setSelectedPhoto(null)}
+          onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}
         >
           <div
             className="modal-content"
@@ -176,10 +232,16 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
           >
             <button
               className="modal-close"
-              onClick={() => setSelectedPhoto(null)}
+              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}
             >
               ✕
             </button>
+            {selectedIdx !== null && selectedIdx > 0 && (
+              <button className="modal-nav modal-nav--prev" onClick={() => navigateToPhoto(selectedIdx - 1)} title="上一张 (←)">‹</button>
+            )}
+            {selectedIdx !== null && selectedIdx < flatPhotos.length - 1 && (
+              <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title="下一张 (→)">›</button>
+            )}
             <img src={selectedPhoto.url} alt={selectedPhoto.name} />
             <div className="modal-info">
               <div className="modal-info-row">
@@ -266,6 +328,23 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
                 <span className="modal-detail-label">Type</span>
                 <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
               </div>
+            </div>
+            {flatPhotos.length > 1 && (
+              <div className="modal-nav-hint">← → 键切换 · Esc 关闭</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Batch delete confirmation */}
+      {showBatchConfirm && (
+        <div className="confirm-overlay" onClick={() => setShowBatchConfirm(false)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="confirm-title">确认删除 {selected.size} 张照片？</p>
+            <p className="confirm-filename">此操作不可撤销</p>
+            <div className="confirm-actions">
+              <button className="confirm-cancel-btn" onClick={() => setShowBatchConfirm(false)}>取消</button>
+              <button className="confirm-delete-btn" onClick={handleBatchDelete}>删除</button>
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 
+import { useState, useEffect, useRef } from "react";
 
 export interface FilterState {
   name: string;
@@ -33,10 +34,30 @@ export default function FilterBar({
   total,
   filtered,
 }: Props) {
+  // Debounced name search: local state updates immediately; parent notified after 300ms
+  const [localName, setLocalName] = useState(filters.name);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync when parent clears filters externally (e.g. "Clear all")
+  useEffect(() => { setLocalName(filters.name); }, [filters.name]);
+
+  const handleNameChange = (value: string) => {
+    setLocalName(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onChange({ ...filters, name: value }), 300);
+  };
+
   const set = (key: keyof FilterState, value: string) =>
     onChange({ ...filters, [key]: value });
 
   const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo;
+
+  // Active filter chips (all except name which has inline clear)
+  const activeChips: { label: string; key: keyof FilterState }[] = [];
+  if (filters.subject) activeChips.push({ label: `主题: ${filters.subject}`, key: "subject" });
+  if (filters.uploader) activeChips.push({ label: `上传者: ${filters.uploader}`, key: "uploader" });
+  if (filters.dateFrom) activeChips.push({ label: `从: ${filters.dateFrom}`, key: "dateFrom" });
+  if (filters.dateTo) activeChips.push({ label: `至: ${filters.dateTo}`, key: "dateTo" });
 
   return (
     <div className="filter-bar">
@@ -50,16 +71,16 @@ export default function FilterBar({
             type="search"
             className="search-input"
             placeholder="Search by name..."
-            value={filters.name}
-            onChange={(e) => set("name", e.target.value)}
+            value={localName}
+            onChange={(e) => handleNameChange(e.target.value)}
           />
-          {filters.name && (
-            <button className="search-clear" onClick={() => set("name", "")}>✕</button>
+          {localName && (
+            <button className="search-clear" onClick={() => handleNameChange("")}>✕</button>
           )}
         </div>
 
         {hasAny && (
-          <button className="filter-clear-btn" onClick={() => onChange(emptyFilter)}>
+          <button className="filter-clear-btn" onClick={() => { onChange(emptyFilter); setLocalName(""); }}>
             Clear all
           </button>
         )}
@@ -68,6 +89,18 @@ export default function FilterBar({
           <span className="search-count">{filtered} / {total}</span>
         )}
       </div>
+
+      {/* Active filter chips */}
+      {activeChips.length > 0 && (
+        <div className="filter-chips">
+          {activeChips.map((chip) => (
+            <span key={chip.key} className="filter-chip">
+              {chip.label}
+              <button className="filter-chip-remove" onClick={() => set(chip.key, "")}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="filter-panel">
         <label className="filter-field">

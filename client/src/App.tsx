@@ -21,6 +21,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<ViewTab>("timeline");
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
 
@@ -51,10 +52,12 @@ function AppContent() {
   const fetchPhotos = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const data = await listPhotos(currentGroupId);
       setPhotos(data);
     } catch {
       showToast("加载照片失败，请检查网络或服务器状态", "error");
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -187,7 +190,15 @@ function AppContent() {
         )}
 
         {loading ? (
-          <div className="loading">Loading photos...</div>
+          <div className="loading">
+            <div className="loading-spinner" />
+            <span>Loading photos…</span>
+          </div>
+        ) : loadError ? (
+          <div className="load-error">
+            <p>加载照片失败</p>
+            <button className="retry-btn" onClick={() => void fetchPhotos()}>重试</button>
+          </div>
         ) : activeTab === "timeline" ? (
           <PhotoGallery
             photos={filteredPhotos}

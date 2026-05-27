@@ -355,6 +355,11 @@ function FolderContent({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchMoveTo, setBatchMoveTo] = useState(MOVE_UNSELECTED);
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); setBatchMoveTo(MOVE_UNSELECTED); };
+  const allSelected = selected.size > 0 && selected.size === directPhotos.length;
+  const toggleSelectAll = () => {
+    if (allSelected) { setSelected(new Set()); } else { setSelected(new Set(directPhotos.map((p) => p.name))); }
+  };
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
   // Navigate to a photo by index, resetting all edit state
   const navigateToPhoto = useCallback((idx: number, photoList: Photo[]) => {
@@ -385,11 +390,11 @@ function FolderContent({
   const toggleSelect = (name: string) => {
     setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
   };
-  const handleBatchDelete = () => { for (const name of selected) onDelete(name); showToast(`已删除 ${selected.size} 张照片`, "success"); exitSelectMode(); };
+  const handleBatchDelete = () => { for (const name of selected) onDelete(name); showToast(`已删除 ${selected.size} 张照片`, "success"); exitSelectMode(); setShowBatchConfirm(false); };
   const handleBatchMove = async () => {
     if (batchMoveTo === MOVE_UNSELECTED) return;
     const count = selected.size;
-    for (const name of selected) await onMovePhoto(name, batchMoveTo);
+    await Promise.all([...selected].map((name) => onMovePhoto(name, batchMoveTo)));
     showToast(`已移动 ${count} 张照片`, "success");
     exitSelectMode();
   };
@@ -487,10 +492,15 @@ function FolderContent({
             >
               {selectMode ? `取消选择` : "批量选择"}
             </button>
+            {selectMode && (
+              <button className="batch-select-btn" onClick={toggleSelectAll}>
+                {allSelected ? "取消全选" : "全选"}
+              </button>
+            )}
             {selectMode && <span className="batch-count">已选 {selected.size} 张</span>}
             {selectMode && selected.size > 0 && (
               <>
-                <button className="batch-delete-btn" onClick={handleBatchDelete}>删除 ({selected.size})</button>
+                <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>删除 ({selected.size})</button>
                 <select
                   className="modal-move-select"
                   value={batchMoveTo}
@@ -729,6 +739,20 @@ function FolderContent({
             {directPhotos.length > 1 && (
               <div className="modal-nav-hint">\u2190 \u2192 \u952e\u5207\u6362 \u00b7 Esc \u5173\u95ed</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Batch delete confirmation */}
+      {showBatchConfirm && (
+        <div className="confirm-overlay" onClick={() => setShowBatchConfirm(false)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="confirm-title">确认删除 {selected.size} 张照片？</p>
+            <p className="confirm-filename">此操作不可撤销</p>
+            <div className="confirm-actions">
+              <button className="confirm-cancel-btn" onClick={() => setShowBatchConfirm(false)}>取消</button>
+              <button className="confirm-delete-btn" onClick={handleBatchDelete}>删除</button>
+            </div>
           </div>
         </div>
       )}

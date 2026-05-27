@@ -1868,3 +1868,42 @@ body {
 .modal-nav--prev { left: 8px; }
 .modal-nav--next { right: 8px; }
 .modal-nav-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 4px; padding-bottom: 4px; }
+
+/* ── Image skeleton shimmer ──────────────────────────────────── */
+.photo-thumbnail { position: relative; }
+.photo-skeleton {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e4e4e4 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 4px;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.img-loading { opacity: 0; }
+.img-loaded  { opacity: 1; transition: opacity 0.3s ease; }
+
+/* ── Empty gallery state ─────────────────────────────────────── */
+.empty-gallery { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 64px 24px; text-align: center; }
+.empty-gallery-icon { font-size: 48px; line-height: 1; }
+.empty-gallery-title { font-size: 18px; font-weight: 600; color: #374151; margin: 0; }
+.empty-gallery-sub { font-size: 14px; color: #9ca3af; margin: 0; }
+
+/* ── Loading spinner ─────────────────────────────────────────── */
+.loading { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 64px 24px; }
+.loading-spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #0078d4; border-radius: 50%; animation: spin 0.75s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Load error + retry ──────────────────────────────────────── */
+.load-error { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 64px 24px; text-align: center; }
+.load-error p { font-size: 15px; color: #6b7280; margin: 0; }
+.retry-btn { padding: 8px 20px; background: #0078d4; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.retry-btn:hover { background: #005a9e; }
+
+/* ── Active filter chips ─────────────────────────────────────── */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; font-size: 12px; color: #1d4ed8; }
+.filter-chip-remove { background: none; border: none; cursor: pointer; padding: 0; font-size: 11px; color: #6b7280; line-height: 1; }
+.filter-chip-remove:hover { color: #dc3545; }

@@ -12,6 +12,7 @@ interface Props {
 
 export default function PhotoCard({ photo, onClick, onDelete, selected, onSelect }: Props) {
   const [showConfirm, setShowConfirm] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const displayName = photo.originalName || photo.name.replace(/^\d+-/, "");
   const uploadTime = photo.createdAt
     ? new Date(photo.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
@@ -31,7 +32,14 @@ export default function PhotoCard({ photo, onClick, onDelete, selected, onSelect
           </div>
         )}
         <div className="photo-thumbnail" onClick={onSelect ?? onClick}>
-          <img src={photo.url} alt={displayName} loading="lazy" />
+          {!imgLoaded && <div className="photo-skeleton" />}
+          <img
+            src={photo.url}
+            alt={displayName}
+            loading="lazy"
+            className={imgLoaded ? "img-loaded" : "img-loading"}
+            onLoad={() => setImgLoaded(true)}
+          />
         </div>
         <div className="photo-info">
           <span className="photo-name" title={displayName}>

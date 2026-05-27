@@ -50,8 +50,17 @@ build time (defaults to `/api`).
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Search & filter** — filter by name, subject, uploader, date range
 - **Fullscreen modal** — view full details, edit subject / rename / download inline
-- **Modal keyboard navigation** — ← / → keys to step through photos in a folder; Esc to close; prev/next buttons for mouse/touch
+- **Modal keyboard navigation** — ← / → keys to step through photos in a folder or timeline; Esc to close; prev/next buttons for mouse/touch; available in both Timeline and Folder views
 - **Toast notification system** — lightweight React-Context toast queue (success / error / info); auto-dismisses after 3.5 s; replaces all inline error banners
+- **Image shimmer skeleton** — animated shimmer placeholder shown while each photo thumbnail loads; fades in on completion to eliminate layout shift
+- **Active filter chips** — applied subject / uploader / date filters shown as dismissible pill chips below the search bar for at-a-glance visibility
+- **Debounced name search** — 300 ms debounce on the name filter prevents unnecessary re-renders while typing
+- **Select All / Deselect All** — one-click toggle in batch mode for both Timeline and Folder views
+- **Batch delete confirmation dialog** — explicit confirm step before bulk deleting photos in both views
+- **Parallel batch move** — folder batch-move fires all move requests concurrently with `Promise.all`, replacing the previous sequential loop
+- **Loading spinner** — animated CSS spinner replaces static "Loading photos…" text during photo fetch
+- **Retry button** — load-error state shows a "重试" button allowing users to re-fetch without refreshing the page
+- **Rich empty state** — photo icon + bilingual message when no photos exist, replacing the bare English placeholder
 - **Delete with confirmation** — custom confirm dialog (no browser `alert`)
 - **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px
 - **Admin tools** — super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote other users to admin
