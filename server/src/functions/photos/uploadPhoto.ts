@@ -77,7 +77,7 @@ app.http("uploadPhoto", {
           subject,
           folder: safeFolderPath === "_" ? "" : safeFolderPath,
           groupId: groupId || undefined,
-          url: generateSasUrl(blobName),
+          url: await generateSasUrl(blobName),
           size: arrayBuffer.byteLength,
           contentType,
           createdBy: uploadedBy,

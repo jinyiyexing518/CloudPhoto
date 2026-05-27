@@ -1,14 +1,18 @@
 import { CosmosClient, Container } from "@azure/cosmos";
+import { DefaultAzureCredential } from "@azure/identity";
 
 const endpoint = process.env.COSMOS_ENDPOINT as string;
-const key = process.env.COSMOS_KEY as string;
 const databaseId = process.env.COSMOS_DATABASE ?? "cloudphoto";
 
 let _client: CosmosClient | null = null;
 
 function getClient(): CosmosClient {
   if (!_client) {
-    _client = new CosmosClient({ endpoint, key });
+    // On Azure Functions: uses System-assigned Managed Identity.
+    // Locally: falls back to Azure CLI credentials (az login).
+    // Required role: "Cosmos DB Built-in Data Contributor" assigned via
+    //   az cosmosdb sql role assignment create ...
+    _client = new CosmosClient({ endpoint, aadCredentials: new DefaultAzureCredential() });
   }
   return _client;
 }

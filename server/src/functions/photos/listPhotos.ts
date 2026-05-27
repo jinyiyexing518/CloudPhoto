@@ -7,7 +7,8 @@ import {
 import {
   getBlobServiceClient,
   containerName,
-  generateSasUrl,
+  getUserDelegationKey,
+  generateSasUrlWithKey,
 } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
@@ -70,6 +71,9 @@ app.http("listPhotos", {
         lastModifiedBy: string | undefined;
       }> = [];
 
+      // Fetch one delegation key for the whole listing — avoids a round-trip per blob
+      const delegationKey = await getUserDelegationKey();
+
       for await (const blob of containerClient.listBlobsFlat({ prefix, includeMetadata: true })) {
         // Path format: personal/{userId}/{folder}/{filename}  or  groups/{groupId}/{folder}/{filename}
         const segs = blob.name.split("/");
@@ -87,7 +91,7 @@ app.http("listPhotos", {
           subject: decodeMeta(blob.metadata?.subject),
           folder,
           groupId: blobGroupId,
-          url: generateSasUrl(blob.name),
+          url: generateSasUrlWithKey(blob.name, delegationKey),
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,

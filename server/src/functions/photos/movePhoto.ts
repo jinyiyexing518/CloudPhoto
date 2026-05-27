@@ -83,7 +83,7 @@ app.http("movePhoto", {
       const destBlob = containerClient.getBlockBlobClient(newBlobName);
 
       // Server-side copy using a short-lived SAS on the source blob
-      const sourceSasUrl = generateSasUrl(name, 1);
+      const sourceSasUrl = await generateSasUrl(name, 1);
       const copyPoller = await destBlob.beginCopyFromURL(sourceSasUrl);
       await copyPoller.pollUntilDone();
 

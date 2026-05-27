@@ -191,25 +191,44 @@ cd CloudPhoto
     "AzureWebJobsStorage": "",
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "STORAGE_ACCOUNT_NAME": "<your storage account name>",
-    "STORAGE_ACCOUNT_KEY": "<your storage account key>",
     "STORAGE_CONTAINER_NAME": "photos",
     "COSMOS_ENDPOINT": "https://<your-cosmos>.documents.azure.com:443/",
-    "COSMOS_KEY": "<your cosmos primary key>",
     "COSMOS_DATABASE": "cloudphoto",
     "JWT_SECRET": "<random 48-char hex string>"
   }
 }
 ```
 
+> **No storage or Cosmos keys required.** The backend uses [Managed Identity / DefaultAzureCredential](https://learn.microsoft.com/azure/developer/javascript/sdk/authentication/overview).
+> Locally, `DefaultAzureCredential` falls back to your **Azure CLI session** — run `az login` once and you're done.
+
 Generate a JWT secret:
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-**3. Run** — open two terminals:
+For local development, grant your own Azure AD identity the roles below (same as the production Managed Identity needs), then run `az login`:
 
 ```bash
-# Terminal 1 — Backend
+# Replace <SUB>, <RG>, <STORAGE>, <COSMOS_ID>, <YOUR_PRINCIPAL_ID> with your values
+# Your principal ID: az ad signed-in-user show --query id -o tsv
+
+# Storage: Blob Data Contributor + Blob Delegator
+az role assignment create --assignee <YOUR_PRINCIPAL_ID> \
+  --role "Storage Blob Data Contributor" \
+  --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Storage/storageAccounts/<STORAGE>
+
+az role assignment create --assignee <YOUR_PRINCIPAL_ID> \
+  --role "Storage Blob Delegator" \
+  --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Storage/storageAccounts/<STORAGE>
+
+# Cosmos DB: Built-in Data Contributor
+az cosmosdb sql role assignment create \
+  --account-name <COSMOS_ACCOUNT> --resource-group <RG> \
+  --role-definition-id 00000000-0000-0000-0000-000000000002 \
+  --principal-id <YOUR_PRINCIPAL_ID> \
+  --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.DocumentDB/databaseAccounts/<COSMOS_ACCOUNT>
+```
 cd server
 yarn
 yarn start        # TypeScript compile + func start on localhost:7071
@@ -258,14 +277,57 @@ Portal → `cloudphoto-api` → **Settings → Environment variables → + Add**
 | Name | Value |
 |------|-------|
 | `COSMOS_ENDPOINT` | Cosmos DB URI |
-| `COSMOS_KEY` | Cosmos DB primary key |
 | `COSMOS_DATABASE` | `cloudphoto` |
 | `JWT_SECRET` | Same random string as local |
 | `STORAGE_ACCOUNT_NAME` | `photostorage` |
-| `STORAGE_ACCOUNT_KEY` | Storage account key1 |
 | `STORAGE_CONTAINER_NAME` | `photos` |
 
+> `STORAGE_ACCOUNT_KEY` and `COSMOS_KEY` are **no longer needed** — the Function App uses Managed Identity.
+
 Click **Apply → Confirm** and wait for the Function App to restart.
+
+---
+
+## Managed Identity & RBAC Setup
+
+The backend uses `DefaultAzureCredential` (Managed Identity on Azure, Azure CLI locally). No storage or Cosmos keys are stored anywhere.
+
+### 1. Enable System-assigned Managed Identity
+
+Portal → `cloudphoto-api` → **Identity** → **System assigned** → toggle **On** → **Save**.
+
+Copy the **Object (principal) ID** shown — you’ll need it for role assignments.
+
+### 2. Grant Storage roles
+
+```bash
+MI_PRINCIPAL=<Object ID from above>
+STORAGE_SCOPE=/subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Storage/storageAccounts/photostorage
+
+# Read/write blobs
+az role assignment create --assignee $MI_PRINCIPAL \
+  --role "Storage Blob Data Contributor" --scope $STORAGE_SCOPE
+
+# Generate User Delegation SAS tokens (keyless SAS)
+az role assignment create --assignee $MI_PRINCIPAL \
+  --role "Storage Blob Delegator" --scope $STORAGE_SCOPE
+```
+
+### 3. Grant Cosmos DB role
+
+Cosmos DB uses its own RBAC system (not Azure RBAC):
+
+```bash
+COSMOS_SCOPE=/subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.DocumentDB/databaseAccounts/cloudphoto
+
+az cosmosdb sql role assignment create \
+  --account-name <COSMOS_ACCOUNT> --resource-group <RG> \
+  --role-definition-id 00000000-0000-0000-0000-000000000002 \
+  --principal-id $MI_PRINCIPAL \
+  --scope $COSMOS_SCOPE
+```
+
+Role ID `00000000-0000-0000-0000-000000000002` is the built-in **Cosmos DB Built-in Data Contributor**.
 
 ---
 
