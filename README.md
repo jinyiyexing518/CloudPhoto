@@ -41,8 +41,7 @@ build time (defaults to `/api`).
 - **Delegation key caching** — Azure User Delegation Key cached in-process and reused while > 10 min validity remains, eliminating one control-plane call per photo-list request
 - **Role system** — global `admin` / `viewer`; per-group `admin` / `member`
 - **Private photo space** — personal folders visible only to the owner (admin sees all)
-- **Group sharing** — create groups, add members directly by username; invite members by email via Azure Communication Services (gracefully skipped if ACS is not configured)
-- **Email invite flow** — admin sends an invite link to any email address; recipient receives a branded email with an accept link (`?invite=<token>`); they must log in with the matching account and explicitly accept before being added; invites expire after 7 days; admin can cancel a pending invite; declined/expired invites are never added to the group
+- **Group sharing** — create groups and invite members by username or email address; all additions go through an email invite flow — the recipient must accept the invite link before joining; invites expire after 7 days and can be cancelled by the group admin
 - **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation; drag-and-drop between folders; extra folders persisted in `localStorage` per context
 - **Session persistence** — last-used group space and current folder path are remembered in `localStorage` per user; page refresh returns you exactly where you were
 - **Recycle bin** — deleting a photo soft-deletes it (blob metadata `deletedAt`); a dedicated 🗑️ Trash tab lets you restore photos to their original folder or permanently delete them; "清空回收站" bulk-deletes all
@@ -194,18 +193,20 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `GET`    | `/api/groups/{groupId}` | Member | Get group details + members |
 | `PATCH`  | `/api/groups/{groupId}` | Group admin | Update name / description |
 | `DELETE` | `/api/groups/{groupId}` | Group admin | Delete the group |
-| `POST`   | `/api/groups/{groupId}/members` | Group admin | Add member by username (direct, instant) |
+| `POST`   | `/api/groups/{groupId}/members` | Group admin | Invite by **username** — looks up the user's email and creates an invite (returns 202, not added until accepted) |
 | `DELETE` | `/api/groups/{groupId}/members/{memberId}` | Group admin / self | Remove member |
 
 ### Invites
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
-| `POST`   | `/api/groups/{groupId}/invites` | Group admin | Send email invite; creates `InviteDoc`, emails accept link |
+| `POST`   | `/api/groups/{groupId}/invites` | Group admin | Send email invite by **email address**; creates `InviteDoc`, emails accept link |
 | `GET`    | `/api/groups/{groupId}/invites` | Group admin | List pending invites for the group |
 | `GET`    | `/api/invites/{token}` | — (public) | Get invite info (used by accept page); 410 if expired |
 | `POST`   | `/api/invites/{token}/respond` | ✓ (email must match) | Accept or decline; on accept, adds user to group |
 | `DELETE` | `/api/invites/{token}` | Group admin | Cancel a pending invite |
+
+> Both `/api/groups/{groupId}/members` (username) and `/api/groups/{groupId}/invites` (email) use the same invite flow: no one is added to a group without explicitly accepting an invite link.
 
 ---
 
