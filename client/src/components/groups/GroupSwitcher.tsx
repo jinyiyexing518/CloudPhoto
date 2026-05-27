@@ -55,7 +55,7 @@ export default function GroupSwitcher() {
             {groups.map((g) => (
               <div key={g.id} className={`group-dropdown-item${currentGroupId === g.id ? " active" : ""}`}>
                 <span onClick={() => select(g.id)} className="group-dropdown-label">
-                  👥 {g.name}
+                  <span className="group-dropdown-name">👥 {g.name}</span>
                   {g.myRole === "admin" && <span className="group-role-tag">管理员</span>}
                 </span>
                 {g.myRole === "admin" && (
