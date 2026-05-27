@@ -9,14 +9,14 @@ import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
 
 /**
- * DELETE /api/photos?name=...
- * Soft-deletes a photo by stamping deletedAt / deletedBy into blob metadata.
- * The blob is NOT removed from storage — use DELETE /api/photos/trash to hard-delete.
+ * DELETE /api/photos/trash?name=...
+ * Permanently deletes a blob that was previously soft-deleted.
+ * Irreversible — blob and its Blob Storage data are removed.
  */
-app.http("deletePhoto", {
+app.http("deleteTrashItem", {
   methods: ["DELETE"],
   authLevel: "anonymous",
-  route: "photos",
+  route: "photos/trash",
   handler: async (
     request: HttpRequest,
     context: InvocationContext
@@ -25,11 +25,8 @@ app.http("deletePhoto", {
     if (!payload) return { status: 401, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Unauthorized" }) };
 
     const blobName = request.query.get("name");
-    if (!blobName) {
-      return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Photo name is required" }) };
-    }
+    if (!blobName) return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "name required" }) };
 
-    // Ownership check
     const segs = blobName.split("/");
     if (segs[0] === "personal") {
       if (segs[1] !== payload.userId && payload.role !== "admin") {
@@ -44,26 +41,12 @@ app.http("deletePhoto", {
     try {
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      await containerClient.getBlockBlobClient(blobName).deleteIfExists();
 
-      const props = await blockBlobClient.getProperties();
-      const existing: Record<string, string> = { ...(props.metadata ?? {}) };
-      existing.deletedAt = new Date().toISOString();
-      existing.deletedBy = payload.userId;
-      await blockBlobClient.setMetadata(existing);
-
-      return {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "Photo moved to trash" }),
-      };
+      return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Permanently deleted" }) };
     } catch (error) {
-      context.error("Soft-delete error:", error);
-      return {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Failed to delete photo" }),
-      };
+      context.error("Permanent delete error:", error);
+      return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Failed to delete" }) };
     }
   },
 });

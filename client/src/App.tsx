@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, Photo } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
+import TrashView from "./components/gallery/TrashView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -11,7 +12,7 @@ import AuthPage from "./components/auth/AuthPage";
 import AddAdminDialog from "./components/auth/AddAdminDialog";
 
 const SUPER_ADMIN = "zhangchi";
-type ViewTab = "timeline" | "folder";
+type ViewTab = "timeline" | "folder" | "trash";
 
 function AppContent() {
   const { user, logout } = useAuth();
@@ -169,6 +170,12 @@ function AppContent() {
           >
             📁 文件夹
           </button>
+          <button
+            className={`view-tab${activeTab === "trash" ? " active" : ""}`}
+            onClick={() => setActiveTab("trash")}
+          >
+            🗑️ 回收站
+          </button>
         </div>
 
         {/* Timeline hint */}
@@ -207,7 +214,7 @@ function AppContent() {
             onRenamePhoto={handleRenamePhoto}
             userName={user?.displayName}
           />
-        ) : (
+        ) : activeTab === "folder" ? (
           <FolderView
             photos={photos}
             onDelete={handleDelete}
@@ -219,6 +226,8 @@ function AppContent() {
             userName={user?.displayName}
             contextKey={currentGroupId || "personal"}
           />
+        ) : (
+          <TrashView groupId={currentGroupId} />
         )}
       </main>
     </div>

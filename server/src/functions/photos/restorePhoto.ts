@@ -9,14 +9,13 @@ import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
 
 /**
- * DELETE /api/photos?name=...
- * Soft-deletes a photo by stamping deletedAt / deletedBy into blob metadata.
- * The blob is NOT removed from storage — use DELETE /api/photos/trash to hard-delete.
+ * POST /api/photos/trash/restore?name=...
+ * Restores a soft-deleted photo by clearing its deletedAt metadata.
  */
-app.http("deletePhoto", {
-  methods: ["DELETE"],
+app.http("restorePhoto", {
+  methods: ["POST"],
   authLevel: "anonymous",
-  route: "photos",
+  route: "photos/trash/restore",
   handler: async (
     request: HttpRequest,
     context: InvocationContext
@@ -25,11 +24,8 @@ app.http("deletePhoto", {
     if (!payload) return { status: 401, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Unauthorized" }) };
 
     const blobName = request.query.get("name");
-    if (!blobName) {
-      return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Photo name is required" }) };
-    }
+    if (!blobName) return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "name required" }) };
 
-    // Ownership check
     const segs = blobName.split("/");
     if (segs[0] === "personal") {
       if (segs[1] !== payload.userId && payload.role !== "admin") {
@@ -48,22 +44,14 @@ app.http("deletePhoto", {
 
       const props = await blockBlobClient.getProperties();
       const existing: Record<string, string> = { ...(props.metadata ?? {}) };
-      existing.deletedAt = new Date().toISOString();
-      existing.deletedBy = payload.userId;
+      delete existing.deletedAt;
+      delete existing.deletedBy;
       await blockBlobClient.setMetadata(existing);
 
-      return {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "Photo moved to trash" }),
-      };
+      return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Photo restored" }) };
     } catch (error) {
-      context.error("Soft-delete error:", error);
-      return {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Failed to delete photo" }),
-      };
+      context.error("Restore error:", error);
+      return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Failed to restore photo" }) };
     }
   },
 });

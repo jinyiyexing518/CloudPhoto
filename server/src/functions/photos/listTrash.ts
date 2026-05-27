@@ -13,21 +13,20 @@ import {
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
 
-// Azure Blob metadata is ASCII-only; free-text fields are stored as base64
 function decodeMeta(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
-  try {
-    const decoded = Buffer.from(raw, "base64").toString("utf8");
-    return decoded || undefined;
-  } catch {
-    return raw || undefined;
-  }
+  try { return Buffer.from(raw, "base64").toString("utf8") || undefined; }
+  catch { return raw || undefined; }
 }
 
-app.http("listPhotos", {
+/**
+ * GET /api/photos/trash?groupId=...
+ * Returns soft-deleted photos (blobs with deletedAt metadata) for the caller's scope.
+ */
+app.http("listTrash", {
   methods: ["GET"],
   authLevel: "anonymous",
-  route: "photos",
+  route: "photos/trash",
   handler: async (
     request: HttpRequest,
     context: InvocationContext
@@ -37,18 +36,15 @@ app.http("listPhotos", {
 
     const groupId = request.query.get("groupId") ?? "";
 
-    // For group photos, verify membership
     if (groupId && !await isGroupMember(groupId, payload.userId)) {
       return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Not a member of this group" }) };
     }
 
     try {
       const blobServiceClient = getBlobServiceClient();
-      const containerClient =
-        blobServiceClient.getContainerClient(containerName);
+      const containerClient = blobServiceClient.getContainerClient(containerName);
       await containerClient.createIfNotExists();
 
-      // Prefix-based listing — no full-container scan needed
       const prefix = groupId
         ? `groups/${groupId}/`
         : payload.role === "admin"
@@ -67,21 +63,18 @@ app.http("listPhotos", {
         contentType: string | undefined;
         createdAt: string | undefined;
         createdBy: string | undefined;
-        lastModifiedAt: string | undefined;
-        lastModifiedBy: string | undefined;
+        deletedAt: string | undefined;
+        deletedBy: string | undefined;
       }> = [];
 
-      // Fetch one delegation key for the whole listing — avoids a round-trip per blob
       const delegationKey = await getUserDelegationKey();
 
       for await (const blob of containerClient.listBlobsFlat({ prefix, includeMetadata: true })) {
-        // Path format: personal/{userId}/{folder}/{filename}  or  groups/{groupId}/{folder}/{filename}
         const segs = blob.name.split("/");
         if (segs.length < 4) continue;
-        // Skip soft-deleted blobs — they live in the trash
-        if (blob.metadata?.deletedAt) continue;
-        // folder = every segment between ownerId and the filename (last segment)
-        // supports arbitrarily nested sub-folders; backwards-compat with 4-segment paths
+        // Only include soft-deleted blobs
+        if (!blob.metadata?.deletedAt) continue;
+
         const folderSegs = segs.slice(2, segs.length - 1);
         const folderRaw = folderSegs.join("/");
         const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
@@ -99,29 +92,21 @@ app.http("listPhotos", {
           contentType: blob.properties.contentType,
           createdAt: blob.metadata?.createdAt,
           createdBy: decodeMeta(blob.metadata?.createdBy),
-          lastModifiedAt: blob.metadata?.lastModifiedAt,
-          lastModifiedBy: decodeMeta(blob.metadata?.lastModifiedBy),
+          deletedAt: blob.metadata.deletedAt,
+          deletedBy: blob.metadata.deletedBy,
         });
       }
 
       photos.sort((a, b) => {
-        const timeA = a.lastModified ? new Date(a.lastModified).getTime() : 0;
-        const timeB = b.lastModified ? new Date(b.lastModified).getTime() : 0;
-        return timeB - timeA;
+        const ta = a.deletedAt ? new Date(a.deletedAt).getTime() : 0;
+        const tb = b.deletedAt ? new Date(b.deletedAt).getTime() : 0;
+        return tb - ta; // Most recently deleted first
       });
 
-      return {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(photos),
-      };
+      return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(photos) };
     } catch (error) {
-      context.error("List photos error:", error);
-      return {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Failed to list photos" }),
-      };
+      context.error("List trash error:", error);
+      return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Failed to list trash" }) };
     }
   },
 });

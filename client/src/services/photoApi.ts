@@ -155,6 +155,8 @@ export interface Photo {
   createdBy?: string;
   lastModifiedAt?: string;
   lastModifiedBy?: string;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export async function listPhotos(groupId = ""): Promise<Photo[]> {
@@ -234,6 +236,33 @@ export async function deletePhoto(name: string): Promise<void> {
     { method: "DELETE", headers: authHeaders() }
   );
   if (!response.ok) throw new Error("Failed to delete photo");
+}
+
+// ---- Trash API ----
+
+export async function listTrashPhotos(groupId = ""): Promise<Photo[]> {
+  const url = groupId
+    ? `${API_BASE}/photos/trash?groupId=${encodeURIComponent(groupId)}`
+    : `${API_BASE}/photos/trash`;
+  const response = await fetchWithTimeout(url, { headers: authHeaders() });
+  if (!response.ok) throw new Error("Failed to fetch trash");
+  return response.json() as Promise<Photo[]>;
+}
+
+export async function restorePhoto(name: string): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/trash/restore?name=${encodeURIComponent(name)}`,
+    { method: "POST", headers: authHeaders() }
+  );
+  if (!response.ok) throw new Error("Failed to restore photo");
+}
+
+export async function permanentlyDeletePhoto(name: string): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/trash?name=${encodeURIComponent(name)}`,
+    { method: "DELETE", headers: authHeaders() }
+  );
+  if (!response.ok) throw new Error("Failed to permanently delete photo");
 }
 
 export async function renamePhoto(

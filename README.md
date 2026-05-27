@@ -43,6 +43,7 @@ build time (defaults to `/api`).
 - **Group sharing** — create groups, add members by username; on add, an invitation email is automatically sent to the new member via Azure Communication Services (gracefully skipped if ACS is not configured)
 - **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation; drag-and-drop between folders; extra folders persisted in `localStorage` per context
 - **Session persistence** — last-used group space and current folder path are remembered in `localStorage` per user; page refresh returns you exactly where you were
+- **Recycle bin** — deleting a photo soft-deletes it (blob metadata `deletedAt`); a dedicated 🗑️ Trash tab lets you restore photos to their original folder or permanently delete them; "清空回收站" bulk-deletes all
 - **Batch operations** — multi-select mode with batch delete and batch move to folder
 - **Multi-photo upload** — select multiple photos at once; sequential upload with per-folder progress (`⏳ 2/5`); partial-failure reporting; client-side MIME type + 20 MB size guard before upload
 - **Photo download** — download original file directly from the browser (mobile & desktop)
@@ -431,6 +432,7 @@ CloudPhoto/
 │       │   ├── gallery/
 │       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection toolbar
 │       │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop, batch ops
+│       │   │   ├── TrashView.tsx         # Recycle bin — restore or permanently delete
 │       │   │   ├── PhotoCard.tsx         # Thumbnail + selection badge + delete confirmation
 │       │   │   └── FilterBar.tsx         # Filter by name / subject / uploader / date range
 │       │   └── groups/

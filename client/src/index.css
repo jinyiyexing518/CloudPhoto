@@ -628,6 +628,16 @@ body {
   font-size: 0.88rem;
 }
 
+.group-settings-dialog .add-admin-header {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  margin-bottom: 0;
+}
+
+.group-settings-dialog .auth-error {
+  margin: 8px 20px 0;
+}
+
 .group-settings-section {
   padding: 16px 20px;
   border-bottom: 1px solid #f3f4f6;
@@ -1909,3 +1919,119 @@ body {
 .filter-chip-remove:hover { color: #dc3545; }
 /* Group add-member success */
 .group-add-success { font-size: 13px; color: #166534; background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 10px; margin-top: 6px; }
+
+/* ===== Trash View ===== */
+.trash-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  color: #9ca3af;
+  text-align: center;
+}
+.trash-empty-icon { font-size: 3rem; margin-bottom: 12px; }
+.trash-empty-title { font-size: 1.1rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.trash-empty-sub { font-size: 0.85rem; }
+
+.trash-view { padding: 0 0 32px; }
+
+.trash-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 16px;
+  gap: 12px;
+}
+.trash-toolbar-count { font-size: 0.85rem; color: #6b7280; }
+.trash-empty-all-btn {
+  background: none;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.trash-empty-all-btn:hover { background: #fef2f2; }
+
+.trash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.trash-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 0.15s;
+}
+.trash-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
+.trash-card--busy { opacity: 0.6; pointer-events: none; }
+
+.trash-card-thumb {
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: #f3f4f6;
+}
+.trash-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(20%);
+}
+
+.trash-card-body {
+  padding: 10px 12px 6px;
+  flex: 1;
+}
+.trash-card-name {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+.trash-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.trash-card-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 10px;
+}
+.trash-restore-btn {
+  flex: 1;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  border-radius: 6px;
+  padding: 5px 0;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+.trash-restore-btn:hover:not(:disabled) { background: #dcfce7; }
+.trash-delete-btn {
+  flex: 1;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 6px;
+  padding: 5px 0;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.trash-delete-btn:hover:not(:disabled) { background: #fee2e2; }
+.trash-restore-btn:disabled, .trash-delete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
