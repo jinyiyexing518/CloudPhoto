@@ -4,9 +4,10 @@ import { useToast } from "../../contexts/ToastContext";
 
 interface Props {
   groupId: string; // "" = personal trash
+  onRestored?: () => void;
 }
 
-export default function TrashView({ groupId }: Props) {
+export default function TrashView({ groupId, onRestored }: Props) {
   const showToast = useToast();
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +40,7 @@ export default function TrashView({ groupId }: Props) {
       await restorePhoto(name);
       setPhotos((prev) => prev.filter((p) => p.name !== name));
       showToast("照片已恢复", "success");
+      onRestored?.();
     } catch {
       showToast("恢复失败，请重试", "error");
     } finally {
@@ -82,6 +84,7 @@ export default function TrashView({ groupId }: Props) {
     await load();
     if (failed > 0) showToast(`${failed} 张恢复失败`, "error");
     else showToast(`已全部恢复 ${photos.length} 张照片`, "success");
+    onRestored?.();
   };
 
   if (loading) {

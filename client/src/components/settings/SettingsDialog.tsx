@@ -9,9 +9,10 @@ type SettingsTab = "profile" | "security" | "trash";
 
 interface Props {
   onClose: () => void;
+  onPhotosRestored?: () => void;
 }
 
-export default function SettingsDialog({ onClose }: Props) {
+export default function SettingsDialog({ onClose, onPhotosRestored }: Props) {
   const { user, updateUser } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
@@ -156,7 +157,7 @@ export default function SettingsDialog({ onClose }: Props) {
           {/* ── 回收站 ── */}
           {tab === "trash" && (
             <div className="settings-section settings-trash">
-              <TrashView groupId={currentGroupId} />
+              <TrashView groupId={currentGroupId} onRestored={onPhotosRestored} />
             </div>
           )}
 

@@ -209,7 +209,7 @@ function AppContent() {
       </header>
 
       {showAddAdmin && <AddAdminDialog onClose={() => setShowAddAdmin(false)} />}
-      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} onPhotosRestored={fetchPhotos} />}
       {inviteToken && <InviteAcceptPage token={inviteToken} onDone={dismissInvite} />}
 
       <main className="app-main">
