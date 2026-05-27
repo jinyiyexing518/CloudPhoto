@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, Photo } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
-import TrashView from "./components/gallery/TrashView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
+import SettingsDialog from "./components/settings/SettingsDialog";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -12,13 +12,14 @@ import AuthPage from "./components/auth/AuthPage";
 import AddAdminDialog from "./components/auth/AddAdminDialog";
 
 const SUPER_ADMIN = "zhangchi";
-type ViewTab = "timeline" | "folder" | "trash";
+type ViewTab = "timeline" | "folder";
 
 function AppContent() {
   const { user, logout } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>("timeline");
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,10 +151,12 @@ function AppContent() {
             </button>
           )}
           <button className="logout-btn" onClick={logout} title="退出登录">退出</button>
+          <button className="settings-btn" onClick={() => setShowSettings(true)} title="设置">⚙️</button>
         </div>
       </header>
 
       {showAddAdmin && <AddAdminDialog onClose={() => setShowAddAdmin(false)} />}
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
 
       <main className="app-main">
         {/* Tab bar */}
@@ -169,12 +172,6 @@ function AppContent() {
             onClick={() => setActiveTab("folder")}
           >
             📁 文件夹
-          </button>
-          <button
-            className={`view-tab${activeTab === "trash" ? " active" : ""}`}
-            onClick={() => setActiveTab("trash")}
-          >
-            🗑️ 回收站
           </button>
         </div>
 
@@ -214,7 +211,7 @@ function AppContent() {
             onRenamePhoto={handleRenamePhoto}
             userName={user?.displayName}
           />
-        ) : activeTab === "folder" ? (
+        ) : (
           <FolderView
             photos={photos}
             onDelete={handleDelete}
@@ -226,8 +223,6 @@ function AppContent() {
             userName={user?.displayName}
             contextKey={currentGroupId || "personal"}
           />
-        ) : (
-          <TrashView groupId={currentGroupId} />
         )}
       </main>
     </div>

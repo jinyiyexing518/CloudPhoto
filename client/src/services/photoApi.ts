@@ -141,6 +141,31 @@ export async function addAdminApi(data: { email?: string; username?: string }): 
   }
 }
 
+export async function updateProfileApi(data: { displayName: string }): Promise<AuthResponse> {
+  const res = await fetchWithTimeout(`${API_BASE}/auth/me`, {
+    method: "PATCH",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Failed" }));
+    throw new Error((err as { error?: string }).error ?? "Failed to update profile");
+  }
+  return res.json() as Promise<AuthResponse>;
+}
+
+export async function changePasswordApi(data: { currentPassword: string; newPassword: string }): Promise<void> {
+  const res = await fetchWithTimeout(`${API_BASE}/auth/change-password`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Failed" }));
+    throw new Error((err as { error?: string }).error ?? "Failed to change password");
+  }
+}
+
 export interface Photo {
   name: string;
   originalName?: string;

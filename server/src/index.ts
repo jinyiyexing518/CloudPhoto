@@ -12,6 +12,8 @@ import "./functions/auth/authLogin";
 import "./functions/auth/authMe";
 import "./functions/auth/authRefresh";
 import "./functions/auth/authAddAdmin";
+import "./functions/auth/authUpdateProfile";
+import "./functions/auth/authChangePassword";
 import "./functions/groups/createGroup";
 import "./functions/groups/listGroups";
 import "./functions/groups/getGroup";

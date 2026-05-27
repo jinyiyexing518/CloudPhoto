@@ -7,6 +7,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   register: (data: { username: string; email: string; displayName: string; password: string }) => Promise<void>;
   logout: () => void;
+  updateUser: (u: AuthUser) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -48,13 +49,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const updateUser = useCallback((u: AuthUser) => {
+    setUser(u);
+  }, []);
+
   // Auto-logout when any API call receives 401 (token expired)
   useEffect(() => {
     setUnauthorizedHandler(logout);
   }, [logout]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
