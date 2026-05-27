@@ -38,12 +38,16 @@ build time (defaults to `/api`).
 - **Role system** — global `admin` / `viewer`; per-group `admin` / `member`
 - **Private photo space** — personal folders visible only to the owner (admin sees all)
 - **Group sharing** — create groups, add members by username, share photos within groups
-- **Folder view** — photos organised into named folders; upload directly into a folder
+- **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation in folder view; drag-and-drop between folders
 - **Multi-photo upload** — select multiple photos at once; sequential upload with per-folder progress indicator (`⏳ 2/5`); partial-failure reporting
+- **Photo download** — download original file directly from the browser (mobile & desktop)
+- **Photo rename** — change the display name of any photo without re-uploading
+- **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Search & filter** — filter by name, subject, uploader, date range
-- **Fullscreen modal** — view full details, edit subject inline
+- **Fullscreen modal** — view full details, edit subject / rename / download inline
 - **Delete with confirmation** — custom confirm dialog (no browser `alert`)
+- **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px
 - **Admin tools** — super-admin (`zhangchi`) can promote other users to admin
 
 ---
@@ -133,9 +137,11 @@ All protected routes require `Authorization: Bearer <token>`.
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
 | `GET`    | `/api/photos[?groupId=<id>]` | ✓ | List photos (scoped by group or private) |
-| `POST`   | `/api/photos/upload?filename=<name>` | ✓ | Upload photo (raw binary body, Content-Type = MIME type) |
-| `PATCH`  | `/api/photos/{name}/metadata` | ✓ | Update subject / folder / updatedBy |
-| `DELETE` | `/api/photos/{name}` | ✓ | Delete a photo by blob name |
+| `POST`   | `/api/photos/upload?filename=<name>[&folder=<path>][&groupId=<id>]` | ✓ | Upload photo (raw binary body, Content-Type = MIME type); `folder` supports nested paths with `/` |
+| `GET`    | `/api/photos/download?name=<blobName>` | ✓ | Proxy-download blob with `Content-Disposition: attachment` |
+| `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
+| `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName / updatedBy |
+| `DELETE` | `/api/photos?name=<blobName>` | ✓ | Delete a photo by blob name |
 
 **`GET /api/photos` ownership rules:**
 - `?groupId=<id>` — requester must be a member of that group
@@ -334,8 +340,8 @@ CloudPhoto/
 │   │   │   │   ├── AuthPage.tsx          # Login / Register tab UI
 │   │   │   │   └── AddAdminDialog.tsx    # Promote user to admin
 │   │   │   ├── gallery/
-│   │   │   │   ├── PhotoGallery.tsx      # Date-grouped timeline
-│   │   │   │   ├── FolderView.tsx        # Folder view + per-folder upload
+    │   │   │   ├── PhotoGallery.tsx      # Date-grouped timeline with download/rename
+    │   │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop
 │   │   │   │   ├── PhotoCard.tsx         # Thumbnail + delete confirmation
 │   │   │   │   └── FilterBar.tsx         # Filter by name/subject/uploader/date
 │   │   │   └── groups/
@@ -360,8 +366,10 @@ CloudPhoto/
     │   │   ├── photos/
     │   │   │   ├── listPhotos.ts        # GET    /api/photos
     │   │   │   ├── uploadPhoto.ts       # POST   /api/photos/upload
-    │   │   │   ├── updatePhotoMetadata.ts  # PATCH /api/photos/{name}/metadata
-    │   │   │   └── deletePhoto.ts       # DELETE /api/photos/{name}
+    │   │   │   ├── downloadPhoto.ts     # GET    /api/photos/download
+    │   │   │   ├── movePhoto.ts         # POST   /api/photos/move
+    │   │   │   ├── updatePhotoMetadata.ts  # PATCH /api/photos/metadata
+    │   │   │   └── deletePhoto.ts       # DELETE /api/photos
     │   │   └── groups/
     │   │       ├── createGroup.ts       # POST   /api/groups
     │   │       ├── listGroups.ts        # GET    /api/groups
