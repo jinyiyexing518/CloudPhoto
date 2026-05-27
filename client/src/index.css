@@ -1170,12 +1170,12 @@ body {
 }
 
 .modal-content img {
-  flex: 1 1 0;
-  min-height: 0;
   max-width: 85vw;
-  width: 100%;
+  max-height: 60vh;
+  min-height: 120px;
   object-fit: contain;
   display: block;
+  align-self: center;
 }
 
 .modal-close {
@@ -1204,7 +1204,7 @@ body {
 .modal-info {
   flex-shrink: 0;
   overflow-y: auto;
-  max-height: 45vh;
+  max-height: 35vh;
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
