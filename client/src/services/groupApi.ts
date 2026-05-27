@@ -82,13 +82,15 @@ export async function deleteGroupApi(groupId: string): Promise<void> {
   );
 }
 
-export async function addMemberApi(groupId: string, identifier: string): Promise<GroupMember & { message?: string }> {
-  const isEmail = identifier.includes("@");
+export async function addMemberApi(
+  groupId: string,
+  username: string,
+): Promise<{ id: string; email: string; displayName: string; groupName: string; expiresAt: string }> {
   return handleResponse(
     await fetch(`${API_BASE}/groups/${groupId}/members`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify(isEmail ? { email: identifier } : { username: identifier }),
+      body: JSON.stringify({ username }),
     })
   );
 }

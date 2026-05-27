@@ -25,13 +25,8 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
   const [nameInput, setNameInput] = useState("");
   const [descInput, setDescInput] = useState("");
 
-  // Add member by username
-  const [addUsername, setAddUsername] = useState("");
-  const [addingMember, setAddingMember] = useState(false);
-  const [addError, setAddError] = useState("");
-
-  // Invite by email
-  const [inviteEmail, setInviteEmail] = useState("");
+  // Unified invite (username or email)
+  const [inviteInput, setInviteInput] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteMsg, setInviteMsg] = useState("");
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -81,28 +76,6 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
     }
   };
 
-  const handleAddMember = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!addUsername.trim()) return;
-    setAddingMember(true);
-    setAddError("");
-    try {
-      const result = await addMemberApi(groupId, addUsername.trim());
-      setAddUsername("");
-      // 202 = pre-invite sent (email not registered yet)
-      if (result.message) {
-        setAddError(`✅ ${result.message}`);
-      } else {
-        await loadGroup();
-        setAddError(`✅ 已添加 ${result.displayName}（@${result.username}）${result.email ? `，邀请邮件已发送至 ${result.email}` : ""}`);
-      }
-    } catch (err) {
-      setAddError(err instanceof Error ? err.message : "添加失败");
-    } finally {
-      setAddingMember(false);
-    }
-  };
-
   const handleRemove = async (member: GroupMember) => {
     if (!confirm(`确认移除 ${member.displayName}？`)) return;
     try {
@@ -115,14 +88,21 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
 
   const handleInvite = async (e: FormEvent) => {
     e.preventDefault();
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email || !email.includes("@")) return;
+    const val = inviteInput.trim();
+    if (!val) return;
     setInviting(true);
     setInviteMsg("");
     try {
-      const res = await createInviteApi(groupId, email);
-      setInviteEmail("");
-      setInviteMsg(`✅ 邀请已发送至 ${res.email}，等待对方接受`);
+      const isEmail = val.includes("@");
+      if (isEmail) {
+        const res = await createInviteApi(groupId, val.toLowerCase());
+        setInviteInput("");
+        setInviteMsg(`✅ 邀请已发送至 ${res.email}，等待对方接受`);
+      } else {
+        const res = await addMemberApi(groupId, val);
+        setInviteInput("");
+        setInviteMsg(`✅ 邀请已发送至 ${res.email}（${res.displayName}），等待对方接受`);
+      }
       await loadInvites();
     } catch (err) {
       setInviteMsg(err instanceof Error ? err.message : "发送失败");
@@ -212,43 +192,21 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                 ))}
               </ul>
 
-              {/* Add existing user */}
-              <form className="group-add-row" onSubmit={handleAddMember}>
-                <input
-                  type="text"
-                  className="group-add-input"
-                  placeholder="用户名"
-                  value={addUsername}
-                  onChange={(e) => setAddUsername(e.target.value)}
-                  maxLength={40}
-                />
-                <button type="submit" className="group-add-btn" disabled={addingMember}>
-                  {addingMember ? "…" : "添加"}
-                </button>
-              </form>
-              {addError && (
-                <div
-                  className={addError.startsWith("✅") ? "group-add-success" : "auth-error"}
-                  style={{ marginTop: 6 }}
-                >
-                  {addError}
-                </div>
-              )}
             </section>
 
-            {/* ─── Invite by email ─── */}
+            {/* ─── Invite section (username or email) ─── */}
             <section className="group-settings-section">
-              <h4 className="group-section-label">邀请成员（邮箱）</h4>
+              <h4 className="group-section-label">邀请成员</h4>
               <p className="invite-hint" style={{ marginBottom: 8 }}>
-                输入对方邮箱，发送邀请链接。对方点击链接并接受后才会加入群组。
+                输入用户名或邮箱，邀请邮件将发送给对方。对方点击链接并接受后才会加入群组。
               </p>
               <form className="group-add-form" onSubmit={handleInvite}>
                 <input
-                  type="email"
+                  type="text"
                   className="group-add-input"
-                  placeholder="example@email.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="用户名 或 邮箱地址"
+                  value={inviteInput}
+                  onChange={(e) => setInviteInput(e.target.value)}
                   maxLength={120}
                 />
                 <button type="submit" className="group-add-btn" disabled={inviting}>
