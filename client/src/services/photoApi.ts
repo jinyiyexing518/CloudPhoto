@@ -330,3 +330,27 @@ export async function downloadPhotoApi(
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+export async function renameFolderApi(
+  oldFolder: string,
+  newFolder: string,
+  groupId?: string,
+): Promise<{ renamed: number; oldFolder: string; newFolder: string }> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/folder`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ oldFolder, newFolder, groupId }),
+    },
+    60000,
+  ).catch((e: unknown) => {
+    throw new Error(e instanceof Error && e.name === "AbortError" ? "重命名超时" : "网络错误");
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "重命名失败");
+  }
+  return response.json() as Promise<{ renamed: number; oldFolder: string; newFolder: string }>;
+}
+

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, Photo } from "./services/photoApi";
+import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, Photo } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
@@ -158,6 +158,17 @@ function AppContent() {
     }
   };
 
+  const handleRenameFolder = async (oldFolder: string, newFolder: string) => {
+    try {
+      const res = await renameFolderApi(oldFolder, newFolder, currentGroupId || undefined);
+      showToast(`文件夹已重命名（${res.renamed} 张照片已更新）`, "success");
+      await fetchPhotos();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "重命名失败", "error");
+      throw e; // Let FolderView know it failed
+    }
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -245,6 +256,7 @@ function AppContent() {
             onUploadToFolder={handleUploadToFolder}
             uploadProgress={uploadProgress}
             onMovePhoto={handleMovePhoto}
+            onRenameFolder={handleRenameFolder}
             userName={user?.displayName}
             contextKey={currentGroupId || "personal"}
           />

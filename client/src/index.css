@@ -338,6 +338,35 @@ body {
 }
 .folder-card-count { font-size: 0.75rem; color: #888; }
 
+.folder-card { position: relative; }
+.folder-card-rename-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s, background 0.15s;
+}
+.folder-card:hover .folder-card-rename-btn { opacity: 1; }
+.folder-card-rename-btn:hover { background: #e5e7eb; }
+.folder-card-rename-input {
+  width: 90%;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  padding: 3px 6px;
+  text-align: center;
+  outline: none;
+  background: #f0f7ff;
+}
+
+
 .folder-new-btn {
   background: #f0f7ff;
   border: 1px dashed #93c5fd;

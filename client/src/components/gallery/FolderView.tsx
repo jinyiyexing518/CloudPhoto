@@ -53,18 +53,29 @@ function FolderCard({
   count,
   onClick,
   onDrop,
+  onRename,
 }: {
   name: string;
   count: number;
   onClick: () => void;
   onDrop?: (photoName: string, fromFolder: string) => void;
+  onRename?: (newName: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editVal, setEditVal] = useState(name);
   const dragCount = useRef(0);
+
+  const confirmRename = () => {
+    const trimmed = editVal.trim();
+    if (trimmed && trimmed !== name && onRename) onRename(trimmed);
+    setEditing(false);
+  };
+
   return (
     <div
       className={`folder-card${dragOver ? " folder-card--dragover" : ""}`}
-      onClick={onClick}
+      onClick={() => { if (!editing) onClick(); }}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
       onDragEnter={(e) => { e.preventDefault(); dragCount.current++; setDragOver(true); }}
       onDragLeave={() => { dragCount.current--; if (dragCount.current === 0) setDragOver(false); }}
@@ -79,8 +90,33 @@ function FolderCard({
       }}
     >
       <div className="folder-card-icon">📁</div>
-      <div className="folder-card-name">{name || UNCATEGORIZED}</div>
+      {editing ? (
+        <input
+          autoFocus
+          className="folder-card-rename-input"
+          value={editVal}
+          onChange={(e) => setEditVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
+            if (e.key === "Escape") { setEditVal(name); setEditing(false); }
+          }}
+          onBlur={confirmRename}
+          onClick={(e) => e.stopPropagation()}
+          maxLength={60}
+        />
+      ) : (
+        <div className="folder-card-name">{name || UNCATEGORIZED}</div>
+      )}
       <div className="folder-card-count">{count} 张</div>
+      {onRename && !editing && (
+        <button
+          className="folder-card-rename-btn"
+          title="重命名文件夹"
+          onClick={(e) => { e.stopPropagation(); setEditVal(name); setEditing(true); }}
+        >
+          ✏️
+        </button>
+      )}
     </div>
   );
 }
@@ -95,6 +131,7 @@ interface Props {
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<void>;
+  onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   userName?: string;
   /** Unique key for localStorage persistence (e.g. groupId or "personal") */
   contextKey?: string;
@@ -110,6 +147,7 @@ export default function FolderView({
   onUploadToFolder,
   uploadProgress,
   onMovePhoto,
+  onRenameFolder,
   userName,
   contextKey = "personal",
 }: Props) {
@@ -177,6 +215,30 @@ export default function FolderView({
     setExtraFolders((prev) => (prev.includes(fullPath) ? prev : [...prev, fullPath]));
     setNewFolderName("");
     setCreatingFolder(false);
+  };
+
+  const handleRenameFolder = async (oldName: string, newName: string) => {
+    if (!newName.trim() || newName === oldName) return;
+    const oldFull = fullFolderPath(oldName);
+    const newFull = fullFolderPath(newName.trim());
+    // Update localStorage path if we're currently inside (or below) the renamed folder
+    try {
+      await onRenameFolder?.(oldFull, newFull);
+      // Update extraFolders paths
+      setExtraFolders((prev) =>
+        prev.map((f) =>
+          f === oldFull ? newFull :
+          f.startsWith(oldFull + "/") ? newFull + f.slice(oldFull.length) : f
+        )
+      );
+      // Navigate to new path if currently inside renamed folder
+      if (currentPath !== null && (currentPath === oldFull || currentPath.startsWith(oldFull + "/"))) {
+        const newPath = newFull + currentPath.slice(oldFull.length);
+        setCurrentPath(newPath);
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "重命名失败", "error");
+    }
   };
 
   const navigateTo = (folderName: string) => {
@@ -270,6 +332,7 @@ export default function FolderView({
               onDrop={(photoName, fromFolder) => {
                 if (fromFolder !== name) void onMovePhoto(photoName, name);
               }}
+              onRename={onRenameFolder ? (newName) => void handleRenameFolder(name, newName) : undefined}
             />
           ))}
           {!hasUncategorized && subFolders.length === 0 && (
@@ -297,6 +360,7 @@ export default function FolderView({
           onUploadToFolder={onUploadToFolder}
           uploadProgress={uploadProgress}
           onMovePhoto={onMovePhoto}
+          onRenameSubFolder={onRenameFolder ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
           userName={userName}
         />
       )}
@@ -320,6 +384,7 @@ interface ContentProps {
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<void>;
+  onRenameSubFolder?: (subName: string, newSubName: string) => void;
   userName?: string;
 }
 
@@ -337,6 +402,7 @@ function FolderContent({
   onUploadToFolder,
   uploadProgress,
   onMovePhoto,
+  onRenameSubFolder,
   userName,
 }: ContentProps) {
   const showToast = useToast();
@@ -537,6 +603,7 @@ function FolderContent({
             count={countPhotos(sub)}
             onClick={() => onNavigate(sub)}
             onDrop={(photoName, fromFolder) => onDropToSubFolder(photoName, fromFolder, sub)}
+            onRename={onRenameSubFolder ? (newSub) => onRenameSubFolder(sub, newSub) : undefined}
           />
         ))}
 

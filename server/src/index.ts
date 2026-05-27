@@ -3,6 +3,7 @@ import "./functions/photos/uploadPhoto";
 import "./functions/photos/deletePhoto";
 import "./functions/photos/updatePhotoMetadata";
 import "./functions/photos/movePhoto";
+import "./functions/photos/renameFolder";
 import "./functions/photos/downloadPhoto";
 import "./functions/trash/listTrash";
 import "./functions/trash/restorePhoto";
