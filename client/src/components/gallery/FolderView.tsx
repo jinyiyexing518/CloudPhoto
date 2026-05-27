@@ -593,6 +593,17 @@ function FolderContent({
                 )}
               </>
             )}
+            {/* Quick upload button — always visible in toolbar so user doesn't need to scroll */}
+            <button
+              className="batch-select-btn"
+              style={{ marginLeft: "auto", opacity: anyUploading ? 0.5 : 1 }}
+              onClick={() => !anyUploading && inputRef.current?.click()}
+              title="上传照片到当前文件夹"
+            >
+              {isMyUpload && uploadProgress
+                ? `⏳ ${uploadProgress.done}/${uploadProgress.total}`
+                : "+ 添加照片"}
+            </button>
           </div>
         )}
         {/* Sub-folder cards first */}
