@@ -77,7 +77,9 @@ app.http("addMember", {
     };
     await invitesContainer.items.create(invite);
 
-    const appUrl = process.env.APP_BASE_URL ?? "https://cloudphoto.azurestaticapps.net";
+    const appUrl = process.env.APP_BASE_URL
+      ?? request.headers.get("origin")
+      ?? "https://cloudphoto.azurestaticapps.net";
     void sendInviteEmail({
       toEmail: email,
       groupName: group.name,
