@@ -1,8 +1,9 @@
 import { useState, useEffect, FormEvent } from "react";
 import {
-  GroupDetail, GroupMember,
+  GroupDetail, GroupMember, PendingInvite,
   getGroupApi, updateGroupApi, deleteGroupApi,
   addMemberApi, removeMemberApi,
+  createInviteApi, listGroupInvitesApi, cancelInviteApi,
 } from "../../services/groupApi";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -29,6 +30,13 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
   const [addingMember, setAddingMember] = useState(false);
   const [addError, setAddError] = useState("");
 
+  // Invite by email
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState("");
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
   // Delete confirm
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -48,7 +56,17 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
     }
   };
 
-  useEffect(() => { void loadGroup(); }, [groupId]);
+  const loadInvites = async () => {
+    try {
+      const invs = await listGroupInvitesApi(groupId);
+      setPendingInvites(invs);
+    } catch { /* non-critical */ }
+  };
+
+  useEffect(() => {
+    void loadGroup();
+    void loadInvites();
+  }, [groupId]);
 
   const saveInfo = async (e: FormEvent) => {
     e.preventDefault();
@@ -92,6 +110,34 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
       await loadGroup();
     } catch (err) {
       setError(err instanceof Error ? err.message : "移除失败");
+    }
+  };
+
+  const handleInvite = async (e: FormEvent) => {
+    e.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) return;
+    setInviting(true);
+    setInviteMsg("");
+    try {
+      const res = await createInviteApi(groupId, email);
+      setInviteEmail("");
+      setInviteMsg(`✅ 邀请已发送至 ${res.email}，等待对方接受`);
+      await loadInvites();
+    } catch (err) {
+      setInviteMsg(err instanceof Error ? err.message : "发送失败");
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleCancelInvite = async (inviteId: string) => {
+    setCancellingId(inviteId);
+    try {
+      await cancelInviteApi(inviteId);
+      await loadInvites();
+    } catch { /* ignore */ } finally {
+      setCancellingId(null);
     }
   };
 
@@ -171,7 +217,7 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                 <input
                   type="text"
                   className="group-add-input"
-                  placeholder="用户名或邮箱地址"
+                  placeholder="用户名"
                   value={addUsername}
                   onChange={(e) => setAddUsername(e.target.value)}
                   maxLength={40}
@@ -186,6 +232,60 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                   style={{ marginTop: 6 }}
                 >
                   {addError}
+                </div>
+              )}
+            </section>
+
+            {/* ─── Invite by email ─── */}
+            <section className="group-settings-section">
+              <h4 className="group-section-label">邀请成员（邮箱）</h4>
+              <p className="invite-hint" style={{ marginBottom: 8 }}>
+                输入对方邮箱，发送邀请链接。对方点击链接并接受后才会加入群组。
+              </p>
+              <form className="group-add-form" onSubmit={handleInvite}>
+                <input
+                  type="email"
+                  className="group-add-input"
+                  placeholder="example@email.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  maxLength={120}
+                />
+                <button type="submit" className="group-add-btn" disabled={inviting}>
+                  {inviting ? "…" : "发送邀请"}
+                </button>
+              </form>
+              {inviteMsg && (
+                <div
+                  className={inviteMsg.startsWith("✅") ? "group-add-success" : "auth-error"}
+                  style={{ marginTop: 6 }}
+                >
+                  {inviteMsg}
+                </div>
+              )}
+
+              {pendingInvites.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <p className="group-section-label" style={{ marginBottom: 6 }}>待接受邀请</p>
+                  <ul className="group-members-list">
+                    {pendingInvites.map((inv) => (
+                      <li key={inv.id} className="group-member-item">
+                        <div className="group-member-info">
+                          <span className="group-member-name">{inv.email}</span>
+                          <span className="group-member-role">
+                            {new Date(inv.expiresAt).toLocaleDateString("zh-CN")} 到期
+                          </span>
+                        </div>
+                        <button
+                          className="group-remove-btn"
+                          disabled={cancellingId === inv.id}
+                          onClick={() => handleCancelInvite(inv.id)}
+                        >
+                          {cancellingId === inv.id ? "…" : "撤销"}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </section>

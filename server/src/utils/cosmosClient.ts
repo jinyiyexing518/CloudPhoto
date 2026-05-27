@@ -143,3 +143,30 @@ export async function addPrivateFolder(userId: string, folderName: string): Prom
     await container.item(userId, userId).replace(updated);
   } catch { /* ignore */ }
 }
+
+// ─── Invites ─────────────────────────────────────────────────────────────────
+
+export type InviteStatus = "pending" | "accepted" | "declined" | "cancelled";
+
+export interface InviteDoc {
+  id: string;             // random UUID — used as the invite token
+  groupId: string;
+  groupName: string;
+  email: string;          // lowercase, the invited address
+  invitedByUserId: string;
+  invitedByName: string;
+  status: InviteStatus;
+  createdAt: string;
+  expiresAt: string;      // 7 days after creation
+  respondedAt?: string;
+}
+
+export async function getInvitesContainer(): Promise<Container> {
+  const client = getClient();
+  const { database } = await client.databases.createIfNotExists({ id: databaseId });
+  const { container } = await database.containers.createIfNotExists({
+    id: "invites",
+    partitionKey: { paths: ["/id"] },
+  });
+  return container;
+}

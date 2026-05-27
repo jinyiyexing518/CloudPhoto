@@ -21,3 +21,8 @@ import "./functions/groups/updateGroup";
 import "./functions/groups/deleteGroup";
 import "./functions/groups/addMember";
 import "./functions/groups/removeMember";
+import "./functions/invites/createInvite";
+import "./functions/invites/getInvite";
+import "./functions/invites/respondInvite";
+import "./functions/invites/listGroupInvites";
+import "./functions/invites/cancelInvite";

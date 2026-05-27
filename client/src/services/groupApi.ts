@@ -98,3 +98,59 @@ export async function removeMemberApi(groupId: string, memberId: string): Promis
     await fetch(`${API_BASE}/groups/${groupId}/members/${memberId}`, { method: "DELETE", headers: authHeaders() })
   );
 }
+
+// ─── Invites ─────────────────────────────────────────────────────────────────
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  invitedByName: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface InviteInfo {
+  id: string;
+  groupId: string;
+  groupName: string;
+  email: string;
+  invitedByName: string;
+  status: "pending" | "accepted" | "declined" | "cancelled";
+  expiresAt: string;
+}
+
+export async function createInviteApi(groupId: string, email: string): Promise<{ id: string; email: string; groupName: string; expiresAt: string }> {
+  return handleResponse(
+    await fetch(`${API_BASE}/groups/${groupId}/invites`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ email }),
+    })
+  );
+}
+
+export async function listGroupInvitesApi(groupId: string): Promise<PendingInvite[]> {
+  return handleResponse(
+    await fetch(`${API_BASE}/groups/${groupId}/invites`, { headers: authHeaders() })
+  );
+}
+
+export async function getInviteApi(token: string): Promise<InviteInfo> {
+  return handleResponse(await fetch(`${API_BASE}/invites/${token}`));
+}
+
+export async function respondInviteApi(token: string, action: "accept" | "decline"): Promise<{ message: string; member?: GroupMember }> {
+  return handleResponse(
+    await fetch(`${API_BASE}/invites/${token}/respond`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ action }),
+    })
+  );
+}
+
+export async function cancelInviteApi(token: string): Promise<void> {
+  return handleResponse(
+    await fetch(`${API_BASE}/invites/${token}`, { method: "DELETE", headers: authHeaders() })
+  );
+}

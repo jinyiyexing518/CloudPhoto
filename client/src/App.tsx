@@ -5,6 +5,7 @@ import FolderView from "./components/gallery/FolderView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
 import SettingsDialog from "./components/settings/SettingsDialog";
+import InviteAcceptPage from "./components/invites/InviteAcceptPage";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -20,6 +21,19 @@ function AppContent() {
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Invite token from URL ?invite=<token>
+  const [inviteToken, setInviteToken] = useState<string | null>(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("invite");
+  });
+  const dismissInvite = () => {
+    setInviteToken(null);
+    // Remove ?invite= from URL without reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete("invite");
+    window.history.replaceState({}, "", url.toString());
+  };
 
   // Persist active tab per user across refreshes
   const tabKey = `cf_tab_${user?.username ?? "guest"}`;
@@ -167,6 +181,7 @@ function AppContent() {
 
       {showAddAdmin && <AddAdminDialog onClose={() => setShowAddAdmin(false)} />}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {inviteToken && <InviteAcceptPage token={inviteToken} onDone={dismissInvite} />}
 
       <main className="app-main">
         {/* Tab bar */}
