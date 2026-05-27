@@ -1,8 +1,11 @@
 import { EmailClient } from "@azure/communication-email";
+import { DefaultAzureCredential } from "@azure/identity";
 
 /**
  * Sends a group invitation email to a newly-added member.
- * Silently skips if ACS_CONNECTION_STRING or ACS_SENDER_ADDRESS is not configured.
+ * Uses Managed Identity in production (ACS_ENDPOINT) or falls back to
+ * connection string (ACS_CONNECTION_STRING) for local dev without managed identity.
+ * Silently skips if neither is configured.
  */
 export async function sendGroupInviteEmail(opts: {
   toEmail: string;
@@ -10,10 +13,12 @@ export async function sendGroupInviteEmail(opts: {
   groupName: string;
   inviterName: string;
 }): Promise<void> {
+  const endpoint = process.env.ACS_ENDPOINT;
   const connStr = process.env.ACS_CONNECTION_STRING;
   const sender = process.env.ACS_SENDER_ADDRESS;
-  if (!connStr || !sender) {
-    console.log("[email] ACS_CONNECTION_STRING or ACS_SENDER_ADDRESS not set — skipping invite email");
+
+  if (!sender || (!endpoint && !connStr)) {
+    console.log("[email] ACS not configured — skipping invite email");
     return;
   }
 
@@ -21,7 +26,10 @@ export async function sendGroupInviteEmail(opts: {
   const appUrl = process.env.APP_BASE_URL ?? "https://cloudphoto.azurestaticapps.net";
 
   try {
-    const client = new EmailClient(connStr);
+    // Prefer Managed Identity (endpoint only, no secret); fall back to connection string for local dev
+    const client = endpoint
+      ? new EmailClient(endpoint, new DefaultAzureCredential())
+      : new EmailClient(connStr!);
     const poller = await client.beginSend({
       senderAddress: sender,
       recipients: { to: [{ address: toEmail, displayName: toName }] },
