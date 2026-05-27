@@ -2,12 +2,18 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/fu
 import { hash } from "bcryptjs";
 import { getUsersContainer, UserDoc, isAdminCandidate } from "../../utils/cosmosClient";
 import { signToken, signRefreshToken } from "../../utils/jwtUtils";
+import { checkRateLimit, getClientIp } from "../../utils/rateLimit";
 
 app.http("authRegister", {
   methods: ["POST"],
   authLevel: "anonymous",
   route: "auth/register",
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    // 5 registrations per minute per IP
+    if (!checkRateLimit(`register:${getClientIp(request)}`, 5, 60_000)) {
+      return { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" },
+        body: JSON.stringify({ error: "Too many requests — please wait a minute" }) };
+    }
     try {
       const body = (await request.json()) as {
         username?: string;

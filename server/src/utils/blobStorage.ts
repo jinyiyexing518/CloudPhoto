@@ -23,19 +23,27 @@ export function getBlobServiceClient(): BlobServiceClient {
   );
 }
 
+// In-process cache: reuse the delegation key while it has > 10 min of validity remaining.
+// Avoids one Azure control-plane call per listPhotos invocation.
+let _delegationKeyCache: { key: UserDelegationKey; expiresAt: number } | null = null;
+
 /**
- * Fetches a User Delegation Key from Azure Storage.
- * One call per request is sufficient — pass the result to generateSasUrlWithKey()
- * for each blob to avoid repeated network round-trips.
- *
+ * Fetches (or returns a cached) User Delegation Key from Azure Storage.
  * Required Azure role: "Storage Blob Delegator" on the Storage Account.
  */
 export async function getUserDelegationKey(expiryHours = 2): Promise<UserDelegationKey> {
+  const nowMs = Date.now();
+  // Reuse cached key if it still has more than 10 minutes of validity
+  if (_delegationKeyCache && _delegationKeyCache.expiresAt - nowMs > 10 * 60 * 1000) {
+    return _delegationKeyCache.key;
+  }
   const client = getBlobServiceClient();
   // 5-minute back-date to absorb clock-skew between Azure nodes
-  const startsOn = new Date(Date.now() - 5 * 60 * 1000);
-  const expiresOn = new Date(Date.now() + expiryHours * 3600 * 1000);
-  return client.getUserDelegationKey(startsOn, expiresOn);
+  const startsOn = new Date(nowMs - 5 * 60 * 1000);
+  const expiresOn = new Date(nowMs + expiryHours * 3600 * 1000);
+  const key = await client.getUserDelegationKey(startsOn, expiresOn);
+  _delegationKeyCache = { key, expiresAt: nowMs + expiryHours * 3600 * 1000 };
+  return key;
 }
 
 /**

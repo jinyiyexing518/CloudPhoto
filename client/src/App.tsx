@@ -6,6 +6,7 @@ import FilterBar, { FilterState, emptyFilter } from "./components/gallery/Filter
 import GroupSwitcher from "./components/groups/GroupSwitcher";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { GroupProvider, useGroup } from "./contexts/GroupContext";
+import { ToastProvider, useToast } from "./contexts/ToastContext";
 import AuthPage from "./components/auth/AuthPage";
 import AddAdminDialog from "./components/auth/AddAdminDialog";
 
@@ -15,11 +16,11 @@ type ViewTab = "timeline" | "folder";
 function AppContent() {
   const { user, logout } = useAuth();
   const { currentGroupId } = useGroup();
+  const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>("timeline");
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
 
@@ -50,15 +51,14 @@ function AppContent() {
   const fetchPhotos = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
       const data = await listPhotos(currentGroupId);
       setPhotos(data);
     } catch {
-      setError("Failed to load photos. Make sure the server is running.");
+      showToast("加载照片失败，请检查网络或服务器状态", "error");
     } finally {
       setLoading(false);
     }
-  }, [currentGroupId]);
+  }, [currentGroupId, showToast]);
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
 
@@ -72,7 +72,7 @@ function AppContent() {
       const msgs: string[] = [];
       if (invalidType.length) msgs.push(`非图片文件: ${invalidType.map((f) => f.name).join(", ")}`);
       if (oversized.length) msgs.push(`文件过大(>20MB): ${oversized.map((f) => f.name).join(", ")}`);
-      setError(msgs.join("; "));
+      showToast(msgs.join("; "), "error");
     }
     const valid = fileArray.filter((f) => ALLOWED_TYPES.has(f.type) && f.size <= MAX_SIZE_BYTES);
     if (valid.length === 0) return;
@@ -89,7 +89,9 @@ function AppContent() {
     await fetchPhotos();
     setUploadProgress(null);
     if (failed.length > 0) {
-      setError(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`);
+      showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
+    } else {
+      showToast(`成功上传 ${valid.length} 张照片`, "success");
     }
   };
 
@@ -97,8 +99,9 @@ function AppContent() {
     try {
       await deletePhoto(name);
       setPhotos((prev) => prev.filter((p) => p.name !== name));
+      showToast("照片已删除", "success");
     } catch {
-      setError("Failed to delete photo");
+      showToast("删除失败，请重试", "error");
     }
   };
 
@@ -119,11 +122,10 @@ function AppContent() {
     setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
     try {
       const { newName } = await movePhotoToFolder(name, toFolder, user?.displayName || undefined);
-      // Sync state with actual new blob path
       setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, name: newName, folder: toFolder } : p));
     } catch {
-      setError("移动照片失败");
-      await fetchPhotos(); // revert on failure
+      showToast("移动照片失败", "error");
+      await fetchPhotos();
     }
   };
 
@@ -170,13 +172,6 @@ function AppContent() {
         {activeTab === "timeline" && (
           <div className="timeline-upload-hint">
             📁 请切换到「<button className="hint-tab-link" onClick={() => setActiveTab("folder")}>文件夹</button>」视图来添加照片
-          </div>
-        )}
-
-        {error && (
-          <div className="error-banner">
-            <span>{error}</span>
-            <button onClick={() => setError(null)}>✕</button>
           </div>
         )}
 
@@ -231,11 +226,13 @@ function App() {
 
 function AppWithProvider() {
   return (
-    <AuthProvider>
-      <GroupProvider>
-        <App />
-      </GroupProvider>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <GroupProvider>
+          <App />
+        </GroupProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 

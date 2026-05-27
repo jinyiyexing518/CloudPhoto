@@ -1,6 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { signToken, signRefreshToken, verifyRefreshToken } from "../../utils/jwtUtils";
 import { getUsersContainer } from "../../utils/cosmosClient";
+import { checkRateLimit, getClientIp } from "../../utils/rateLimit";
 
 /**
  * POST /api/auth/refresh
@@ -13,6 +14,12 @@ app.http("authRefresh", {
   authLevel: "anonymous",
   route: "auth/refresh",
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    // 20 refresh calls per minute per IP
+    if (!checkRateLimit(`refresh:${getClientIp(request)}`, 20, 60_000)) {
+      return { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" },
+        body: JSON.stringify({ error: "Too many refresh attempts" }) };
+    }
+
     const authHeader = request.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return { status: 401, headers: { "Content-Type": "application/json" },

@@ -2,12 +2,18 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/fu
 import { compare } from "bcryptjs";
 import { getUsersContainer, UserDoc } from "../../utils/cosmosClient";
 import { signToken, signRefreshToken } from "../../utils/jwtUtils";
+import { checkRateLimit, getClientIp } from "../../utils/rateLimit";
 
 app.http("authLogin", {
   methods: ["POST"],
   authLevel: "anonymous",
   route: "auth/login",
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    // 10 attempts per minute per IP
+    if (!checkRateLimit(`login:${getClientIp(request)}`, 10, 60_000)) {
+      return { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" },
+        body: JSON.stringify({ error: "Too many login attempts — please wait a minute" }) };
+    }
     try {
       const body = (await request.json()) as { username?: string; password?: string };
       const { username, password } = body;

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import {
   Photo,
   updatePhotoSubject,
@@ -6,6 +6,7 @@ import {
   downloadPhotoApi,
 } from "../../services/photoApi";
 import PhotoCard from "./PhotoCard";
+import { useToast } from "../../contexts/ToastContext";
 
 const UNCATEGORIZED = "(未分类)";
 const MOVE_UNSELECTED = "__UNSEL__";
@@ -112,6 +113,7 @@ export default function FolderView({
   userName,
   contextKey = "personal",
 }: Props) {
+  const showToast = useToast();
   const [currentPath, setCurrentPath] = useState<string | null>(null); // null = root
   const [extraFolders, setExtraFolders] = useState<string[]>([]);
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -159,7 +161,7 @@ export default function FolderView({
   const createFolder = () => {
     const name = newFolderName.trim();
     if (!name) return;
-    if (name.includes("/")) { alert("文件夹名不能包含 /"); return; }
+    if (name.includes("/")) { showToast("文件夹名不能包含 /", "error"); return; }
     const fullPath = currentPath === null ? name : (currentPath === "" ? name : `${currentPath}/${name}`);
     setExtraFolders((prev) => (prev.includes(fullPath) ? prev : [...prev, fullPath]));
     setNewFolderName("");
@@ -326,12 +328,14 @@ function FolderContent({
   onMovePhoto,
   userName,
 }: ContentProps) {
+  const showToast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const dragCount = useRef(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadSubject, setUploadSubject] = useState("");
 
   // Modal state
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
@@ -351,17 +355,48 @@ function FolderContent({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchMoveTo, setBatchMoveTo] = useState(MOVE_UNSELECTED);
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); setBatchMoveTo(MOVE_UNSELECTED); };
+
+  // Navigate to a photo by index, resetting all edit state
+  const navigateToPhoto = useCallback((idx: number, photoList: Photo[]) => {
+    const photo = photoList[idx];
+    if (!photo) return;
+    setSelectedIdx(idx);
+    setSelectedPhoto(photo);
+    setEditingSubject(false);
+    setSubjectInput(photo.subject ?? "");
+    setEditingName(false);
+    setNameInput(photo.originalName || photo.name.replace(/^\d+-/, ""));
+    setShowMovePanel(false);
+    setMovingTo(MOVE_UNSELECTED);
+    setDownloading(false);
+  }, []);
+
+  // Keyboard navigation when modal is open
+  useEffect(() => {
+    if (selectedIdx === null) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setSelectedIdx(null); setSelectedPhoto(null); }
+      if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1, directPhotos);
+      if (e.key === "ArrowRight" && selectedIdx < directPhotos.length - 1) navigateToPhoto(selectedIdx + 1, directPhotos);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedIdx, directPhotos, navigateToPhoto]);
   const toggleSelect = (name: string) => {
     setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
   };
-  const handleBatchDelete = () => { for (const name of selected) onDelete(name); exitSelectMode(); };
+  const handleBatchDelete = () => { for (const name of selected) onDelete(name); showToast(`已删除 ${selected.size} 张照片`, "success"); exitSelectMode(); };
   const handleBatchMove = async () => {
     if (batchMoveTo === MOVE_UNSELECTED) return;
+    const count = selected.size;
     for (const name of selected) await onMovePhoto(name, batchMoveTo);
+    showToast(`已移动 ${count} 张照片`, "success");
     exitSelectMode();
   };
 
   const openModal = (photo: Photo) => {
+    const idx = directPhotos.findIndex((p) => p.name === photo.name);
+    setSelectedIdx(idx >= 0 ? idx : null);
     setSelectedPhoto(photo);
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
@@ -414,6 +449,7 @@ function FolderContent({
   const handleMove = async () => {
     if (!selectedPhoto || movingTo === MOVE_UNSELECTED) return;
     await onMovePhoto(selectedPhoto.name, movingTo);
+    setSelectedIdx(null);
     setSelectedPhoto(null);
   };
 
@@ -545,9 +581,28 @@ function FolderContent({
 
       {/* ── Modal ── */}
       {selectedPhoto && (
-        <div className="modal-overlay" onClick={() => setSelectedPhoto(null)}>
+        <div className="modal-overlay" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setSelectedPhoto(null)}>✕</button>
+            <button className="modal-close" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}>✕</button>
+            {/* Prev / Next navigation */}
+            {selectedIdx !== null && selectedIdx > 0 && (
+              <button
+                className="modal-nav modal-nav--prev"
+                onClick={() => navigateToPhoto(selectedIdx - 1, directPhotos)}
+                title="上一张 (←)"
+              >
+                ‹
+              </button>
+            )}
+            {selectedIdx !== null && selectedIdx < directPhotos.length - 1 && (
+              <button
+                className="modal-nav modal-nav--next"
+                onClick={() => navigateToPhoto(selectedIdx + 1, directPhotos)}
+                title="下一张 (→)"
+              >
+                ›
+              </button>
+            )}
             <img src={selectedPhoto.url} alt={displayName(selectedPhoto)} />
             <div className="modal-info">
 
@@ -671,6 +726,9 @@ function FolderContent({
                 <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
               </div>
             </div>
+            {directPhotos.length > 1 && (
+              <div className="modal-nav-hint">\u2190 \u2192 \u952e\u5207\u6362 \u00b7 Esc \u5173\u95ed</div>
+            )}
           </div>
         </div>
       )}

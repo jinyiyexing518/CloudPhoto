@@ -36,6 +36,8 @@ build time (defaults to `/api`).
 ## Features
 
 - **JWT auth with auto-refresh** — 2-hour access tokens + 30-day rotating refresh tokens; on 401 the client silently refreshes and retries the original request; concurrent 401s share a single in-flight refresh (mutex)
+- **Auth rate limiting** — in-memory sliding-window per IP: login 10 req/min, register 5 req/min, refresh 20 req/min; over-limit returns `429 + Retry-After: 60`
+- **Delegation key caching** — Azure User Delegation Key cached in-process and reused while > 10 min validity remains, eliminating one control-plane call per photo-list request
 - **Role system** — global `admin` / `viewer`; per-group `admin` / `member`
 - **Private photo space** — personal folders visible only to the owner (admin sees all)
 - **Group sharing** — create groups, add members by username, share photos within groups
@@ -48,6 +50,8 @@ build time (defaults to `/api`).
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Search & filter** — filter by name, subject, uploader, date range
 - **Fullscreen modal** — view full details, edit subject / rename / download inline
+- **Modal keyboard navigation** — ← / → keys to step through photos in a folder; Esc to close; prev/next buttons for mouse/touch
+- **Toast notification system** — lightweight React-Context toast queue (success / error / info); auto-dismisses after 3.5 s; replaces all inline error banners
 - **Delete with confirmation** — custom confirm dialog (no browser `alert`)
 - **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px
 - **Admin tools** — super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote other users to admin
@@ -405,7 +409,8 @@ CloudPhoto/
 │       ├── index.css            # Global styles + responsive breakpoints + batch-select UI
 │       ├── contexts/
 │       │   ├── AuthContext.tsx  # JWT auth state: login / register / logout / token persistence
-│       │   └── GroupContext.tsx # Current group selection
+│       │   ├── GroupContext.tsx # Current group selection
+│       │   └── ToastContext.tsx # Toast notification queue (success / error / info)
 │       ├── components/
 │       │   ├── auth/
 │       │   │   ├── AuthPage.tsx          # Login / Register tab UI
@@ -451,5 +456,6 @@ CloudPhoto/
         └── utils/
             ├── blobStorage.ts   # DefaultAzureCredential + User Delegation SAS (2h)
             ├── cosmosClient.ts  # DefaultAzureCredential + Cosmos DB client
-            └── jwtUtils.ts      # signToken (2h) / signRefreshToken (30d) / verify
+            ├── jwtUtils.ts      # signToken (2h) / signRefreshToken (30d) / verify
+            └── rateLimit.ts     # In-memory sliding-window rate limiter (per IP)
 ```
