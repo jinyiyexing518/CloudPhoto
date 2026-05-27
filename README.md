@@ -21,7 +21,8 @@ cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4 (backend)
         ├── Azure Cosmos DB NoSQL (cloudphoto)
         │       ├── users    (partition: /id)
         │       ├── admins   (partition: /id)
-        │       └── groups   (partition: /id)
+        │       ├── groups   (partition: /id)
+        │       └── invites  (partition: /id)
         │
         └── Azure Blob Storage (photostorage / photos)
                 └── Time-limited User Delegation SAS (2h, keyless)
@@ -40,7 +41,8 @@ build time (defaults to `/api`).
 - **Delegation key caching** — Azure User Delegation Key cached in-process and reused while > 10 min validity remains, eliminating one control-plane call per photo-list request
 - **Role system** — global `admin` / `viewer`; per-group `admin` / `member`
 - **Private photo space** — personal folders visible only to the owner (admin sees all)
-- **Group sharing** — create groups, add members by username; on add, an invitation email is automatically sent to the new member via Azure Communication Services (gracefully skipped if ACS is not configured)
+- **Group sharing** — create groups, add members directly by username; invite members by email via Azure Communication Services (gracefully skipped if ACS is not configured)
+- **Email invite flow** — admin sends an invite link to any email address; recipient receives a branded email with an accept link (`?invite=<token>`); they must log in with the matching account and explicitly accept before being added; invites expire after 7 days; admin can cancel a pending invite; declined/expired invites are never added to the group
 - **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation; drag-and-drop between folders; extra folders persisted in `localStorage` per context
 - **Session persistence** — last-used group space and current folder path are remembered in `localStorage` per user; page refresh returns you exactly where you were
 - **Recycle bin** — deleting a photo soft-deletes it (blob metadata `deletedAt`); a dedicated 🗑️ Trash tab lets you restore photos to their original folder or permanently delete them; "清空回收站" bulk-deletes all
@@ -123,6 +125,22 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
 }
 ```
 
+### InviteDoc (`invites` container)
+```jsonc
+{
+  "id": "<uuid token>",        // also the partition key; sent in the invite link
+  "groupId": "<uuid>",
+  "groupName": "Family Trip",
+  "email": "bob@example.com",  // lowercase; must match the recipient's account email
+  "invitedByUserId": "<uuid>",
+  "invitedByName": "Alice",
+  "status": "pending",         // pending | accepted | declined | cancelled
+  "createdAt": "2025-06-01T00:00:00Z",
+  "expiresAt": "2025-06-08T00:00:00Z",  // 7 days after creation
+  "respondedAt": "2025-06-02T10:00:00Z"  // set on accept / decline
+}
+```
+
 ### Blob Metadata (per photo in Azure Blob Storage)
 ```
 originalName    base64-encoded original filename
@@ -176,8 +194,18 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `GET`    | `/api/groups/{groupId}` | Member | Get group details + members |
 | `PATCH`  | `/api/groups/{groupId}` | Group admin | Update name / description |
 | `DELETE` | `/api/groups/{groupId}` | Group admin | Delete the group |
-| `POST`   | `/api/groups/{groupId}/members` | Group admin | Add member by username |
+| `POST`   | `/api/groups/{groupId}/members` | Group admin | Add member by username (direct, instant) |
 | `DELETE` | `/api/groups/{groupId}/members/{memberId}` | Group admin / self | Remove member |
+
+### Invites
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| `POST`   | `/api/groups/{groupId}/invites` | Group admin | Send email invite; creates `InviteDoc`, emails accept link |
+| `GET`    | `/api/groups/{groupId}/invites` | Group admin | List pending invites for the group |
+| `GET`    | `/api/invites/{token}` | — (public) | Get invite info (used by accept page); 410 if expired |
+| `POST`   | `/api/invites/{token}/respond` | ✓ (email must match) | Accept or decline; on accept, adds user to group |
+| `DELETE` | `/api/invites/{token}` | Group admin | Cancel a pending invite |
 
 ---
 
@@ -291,13 +319,14 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Cosmos DB
 
 1. Portal → **Azure Cosmos DB** → **+ Create** → **NoSQL API** → **Serverless** (free tier)
-2. Create database `cloudphoto` with three containers:
+2. Create database `cloudphoto` with these containers:
 
    | Container | Partition key |
    |-----------|---------------|
    | `users`   | `/id` |
    | `admins`  | `/id` |
    | `groups`  | `/id` |
+   | `invites` | `/id` |
 
 3. Pre-seed `admins` with an entry for the super-admin:
    ```json
@@ -322,9 +351,12 @@ Open [http://localhost:3000](http://localhost:3000).
 | `STORAGE_ACCOUNT_NAME` | `photostorage` |
 | `STORAGE_CONTAINER_NAME` | `photos` |
 | `SUPER_ADMIN_USERNAME` | Super-admin username |
-| `ACS_CONNECTION_STRING` | Azure Communication Services connection string (optional — for email invites) |
-| `ACS_SENDER_ADDRESS` | Verified sender address for ACS email (optional) |
-| `APP_BASE_URL` | Public URL of the app, included in invite emails (optional, e.g. `https://yourapp.azurestaticapps.net`) |
+| `ACS_ENDPOINT` | Azure Communication Services endpoint URL — used with Managed Identity (recommended for production, e.g. `https://<name>.communication.azure.com/`) |
+| `ACS_CONNECTION_STRING` | ACS connection string — fallback for local dev when Managed Identity is not available |
+| `ACS_SENDER_ADDRESS` | Verified sender address for ACS email (e.g. `DoNotReply@<uuid>.azurecomm.net`) |
+| `APP_BASE_URL` | Public URL of the app, embedded in invite links (e.g. `https://yourapp.azurestaticapps.net`) |
+
+> **Email invites via Managed Identity:** set `ACS_ENDPOINT` (not `ACS_CONNECTION_STRING`) in production and grant the Function App's Managed Identity the **Communication Services Contributor** role on your ACS resource. `ACS_CONNECTION_STRING` is only needed for local development.
 
 > `STORAGE_ACCOUNT_KEY` and `COSMOS_KEY` are **not needed** — the Function App uses Managed Identity.
 
@@ -360,6 +392,17 @@ az cosmosdb sql role assignment create \
   --principal-id $MI_PRINCIPAL \
   --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.DocumentDB/databaseAccounts/<COSMOS_ACCOUNT>
 ```
+
+### 4. Grant Azure Communication Services role (for email invites)
+
+```bash
+ACS_SCOPE=/subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Communication/communicationServices/<ACS_NAME>
+
+az role assignment create --assignee $MI_PRINCIPAL \
+  --role "Communication Services Contributor" --scope $ACS_SCOPE
+```
+
+> Set `ACS_ENDPOINT` (the ACS resource URL) and `ACS_SENDER_ADDRESS` in the Function App's Application Settings. No connection string key is required.
 
 ---
 
