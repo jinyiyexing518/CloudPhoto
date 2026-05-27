@@ -72,6 +72,18 @@ export default function TrashView({ groupId }: Props) {
     else showToast("回收站已清空", "success");
   };
 
+  const handleRestoreAll = async () => {
+    if (!confirm(`将恢复回收站中全部 ${photos.length} 张照片，确认？`)) return;
+    let failed = 0;
+    for (const p of photos) {
+      try { await restorePhoto(p.name); }
+      catch { failed++; }
+    }
+    await load();
+    if (failed > 0) showToast(`${failed} 张恢复失败`, "error");
+    else showToast(`已全部恢复 ${photos.length} 张照片`, "success");
+  };
+
   if (loading) {
     return (
       <div className="loading">
@@ -95,9 +107,14 @@ export default function TrashView({ groupId }: Props) {
     <div className="trash-view">
       <div className="trash-toolbar">
         <span className="trash-toolbar-count">{photos.length} 张照片</span>
-        <button className="trash-empty-all-btn" onClick={handleEmptyTrash}>
-          清空回收站
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="trash-restore-all-btn" onClick={handleRestoreAll}>
+            全部恢复
+          </button>
+          <button className="trash-empty-all-btn" onClick={handleEmptyTrash}>
+            清空回收站
+          </button>
+        </div>
       </div>
       <div className="trash-grid">
         {photos.map((p) => {
