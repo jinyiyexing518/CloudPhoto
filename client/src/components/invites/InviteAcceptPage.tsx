@@ -10,7 +10,7 @@ interface Props {
 
 export default function InviteAcceptPage({ token, onDone }: Props) {
   const { user } = useAuth();
-  const { refreshGroups } = useGroup();
+  const { refreshGroups, setCurrentGroupId } = useGroup();
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,7 +26,10 @@ export default function InviteAcceptPage({ token, onDone }: Props) {
     setBusy(true);
     try {
       const res = await respondInviteApi(token, action);
-      if (action === "accept") await refreshGroups();
+      if (action === "accept" && invite) {
+        await refreshGroups();
+        setCurrentGroupId(invite.groupId);
+      }
       setResult({ type: "success", msg: res.message });
     } catch (e) {
       setResult({ type: "error", msg: e instanceof Error ? e.message : "操作失败" });
@@ -52,7 +55,9 @@ export default function InviteAcceptPage({ token, onDone }: Props) {
             <div className={result.type === "success" ? "invite-success" : "invite-error"}>
               {result.type === "success" ? "✅ " : "❌ "}{result.msg}
             </div>
-            <button className="invite-btn-primary" onClick={onDone}>进入 Cloud Photo</button>
+            <button className="invite-btn-primary" onClick={onDone}>
+              {result.type === "success" && invite ? `进入「${invite.groupName}」` : "进入 Cloud Photo"}
+            </button>
           </>
         )}
 

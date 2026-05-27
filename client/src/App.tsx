@@ -232,7 +232,7 @@ function AppContent() {
         {loading ? (
           <div className="loading">
             <div className="loading-spinner" />
-            <span>Loading photos…</span>
+            <span>加载中…</span>
           </div>
         ) : loadError ? (
           <div className="load-error">
@@ -270,7 +270,15 @@ function App() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="auth-page"><div className="auth-card"><div className="loading">Loading…</div></div></div>;
+    return (
+      <div className="app-splash">
+        <div className="app-splash-icon">📷</div>
+        <div className="app-splash-title">Cloud Photo</div>
+        <div className="app-splash-dots">
+          <span /><span /><span />
+        </div>
+      </div>
+    );
   }
 
   return user ? <AppContent /> : <AuthPage />;
