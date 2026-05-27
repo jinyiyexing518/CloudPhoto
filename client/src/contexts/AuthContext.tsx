@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { AuthUser, AuthResponse, loginApi, registerApi, getMeApi, setUnauthorizedHandler } from "../services/photoApi";
+import { AuthUser, AuthResponse, loginApi, registerApi, getMeApi, setUnauthorizedHandler, saveStoredAuth, clearStoredAuth } from "../services/photoApi";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -11,27 +11,25 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const TOKEN_KEY = "cloudphoto_token";
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Restore session on mount
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = localStorage.getItem("cloudphoto_token");
     if (!token) {
       setLoading(false);
       return;
     }
     getMeApi()
       .then(setUser)
-      .catch(() => localStorage.removeItem(TOKEN_KEY))
+      .catch(() => localStorage.removeItem("cloudphoto_token"))
       .finally(() => setLoading(false));
   }, []);
 
   const saveAuth = useCallback((resp: AuthResponse) => {
-    localStorage.setItem(TOKEN_KEY, resp.token);
+    saveStoredAuth(resp.token, resp.refreshToken);
     setUser(resp.user);
   }, []);
 
@@ -46,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [saveAuth]);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
+    clearStoredAuth();
     setUser(null);
   }, []);
 

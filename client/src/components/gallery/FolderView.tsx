@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import {
   Photo,
   updatePhotoSubject,
@@ -472,7 +472,7 @@ function FolderContent({
             )}
           </div>
         )}
-        {/* Sub-folder cards first */}}
+        {/* Sub-folder cards first */}
         {subFolders.map((sub) => (
           <FolderCard
             key={sub}

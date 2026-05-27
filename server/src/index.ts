@@ -7,6 +7,7 @@ import "./functions/photos/downloadPhoto";
 import "./functions/auth/authRegister";
 import "./functions/auth/authLogin";
 import "./functions/auth/authMe";
+import "./functions/auth/authRefresh";
 import "./functions/auth/authAddAdmin";
 import "./functions/groups/createGroup";
 import "./functions/groups/listGroups";

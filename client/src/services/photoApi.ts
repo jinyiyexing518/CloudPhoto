@@ -1,20 +1,72 @@
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
 
+const TOKEN_KEY = "cloudphoto_token";
+const REFRESH_TOKEN_KEY = "cloudphoto_refresh_token";
+
+// ---- Stored auth helpers (used by AuthContext) ----
+export function saveStoredAuth(token: string, refreshToken?: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+  if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+export function clearStoredAuth(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
 // ---- 401 auto-logout handler ----
 let _onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: () => void): void { _onUnauthorized = fn; }
+
+// ---- Refresh token logic (with concurrency mutex) ----
+let _refreshPromise: Promise<string | null> | null = null;
+
+async function _doRefresh(): Promise<string | null> {
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!refreshToken) return null;
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${refreshToken}` },
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const data = await res.json() as { token?: string; refreshToken?: string };
+  if (!data.token) return null;
+  saveStoredAuth(data.token, data.refreshToken);
+  return data.token;
+}
+
+function getRefreshedToken(): Promise<string | null> {
+  // Reuse in-flight refresh so concurrent 401s don't all fire separate requests
+  if (!_refreshPromise) {
+    _refreshPromise = _doRefresh().finally(() => { _refreshPromise = null; });
+  }
+  return _refreshPromise;
+}
 
 function fetchWithTimeout(input: RequestInfo, init?: RequestInit, ms = 15000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
   return fetch(input, { ...init, signal: controller.signal })
-    .then((res) => { if (res.status === 401) _onUnauthorized?.(); return res; })
+    .then(async (res) => {
+      if (res.status === 401) {
+        const newToken = await getRefreshedToken();
+        if (newToken) {
+          // Retry the original request once with the new token
+          const retryHeaders = {
+            ...(init?.headers as Record<string, string> ?? {}),
+            Authorization: `Bearer ${newToken}`,
+          };
+          return fetch(input, { ...init, headers: retryHeaders });
+        }
+        _onUnauthorized?.();
+      }
+      return res;
+    })
     .finally(() => clearTimeout(id));
 }
 
 // ---- Auth token helpers ----
 export function getToken(): string | null {
-  return localStorage.getItem("cloudphoto_token");
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
@@ -34,6 +86,7 @@ export interface AuthUser {
 
 export interface AuthResponse {
   token: string;
+  refreshToken?: string;
   user: AuthUser;
 }
 

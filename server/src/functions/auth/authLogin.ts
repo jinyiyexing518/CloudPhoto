@@ -1,7 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { compare } from "bcryptjs";
 import { getUsersContainer, UserDoc } from "../../utils/cosmosClient";
-import { signToken } from "../../utils/jwtUtils";
+import { signToken, signRefreshToken } from "../../utils/jwtUtils";
 
 app.http("authLogin", {
   methods: ["POST"],
@@ -38,12 +38,15 @@ app.http("authLogin", {
       // Update lastLoginAt
       await container.items.upsert({ ...user, lastLoginAt: new Date().toISOString() });
 
-      const token = signToken({ userId: user.id, username: user.username, displayName: user.displayName, role: user.role });
+      const tokenPayload = { userId: user.id, username: user.username, displayName: user.displayName, role: user.role };
+      const token = signToken(tokenPayload);
+      const refreshToken = signRefreshToken(tokenPayload);
       return {
         status: 200,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
+          refreshToken,
           user: { id: user.id, username: user.username, email: user.email, displayName: user.displayName, avatar: user.avatar, role: user.role },
         }),
       };
