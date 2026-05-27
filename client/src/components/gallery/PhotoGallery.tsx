@@ -97,7 +97,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || photo.name.replace(/^\d+-/, ""));
+    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
     setDownloading(false);
   }, [flatPhotos]);
 
@@ -120,7 +120,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || photo.name.replace(/^\d+-/, ""));
+    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
     setDownloading(false);
   };
 
@@ -265,8 +265,8 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
                   </span>
                 ) : (
                   <span className="modal-filename">
-                    {selectedPhoto.originalName || selectedPhoto.name.replace(/^\d+-/, "")}
-                    <button className="modal-edit-btn" title="重命名" onClick={() => setEditingName(true)}>✏</button>
+                    {selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })()}
+                    <button className="modal-rename-btn" title="重命名" onClick={() => setEditingName(true)}>✏ 重命名</button>
                   </span>
                 )}
                 <span className="modal-size">{formatSize(selectedPhoto.size)}</span>

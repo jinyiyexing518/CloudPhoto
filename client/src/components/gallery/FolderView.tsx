@@ -447,7 +447,7 @@ function FolderContent({
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || photo.name.replace(/^\d+-/, ""));
+    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
     setDownloading(false);
@@ -483,7 +483,7 @@ function FolderContent({
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || photo.name.replace(/^\d+-/, ""));
+    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
     setDownloading(false);
@@ -541,7 +541,11 @@ function FolderContent({
     e.target.value = "";
   };
 
-  const displayName = (p: Photo) => p.originalName || p.name.replace(/^\d+-/, "");
+  const displayName = (p: Photo) => {
+    if (p.originalName) return p.originalName;
+    const basename = p.name.split("/").pop() ?? p.name;
+    return basename.replace(/^\d+-/, "");
+  };
 
   return (
     <section
@@ -728,7 +732,7 @@ function FolderContent({
                 ) : (
                   <span className="modal-filename">
                     {displayName(selectedPhoto)}
-                    <button className="modal-edit-btn" title="重命名" onClick={() => setEditingName(true)}>✏</button>
+                    <button className="modal-rename-btn" title="重命名" onClick={() => setEditingName(true)}>✏ 重命名</button>
                   </span>
                 )}
                 <span className="modal-size">{formatSize(selectedPhoto.size)}</span>

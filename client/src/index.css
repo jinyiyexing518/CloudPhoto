@@ -1219,8 +1219,25 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
-  margin-right: 12px;
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.modal-rename-btn {
+  flex-shrink: 0;
+  background: #f0f7ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb;
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.modal-rename-btn:hover { background: #dbeafe; }
 
 /* Confirm dialog */
 .confirm-overlay {
