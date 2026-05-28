@@ -41,6 +41,13 @@ function isConcurrentConflict(error: unknown): boolean {
   return statusCode === 409 || statusCode === 412;
 }
 
+function isNotFound(error: unknown): boolean {
+  const statusCode = getStatusCode(error);
+  if (statusCode === 404) return true;
+  const message = (error as { message?: string } | undefined)?.message ?? "";
+  return /NotFound|Resource Not Found|owner resource does not exist/i.test(message);
+}
+
 function normalizeViewerName(viewerName: string | undefined): string {
   const value = viewerName?.trim() || "匿名用户";
   return value.slice(0, 80);
@@ -200,72 +207,47 @@ app.http("recordMomentView", {
       const container = await getMomentsContainer();
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const now = new Date().toISOString();
-        const { resource } = await container
-          .item(id, id)
-          .read<MomentInsightDocWithEtag>()
-          .catch(() => ({ resource: undefined }));
-
-        if (!resource) {
-          const doc: MomentInsightDoc = {
-            id,
-            photoName,
-            scopeType: scope.scopeType,
-            scopeId: scope.scopeId,
-            totalViews: 1,
-            lastViewedAt: now,
-            lastViewedBy: viewer,
-            viewers: { [viewer]: 1 },
-            dailyViews: { [today]: 1 },
-            createdAt: now,
-            updatedAt: now,
-          };
-          try {
-            await container.items.create(doc);
-            return json({ ok: true, item: doc });
-          } catch (createErr) {
-            if (isConcurrentConflict(createErr) && attempt < maxAttempts) continue;
-            throw createErr;
-          }
-        }
 
         try {
-          const nextViewers = {
-            ...(resource.viewers ?? {}),
-            [viewer]: ((resource.viewers ?? {})[viewer] ?? 0) + 1,
-          };
-          const nextDailyViews = {
-            ...(resource.dailyViews ?? {}),
-            [today]: ((resource.dailyViews ?? {})[today] ?? 0) + 1,
-          };
           const patchOperations: Array<{ op: "set" | "incr"; path: string; value: unknown }> = [
             { op: "incr", path: "/totalViews", value: 1 },
             { op: "set", path: "/lastViewedAt", value: now },
             { op: "set", path: "/lastViewedBy", value: viewer },
             { op: "set", path: "/updatedAt", value: now },
-            { op: "set", path: "/viewers", value: nextViewers },
-            { op: "set", path: "/dailyViews", value: nextDailyViews },
           ];
 
-          await container.item(id, id).patch(patchOperations);
+          const { resource } = await container.item(id, id).patch<MomentInsightDoc>(patchOperations);
+          if (resource) {
+            return json({ ok: true, item: resource });
+          }
 
-          const item: MomentInsightDoc = {
-            ...resource,
-            photoName,
-            scopeType: scope.scopeType,
-            scopeId: scope.scopeId,
-            totalViews: (resource.totalViews ?? 0) + 1,
-            lastViewedAt: now,
-            lastViewedBy: viewer,
-            viewers: nextViewers,
-            dailyViews: nextDailyViews,
-            createdAt: resource.createdAt ?? now,
-            updatedAt: now,
-          };
-
-          return json({ ok: true, item });
-        } catch (replaceErr) {
-          if (isConcurrentConflict(replaceErr) && attempt < maxAttempts) continue;
-          throw replaceErr;
+          const { resource: afterPatch } = await container.item(id, id).read<MomentInsightDoc>();
+          return json({ ok: true, item: afterPatch ?? { id, photoName, scopeType: scope.scopeType, scopeId: scope.scopeId, totalViews: 1, lastViewedAt: now, lastViewedBy: viewer, viewers: {}, dailyViews: {}, createdAt: now, updatedAt: now } });
+        } catch (patchErr) {
+          if (isNotFound(patchErr)) {
+            const doc: MomentInsightDoc = {
+              id,
+              photoName,
+              scopeType: scope.scopeType,
+              scopeId: scope.scopeId,
+              totalViews: 1,
+              lastViewedAt: now,
+              lastViewedBy: viewer,
+              viewers: { [viewer]: 1 },
+              dailyViews: { [today]: 1 },
+              createdAt: now,
+              updatedAt: now,
+            };
+            try {
+              await container.items.create(doc);
+              return json({ ok: true, item: doc });
+            } catch (createErr) {
+              if (isConcurrentConflict(createErr) && attempt < maxAttempts) continue;
+              throw createErr;
+            }
+          }
+          if (isConcurrentConflict(patchErr) && attempt < maxAttempts) continue;
+          throw patchErr;
         }
       }
       return json({ error: "Moment insight update conflict, please retry" }, 409);
