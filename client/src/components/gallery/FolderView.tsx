@@ -5,6 +5,7 @@ import {
   renamePhoto as apiRenamePhoto,
   downloadPhotoApi,
   createPhotoShareLink,
+  createFolderShareLink,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -139,6 +140,7 @@ interface Props {
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   userName?: string;
+  currentGroupId?: string;
   /** Unique key for localStorage persistence (e.g. groupId or "personal") */
   contextKey?: string;
 }
@@ -157,6 +159,7 @@ export default function FolderView({
   onRenameFolder,
   onDownloadStateChange,
   userName,
+  currentGroupId,
   contextKey = "personal",
 }: Props) {
   type FolderHistoryState = {
@@ -170,6 +173,8 @@ export default function FolderView({
   const [extraFolders, setExtraFolders] = useState<string[]>([]);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [folderShareHours, setFolderShareHours] = useState("24");
+  const [sharingFolder, setSharingFolder] = useState(false);
   const hydratedContextRef = useRef<string | null>(null);
   const historyHydratedRef = useRef(false);
   const applyingPopstateRef = useRef(false);
@@ -334,6 +339,30 @@ export default function FolderView({
     }
   };
 
+  const handleShareCurrentFolder = async () => {
+    if (currentPath === null) return;
+    const hours = Math.max(1, Math.min(168, Number.parseInt(folderShareHours, 10) || 24));
+    setSharingFolder(true);
+    try {
+      const { url, expiresAt } = await createFolderShareLink(currentPath, currentGroupId || undefined, hours);
+      const copied = await copyText(url);
+      if (!copied) {
+        window.prompt("复制分享链接", url);
+      }
+      addRecentShareLink({
+        photoName: `folder:${currentGroupId ?? "personal"}:${currentPath}`,
+        displayName: currentPath === "" ? "未分类" : `文件夹：${currentPath}`,
+        url,
+        expiresAt,
+      });
+      showToast(copied ? `文件夹分享链接已复制（到期：${formatDate(expiresAt)}）` : `文件夹分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
+    } catch (e) {
+      showToast(e instanceof Error ? `创建文件夹分享失败：${e.message}` : "创建文件夹分享失败", "error");
+    } finally {
+      setSharingFolder(false);
+    }
+  };
+
   return (
     <div className="folder-view">
       {/* Breadcrumb */}
@@ -376,9 +405,24 @@ export default function FolderView({
             <button className="folder-create-cancel" onClick={() => setCreatingFolder(false)}>取消</button>
           </div>
         ) : (
-          <button className="folder-new-btn" onClick={() => setCreatingFolder(true)}>
-            {currentPath === null ? "+ 新建文件夹" : "+ 新建子文件夹"}
-          </button>
+          <>
+            <button className="folder-new-btn" onClick={() => setCreatingFolder(true)}>
+              {currentPath === null ? "+ 新建文件夹" : "+ 新建子文件夹"}
+            </button>
+            {currentPath !== null && (
+              <div className="folder-share-controls">
+                <select className="folder-share-select" value={folderShareHours} onChange={(e) => setFolderShareHours(e.target.value)}>
+                  <option value="1">1 小时</option>
+                  <option value="24">24 小时</option>
+                  <option value="72">3 天</option>
+                  <option value="168">7 天</option>
+                </select>
+                <button className="folder-share-btn" onClick={() => void handleShareCurrentFolder()} disabled={sharingFolder}>
+                  {sharingFolder ? "创建中…" : "🔗 分享当前文件夹"}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

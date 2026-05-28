@@ -172,14 +172,18 @@ export async function getInvitesContainer(): Promise<Container> {
 }
 
 export type ShareLinkStatus = "active" | "revoked" | "expired";
+export type ShareLinkTargetType = "photo" | "folder";
 
 export interface ShareLinkDoc {
   id: string;
   createdByUserId: string;
   createdByName: string;
-  blobName: string;
+  blobName?: string;
   displayName: string;
   groupId?: string;
+  targetType?: ShareLinkTargetType;
+  folderPath?: string;
+  targetPrefix?: string;
   createdAt: string;
   expiresAt: string;
   status: ShareLinkStatus;

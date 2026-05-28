@@ -327,6 +327,36 @@ body {
   flex-wrap: wrap;
 }
 
+.folder-share-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.folder-share-select {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.85rem;
+  background: #fff;
+  color: #374151;
+}
+
+.folder-share-btn {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.86rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.folder-share-btn:hover:not(:disabled) { background: #dbeafe; }
+.folder-share-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* ── Breadcrumb ── */
 .folder-breadcrumb {
   display: flex;
@@ -2202,6 +2232,9 @@ body {
   .folder-section-name { font-size: 0.88rem; }
 
   .folder-new-btn { font-size: 0.82rem; padding: 6px 12px; }
+  .folder-share-controls { width: 100%; }
+  .folder-share-select,
+  .folder-share-btn { width: 100%; }
   .folder-create-row { width: 100%; gap: 6px; }
   .folder-name-input { flex: 1 1 100%; width: 100%; }
   .folder-create-confirm,

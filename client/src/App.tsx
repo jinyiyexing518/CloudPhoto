@@ -564,6 +564,7 @@ function AppContent() {
             onRenameFolder={handleRenameFolder}
             onDownloadStateChange={setDownloading}
             userName={user?.displayName}
+            currentGroupId={currentGroupId || undefined}
             contextKey={currentGroupId || "personal"}
           />
         )}

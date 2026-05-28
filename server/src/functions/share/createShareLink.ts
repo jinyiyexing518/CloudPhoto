@@ -45,6 +45,15 @@ function candidateBlobNames(rawName: string): string[] {
   return [...result];
 }
 
+function normalizeFolderPath(rawFolder: string): string {
+  if (rawFolder === "_") return "";
+  return rawFolder
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join("/");
+}
+
 function normalizeBaseUrl(raw: string): string {
   return raw.replace(/\/+$/, "");
 }
@@ -84,50 +93,135 @@ app.http("createShareLink", {
     }
 
     const rawBlobName = request.query.get("name");
-    if (!rawBlobName) {
+    const hasFolderParam = request.query.has("folder");
+    const rawFolderPath = request.query.get("folder") ?? "";
+    if (!rawBlobName && !hasFolderParam) {
       return {
         status: 400,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "name required" }),
+        body: JSON.stringify({ error: "name or folder required" }),
       };
     }
-
-    const blobNameList = candidateBlobNames(rawBlobName);
-    const blobName = blobNameList[0];
 
     const hoursRaw = Number(request.query.get("hours") ?? "24");
     const hours = Number.isFinite(hoursRaw)
       ? Math.max(1, Math.min(168, Math.floor(hoursRaw)))
       : 24;
 
-    const segs = blobName.split("/");
-    if (segs[0] === "personal") {
-      if (segs[1] !== payload.userId && payload.role !== "admin") {
-        return {
-          status: 403,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "Forbidden" }),
-        };
-      }
-    } else if (segs[0] === "groups") {
-      if (!await isGroupMember(segs[1], payload.userId)) {
-        return {
-          status: 403,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "Not a member of this group" }),
-        };
-      }
-    } else {
-      return {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Invalid photo path" }),
-      };
-    }
-
     try {
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
+
+      if (hasFolderParam) {
+        const folderPath = normalizeFolderPath(rawFolderPath);
+        const groupId = (request.query.get("groupId") ?? "").trim();
+
+        if (groupId) {
+          if (!await isGroupMember(groupId, payload.userId)) {
+            return {
+              status: 403,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Not a member of this group" }),
+            };
+          }
+        }
+
+        const folderSegment = folderPath === "" ? "_" : folderPath;
+        const targetPrefix = `${groupId ? `groups/${groupId}` : `personal/${payload.userId}`}/${folderSegment}/`;
+
+        let hasShareablePhoto = false;
+        for await (const blob of containerClient.listBlobsFlat({ prefix: targetPrefix, includeMetadata: true })) {
+          if (!getMeta(blob.metadata, "deletedAt")) {
+            hasShareablePhoto = true;
+            break;
+          }
+        }
+
+        if (!hasShareablePhoto) {
+          return {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Folder has no shareable photos" }),
+          };
+        }
+
+        const requestedExpiresAtMs = Date.now() + hours * 3600 * 1000;
+        const expiresAt = new Date(requestedExpiresAtMs).toISOString();
+        const linkId = randomUUID();
+        const createdAt = new Date().toISOString();
+        const displayName = folderPath === ""
+          ? "未分类"
+          : `文件夹：${folderPath}`;
+        const doc: ShareLinkDoc = {
+          id: linkId,
+          createdByUserId: payload.userId,
+          createdByName: payload.displayName,
+          displayName,
+          groupId: groupId || undefined,
+          targetType: "folder",
+          folderPath,
+          targetPrefix,
+          createdAt,
+          expiresAt,
+          status: "active",
+          viewCount: 0,
+        };
+
+        try {
+          const shareLinks = await getShareLinksContainer();
+          await shareLinks.items.create(doc);
+        } catch (e) {
+          if (isCosmosWriteAuthError(e)) {
+            return {
+              status: 503,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Folder sharing requires managed share storage permissions" }),
+            };
+          }
+          throw e;
+        }
+
+        const baseUrl = resolvePublicBaseUrl(request);
+        const managedUrl = `${baseUrl}/api/photos/share/open/${encodeURIComponent(linkId)}`;
+
+        return {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: managedUrl,
+            expiresAt,
+            shareId: linkId,
+            managed: true,
+          }),
+        };
+      }
+
+      const blobNameList = candidateBlobNames(rawBlobName as string);
+      const blobName = blobNameList[0];
+      const segs = blobName.split("/");
+      if (segs[0] === "personal") {
+        if (segs[1] !== payload.userId && payload.role !== "admin") {
+          return {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Forbidden" }),
+          };
+        }
+      } else if (segs[0] === "groups") {
+        if (!await isGroupMember(segs[1], payload.userId)) {
+          return {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Not a member of this group" }),
+          };
+        }
+      } else {
+        return {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Invalid photo path" }),
+        };
+      }
 
       let actualBlobName: string | null = null;
       let props: Awaited<ReturnType<ReturnType<typeof containerClient.getBlobClient>["getProperties"]>> | null = null;
@@ -179,6 +273,7 @@ app.http("createShareLink", {
         blobName: actualBlobName,
         displayName,
         groupId: segs[0] === "groups" ? segs[1] : undefined,
+        targetType: "photo",
         createdAt,
         expiresAt,
         status: "active",

@@ -420,6 +420,31 @@ export async function createPhotoShareLink(
   return response.json() as Promise<{ url: string; expiresAt: string; shareId?: string; directUrl?: string }>;
 }
 
+export async function createFolderShareLink(
+  folder: string,
+  groupId?: string,
+  hours = 24,
+): Promise<{ url: string; expiresAt: string; shareId?: string; directUrl?: string }> {
+  const params = new URLSearchParams();
+  params.set("folder", folder);
+  params.set("hours", String(hours));
+  if (groupId) params.set("groupId", groupId);
+
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/share?${params.toString()}`,
+    { headers: authHeaders() },
+  ).catch((e: unknown) => {
+    throw new Error(e instanceof Error && e.name === "AbortError" ? "创建文件夹分享超时" : "网络错误");
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Failed to create folder share link");
+  }
+
+  return response.json() as Promise<{ url: string; expiresAt: string; shareId?: string; directUrl?: string }>;
+}
+
 export interface ManagedShareLink {
   id: string;
   createdByUserId: string;
