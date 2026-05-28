@@ -46,6 +46,7 @@ build time (defaults to `/api`).
 - **Private photo space** — personal folders visible only to the owner (admin sees all)
 - **Group sharing** — create groups and invite members by username or email address; all additions go through an email invite flow — the recipient must accept the invite link before joining; invites expire after 7 days and can be cancelled by the group admin
 - **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation; drag-and-drop between folders; extra folders persisted in `localStorage` per context
+- **Folder back-stack behavior** — in folder view, browser/device back navigates up folder levels before exiting the app
 - **Folder back-stack integration** — while browsing folders, system/browser back first returns to previous folder levels instead of closing the app directly
 - **Session persistence** — last-used group space and current folder path are remembered in `localStorage` per user; page refresh returns you exactly where you were
 - **Recycle bin** — deleting a photo soft-deletes it (blob metadata `deletedAt`); a dedicated 🗑️ Trash tab lets you restore photos to their original folder or permanently delete them; "清空回收站" bulk-deletes all
@@ -82,6 +83,7 @@ build time (defaults to `/api`).
 - **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px
 - **Admin tools** — super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote other users to admin
 - **PWA app mode** — installable as an app on desktop/mobile (manifest + service worker + update prompt)
+- **Dev refresh stability** — local Vite dev mode disables SW registration by default to avoid development-time refresh loops
 - **Dev refresh stability** — PWA service worker registration is disabled in Vite dev mode to avoid local development refresh loops
 - **Transfer safety guard** — while upload/download is in progress, tab switching is blocked and browser refresh/close shows unload confirmation
 - **Keyless security** — no storage account keys or Cosmos DB keys anywhere; `DefaultAzureCredential` (Managed Identity on Azure, Azure CLI locally)
