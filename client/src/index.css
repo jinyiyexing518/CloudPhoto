@@ -2450,13 +2450,23 @@ body {
   /* ── Folder ── */
   .folder-section-grid { padding: 10px; }
   .folder-section-grid.photo-grid {
-    --folder-tile-width: 160px;
-    --folder-tile-height: 220px;
-    grid-template-columns: repeat(auto-fill, minmax(var(--folder-tile-width), var(--folder-tile-width)));
+    --folder-tile-width: 100%;
+    --folder-tile-height: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+  .folder-section-grid .photo-card,
+  .folder-section-grid .folder-card,
+  .folder-section-grid .folder-upload-group {
+    min-height: 0;
   }
   .folder-section-grid .photo-card,
   .folder-section-grid .folder-card {
     aspect-ratio: auto;
+  }
+  .folder-section-grid .photo-thumbnail {
+    height: auto;
+    aspect-ratio: 1 / 1;
   }
   .folder-section-header { padding: 10px 12px; }
   .folder-section-name { font-size: 0.88rem; }
