@@ -10,13 +10,24 @@ type SettingsTab = "profile" | "security" | "trash";
 interface Props {
   onClose: () => void;
   onPhotosRestored?: () => void;
+  canInstall?: boolean;
+  isStandalone?: boolean;
+  onInstallApp?: () => void;
+  onOpenInstallGuide?: () => void;
 }
 
-export default function SettingsDialog({ onClose, onPhotosRestored }: Props) {
+export default function SettingsDialog({
+  onClose,
+  onPhotosRestored,
+  canInstall = false,
+  isStandalone = false,
+  onInstallApp,
+  onOpenInstallGuide,
+}: Props) {
   const { user, updateUser } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
-  const [tab, setTab] = useState<SettingsTab>("profile");
+  const [tab, setTab] = useState<SettingsTab | "app">("profile");
 
   // Profile tab
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
@@ -77,6 +88,7 @@ export default function SettingsDialog({ onClose, onPhotosRestored }: Props) {
         <div className="settings-tabs">
           <button className={`settings-tab${tab === "profile" ? " active" : ""}`} onClick={() => setTab("profile")}>👤 个人信息</button>
           <button className={`settings-tab${tab === "security" ? " active" : ""}`} onClick={() => setTab("security")}>🔒 安全</button>
+          <button className={`settings-tab${tab === "app" ? " active" : ""}`} onClick={() => setTab("app")}>📱 应用</button>
           <button className={`settings-tab${tab === "trash" ? " active" : ""}`} onClick={() => setTab("trash")}>🗑️ 回收站</button>
         </div>
 
@@ -151,6 +163,32 @@ export default function SettingsDialog({ onClose, onPhotosRestored }: Props) {
                   {pwSaving ? "修改中…" : "修改密码"}
                 </button>
               </form>
+            </div>
+          )}
+
+          {/* ── 应用 ── */}
+          {tab === "app" && (
+            <div className="settings-section">
+              <div className="settings-info-row">
+                <span className="settings-info-label">当前模式</span>
+                <span className="settings-info-value">{isStandalone ? "App 模式" : "网页模式"}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">一键安装</span>
+                <span className="settings-info-value">{canInstall ? "当前浏览器支持" : "当前浏览器可能不支持"}</span>
+              </div>
+              <div className="settings-divider" />
+              <div className="settings-form" style={{ gap: 10 }}>
+                {!isStandalone && canInstall && (
+                  <button className="settings-save-btn" onClick={onInstallApp}>立即安装 App</button>
+                )}
+                {!isStandalone && (
+                  <button className="settings-save-btn" onClick={onOpenInstallGuide}>查看安装指引</button>
+                )}
+                <p className="add-admin-hint" style={{ marginTop: 4 }}>
+                  说明：并非所有浏览器都支持一键安装。如果按钮不可用，请按安装指引手动添加到主屏幕。
+                </p>
+              </div>
             </div>
           )}
 

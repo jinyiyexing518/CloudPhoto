@@ -12,7 +12,7 @@ const registerPwa = async () => {
       if (!registration) return;
       const checkForUpdates = () => { void registration.update(); };
       checkForUpdates();
-      window.setInterval(checkForUpdates, 60 * 1000);
+      window.setInterval(checkForUpdates, 10 * 60 * 1000);
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") checkForUpdates();
       });

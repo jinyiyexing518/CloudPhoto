@@ -14,6 +14,7 @@ import AddAdminDialog from "./components/auth/AddAdminDialog";
 
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
+const UPDATE_PROMPT_DISMISS_UNTIL_KEY = "cf_update_prompt_dismiss_until";
 type ViewTab = "timeline" | "folder";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -66,7 +67,11 @@ function AppContent() {
       setIsStandalone(true);
       showToast("Cloud Photo 已安装到设备", "success");
     };
-    const onUpdateReady = () => setUpdateReady(true);
+    const onUpdateReady = () => {
+      const suppressUntil = Number(localStorage.getItem(UPDATE_PROMPT_DISMISS_UNTIL_KEY) ?? "0");
+      if (suppressUntil > Date.now()) return;
+      setUpdateReady(true);
+    };
     const onOfflineReady = () => showToast("已启用离线基础访问", "success");
 
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
@@ -279,6 +284,12 @@ function AppContent() {
     await updateSW(true);
   };
 
+  const handleLaterUpdate = () => {
+    // Snooze update reminder for 6 hours.
+    localStorage.setItem(UPDATE_PROMPT_DISMISS_UNTIL_KEY, String(Date.now() + 6 * 60 * 60 * 1000));
+    setUpdateReady(false);
+  };
+
   const dismissInstallBanner = () => {
     setInstallBannerDismissed(true);
     localStorage.setItem(INSTALL_BANNER_DISMISSED_KEY, "1");
@@ -287,23 +298,23 @@ function AppContent() {
   const installGuideText = useMemo(() => {
     if (isIOS) {
       return [
-        "1. 使用 Safari 打开本网站",
-        "2. 点击底部分享按钮",
-        "3. 选择“添加到主屏幕”",
-        "4. 返回桌面后从图标启动",
+        "使用 Safari 打开本网站",
+        "点击底部分享按钮",
+        "选择“添加到主屏幕”",
+        "返回桌面后从图标启动",
       ];
     }
     if (isAndroid) {
       return [
-        "1. 使用 Chrome/Edge 打开本网站",
-        "2. 点击地址栏安装图标，或菜单里的“安装应用”",
-        "3. 安装后可从桌面图标启动",
+        "使用 Chrome/Edge 打开本网站",
+        "点击地址栏安装图标，或菜单里的“安装应用”",
+        "安装后可从桌面图标启动",
       ];
     }
     return [
-      "1. 使用 Chrome 或 Edge 打开本网站",
-      "2. 点击地址栏安装图标，或菜单里的“安装应用”",
-      "3. 安装后可在桌面/开始菜单启动",
+      "使用 Chrome 或 Edge 打开本网站",
+      "点击地址栏安装图标，或菜单里的“安装应用”",
+      "安装后可在桌面/开始菜单启动",
     ];
   }, [isAndroid, isIOS]);
 
@@ -329,16 +340,6 @@ function AppContent() {
             👤 {user?.displayName}
             {user?.role === "admin" && <span className="role-badge">Admin</span>}
           </span>
-          {canInstall && (
-            <button className="install-app-btn" onClick={() => void handleInstallApp()} title="安装应用">
-              安装 App
-            </button>
-          )}
-          {!isStandalone && (
-            <button className="install-help-btn" onClick={() => setShowInstallGuide(true)} title="安装指引">
-              安装指引
-            </button>
-          )}
           {user?.username === SUPER_ADMIN && (
             <button className="add-admin-btn" onClick={() => setShowAddAdmin(true)} title="添加 Admin">
               + Admin
@@ -350,7 +351,16 @@ function AppContent() {
       </header>
 
       {showAddAdmin && <AddAdminDialog onClose={() => setShowAddAdmin(false)} />}
-      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} onPhotosRestored={fetchPhotos} />}
+      {showSettings && (
+        <SettingsDialog
+          onClose={() => setShowSettings(false)}
+          onPhotosRestored={fetchPhotos}
+          canInstall={canInstall}
+          isStandalone={isStandalone}
+          onInstallApp={() => void handleInstallApp()}
+          onOpenInstallGuide={() => setShowInstallGuide(true)}
+        />
+      )}
       {inviteToken && <InviteAcceptPage token={inviteToken} onDone={dismissInvite} />}
       {showInstallGuide && (
         <div className="dialog-overlay" onClick={() => setShowInstallGuide(false)}>
@@ -372,7 +382,10 @@ function AppContent() {
         {updateReady && (
           <div className="pwa-update-banner">
             <span>检测到新版本，点击即可更新。</span>
-            <button onClick={() => void handleRefreshToUpdate()}>立即更新</button>
+            <div className="pwa-install-actions">
+              <button onClick={() => void handleRefreshToUpdate()}>立即更新</button>
+              <button className="pwa-install-later" onClick={handleLaterUpdate}>稍后提醒</button>
+            </div>
           </div>
         )}
 
