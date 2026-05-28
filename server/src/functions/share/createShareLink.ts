@@ -80,7 +80,7 @@ function isCosmosManagedShareUnavailable(error: unknown): boolean {
   const statusCode = (error as { statusCode?: number }).statusCode;
   if (statusCode === 401 || statusCode === 403 || statusCode === 404) return true;
   const message = (error as { message?: string }).message ?? "";
-  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization|NotFound|Owner resource does not exist|sharelinks/i.test(message);
+  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization|NotFound|Resource Not Found|Owner resource does not exist|sharelinks/i.test(message);
 }
 
 app.http("createShareLink", {
