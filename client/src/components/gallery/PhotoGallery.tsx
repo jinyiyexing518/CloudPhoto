@@ -63,6 +63,7 @@ const MOMENT_SCORE_RECENCY_MAX = 40;
 const MOMENT_HOT_VIEW_THRESHOLD = 3;
 const MOMENT_ENGAGEMENT_VIEW_WEIGHT = 24;
 const MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS = 72;
+const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
 
 function splitDisplayName(value: string): { baseName: string; extension: string } {
   const trimmed = value.trim();
@@ -110,6 +111,66 @@ function getTopViewer(insight?: MomentInsight): string | undefined {
 function getPeakViewDay(insight?: MomentInsight): string | undefined {
   if (!insight?.dailyViews) return undefined;
   return Object.entries(insight.dailyViews).sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+function readLocalMomentInsights(): Record<string, MomentInsight> {
+  try {
+    const raw = localStorage.getItem(MOMENTS_LOCAL_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, MomentInsight>;
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.entries(parsed).reduce<Record<string, MomentInsight>>((acc, [photoName, item]) => {
+      if (!item || typeof item !== "object" || !photoName) return acc;
+      acc[photoName] = {
+        photoName,
+        totalViews: Number.isFinite(item.totalViews) ? item.totalViews : 0,
+        lastViewedAt: item.lastViewedAt,
+        lastViewedBy: item.lastViewedBy,
+        viewers: item.viewers ?? {},
+        dailyViews: item.dailyViews ?? {},
+        updatedAt: item.updatedAt,
+      };
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalMomentInsights(map: Record<string, MomentInsight>): void {
+  try {
+    localStorage.setItem(MOMENTS_LOCAL_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // Ignore localStorage quota and privacy mode failures.
+  }
+}
+
+function mergeMomentInsightMaps(
+  base: Record<string, MomentInsight>,
+  incoming: Record<string, MomentInsight>,
+): Record<string, MomentInsight> {
+  const merged = { ...base };
+  for (const [photoName, next] of Object.entries(incoming)) {
+    const current = merged[photoName];
+    if (!current) {
+      merged[photoName] = next;
+      continue;
+    }
+    const lastViewedCandidates = [current.lastViewedAt, next.lastViewedAt].filter(Boolean).sort();
+    const updatedCandidates = [current.updatedAt, next.updatedAt].filter(Boolean).sort();
+    merged[photoName] = {
+      photoName,
+      totalViews: Math.max(current.totalViews ?? 0, next.totalViews ?? 0),
+      lastViewedAt: lastViewedCandidates[lastViewedCandidates.length - 1],
+      lastViewedBy: next.lastViewedAt && (!current.lastViewedAt || next.lastViewedAt >= current.lastViewedAt)
+        ? next.lastViewedBy
+        : current.lastViewedBy,
+      viewers: { ...(current.viewers ?? {}), ...(next.viewers ?? {}) },
+      dailyViews: { ...(current.dailyViews ?? {}), ...(next.dailyViews ?? {}) },
+      updatedAt: updatedCandidates[updatedCandidates.length - 1],
+    };
+  }
+  return merged;
 }
 
 function groupByDate(photos: Photo[]): DateGroup[] {
@@ -169,7 +230,7 @@ export default function PhotoGallery({
   const [moveFolderInput, setMoveFolderInput] = useState("");
   const [moving, setMoving] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>({});
+  const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>(() => readLocalMomentInsights());
   const momentsUnavailableNoticeShown = useRef(false);
   const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>({
     query: "",
@@ -286,12 +347,18 @@ export default function PhotoGallery({
   }, []);
 
   useEffect(() => {
+    writeLocalMomentInsights(momentsInsightsMap);
+  }, [momentsInsightsMap]);
+
+  useEffect(() => {
     if (!momentsMode) return;
     let cancelled = false;
     const load = async () => {
       try {
         const map = await listMomentInsights(flatPhotos.map((photo) => photo.name));
-        if (!cancelled) setMomentsInsightsMap(map);
+        if (!cancelled) {
+          setMomentsInsightsMap((prev) => mergeMomentInsightMaps(prev, map));
+        }
       } catch (e) {
         if (!cancelled && e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
           momentsUnavailableNoticeShown.current = true;
@@ -418,8 +485,7 @@ export default function PhotoGallery({
     void recordMomentViewApi(photoName, userName).then((serverItem) => {
       if (!serverItem) return;
       setMomentsInsightsMap((prev) => ({
-        ...prev,
-        [photoName]: serverItem,
+        ...mergeMomentInsightMaps(prev, { [photoName]: serverItem }),
       }));
     }).catch((e) => {
       if (e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
