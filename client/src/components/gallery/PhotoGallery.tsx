@@ -9,6 +9,7 @@ interface Props {
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
+  onDownloadStateChange?: (downloading: boolean) => void;
   userName?: string;
 }
 
@@ -46,7 +47,7 @@ function groupByDate(photos: Photo[]): DateGroup[] {
   return groups;
 }
 
-export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRenamePhoto, onToggleFavorite, userName }: Props) {
+export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRenamePhoto, onToggleFavorite, onDownloadStateChange, userName }: Props) {
   const showToast = useToast();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
@@ -64,6 +65,11 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+
+  useEffect(() => {
+    onDownloadStateChange?.(downloading);
+    return () => onDownloadStateChange?.(false);
+  }, [downloading, onDownloadStateChange]);
   const allSelected = selected.size > 0 && selected.size === photos.length;
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
   const togglePhoto = (name: string) => {

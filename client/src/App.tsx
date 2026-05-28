@@ -90,6 +90,10 @@ function AppContent() {
     return stored === "folder" ? "folder" : "timeline";
   });
   const switchTab = (tab: ViewTab) => {
+    if (transferring) {
+      showToast("传输进行中，请等待上传/下载完成后再切换页面", "error");
+      return;
+    }
     setActiveTab(tab);
     localStorage.setItem(tabKey, tab);
   };
@@ -97,7 +101,9 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string } | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
+  const transferring = uploadProgress !== null || downloading;
 
   // Derived lists for filter dropdowns
   const uploaders = useMemo(
@@ -139,6 +145,16 @@ function AppContent() {
   }, [currentGroupId, showToast]);
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
+
+  useEffect(() => {
+    if (!transferring) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [transferring]);
 
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
     const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
@@ -345,6 +361,7 @@ function AppContent() {
             onSubjectUpdate={handleSubjectUpdate}
             onRenamePhoto={handleRenamePhoto}
             onToggleFavorite={handleToggleFavorite}
+            onDownloadStateChange={setDownloading}
             userName={user?.displayName}
           />
         ) : (
@@ -359,6 +376,7 @@ function AppContent() {
             uploadProgress={uploadProgress}
             onMovePhoto={handleMovePhoto}
             onRenameFolder={handleRenameFolder}
+            onDownloadStateChange={setDownloading}
             userName={user?.displayName}
             contextKey={currentGroupId || "personal"}
           />

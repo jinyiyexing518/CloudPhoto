@@ -135,6 +135,7 @@ interface Props {
   uploadProgress: { done: number; total: number; folder: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
+  onDownloadStateChange?: (downloading: boolean) => void;
   userName?: string;
   /** Unique key for localStorage persistence (e.g. groupId or "personal") */
   contextKey?: string;
@@ -152,6 +153,7 @@ export default function FolderView({
   uploadProgress,
   onMovePhoto,
   onRenameFolder,
+  onDownloadStateChange,
   userName,
   contextKey = "personal",
 }: Props) {
@@ -382,6 +384,7 @@ export default function FolderView({
           uploadProgress={uploadProgress}
           onMovePhoto={onMovePhoto}
           onRenameSubFolder={onRenameFolder ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
+          onDownloadStateChange={onDownloadStateChange}
           userName={userName}
         />
       )}
@@ -407,6 +410,7 @@ interface ContentProps {
   uploadProgress: { done: number; total: number; folder: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
+  onDownloadStateChange?: (downloading: boolean) => void;
   userName?: string;
 }
 
@@ -426,6 +430,7 @@ function FolderContent({
   uploadProgress,
   onMovePhoto,
   onRenameSubFolder,
+  onDownloadStateChange,
   userName,
 }: ContentProps) {
   const showToast = useToast();
@@ -464,6 +469,11 @@ function FolderContent({
     if (allSelected) { setSelected(new Set()); } else { setSelected(new Set(directPhotos.map((p) => p.name))); }
   };
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+
+  useEffect(() => {
+    onDownloadStateChange?.(downloading);
+    return () => onDownloadStateChange?.(false);
+  }, [downloading, onDownloadStateChange]);
 
   const requestNewFolderTarget = (): string | null => {
     const raw = prompt("请输入新文件夹名称（会创建在当前目录下）");
