@@ -58,7 +58,6 @@ const MOMENT_SCORE_SUBJECT_WEIGHT = 20;
 const MOMENT_SCORE_RECENCY_MAX = 40;
 const MOMENT_HOT_VIEW_THRESHOLD = 3;
 const MOMENT_ENGAGEMENT_VIEW_WEIGHT = 24;
-const MOMENT_ENGAGEMENT_SHARE_WEIGHT = 10;
 const MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS = 72;
 
 function splitDisplayName(value: string): { baseName: string; extension: string } {
@@ -304,7 +303,8 @@ export default function PhotoGallery({
       const recentBoost = lastViewedAt
         ? Math.max(0, MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS - (Date.now() - new Date(lastViewedAt).getTime()) / (1000 * 60 * 60))
         : 0;
-      const engagement = score + totalViews * MOMENT_ENGAGEMENT_VIEW_WEIGHT + shareViews * MOMENT_ENGAGEMENT_SHARE_WEIGHT + recentBoost;
+      // Engagement is intentionally browse-focused; share traffic stays an independent metric.
+      const engagement = score + totalViews * MOMENT_ENGAGEMENT_VIEW_WEIGHT + recentBoost;
       return {
         photo,
         rank: 0,
@@ -342,22 +342,21 @@ export default function PhotoGallery({
 
   const selectedMomentInsight = selectedPhoto ? momentsInsightsMap[selectedPhoto.name] : undefined;
 
-  const trackMomentView = useCallback((photo: Photo) => {
-    if (!momentsMode) return;
+  const trackMomentView = useCallback((photoName: string) => {
     const viewer = (userName?.trim() || "匿名用户").slice(0, 80);
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
 
     setMomentsInsightsMap((prev) => {
-      const current = prev[photo.name] ?? {
-        photoName: photo.name,
+      const current = prev[photoName] ?? {
+        photoName,
         totalViews: 0,
         viewers: {},
         dailyViews: {},
       };
       return {
         ...prev,
-        [photo.name]: {
+        [photoName]: {
           ...current,
           totalViews: (current.totalViews ?? 0) + 1,
           lastViewedAt: now.toISOString(),
@@ -374,16 +373,21 @@ export default function PhotoGallery({
       };
     });
 
-    void recordMomentViewApi(photo.name, userName).then((serverItem) => {
+    void recordMomentViewApi(photoName, userName).then((serverItem) => {
       if (!serverItem) return;
       setMomentsInsightsMap((prev) => ({
         ...prev,
-        [photo.name]: serverItem,
+        [photoName]: serverItem,
       }));
     }).catch(() => {
       // Keep optimistic local state on transient failures.
     });
-  }, [momentsMode, userName]);
+  }, [userName]);
+
+  useEffect(() => {
+    if (!momentsMode || !selectedPhoto) return;
+    trackMomentView(selectedPhoto.name);
+  }, [momentsMode, selectedPhoto, trackMomentView]);
 
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = modalPhotos[idx];
@@ -396,8 +400,7 @@ export default function PhotoGallery({
     setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
-    trackMomentView(photo);
-  }, [modalPhotos, trackMomentView]);
+  }, [modalPhotos]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -421,7 +424,6 @@ export default function PhotoGallery({
     setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
-    trackMomentView(photo);
   };
 
   const saveSubject = async () => {
@@ -616,12 +618,12 @@ export default function PhotoGallery({
               value={momentsFilters.viewBand}
               onChange={(e) => setMomentsFilters((prev) => ({ ...prev, viewBand: e.target.value as MomentsFilterState["viewBand"] }))}
             >
-              <option value="all">全部浏览状态</option>
-              <option value="hot">高频查看</option>
-              <option value="viewed">看过的</option>
-              <option value="shared">被分享浏览</option>
+              <option value="all">全部状态</option>
+              <option value="hot">高频浏览</option>
+              <option value="viewed">已浏览</option>
+              <option value="shared">有分享访问</option>
               <option value="favorite">已收藏</option>
-              <option value="unviewed">还没看过</option>
+              <option value="unviewed">未浏览</option>
             </select>
             <select
               className="moments-filter-select"
@@ -652,9 +654,9 @@ export default function PhotoGallery({
                       <span className="moments-score-pill">热度 {Math.round(engagement)}</span>
                     </div>
                     <div className="moments-chips">
-                      <span>查看 {totalViews}</span>
+                      <span>浏览 {totalViews}</span>
                       <span>推荐值 {score}</span>
-                      <span>分享浏览 {shareViews}</span>
+                      <span>分享访问 {shareViews}</span>
                     </div>
                     <div className="moments-energy">
                       <span className="moments-energy-label">热度进度</span>
@@ -836,15 +838,14 @@ export default function PhotoGallery({
                     <span className="modal-detail-value">
                       {Math.round(
                         Math.round(getMomentScore(selectedPhoto))
-                        + (selectedMomentInsight?.totalViews ?? 0) * MOMENT_ENGAGEMENT_VIEW_WEIGHT
-                        + (momentsShareViews[selectedPhoto.name] ?? 0) * MOMENT_ENGAGEMENT_SHARE_WEIGHT,
+                        + (selectedMomentInsight?.totalViews ?? 0) * MOMENT_ENGAGEMENT_VIEW_WEIGHT,
                       )}
                     </span>
 
-                    <span className="modal-detail-label">查看次数</span>
+                    <span className="modal-detail-label">浏览次数（应用内）</span>
                     <span className="modal-detail-value">{selectedMomentInsight?.totalViews ?? 0}</span>
 
-                    <span className="modal-detail-label">分享浏览</span>
+                    <span className="modal-detail-label">分享访问（外链）</span>
                     <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
 
                     <span className="modal-detail-label">最近查看</span>
