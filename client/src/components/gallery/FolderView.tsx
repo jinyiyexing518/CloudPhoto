@@ -213,6 +213,7 @@ export default function FolderView({
   const [newFolderName, setNewFolderName] = useState("");
   const [folderShareHours, setFolderShareHours] = useState("24");
   const [sharingFolder, setSharingFolder] = useState(false);
+  const [showShareFolderDialog, setShowShareFolderDialog] = useState(false);
   const hydratedContextRef = useRef<string | null>(null);
   const historyHydratedRef = useRef(false);
   const applyingPopstateRef = useRef(false);
@@ -393,6 +394,7 @@ export default function FolderView({
         url,
         expiresAt,
       });
+      setShowShareFolderDialog(false);
       showToast(copied ? `文件夹分享链接已复制（到期：${formatDate(expiresAt)}）` : `文件夹分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
     } catch (e) {
       showToast(e instanceof Error ? `创建文件夹分享失败：${e.message}` : "创建文件夹分享失败", "error");
@@ -448,21 +450,46 @@ export default function FolderView({
               {currentPath === null ? "+ 新建文件夹" : "+ 新建子文件夹"}
             </button>
             {currentPath !== null && (
-              <div className="folder-share-controls">
-                <select className="folder-share-select" value={folderShareHours} onChange={(e) => setFolderShareHours(e.target.value)}>
-                  <option value="1">1 小时</option>
-                  <option value="24">24 小时</option>
-                  <option value="72">3 天</option>
-                  <option value="168">7 天</option>
-                </select>
-                <button className="folder-share-btn" onClick={() => void handleShareCurrentFolder()} disabled={sharingFolder}>
-                  {sharingFolder ? "创建中…" : "🔗 分享当前文件夹"}
-                </button>
-              </div>
+              <button className="folder-share-btn" onClick={() => setShowShareFolderDialog(true)} disabled={sharingFolder}>
+                {sharingFolder ? "创建中…" : "🔗 分享当前文件夹"}
+              </button>
             )}
           </>
         )}
       </div>
+
+      {showShareFolderDialog && currentPath !== null && (
+        <div className="dialog-overlay" onClick={() => !sharingFolder && setShowShareFolderDialog(false)}>
+          <div className="share-folder-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="add-admin-header">
+              <span>分享当前文件夹</span>
+              <button className="dialog-close-btn" onClick={() => !sharingFolder && setShowShareFolderDialog(false)}>✕</button>
+            </div>
+            <p className="add-admin-hint">选择这个文件夹分享链接的有效期。</p>
+            <div className="share-folder-field">
+              <label className="share-folder-label" htmlFor="folder-share-hours">有效期</label>
+              <select
+                id="folder-share-hours"
+                className="folder-share-select"
+                value={folderShareHours}
+                onChange={(e) => setFolderShareHours(e.target.value)}
+                disabled={sharingFolder}
+              >
+                <option value="1">1 小时</option>
+                <option value="24">24 小时</option>
+                <option value="72">3 天</option>
+                <option value="168">7 天</option>
+              </select>
+            </div>
+            <div className="confirm-actions">
+              <button className="confirm-cancel-btn" onClick={() => setShowShareFolderDialog(false)} disabled={sharingFolder}>取消</button>
+              <button className="folder-share-btn" onClick={() => void handleShareCurrentFolder()} disabled={sharingFolder}>
+                {sharingFolder ? "创建中…" : "确认分享"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Root view: folder cards */}
       {currentPath === null ? (

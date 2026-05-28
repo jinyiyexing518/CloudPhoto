@@ -865,6 +865,25 @@ body {
   font-size: 0.72rem;
   font-weight: 600;
   display: inline-flex;
+.share-folder-dialog {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+  padding: 24px 24px 20px;
+  width: 100%;
+  max-width: 360px;
+}
+.share-folder-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px 0 4px;
+}
+.share-folder-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+}
   align-items: center;
   gap: 6px;
 }
