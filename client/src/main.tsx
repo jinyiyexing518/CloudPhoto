@@ -3,8 +3,26 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
+const isStandaloneMode = () =>
+  window.matchMedia("(display-mode: standalone)").matches
+  || ((navigator as Navigator & { standalone?: boolean }).standalone === true);
+
+const disableBrowserPwaCaching = async () => {
+  if (!("serviceWorker" in navigator)) return;
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+  if ("caches" in window) {
+    const cacheKeys = await caches.keys();
+    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+  }
+};
+
 const registerPwa = async () => {
   if (!("serviceWorker" in navigator)) return;
+  if (!isStandaloneMode()) {
+    await disableBrowserPwaCaching();
+    return;
+  }
   const { registerSW } = await import("virtual:pwa-register");
   let refreshTriggered = false;
   const updateSW = registerSW({
