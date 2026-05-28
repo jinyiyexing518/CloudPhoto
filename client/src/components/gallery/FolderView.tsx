@@ -321,6 +321,9 @@ export default function FolderView({
               name={UNCATEGORIZED}
               count={countPhotosUnder(photos, "")}
               onClick={() => setCurrentPath("")}
+              onDrop={(photoName, fromFolder) => {
+                if (fromFolder !== "") void onMovePhoto(photoName, "");
+              }}
             />
           )}
           {subFolders.map((name) => (
@@ -624,24 +627,20 @@ function FolderContent({
 
         {/* Photos */}
         {directPhotos.map((photo) => (
-          <div
+          <PhotoCard
             key={photo.name}
-            draggable
-            style={{ cursor: "grab" }}
+            photo={photo}
+            onClick={() => !selectMode && openModal(photo)}
+            onDelete={() => onDelete(photo.name)}
+            selected={selectMode ? selected.has(photo.name) : undefined}
+            onSelect={selectMode ? (e) => { e.stopPropagation(); toggleSelect(photo.name); } : undefined}
+            draggable={!selectMode}
             onDragStart={(e) => {
               e.dataTransfer.setData("photoName", photo.name);
               e.dataTransfer.setData("fromFolder", currentPath);
               e.dataTransfer.effectAllowed = "move";
             }}
-          >
-            <PhotoCard
-              photo={photo}
-              onClick={() => !selectMode && openModal(photo)}
-              onDelete={() => onDelete(photo.name)}
-              selected={selectMode ? selected.has(photo.name) : undefined}
-              onSelect={selectMode ? (e) => { e.stopPropagation(); toggleSelect(photo.name); } : undefined}
-            />
-          </div>
+          />
         ))}
 
         {/* Upload group */}

@@ -8,23 +8,37 @@ interface Props {
   /** When defined, card is in selection mode: clicking selects/deselects */
   selected?: boolean;
   onSelect?: (e: React.MouseEvent) => void;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
 }
 
-export default function PhotoCard({ photo, onClick, onDelete, selected, onSelect }: Props) {
+export default function PhotoCard({
+  photo,
+  onClick,
+  onDelete,
+  selected,
+  onSelect,
+  draggable,
+  onDragStart,
+  onDragEnd,
+}: Props) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const displayName = photo.originalName || photo.name.replace(/^\d+-/, "");
+  const basename = photo.name.split("/").pop() ?? photo.name;
+  const displayName = photo.originalName || basename.replace(/^\d+-/, "");
   const uploadTime = photo.createdAt
     ? new Date(photo.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-    : photo.lastModified
-    ? new Date(photo.lastModified).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
 
   return (
     <>
       <div
-        className={`photo-card${selected ? " photo-card--selected" : ""}`}
+        className={`photo-card${selected ? " photo-card--selected" : ""}${draggable ? " photo-card--draggable" : ""}`}
         onClick={onSelect}
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
       >
         {onSelect !== undefined && (
           <div className={`photo-select-badge${selected ? " photo-select-badge--on" : ""}`}>

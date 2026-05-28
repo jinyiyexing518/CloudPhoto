@@ -48,6 +48,11 @@ app.http("deletePhoto", {
 
       const props = await blockBlobClient.getProperties();
       const existing: Record<string, string> = { ...(props.metadata ?? {}) };
+      if (!existing.createdAt) {
+        existing.createdAt = props.createdOn?.toISOString()
+          ?? props.lastModified?.toISOString()
+          ?? new Date().toISOString();
+      }
       existing.deletedAt = new Date().toISOString();
       existing.deletedBy = payload.userId;
       await blockBlobClient.setMetadata(existing);

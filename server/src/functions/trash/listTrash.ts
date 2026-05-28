@@ -19,6 +19,11 @@ function decodeMeta(raw: string | undefined): string | undefined {
   catch { return raw || undefined; }
 }
 
+function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
+  if (!metadata) return undefined;
+  return metadata[key] ?? metadata[key.toLowerCase()];
+}
+
 /**
  * GET /api/photos/trash?groupId=...
  * Returns soft-deleted photos (blobs with deletedAt metadata) for the caller's scope.
@@ -73,7 +78,7 @@ app.http("listTrash", {
         const segs = blob.name.split("/");
         if (segs.length < 4) continue;
         // Only include soft-deleted blobs
-        if (!blob.metadata?.deletedAt) continue;
+        if (!getMeta(blob.metadata, "deletedAt")) continue;
 
         const folderSegs = segs.slice(2, segs.length - 1);
         const folderRaw = folderSegs.join("/");
@@ -82,18 +87,18 @@ app.http("listTrash", {
 
         photos.push({
           name: blob.name,
-          originalName: decodeMeta(blob.metadata?.originalName),
-          subject: decodeMeta(blob.metadata?.subject),
+          originalName: decodeMeta(getMeta(blob.metadata, "originalName")),
+          subject: decodeMeta(getMeta(blob.metadata, "subject")),
           folder,
           groupId: blobGroupId,
           url: generateSasUrlWithKey(blob.name, delegationKey),
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,
-          createdAt: blob.metadata?.createdAt,
-          createdBy: decodeMeta(blob.metadata?.createdBy),
-          deletedAt: blob.metadata.deletedAt,
-          deletedBy: blob.metadata.deletedBy,
+          createdAt: getMeta(blob.metadata, "createdAt"),
+          createdBy: decodeMeta(getMeta(blob.metadata, "createdBy")),
+          deletedAt: getMeta(blob.metadata, "deletedAt"),
+          deletedBy: getMeta(blob.metadata, "deletedBy"),
         });
       }
 

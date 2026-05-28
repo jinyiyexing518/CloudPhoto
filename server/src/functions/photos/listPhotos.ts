@@ -24,6 +24,11 @@ function decodeMeta(raw: string | undefined): string | undefined {
   }
 }
 
+function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
+  if (!metadata) return undefined;
+  return metadata[key] ?? metadata[key.toLowerCase()];
+}
+
 app.http("listPhotos", {
   methods: ["GET"],
   authLevel: "anonymous",
@@ -79,7 +84,7 @@ app.http("listPhotos", {
         const segs = blob.name.split("/");
         if (segs.length < 4) continue;
         // Skip soft-deleted blobs — they live in the trash
-        if (blob.metadata?.deletedAt) continue;
+        if (getMeta(blob.metadata, "deletedAt")) continue;
         // folder = every segment between ownerId and the filename (last segment)
         // supports arbitrarily nested sub-folders; backwards-compat with 4-segment paths
         const folderSegs = segs.slice(2, segs.length - 1);
@@ -89,18 +94,18 @@ app.http("listPhotos", {
 
         photos.push({
           name: blob.name,
-          originalName: decodeMeta(blob.metadata?.originalName),
-          subject: decodeMeta(blob.metadata?.subject),
+          originalName: decodeMeta(getMeta(blob.metadata, "originalName")),
+          subject: decodeMeta(getMeta(blob.metadata, "subject")),
           folder,
           groupId: blobGroupId,
           url: generateSasUrlWithKey(blob.name, delegationKey),
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,
-          createdAt: blob.metadata?.createdAt,
-          createdBy: decodeMeta(blob.metadata?.createdBy),
-          lastModifiedAt: blob.metadata?.lastModifiedAt,
-          lastModifiedBy: decodeMeta(blob.metadata?.lastModifiedBy),
+          createdAt: getMeta(blob.metadata, "createdAt"),
+          createdBy: decodeMeta(getMeta(blob.metadata, "createdBy")),
+          lastModifiedAt: getMeta(blob.metadata, "lastModifiedAt"),
+          lastModifiedBy: decodeMeta(getMeta(blob.metadata, "lastModifiedBy")),
         });
       }
 
