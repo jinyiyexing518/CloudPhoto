@@ -58,6 +58,7 @@ build time (defaults to `/api`).
 - **Expiring share links** — generate per-photo public read links with configurable TTL (1h / 24h / 3d / 7d)
 - **One-click share copy** — share URL copy uses Clipboard API first, then legacy copy fallback; only falls back to manual copy prompt as a last resort
 - **Managed share links (cloud)** — in Settings you can revoke links early or extend expiry, with per-link status and lifecycle maintained on the backend
+- **Folder share dialog** — sharing the current folder now opens a dedicated dialog with explicit duration options instead of occupying toolbar space with an inline expiry picker
 - **Managed share filters** — cloud share links support server-side filtering by status (`active` / `expired` / `revoked`) and fuzzy search by filename
 - **Flexible share extension** — managed links can be extended with selectable presets (1h / 24h / 3d / 7d / 30d) instead of fixed 24h only
 - **Share analytics** — every managed share link records createdAt, viewCount, and lastViewedAt for operation visibility
@@ -70,7 +71,9 @@ build time (defaults to `/api`).
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
 - **Important moments tab** — moments are ranked by engagement and shown in a dedicated ⭐ tab with independent filters and sort modes
-- **Moments cross-device analytics** — open/navigate in moments records views to backend (Cosmos), including total views, last viewed time, top viewer, and peak day
+- **Moments cross-device analytics** — open/navigate in moments records views to backend (Cosmos), including total views, last viewed time, top viewer, and peak day; counters are updated atomically in Cosmos and no longer rely on local page-only state
+- **Moments local fallback** — if the backend moments store is temporarily unavailable, the client preserves view counts locally across refreshes and marks the session as local-only until server sync resumes
+- **Moments diagnostics tab** — Settings now includes a dedicated diagnostics tab showing frontend version/build time, service worker count, local moments cache size, and whether moments persistence is local-only or server-synced
 - **Moments details focus** — moments modal details focus on recommendation score + engagement metrics (not timeline-style upload/modify metadata)
 - **Timeline pagination** — timeline initially loads the newest page and can load more progressively to keep first paint fast
 - **Search & filter** — filter by name, subject, uploader, date range
@@ -88,9 +91,10 @@ build time (defaults to `/api`).
 - **Retry button** — load-error state shows a "重试" button allowing users to re-fetch without refreshing the page
 - **Rich empty state** — photo icon + bilingual message when no photos exist, replacing the bare English placeholder
 - **Delete with confirmation** — custom confirm dialog (no browser `alert`)
-- **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px
+- **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px; the folder tab now adapts to two columns on mobile for folders, photos, and upload tiles
 - **Admin tools** — super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote other users to admin
 - **PWA app mode** — installable as an app on desktop/mobile (manifest + service worker + update prompt)
+- **Browser-first update mode** — regular browser sessions prefer immediate updates by unregistering stale service workers; only installed standalone mode keeps persistent SW caching semantics
 - **Dev refresh stability** — local Vite dev mode disables SW registration by default to avoid development-time refresh loops
 - **Dev refresh stability** — PWA service worker registration is disabled in Vite dev mode to avoid local development refresh loops
 - **Transfer safety guard** — while upload/download is in progress, tab switching is blocked and browser refresh/close shows unload confirmation
@@ -170,7 +174,7 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
 ### MomentInsightDoc (`moments` container)
 ```jsonc
 {
-  "id": "moment:<base64(photoName)>",
+  "id": "moment:<base64url(photoName)>",
   "photoName": "personal/<userId>/<folder>/<file>",
   "scopeType": "personal" | "group",
   "scopeId": "<userId or groupId>",
@@ -240,7 +244,7 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `GET`    | `/api/photos/share/open/{linkId}` | — | Open managed public share link (redirects to a short-lived SAS and increments view stats) |
 | `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | List current user's managed share links with optional status/name filtering |
 | `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`, `hours=1..720`); conflict returns `409` |
-| `GET`    | `/api/photos/moments/insights?name=<photoName>&name=<photoName...>` | ✓ | Batch query moments analytics for specified photos (cross-device persisted) |
+| `POST`   | `/api/photos/moments/insights` | ✓ | Batch query moments analytics for specified photos via JSON body `{ photoNames: string[] }` (cross-device persisted, avoids oversized URLs) |
 | `POST`   | `/api/photos/moments/view` | ✓ | Record one moments view (`photoName`, optional `viewerName`) with optimistic concurrency |
 | `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName; conflict returns `409` |
