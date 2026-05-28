@@ -356,7 +356,10 @@ export async function createPhotoShareLink(
     `${API_BASE}/photos/share?name=${encodeURIComponent(name)}&hours=${encodeURIComponent(String(hours))}`,
     { headers: authHeaders() },
   );
-  if (!response.ok) throw new Error("Failed to create share link");
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Failed to create share link");
+  }
   return response.json() as Promise<{ url: string; expiresAt: string }>;
 }
 

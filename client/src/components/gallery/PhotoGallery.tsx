@@ -208,8 +208,8 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
       const { url, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
       await navigator.clipboard.writeText(url);
       showToast(`分享链接已复制（到期：${formatDate(expiresAt)}）`, "success");
-    } catch {
-      showToast("创建分享链接失败", "error");
+    } catch (e) {
+      showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");
     } finally {
       setSharing(false);
     }
