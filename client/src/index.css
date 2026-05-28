@@ -597,6 +597,23 @@ body {
   margin-bottom: 4px;
 }
 
+.moments-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.moments-stats-bar span {
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .hint-tab-link {
   background: none;
   border: none;

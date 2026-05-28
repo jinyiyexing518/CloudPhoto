@@ -158,6 +158,24 @@ function AppContent() {
     return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 120);
   }, [filteredPhotos]);
 
+  const momentsStats = useMemo(() => {
+    const now = Date.now();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const favoriteCount = importantPhotos.filter((p) => !!p.favorite).length;
+    const withSubjectCount = importantPhotos.filter((p) => !!p.subject).length;
+    const recentCount = importantPhotos.filter((p) => {
+      const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
+      return Number.isFinite(ts) && now - ts <= thirtyDaysMs;
+    }).length;
+    return {
+      total: importantPhotos.length,
+      favoriteCount,
+      withSubjectCount,
+      recentCount,
+      filteredTotal: filteredPhotos.length,
+    };
+  }, [importantPhotos, filteredPhotos.length]);
+
   const fetchPhotos = useCallback(async () => {
     try {
       setLoading(true);
@@ -446,6 +464,16 @@ function AppContent() {
         {activeTab === "moments" && (
           <div className="timeline-upload-hint">
             ⭐ 这里展示按收藏、主题与近期权重排序的重点照片
+          </div>
+        )}
+
+        {activeTab === "moments" && (
+          <div className="moments-stats-bar">
+            <span>重点照片：{momentsStats.total}</span>
+            <span>已收藏：{momentsStats.favoriteCount}</span>
+            <span>有主题：{momentsStats.withSubjectCount}</span>
+            <span>近 30 天：{momentsStats.recentCount}</span>
+            <span>筛选范围：{momentsStats.filteredTotal}</span>
           </div>
         )}
 
