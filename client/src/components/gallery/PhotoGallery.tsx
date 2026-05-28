@@ -11,6 +11,7 @@ interface Props {
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
+  onMovePhoto?: (name: string, toFolder: string) => Promise<boolean>;
   onDownloadStateChange?: (downloading: boolean) => void;
   userName?: string;
   showMemoryHighlights?: boolean;
@@ -59,6 +60,7 @@ export default function PhotoGallery({
   onSubjectUpdate,
   onRenamePhoto,
   onToggleFavorite,
+  onMovePhoto,
   onDownloadStateChange,
   userName,
   showMemoryHighlights = true,
@@ -76,6 +78,8 @@ export default function PhotoGallery({
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
+  const [moveFolderInput, setMoveFolderInput] = useState("");
+  const [moving, setMoving] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Batch selection
@@ -182,6 +186,7 @@ export default function PhotoGallery({
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
     setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
+    setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
   }, [flatPhotos]);
 
@@ -205,6 +210,7 @@ export default function PhotoGallery({
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
     setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
+    setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
   };
 
@@ -270,6 +276,40 @@ export default function PhotoGallery({
     } finally {
       setSharing(false);
     }
+  };
+
+  const handleModalFavoriteToggle = async () => {
+    if (!selectedPhoto) return;
+    const next = !selectedPhoto.favorite;
+    const ok = await onToggleFavorite(selectedPhoto.name, next);
+    if (ok) {
+      setSelectedPhoto({ ...selectedPhoto, favorite: next });
+    }
+  };
+
+  const handleModalMove = async () => {
+    if (!selectedPhoto || !onMovePhoto) return;
+    const target = moveFolderInput.trim();
+    setMoving(true);
+    try {
+      const ok = await onMovePhoto(selectedPhoto.name, target);
+      if (ok) {
+        showToast(target ? `已移动到文件夹：${target}` : "已移动到根目录", "success");
+        setSelectedIdx(null);
+        setSelectedPhoto(null);
+      }
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const handleModalDelete = () => {
+    if (!selectedPhoto) return;
+    const displayName = selectedPhoto.originalName || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
+    if (!window.confirm(`确认删除照片：${displayName}？`)) return;
+    onDelete(selectedPhoto.name);
+    setSelectedIdx(null);
+    setSelectedPhoto(null);
   };
 
   if (photos.length === 0) {
@@ -444,6 +484,30 @@ export default function PhotoGallery({
               >
                 {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
               </button>
+
+              <div className="modal-actions-row">
+                <button
+                  className={`modal-favorite-btn${selectedPhoto.favorite ? " modal-favorite-btn--on" : ""}`}
+                  onClick={() => void handleModalFavoriteToggle()}
+                >
+                  {selectedPhoto.favorite ? "★ 取消收藏" : "☆ 收藏"}
+                </button>
+                {onMovePhoto && (
+                  <>
+                    <input
+                      className="modal-folder-input"
+                      value={moveFolderInput}
+                      onChange={(e) => setMoveFolderInput(e.target.value)}
+                      placeholder="移动到文件夹（留空=根目录）"
+                    />
+                    <button className="modal-move-btn" onClick={() => void handleModalMove()} disabled={moving}>
+                      {moving ? "移动中…" : "📁 移动"}
+                    </button>
+                  </>
+                )}
+                <button className="modal-delete-btn" onClick={handleModalDelete}>🗑 删除</button>
+              </div>
+
               <div className="modal-share-row">
                 <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
                   <option value="1">1 小时</option>

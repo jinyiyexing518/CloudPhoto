@@ -505,6 +505,7 @@ function AppContent() {
             onSubjectUpdate={handleSubjectUpdate}
             onRenamePhoto={handleRenamePhoto}
             onToggleFavorite={handleToggleFavorite}
+            onMovePhoto={handleMovePhoto}
             onDownloadStateChange={setDownloading}
             userName={user?.displayName}
             showImportantMoments={false}
@@ -516,6 +517,7 @@ function AppContent() {
             onSubjectUpdate={handleSubjectUpdate}
             onRenamePhoto={handleRenamePhoto}
             onToggleFavorite={handleToggleFavorite}
+            onMovePhoto={handleMovePhoto}
             onDownloadStateChange={setDownloading}
             userName={user?.displayName}
             showMemoryHighlights={false}

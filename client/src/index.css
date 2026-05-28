@@ -1725,6 +1725,66 @@ body {
 .modal-download-btn:hover:not(:disabled) { background: #005fa3; }
 .modal-download-btn:disabled { background: #93c5fd; cursor: not-allowed; }
 
+.modal-actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.modal-favorite-btn,
+.modal-move-btn,
+.modal-delete-btn {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.modal-favorite-btn:hover,
+.modal-move-btn:hover { background: #f3f4f6; }
+
+.modal-favorite-btn--on {
+  border-color: #f59e0b;
+  color: #b45309;
+  background: #fffbeb;
+}
+
+.modal-folder-input {
+  flex: 1;
+  min-width: 180px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  color: #374151;
+}
+
+.modal-folder-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.modal-delete-btn {
+  border-color: #fecaca;
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+.modal-delete-btn:hover { background: #fee2e2; }
+
+.modal-move-btn:disabled,
+.modal-favorite-btn:disabled,
+.modal-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .modal-share-row {
   display: flex;
   align-items: center;
