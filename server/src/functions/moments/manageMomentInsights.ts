@@ -229,19 +229,21 @@ app.http("recordMomentView", {
         }
 
         try {
-          const viewersPath = `/viewers/${escapeJsonPointerSegment(viewer)}`;
-          const dailyViewsPath = `/dailyViews/${escapeJsonPointerSegment(today)}`;
+          const nextViewers = {
+            ...(resource.viewers ?? {}),
+            [viewer]: ((resource.viewers ?? {})[viewer] ?? 0) + 1,
+          };
+          const nextDailyViews = {
+            ...(resource.dailyViews ?? {}),
+            [today]: ((resource.dailyViews ?? {})[today] ?? 0) + 1,
+          };
           const patchOperations: Array<{ op: "set" | "incr"; path: string; value: unknown }> = [
             { op: "incr", path: "/totalViews", value: 1 },
             { op: "set", path: "/lastViewedAt", value: now },
             { op: "set", path: "/lastViewedBy", value: viewer },
             { op: "set", path: "/updatedAt", value: now },
-            resource.viewers?.[viewer] === undefined
-              ? { op: "set", path: viewersPath, value: 1 }
-              : { op: "incr", path: viewersPath, value: 1 },
-            resource.dailyViews?.[today] === undefined
-              ? { op: "set", path: dailyViewsPath, value: 1 }
-              : { op: "incr", path: dailyViewsPath, value: 1 },
+            { op: "set", path: "/viewers", value: nextViewers },
+            { op: "set", path: "/dailyViews", value: nextDailyViews },
           ];
 
           await container.item(id, id).patch(patchOperations);
@@ -254,14 +256,8 @@ app.http("recordMomentView", {
             totalViews: (resource.totalViews ?? 0) + 1,
             lastViewedAt: now,
             lastViewedBy: viewer,
-            viewers: {
-              ...(resource.viewers ?? {}),
-              [viewer]: ((resource.viewers ?? {})[viewer] ?? 0) + 1,
-            },
-            dailyViews: {
-              ...(resource.dailyViews ?? {}),
-              [today]: ((resource.dailyViews ?? {})[today] ?? 0) + 1,
-            },
+            viewers: nextViewers,
+            dailyViews: nextDailyViews,
             createdAt: resource.createdAt ?? now,
             updatedAt: now,
           };
