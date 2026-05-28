@@ -689,6 +689,23 @@ function FolderContent({
     }
   };
 
+  const handleModalFavoriteToggle = async () => {
+    if (!selectedPhoto) return;
+    const next = !selectedPhoto.favorite;
+    const ok = await onToggleFavorite(selectedPhoto.name, next);
+    if (ok) {
+      setSelectedPhoto({ ...selectedPhoto, favorite: next });
+    }
+  };
+
+  const handleModalDelete = () => {
+    if (!selectedPhoto) return;
+    if (!window.confirm(`确认删除照片：${displayName(selectedPhoto)}？`)) return;
+    onDelete(selectedPhoto.name);
+    setSelectedIdx(null);
+    setSelectedPhoto(null);
+  };
+
   const handleMove = async () => {
     if (!selectedPhoto) return;
     const target = resolveMoveTarget(movingTo);
@@ -935,6 +952,18 @@ function FolderContent({
               >
                 {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
               </button>
+
+              <div className="modal-actions-row">
+                <button
+                  className={`modal-favorite-btn${selectedPhoto.favorite ? " modal-favorite-btn--on" : ""}`}
+                  onClick={() => void handleModalFavoriteToggle()}
+                >
+                  {selectedPhoto.favorite ? "★ 取消收藏" : "☆ 收藏"}
+                </button>
+                <button className="modal-move-btn" onClick={() => setShowMovePanel((v) => !v)}>📁 移动</button>
+                <button className="modal-delete-btn" onClick={handleModalDelete}>🗑 删除</button>
+              </div>
+
               <div className="modal-share-row">
                 <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
                   <option value="1">1 小时</option>
