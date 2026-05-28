@@ -50,13 +50,11 @@ function normalizeBaseUrl(raw: string): string {
 }
 
 function resolvePublicBaseUrl(request: HttpRequest): string {
-  const appBase = process.env.APP_BASE_URL?.trim();
-  if (appBase) return normalizeBaseUrl(appBase);
+  // Use explicit share URL base only when configured.
+  const shareBase = process.env.SHARE_PUBLIC_BASE_URL?.trim();
+  if (shareBase) return normalizeBaseUrl(shareBase);
 
-  const proto = request.headers.get("x-forwarded-proto");
-  const host = request.headers.get("x-forwarded-host");
-  if (proto && host) return normalizeBaseUrl(`${proto}://${host}`);
-
+  // Default to current API origin to avoid frontend-auth interception.
   return normalizeBaseUrl(new URL(request.url).origin);
 }
 
