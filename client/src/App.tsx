@@ -198,7 +198,8 @@ function AppContent() {
     let disposed = false;
     const loadMomentsViews = async () => {
       try {
-        const links = await listManagedShareLinks();
+        const linksRaw = await listManagedShareLinks();
+        const links = Array.isArray(linksRaw) ? linksRaw : [];
         const counts = links.reduce<Record<string, number>>((acc, item) => {
           const key = item.blobName;
           if (!key) return acc;

@@ -69,9 +69,10 @@ export default function SettingsDialog({
         status: shareStatusFilter,
         q: shareSearch,
       });
-      setManagedShareLinks(links);
+      setManagedShareLinks(Array.isArray(links) ? links : []);
     } catch (e) {
       setManagedError(e instanceof Error ? e.message : "加载分享链接失败");
+      setManagedShareLinks([]);
     } finally {
       setManagedLoading(false);
     }
@@ -142,6 +143,10 @@ export default function SettingsDialog({
       setLinkBusyId(null);
     }
   };
+
+  const safeManagedShareLinks = Array.isArray(managedShareLinks)
+    ? managedShareLinks.filter((item): item is ManagedShareLink => !!item && typeof item.id === "string")
+    : [];
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
@@ -305,11 +310,11 @@ export default function SettingsDialog({
                 <p className="add-admin-hint">正在加载分享链接…</p>
               ) : managedError ? (
                 <p className="auth-error">{managedError}</p>
-              ) : managedShareLinks.length === 0 ? (
+              ) : safeManagedShareLinks.length === 0 ? (
                 <p className="add-admin-hint">暂无云端分享记录，先从照片详情创建一个分享链接。</p>
               ) : (
                 <div className="settings-share-list">
-                  {managedShareLinks.map((item) => {
+                  {safeManagedShareLinks.map((item) => {
                     const statusText = item.status === "active" ? "有效" : item.status === "revoked" ? "已失效" : "已过期";
                     const busy = linkBusyId === item.id;
                     const publicUrl = item.url ?? `${window.location.origin}/api/photos/share/open/${encodeURIComponent(item.id)}`;
