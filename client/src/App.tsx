@@ -150,14 +150,14 @@ function AppContent() {
   }, [photos, filters]);
 
   const importantPhotos = useMemo(() => {
-    const scored = [...filteredPhotos].map((p) => {
+    const scored = [...photos].map((p) => {
       const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
       const recencyDays = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60 * 24));
       const score = (p.favorite ? 120 : 0) + (p.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
       return { p, score };
     });
     return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 120);
-  }, [filteredPhotos]);
+  }, [photos]);
 
   const momentsStats = useMemo(() => {
     const now = Date.now();
@@ -488,7 +488,7 @@ function AppContent() {
 
         {activeTab === "moments" && (
           <div className="timeline-upload-hint">
-            ⭐ 这里展示按收藏、主题与近期权重排序的重点照片
+            ⭐ 这里展示按互动热度排序的重点照片（浏览记录跨设备持久化）
           </div>
         )}
 
@@ -502,7 +502,7 @@ function AppContent() {
           </div>
         )}
 
-        {(activeTab === "timeline" || activeTab === "moments") && (
+        {activeTab === "timeline" && (
           <FilterBar
             filters={filters}
             onChange={setFilters}

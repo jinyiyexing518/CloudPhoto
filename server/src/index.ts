@@ -8,6 +8,7 @@ import "./functions/photos/downloadPhoto";
 import "./functions/share/createShareLink";
 import "./functions/share/openShareLink";
 import "./functions/share/manageShareLinks";
+import "./functions/moments/manageMomentInsights";
 import "./functions/trash/listTrash";
 import "./functions/trash/restorePhoto";
 import "./functions/trash/deleteTrashItem";

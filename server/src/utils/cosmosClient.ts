@@ -156,6 +156,7 @@ export type ShareLinkStatus = "active" | "revoked" | "expired";
 export type ShareLinkTargetType = "photo" | "folder";
 
 export interface ShareLinkDoc {
+  docType?: "share";
   id: string;
   createdByUserId: string;
   createdByName: string;
@@ -175,4 +176,19 @@ export interface ShareLinkDoc {
 
 export async function getShareLinksContainer(): Promise<Container> {
   return getContainer("sharelinks");
+}
+
+export interface MomentInsightDoc {
+  docType: "momentInsight";
+  id: string;
+  photoName: string;
+  scopeType: "personal" | "group";
+  scopeId: string;
+  totalViews: number;
+  lastViewedAt?: string;
+  lastViewedBy?: string;
+  viewers: Record<string, number>;
+  dailyViews: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
 }

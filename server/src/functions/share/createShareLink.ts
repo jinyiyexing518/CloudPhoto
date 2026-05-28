@@ -161,6 +161,7 @@ app.http("createShareLink", {
           ? "未分类"
           : `文件夹：${folderPath}`;
         const doc: ShareLinkDoc = {
+          docType: "share",
           id: linkId,
           createdByUserId: payload.userId,
           createdByName: payload.displayName,
@@ -275,6 +276,7 @@ app.http("createShareLink", {
         || actualBlobName.split("/").pop()
         || actualBlobName;
       const doc: ShareLinkDoc = {
+        docType: "share",
         id: linkId,
         createdByUserId: payload.userId,
         createdByName: payload.displayName,

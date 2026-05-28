@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Photo, updatePhotoSubject, renamePhoto as apiRenamePhoto, downloadPhotoApi, createPhotoShareLink } from "../../services/photoApi";
+import {
+  Photo,
+  updatePhotoSubject,
+  renamePhoto as apiRenamePhoto,
+  downloadPhotoApi,
+  createPhotoShareLink,
+  listMomentInsights,
+  recordMomentViewApi,
+  MomentInsight,
+} from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
 import PhotoCard from "./PhotoCard";
@@ -26,6 +35,23 @@ interface DateGroup {
   photos: Photo[];
 }
 
+interface MomentsFilterState {
+  query: string;
+  viewBand: "all" | "viewed" | "hot" | "unviewed";
+  sortBy: "engagement" | "views" | "recent" | "shares" | "recommended";
+}
+
+interface MomentCardData {
+  photo: Photo;
+  rank: number;
+  score: number;
+  shareViews: number;
+  totalViews: number;
+  lastViewedAt?: string;
+  topViewer?: string;
+  engagement: number;
+}
+
 const PAGE_SIZE = 120;
 
 function splitDisplayName(value: string): { baseName: string; extension: string } {
@@ -49,6 +75,16 @@ function buildRenamedPhotoName(photo: Photo, inputName: string): string {
   const currentDisplayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
   const { extension } = splitDisplayName(currentDisplayName);
   return `${inputName.trim()}${extension}`;
+}
+
+function getTopViewer(insight?: MomentInsight): string | undefined {
+  if (!insight?.viewers) return undefined;
+  return Object.entries(insight.viewers).sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+function getPeakViewDay(insight?: MomentInsight): string | undefined {
+  if (!insight?.dailyViews) return undefined;
+  return Object.entries(insight.dailyViews).sort((a, b) => b[1] - a[1])[0]?.[0];
 }
 
 function groupByDate(photos: Photo[]): DateGroup[] {
@@ -108,6 +144,12 @@ export default function PhotoGallery({
   const [moveFolderInput, setMoveFolderInput] = useState("");
   const [moving, setMoving] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>({});
+  const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>({
+    query: "",
+    viewBand: "all",
+    sortBy: "engagement",
+  });
 
   // Batch selection
   const [selectMode, setSelectMode] = useState(false);
@@ -153,7 +195,7 @@ export default function PhotoGallery({
     let failed = 0;
     for (let i = 0; i < selectedList.length; i++) {
       const p = selectedList[i];
-      const nextName = `${safePrefix}-${String(start + i).padStart(3, "0")}`;
+      const nextName = buildRenamedPhotoName(p, `${safePrefix}-${String(start + i).padStart(3, "0")}`);
       try {
         await apiRenamePhoto(p.name, nextName, userName);
         onRenamePhoto(p.name, nextName);
@@ -210,20 +252,127 @@ export default function PhotoGallery({
     return (photo.favorite ? 120 : 0) + (photo.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
   }, []);
 
+  useEffect(() => {
+    if (!momentsMode) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const map = await listMomentInsights(flatPhotos.map((photo) => photo.name));
+        if (!cancelled) setMomentsInsightsMap(map);
+      } catch {
+        if (!cancelled) setMomentsInsightsMap({});
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [flatPhotos, momentsMode]);
+
   const momentCards = useMemo(() => {
-    return flatPhotos.slice(0, visibleCount).map((photo, index) => {
+    const filteredPhotos = flatPhotos.filter((photo) => {
+      const insight = momentsInsightsMap[photo.name];
+      const totalViews = insight?.totalViews ?? 0;
+      const haystack = `${photo.originalName ?? ""} ${photo.subject ?? ""} ${photo.createdBy ?? ""}`.toLowerCase();
+      if (momentsFilters.query && !haystack.includes(momentsFilters.query.toLowerCase())) return false;
+      if (momentsFilters.viewBand === "viewed" && totalViews === 0) return false;
+      if (momentsFilters.viewBand === "hot" && totalViews < 3) return false;
+      if (momentsFilters.viewBand === "unviewed" && totalViews > 0) return false;
+      return true;
+    });
+
+    const ranked = filteredPhotos.map((photo) => {
+      const insight = momentsInsightsMap[photo.name];
       const shareViews = momentsShareViews[photo.name] ?? 0;
+      const score = Math.round(getMomentScore(photo));
+      const totalViews = insight?.totalViews ?? 0;
+      const lastViewedAt = insight?.lastViewedAt;
+      const recentBoost = lastViewedAt
+        ? Math.max(0, 72 - (Date.now() - new Date(lastViewedAt).getTime()) / (1000 * 60 * 60))
+        : 0;
+      const engagement = score + totalViews * 24 + shareViews * 10 + recentBoost;
       return {
         photo,
-        rank: index + 1,
-        score: Math.round(getMomentScore(photo)),
+        rank: 0,
+        score,
         shareViews,
+        totalViews,
+        lastViewedAt,
+        topViewer: getTopViewer(insight),
+        engagement,
+      } satisfies MomentCardData;
+    });
+
+    ranked.sort((a, b) => {
+      switch (momentsFilters.sortBy) {
+        case "views":
+          return b.totalViews - a.totalViews || b.engagement - a.engagement;
+        case "recent":
+          return (new Date(b.lastViewedAt ?? 0).getTime() - new Date(a.lastViewedAt ?? 0).getTime()) || b.engagement - a.engagement;
+        case "shares":
+          return b.shareViews - a.shareViews || b.engagement - a.engagement;
+        case "recommended":
+          return b.score - a.score || b.engagement - a.engagement;
+        default:
+          return b.engagement - a.engagement;
+      }
+    });
+
+    return ranked.slice(0, visibleCount).map((item, index) => ({ ...item, rank: index + 1 }));
+  }, [flatPhotos, getMomentScore, momentsFilters, momentsInsightsMap, momentsShareViews, visibleCount]);
+
+  const modalPhotos = useMemo(
+    () => (momentsMode ? momentCards.map((item) => item.photo) : flatPhotos),
+    [flatPhotos, momentCards, momentsMode],
+  );
+
+  const selectedMomentInsight = selectedPhoto ? momentsInsightsMap[selectedPhoto.name] : undefined;
+
+  const trackMomentView = useCallback((photo: Photo) => {
+    if (!momentsMode) return;
+    const viewer = (userName?.trim() || "匿名用户").slice(0, 80);
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+
+    setMomentsInsightsMap((prev) => {
+      const current = prev[photo.name] ?? {
+        photoName: photo.name,
+        totalViews: 0,
+        viewers: {},
+        dailyViews: {},
+      };
+      return {
+        ...prev,
+        [photo.name]: {
+          ...current,
+          totalViews: (current.totalViews ?? 0) + 1,
+          lastViewedAt: now.toISOString(),
+          lastViewedBy: viewer,
+          viewers: {
+            ...(current.viewers ?? {}),
+            [viewer]: ((current.viewers ?? {})[viewer] ?? 0) + 1,
+          },
+          dailyViews: {
+            ...(current.dailyViews ?? {}),
+            [today]: ((current.dailyViews ?? {})[today] ?? 0) + 1,
+          },
+        },
       };
     });
-  }, [flatPhotos, getMomentScore, momentsShareViews, visibleCount]);
+
+    void recordMomentViewApi(photo.name, userName).then((serverItem) => {
+      if (!serverItem) return;
+      setMomentsInsightsMap((prev) => ({
+        ...prev,
+        [photo.name]: serverItem,
+      }));
+    }).catch(() => {
+      // Keep optimistic local state on transient failures.
+    });
+  }, [momentsMode, userName]);
 
   const navigateToPhoto = useCallback((idx: number) => {
-    const photo = flatPhotos[idx];
+    const photo = modalPhotos[idx];
     if (!photo) return;
     setSelectedIdx(idx);
     setSelectedPhoto(photo);
@@ -233,7 +382,8 @@ export default function PhotoGallery({
     setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
-  }, [flatPhotos]);
+    trackMomentView(photo);
+  }, [modalPhotos, trackMomentView]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -241,14 +391,14 @@ export default function PhotoGallery({
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") { setSelectedIdx(null); setSelectedPhoto(null); }
       if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1);
-      if (e.key === "ArrowRight" && selectedIdx < flatPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
+      if (e.key === "ArrowRight" && selectedIdx < modalPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedIdx, flatPhotos.length, navigateToPhoto]);
+  }, [selectedIdx, modalPhotos.length, navigateToPhoto]);
 
   const openModal = (photo: Photo) => {
-    const idx = flatPhotos.findIndex((p) => p.name === photo.name);
+    const idx = modalPhotos.findIndex((p) => p.name === photo.name);
     setSelectedIdx(idx >= 0 ? idx : null);
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -257,6 +407,7 @@ export default function PhotoGallery({
     setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
+    trackMomentView(photo);
   };
 
   const saveSubject = async () => {
@@ -438,22 +589,63 @@ export default function PhotoGallery({
 
       {momentsMode ? (
         <section className="moments-board">
+          <div className="moments-filter-bar">
+            <input
+              className="moments-filter-input"
+              type="search"
+              placeholder="按文件名 / 主题 / 上传者搜索"
+              value={momentsFilters.query}
+              onChange={(e) => setMomentsFilters((prev) => ({ ...prev, query: e.target.value }))}
+            />
+            <select
+              className="moments-filter-select"
+              value={momentsFilters.viewBand}
+              onChange={(e) => setMomentsFilters((prev) => ({ ...prev, viewBand: e.target.value as MomentsFilterState["viewBand"] }))}
+            >
+              <option value="all">全部浏览状态</option>
+              <option value="viewed">看过的</option>
+              <option value="hot">高频查看</option>
+              <option value="unviewed">还没看过</option>
+            </select>
+            <select
+              className="moments-filter-select"
+              value={momentsFilters.sortBy}
+              onChange={(e) => setMomentsFilters((prev) => ({ ...prev, sortBy: e.target.value as MomentsFilterState["sortBy"] }))}
+            >
+              <option value="engagement">按互动热度排序</option>
+              <option value="views">按查看次数排序</option>
+              <option value="recent">按最近查看排序</option>
+              <option value="shares">按分享浏览排序</option>
+              <option value="recommended">按推荐值排序</option>
+            </select>
+          </div>
           <div className="moments-grid">
-            {momentCards.map(({ photo, rank, score, shareViews }) => {
+            {momentCards.map(({ photo, rank, score, shareViews, totalViews, lastViewedAt, topViewer, engagement }) => {
               const raw = photo.createdAt ?? photo.lastModified;
               const dateText = raw ? formatDate(raw) : "—";
               const display = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+              const engagementPercent = Math.max(6, Math.min(100, Math.round(engagement / 4)));
+              const rankBadge = rank <= 3 ? (rank === 1 ? "🏆" : rank === 2 ? "🥈" : "🥉") : "⭐";
               return (
                 <article key={photo.name} className="moments-card" onClick={() => openModal(photo)}>
-                  <div className="moments-rank">#{rank}</div>
+                  <div className="moments-rank">{rankBadge} #{rank}</div>
                   <img src={photo.url} alt={display} loading="lazy" className="moments-thumb" />
                   <div className="moments-card-body">
-                    <div className="moments-title" title={display}>{display}</div>
+                    <div className="moments-title-row">
+                      <div className="moments-title" title={display}>{display}</div>
+                      <span className="moments-score-pill">热度 {Math.round(engagement)}</span>
+                    </div>
                     <div className="moments-chips">
+                      <span>查看 {totalViews}</span>
                       <span>推荐值 {score}</span>
                       <span>分享浏览 {shareViews}</span>
                     </div>
+                    <div className="moments-energy">
+                      <span className="moments-energy-label">热度进度</span>
+                      <span className="moments-energy-track"><span className="moments-energy-fill" style={{ width: `${engagementPercent}%` }} /></span>
+                    </div>
                     <div className="moments-meta">👤 {photo.createdBy ?? "未知"} · {dateText}</div>
+                    <div className="moments-meta">最近查看：{lastViewedAt ? formatDate(lastViewedAt) : "还没人看过"}{topViewer ? ` · 常看：${topViewer}` : ""}</div>
                   </div>
                 </article>
               );
@@ -511,7 +703,7 @@ export default function PhotoGallery({
             {selectedIdx !== null && selectedIdx > 0 && (
               <button className="modal-nav modal-nav--prev" onClick={() => navigateToPhoto(selectedIdx - 1)} title="上一张 (←)">‹</button>
             )}
-            {selectedIdx !== null && selectedIdx < flatPhotos.length - 1 && (
+            {selectedIdx !== null && selectedIdx < modalPhotos.length - 1 && (
               <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title="下一张 (→)">›</button>
             )}
             <img src={selectedPhoto.url} alt={selectedPhoto.name} />
@@ -645,9 +837,25 @@ export default function PhotoGallery({
 
                 <span className="modal-detail-label">Share views</span>
                 <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
+
+                {momentsMode && (
+                  <>
+                    <span className="modal-detail-label">查看次数</span>
+                    <span className="modal-detail-value">{selectedMomentInsight?.totalViews ?? 0}</span>
+
+                    <span className="modal-detail-label">最近查看</span>
+                    <span className="modal-detail-value">{selectedMomentInsight?.lastViewedAt ? formatDate(selectedMomentInsight.lastViewedAt) : "暂无"}</span>
+
+                    <span className="modal-detail-label">常看用户</span>
+                    <span className="modal-detail-value">{getTopViewer(selectedMomentInsight) ?? "暂无"}</span>
+
+                    <span className="modal-detail-label">浏览高峰日</span>
+                    <span className="modal-detail-value">{getPeakViewDay(selectedMomentInsight) ?? "暂无"}</span>
+                  </>
+                )}
               </div>
             </div>
-            {flatPhotos.length > 1 && (
+            {modalPhotos.length > 1 && (
               <div className="modal-nav-hint">← → 键切换 · Esc 关闭</div>
             )}
           </div>

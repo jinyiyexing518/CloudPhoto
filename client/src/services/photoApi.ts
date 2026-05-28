@@ -461,6 +461,16 @@ export interface ManagedShareLink {
   revokedAt?: string;
 }
 
+export interface MomentInsight {
+  photoName: string;
+  totalViews: number;
+  lastViewedAt?: string;
+  lastViewedBy?: string;
+  viewers: Record<string, number>;
+  dailyViews: Record<string, number>;
+  updatedAt?: string;
+}
+
 interface ManagedShareLinksResponse {
   items?: ManagedShareLink[];
   managedUnavailable?: boolean;
@@ -504,6 +514,55 @@ export async function updateManagedShareLink(
     }));
   }
   return response.json() as Promise<ManagedShareLink>;
+}
+
+export async function listMomentInsights(photoNames: string[]): Promise<Record<string, MomentInsight>> {
+  if (photoNames.length === 0) return {};
+  const params = new URLSearchParams();
+  for (const name of photoNames) {
+    if (name.trim()) params.append("name", name);
+  }
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/moments/insights?${params.toString()}`,
+    { headers: authHeaders() },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Failed to fetch moment insights");
+  }
+  const data = await response.json() as { items?: MomentInsight[] };
+  const items = Array.isArray(data.items) ? data.items : [];
+  return items.reduce<Record<string, MomentInsight>>((acc, item) => {
+    if (!item.photoName) return acc;
+    acc[item.photoName] = {
+      ...item,
+      viewers: item.viewers ?? {},
+      dailyViews: item.dailyViews ?? {},
+      totalViews: Number.isFinite(item.totalViews) ? item.totalViews : 0,
+    };
+    return acc;
+  }, {});
+}
+
+export async function recordMomentViewApi(photoName: string, viewerName?: string): Promise<MomentInsight | null> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/moments/view`,
+    {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ photoName, viewerName }),
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 409) return null;
+    const err = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Failed to record moment view");
+  }
+
+  const data = await response.json().catch(() => ({})) as { item?: MomentInsight; ok?: boolean };
+  if (data.ok === false) return null;
+  return data.item ?? null;
 }
 
 export async function renameFolderApi(

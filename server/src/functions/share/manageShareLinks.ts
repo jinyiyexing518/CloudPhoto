@@ -101,8 +101,11 @@ app.http("listShareLinks", {
 
       const container = await getShareLinksContainer();
       const { resources } = await container.items.query<ShareLinkDoc>({
-        query: "SELECT * FROM c WHERE c.createdByUserId = @uid ORDER BY c.createdAt DESC",
-        parameters: [{ name: "@uid", value: payload.userId }],
+        query: "SELECT * FROM c WHERE c.createdByUserId = @uid AND (c.docType = @shareType OR NOT IS_DEFINED(c.docType)) ORDER BY c.createdAt DESC",
+        parameters: [
+          { name: "@uid", value: payload.userId },
+          { name: "@shareType", value: "share" },
+        ],
       }).fetchAll();
 
       const nowMs = Date.now();
