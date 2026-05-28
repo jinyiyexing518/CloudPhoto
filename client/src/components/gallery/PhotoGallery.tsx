@@ -731,9 +731,9 @@ export default function PhotoGallery({
                       <span className="moments-score-pill">热度 {Math.round(engagement)}</span>
                     </div>
                     <div className="moments-chips">
-                      <span>浏览量 {totalViews}</span>
-                      <span>推荐值 {score}</span>
-                      <span>分享量 {shareViews}</span>
+                      <span><strong>浏览量</strong><em>{totalViews}</em></span>
+                      <span><strong>推荐值</strong><em>{score}</em></span>
+                      <span><strong>分享量</strong><em>{shareViews}</em></span>
                     </div>
                     <div className="moments-energy">
                       <span className="moments-energy-label">热度进度</span>

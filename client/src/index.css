@@ -817,6 +817,21 @@ body {
   padding: 2px 8px;
   font-size: 0.72rem;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.moments-chips span strong {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.moments-chips span em {
+  font-style: normal;
+  font-weight: 800;
+  color: #0f172a;
 }
 
 .moments-energy {
