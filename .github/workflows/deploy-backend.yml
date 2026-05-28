@@ -34,12 +34,29 @@ jobs:
         run: yarn build
         working-directory: server
 
-      - name: Azure Login
+      - name: Azure Login (attempt 1)
+        id: azure_login_first
+        uses: azure/login@v2
+        continue-on-error: true
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure Login (attempt 2)
+        id: azure_login_second
+        if: steps.azure_login_first.outcome == 'failure'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure Login
+        if: steps.azure_login_first.outcome == 'failure' && steps.azure_login_second.outcome == 'failure'
+        run: |
+          echo "Azure login failed twice. Please verify OIDC federated credential and subscription access for the configured service principal."
+          exit 1
 
       - name: Create deployment zip
         run: |
