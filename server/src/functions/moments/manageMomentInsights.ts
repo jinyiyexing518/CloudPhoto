@@ -46,6 +46,10 @@ function normalizeViewerName(viewerName: string | undefined): string {
   return value.slice(0, 80);
 }
 
+function escapeJsonPointerSegment(value: string): string {
+  return value.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
 function toMomentInsightId(photoName: string): string {
   const encoded = Buffer.from(photoName, "utf8").toString("base64");
   return `moment:${encoded}`;
@@ -224,37 +228,45 @@ app.http("recordMomentView", {
           }
         }
 
-        const updated: MomentInsightDoc = {
-          ...resource,
-          photoName,
-          scopeType: scope.scopeType,
-          scopeId: scope.scopeId,
-          totalViews: (resource.totalViews ?? 0) + 1,
-          lastViewedAt: now,
-          lastViewedBy: viewer,
-          viewers: {
-            ...(resource.viewers ?? {}),
-            [viewer]: ((resource.viewers ?? {})[viewer] ?? 0) + 1,
-          },
-          dailyViews: {
-            ...(resource.dailyViews ?? {}),
-            [today]: ((resource.dailyViews ?? {})[today] ?? 0) + 1,
-          },
-          createdAt: resource.createdAt ?? now,
-          updatedAt: now,
-        };
-
         try {
-          const replaceOptions = resource._etag
-            ? {
-                accessCondition: {
-                  type: "IfMatch" as const,
-                  condition: resource._etag,
-                },
-              }
-            : undefined;
-          await container.item(id, id).replace(updated, replaceOptions);
-          return json({ ok: true, item: updated });
+          const viewersPath = `/viewers/${escapeJsonPointerSegment(viewer)}`;
+          const dailyViewsPath = `/dailyViews/${escapeJsonPointerSegment(today)}`;
+          const patchOperations: Array<{ op: "set" | "incr"; path: string; value: unknown }> = [
+            { op: "incr", path: "/totalViews", value: 1 },
+            { op: "set", path: "/lastViewedAt", value: now },
+            { op: "set", path: "/lastViewedBy", value: viewer },
+            { op: "set", path: "/updatedAt", value: now },
+            resource.viewers?.[viewer] === undefined
+              ? { op: "set", path: viewersPath, value: 1 }
+              : { op: "incr", path: viewersPath, value: 1 },
+            resource.dailyViews?.[today] === undefined
+              ? { op: "set", path: dailyViewsPath, value: 1 }
+              : { op: "incr", path: dailyViewsPath, value: 1 },
+          ];
+
+          await container.item(id, id).patch(patchOperations);
+
+          const item: MomentInsightDoc = {
+            ...resource,
+            photoName,
+            scopeType: scope.scopeType,
+            scopeId: scope.scopeId,
+            totalViews: (resource.totalViews ?? 0) + 1,
+            lastViewedAt: now,
+            lastViewedBy: viewer,
+            viewers: {
+              ...(resource.viewers ?? {}),
+              [viewer]: ((resource.viewers ?? {})[viewer] ?? 0) + 1,
+            },
+            dailyViews: {
+              ...(resource.dailyViews ?? {}),
+              [today]: ((resource.dailyViews ?? {})[today] ?? 0) + 1,
+            },
+            createdAt: resource.createdAt ?? now,
+            updatedAt: now,
+          };
+
+          return json({ ok: true, item });
         } catch (replaceErr) {
           if (isConcurrentConflict(replaceErr) && attempt < maxAttempts) continue;
           throw replaceErr;

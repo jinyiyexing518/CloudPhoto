@@ -161,34 +161,6 @@ function writeMomentsDiagnostics(status: MomentsDiagnosticsStatus, details?: { m
   }
 }
 
-function mergeMomentInsightMaps(
-  base: Record<string, MomentInsight>,
-  incoming: Record<string, MomentInsight>,
-): Record<string, MomentInsight> {
-  const merged = { ...base };
-  for (const [photoName, next] of Object.entries(incoming)) {
-    const current = merged[photoName];
-    if (!current) {
-      merged[photoName] = next;
-      continue;
-    }
-    const lastViewedCandidates = [current.lastViewedAt, next.lastViewedAt].filter(Boolean).sort();
-    const updatedCandidates = [current.updatedAt, next.updatedAt].filter(Boolean).sort();
-    merged[photoName] = {
-      photoName,
-      totalViews: Math.max(current.totalViews ?? 0, next.totalViews ?? 0),
-      lastViewedAt: lastViewedCandidates[lastViewedCandidates.length - 1],
-      lastViewedBy: next.lastViewedAt && (!current.lastViewedAt || next.lastViewedAt >= current.lastViewedAt)
-        ? next.lastViewedBy
-        : current.lastViewedBy,
-      viewers: { ...(current.viewers ?? {}), ...(next.viewers ?? {}) },
-      dailyViews: { ...(current.dailyViews ?? {}), ...(next.dailyViews ?? {}) },
-      updatedAt: updatedCandidates[updatedCandidates.length - 1],
-    };
-  }
-  return merged;
-}
-
 function groupByDate(photos: Photo[]): DateGroup[] {
   const map = new Map<string, Photo[]>();
 
@@ -375,7 +347,7 @@ export default function PhotoGallery({
         const map = await listMomentInsights(flatPhotos.map((photo) => photo.name));
         if (!cancelled) {
           writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(map).length });
-          setMomentsInsightsMap((prev) => mergeMomentInsightMaps(prev, map));
+          setMomentsInsightsMap(map);
         }
       } catch (e) {
         if (!cancelled && e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
@@ -506,9 +478,10 @@ export default function PhotoGallery({
 
     void recordMomentViewApi(photoName, userName).then((serverItem) => {
       if (!serverItem) return;
-      writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(momentsInsightsMap).length });
+      writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(momentsInsightsMap).length + 1 });
       setMomentsInsightsMap((prev) => ({
-        ...mergeMomentInsightMaps(prev, { [photoName]: serverItem }),
+        ...prev,
+        [photoName]: serverItem,
       }));
     }).catch((e) => {
       if (e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
