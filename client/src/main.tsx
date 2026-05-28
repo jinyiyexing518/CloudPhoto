@@ -19,7 +19,6 @@ const registerPwa = async () => {
     },
     onNeedRefresh() {
       window.dispatchEvent(new Event("cloudphoto-pwa-update-ready"));
-      void updateSW(true);
     },
     onOfflineReady() {
       window.dispatchEvent(new Event("cloudphoto-pwa-offline-ready"));
