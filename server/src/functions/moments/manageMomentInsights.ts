@@ -58,14 +58,19 @@ function escapeJsonPointerSegment(value: string): string {
 }
 
 function toMomentInsightId(photoName: string): string {
-  const encoded = Buffer.from(photoName, "utf8").toString("base64");
+  const encoded = Buffer.from(photoName, "utf8").toString("base64url");
   return `moment:${encoded}`;
 }
 
 function decodeMomentInsightId(id: string): string | null {
   if (!id.startsWith("moment:")) return null;
   try {
-    return Buffer.from(id.slice("moment:".length), "base64").toString("utf8");
+    const encoded = id.slice("moment:".length);
+    try {
+      return Buffer.from(encoded, "base64url").toString("utf8");
+    } catch {
+      return Buffer.from(encoded, "base64").toString("utf8");
+    }
   } catch {
     return null;
   }
