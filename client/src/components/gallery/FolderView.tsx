@@ -6,8 +6,8 @@ import {
   downloadPhotoApi,
   createPhotoShareLink,
 } from "../../services/photoApi";
-import { addRecentShareLink } from "../../services/shareLinksStore";
-import { copyText } from "../../services/clipboard";
+import { addRecentShareLink } from "../../features/share/shareLinksStore";
+import { copyText } from "../../features/share/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 
@@ -159,16 +159,26 @@ export default function FolderView({
   userName,
   contextKey = "personal",
 }: Props) {
+  type FolderHistoryState = {
+    __cfFolderNav?: true;
+    contextKey?: string;
+    path?: string | null;
+  };
+
   const showToast = useToast();
   const [currentPath, setCurrentPath] = useState<string | null>(null); // null = root
   const [extraFolders, setExtraFolders] = useState<string[]>([]);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const hydratedContextRef = useRef<string | null>(null);
+  const historyHydratedRef = useRef(false);
+  const applyingPopstateRef = useRef(false);
 
   // Restore extra (empty) folders and last-visited path from localStorage when context changes
   useEffect(() => {
     hydratedContextRef.current = null;
+    historyHydratedRef.current = false;
+    applyingPopstateRef.current = false;
     const stored = localStorage.getItem(`cf_xf_${contextKey}`);
     try { setExtraFolders(stored ? (JSON.parse(stored) as string[]) : []); } catch { setExtraFolders([]); }
     // null = root (key absent), "" = uncategorised, "folderName" = folder
@@ -176,6 +186,44 @@ export default function FolderView({
     setCurrentPath(storedPath !== null ? storedPath : null);
     hydratedContextRef.current = contextKey;
   }, [contextKey]);
+
+  // Bridge folder path into browser history so device back key returns to previous folder.
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent) => {
+      const state = event.state as FolderHistoryState | null;
+      if (!state?.__cfFolderNav || state.contextKey !== contextKey) return;
+      applyingPopstateRef.current = true;
+      setCurrentPath(state.path ?? null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [contextKey]);
+
+  useEffect(() => {
+    if (hydratedContextRef.current !== contextKey) return;
+
+    const normalizedPath = currentPath ?? null;
+    const state = window.history.state as FolderHistoryState | null;
+
+    if (applyingPopstateRef.current) {
+      applyingPopstateRef.current = false;
+      return;
+    }
+
+    if (!historyHydratedRef.current || !state?.__cfFolderNav || state.contextKey !== contextKey) {
+      // Seed with root first, then push the actual path if currently inside a subfolder.
+      window.history.replaceState({ __cfFolderNav: true, contextKey, path: null }, "");
+      if (normalizedPath !== null) {
+        window.history.pushState({ __cfFolderNav: true, contextKey, path: normalizedPath }, "");
+      }
+      historyHydratedRef.current = true;
+      return;
+    }
+
+    if (state.path !== normalizedPath) {
+      window.history.pushState({ __cfFolderNav: true, contextKey, path: normalizedPath }, "");
+    }
+  }, [contextKey, currentPath]);
 
   // Persist extra folders whenever they change
   useEffect(() => {

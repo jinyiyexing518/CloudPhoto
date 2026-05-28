@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Photo, updatePhotoSubject, renamePhoto as apiRenamePhoto, downloadPhotoApi, createPhotoShareLink } from "../../services/photoApi";
-import { addRecentShareLink } from "../../services/shareLinksStore";
-import { copyText } from "../../services/clipboard";
+import { addRecentShareLink } from "../../features/share/shareLinksStore";
+import { copyText } from "../../features/share/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 

@@ -9,8 +9,8 @@ import {
   updateManagedShareLink,
   ManagedShareLink,
 } from "../../services/photoApi";
-import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../services/shareLinksStore";
-import { copyText } from "../../services/clipboard";
+import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../features/share/shareLinksStore";
+import { copyText } from "../../features/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 
