@@ -5,6 +5,7 @@ interface Props {
   photo: Photo;
   onClick: () => void;
   onDelete: () => void;
+  onMoveRequest?: () => void;
   /** When defined, card is in selection mode: clicking selects/deselects */
   selected?: boolean;
   onSelect?: (e: React.MouseEvent) => void;
@@ -17,6 +18,7 @@ export default function PhotoCard({
   photo,
   onClick,
   onDelete,
+  onMoveRequest,
   selected,
   onSelect,
   draggable,
@@ -60,16 +62,30 @@ export default function PhotoCard({
             {displayName}
           </span>
           {!onSelect && (
-          <button
-            className="delete-btn"
-            title="Delete photo"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowConfirm(true);
-            }}
-          >
-            🗑
-          </button>
+            <>
+              {onMoveRequest && (
+                <button
+                  className="move-btn"
+                  title="移动照片"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveRequest();
+                  }}
+                >
+                  →
+                </button>
+              )}
+              <button
+                className="delete-btn"
+                title="Delete photo"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowConfirm(true);
+                }}
+              >
+                🗑
+              </button>
+            </>
           )}
         </div>
         {(uploadTime || photo.createdBy || photo.subject) && (

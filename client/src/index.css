@@ -1147,6 +1147,23 @@ body {
   opacity: 1;
 }
 
+.move-btn {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: 6px;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  line-height: 1.2;
+}
+
+.move-btn:hover {
+  background: #dbeafe;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -1296,6 +1313,11 @@ body {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 4px;
+}
+
+.quick-move-select {
+  width: 100%;
+  margin: 6px 0 8px;
 }
 
 .confirm-cancel-btn {

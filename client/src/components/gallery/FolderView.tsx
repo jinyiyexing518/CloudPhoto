@@ -434,6 +434,8 @@ function FolderContent({
   const [downloading, setDownloading] = useState(false);
   const [showMovePanel, setShowMovePanel] = useState(false);
   const [movingTo, setMovingTo] = useState(MOVE_UNSELECTED);
+  const [quickMovePhoto, setQuickMovePhoto] = useState<Photo | null>(null);
+  const [quickMoveTo, setQuickMoveTo] = useState(MOVE_UNSELECTED);
 
   const isMyUpload = uploadProgress?.folder === currentPath;
   const anyUploading = uploadProgress !== null;
@@ -546,6 +548,16 @@ function FolderContent({
     setSelectedPhoto(null);
   };
 
+  const handleQuickMove = async () => {
+    if (!quickMovePhoto || quickMoveTo === MOVE_UNSELECTED) return;
+    const ok = await onMovePhoto(quickMovePhoto.name, quickMoveTo);
+    if (ok) {
+      showToast(`已移动到「${quickMoveTo || UNCATEGORIZED}」`, "success");
+      setQuickMovePhoto(null);
+      setQuickMoveTo(MOVE_UNSELECTED);
+    }
+  };
+
   const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     await onUploadToFolder(e.target.files, currentPath, uploadSubject || undefined);
@@ -648,6 +660,10 @@ function FolderContent({
             photo={photo}
             onClick={() => !selectMode && openModal(photo)}
             onDelete={() => onDelete(photo.name)}
+            onMoveRequest={!selectMode ? () => {
+              setQuickMovePhoto(photo);
+              setQuickMoveTo(MOVE_UNSELECTED);
+            } : undefined}
             selected={selectMode ? selected.has(photo.name) : undefined}
             onSelect={selectMode ? (e) => { e.stopPropagation(); toggleSelect(photo.name); } : undefined}
             draggable={!selectMode}
@@ -860,6 +876,30 @@ function FolderContent({
             <div className="confirm-actions">
               <button className="confirm-cancel-btn" onClick={() => setShowBatchConfirm(false)}>取消</button>
               <button className="confirm-delete-btn" onClick={handleBatchDelete}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {quickMovePhoto && (
+        <div className="confirm-overlay" onClick={() => { setQuickMovePhoto(null); setQuickMoveTo(MOVE_UNSELECTED); }}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="confirm-title">移动照片</p>
+            <p className="confirm-filename">{displayName(quickMovePhoto)}</p>
+            <select
+              className="modal-move-select quick-move-select"
+              value={quickMoveTo}
+              onChange={(e) => setQuickMoveTo(e.target.value)}
+            >
+              <option value={MOVE_UNSELECTED} disabled>— 选择目标文件夹 —</option>
+              {currentPath !== "" && <option value="">{UNCATEGORIZED}</option>}
+              {allFolderPaths.filter((fp) => fp !== "" && fp !== currentPath).map((fp) => (
+                <option key={fp} value={fp}>{fp}</option>
+              ))}
+            </select>
+            <div className="confirm-actions">
+              <button className="confirm-cancel-btn" onClick={() => { setQuickMovePhoto(null); setQuickMoveTo(MOVE_UNSELECTED); }}>取消</button>
+              <button className="confirm-delete-btn" disabled={quickMoveTo === MOVE_UNSELECTED} onClick={() => void handleQuickMove()}>移动</button>
             </div>
           </div>
         </div>
