@@ -26,6 +26,8 @@ cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4 (backend)
         │       ├── groups   (partition: /id)
         │       ├── invites  (partition: /id)
         │       └── sharelinks (partition: /id)
+        │             ├── docType=share (managed share links)
+        │             └── docType=momentInsight (cross-device moments insights)
         │
         └── Azure Blob Storage (photostorage / photos)
                 └── Time-limited User Delegation SAS (2h, keyless)
@@ -68,7 +70,9 @@ build time (defaults to `/api`).
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
-- **Important moments tab** — important photos are ranked (favorite + subject + recency) and shown in a dedicated ⭐ tab, separate from timeline
+- **Important moments tab** — moments are ranked by engagement and shown in a dedicated ⭐ tab with independent filters and sort modes
+- **Moments cross-device analytics** — open/navigate in moments records views to backend (Cosmos), including total views, last viewed time, top viewer, and peak day
+- **Moments details focus** — moments modal details focus on recommendation score + engagement metrics (not timeline-style upload/modify metadata)
 - **Timeline pagination** — timeline initially loads the newest page and can load more progressively to keep first paint fast
 - **Search & filter** — filter by name, subject, uploader, date range
 - **Fullscreen modal** — view full details, edit subject / rename / download inline
@@ -164,6 +168,41 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
 }
 ```
 
+### MomentInsightDoc (`sharelinks` container, `docType="momentInsight"`)
+```jsonc
+{
+  "docType": "momentInsight",
+  "id": "moment:<base64(photoName)>",
+  "photoName": "personal/<userId>/<folder>/<file>",
+  "scopeType": "personal" | "group",
+  "scopeId": "<userId or groupId>",
+  "totalViews": 12,
+  "lastViewedAt": "2026-05-28T09:30:00Z",
+  "lastViewedBy": "Alice",
+  "viewers": { "Alice": 9, "Bob": 3 },
+  "dailyViews": { "2026-05-27": 4, "2026-05-28": 8 },
+  "createdAt": "2026-05-25T10:00:00Z",
+  "updatedAt": "2026-05-28T09:30:00Z"
+}
+```
+
+Moments scoring model used by the frontend:
+
+$$
+	ext{recommendationScore} =
+(\text{favorite}?120:0)
++(\text{subject}?20:0)
++\max(0, 40-\text{recencyDays})
+$$
+
+$$
+	ext{engagementScore} =
+	ext{recommendationScore}
++24\times\text{totalViews}
++10\times\text{shareViews}
++\text{recentViewBoost(0..72h)}
+$$
+
 ### Blob Metadata (per photo in Azure Blob Storage)
 ```
 originalName    base64-encoded original filename
@@ -204,6 +243,8 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `GET`    | `/api/photos/share/open/{linkId}` | — | Open managed public share link (redirects to a short-lived SAS and increments view stats) |
 | `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | List current user's managed share links with optional status/name filtering |
 | `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`, `hours=1..720`); conflict returns `409` |
+| `GET`    | `/api/photos/moments/insights?name=<photoName>&name=<photoName...>` | ✓ | Batch query moments analytics for specified photos (cross-device persisted) |
+| `POST`   | `/api/photos/moments/view` | ✓ | Record one moments view (`photoName`, optional `viewerName`) with optimistic concurrency |
 | `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName; conflict returns `409` |
 | `DELETE` | `/api/photos?name=<blobName>` | ✓ | Soft-delete a photo by blob name; conflict returns `409` |

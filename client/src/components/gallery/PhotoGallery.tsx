@@ -37,7 +37,7 @@ interface DateGroup {
 
 interface MomentsFilterState {
   query: string;
-  viewBand: "all" | "viewed" | "hot" | "unviewed";
+  viewBand: "all" | "viewed" | "hot" | "shared" | "favorite" | "unviewed";
   sortBy: "engagement" | "views" | "recent" | "shares" | "recommended";
 }
 
@@ -53,6 +53,13 @@ interface MomentCardData {
 }
 
 const PAGE_SIZE = 120;
+const MOMENT_SCORE_FAVORITE_WEIGHT = 120;
+const MOMENT_SCORE_SUBJECT_WEIGHT = 20;
+const MOMENT_SCORE_RECENCY_MAX = 40;
+const MOMENT_HOT_VIEW_THRESHOLD = 3;
+const MOMENT_ENGAGEMENT_VIEW_WEIGHT = 24;
+const MOMENT_ENGAGEMENT_SHARE_WEIGHT = 10;
+const MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS = 72;
 
 function splitDisplayName(value: string): { baseName: string; extension: string } {
   const trimmed = value.trim();
@@ -240,7 +247,9 @@ export default function PhotoGallery({
     const scored = [...flatPhotos].map((p) => {
       const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
       const recencyDays = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60 * 24));
-      const score = (p.favorite ? 120 : 0) + (p.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
+      const score = (p.favorite ? MOMENT_SCORE_FAVORITE_WEIGHT : 0)
+        + (p.subject ? MOMENT_SCORE_SUBJECT_WEIGHT : 0)
+        + Math.max(0, MOMENT_SCORE_RECENCY_MAX - recencyDays);
       return { p, score };
     });
     return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 10);
@@ -249,7 +258,9 @@ export default function PhotoGallery({
   const getMomentScore = useCallback((photo: Photo): number => {
     const ts = new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime();
     const recencyDays = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60 * 24));
-    return (photo.favorite ? 120 : 0) + (photo.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
+    return (photo.favorite ? MOMENT_SCORE_FAVORITE_WEIGHT : 0)
+      + (photo.subject ? MOMENT_SCORE_SUBJECT_WEIGHT : 0)
+      + Math.max(0, MOMENT_SCORE_RECENCY_MAX - recencyDays);
   }, []);
 
   useEffect(() => {
@@ -273,10 +284,13 @@ export default function PhotoGallery({
     const filteredPhotos = flatPhotos.filter((photo) => {
       const insight = momentsInsightsMap[photo.name];
       const totalViews = insight?.totalViews ?? 0;
+      const shareViews = momentsShareViews[photo.name] ?? 0;
       const haystack = `${photo.originalName ?? ""} ${photo.subject ?? ""} ${photo.createdBy ?? ""}`.toLowerCase();
       if (momentsFilters.query && !haystack.includes(momentsFilters.query.toLowerCase())) return false;
       if (momentsFilters.viewBand === "viewed" && totalViews === 0) return false;
-      if (momentsFilters.viewBand === "hot" && totalViews < 3) return false;
+      if (momentsFilters.viewBand === "hot" && totalViews < MOMENT_HOT_VIEW_THRESHOLD) return false;
+      if (momentsFilters.viewBand === "shared" && shareViews === 0) return false;
+      if (momentsFilters.viewBand === "favorite" && !photo.favorite) return false;
       if (momentsFilters.viewBand === "unviewed" && totalViews > 0) return false;
       return true;
     });
@@ -288,9 +302,9 @@ export default function PhotoGallery({
       const totalViews = insight?.totalViews ?? 0;
       const lastViewedAt = insight?.lastViewedAt;
       const recentBoost = lastViewedAt
-        ? Math.max(0, 72 - (Date.now() - new Date(lastViewedAt).getTime()) / (1000 * 60 * 60))
+        ? Math.max(0, MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS - (Date.now() - new Date(lastViewedAt).getTime()) / (1000 * 60 * 60))
         : 0;
-      const engagement = score + totalViews * 24 + shareViews * 10 + recentBoost;
+      const engagement = score + totalViews * MOMENT_ENGAGEMENT_VIEW_WEIGHT + shareViews * MOMENT_ENGAGEMENT_SHARE_WEIGHT + recentBoost;
       return {
         photo,
         rank: 0,
@@ -603,8 +617,10 @@ export default function PhotoGallery({
               onChange={(e) => setMomentsFilters((prev) => ({ ...prev, viewBand: e.target.value as MomentsFilterState["viewBand"] }))}
             >
               <option value="all">全部浏览状态</option>
-              <option value="viewed">看过的</option>
               <option value="hot">高频查看</option>
+              <option value="viewed">看过的</option>
+              <option value="shared">被分享浏览</option>
+              <option value="favorite">已收藏</option>
               <option value="unviewed">还没看过</option>
             </select>
             <select
@@ -811,37 +827,25 @@ export default function PhotoGallery({
                   )}
                 </span>
 
-                <span className="modal-detail-label">Created by</span>
-                <span className="modal-detail-value">{selectedPhoto.createdBy ?? "—"}</span>
-
-                <span className="modal-detail-label">Uploaded at</span>
-                <span className="modal-detail-value">{selectedPhoto.createdAt ? formatDate(selectedPhoto.createdAt) : "—"}</span>
-
-                <span className="modal-detail-label">Last modified by</span>
-                <span className="modal-detail-value">{selectedPhoto.lastModifiedBy ?? "—"}</span>
-
-                <span className="modal-detail-label">Last modified at</span>
-                <span className="modal-detail-value">
-                  {selectedPhoto.lastModifiedAt
-                    ? formatDate(selectedPhoto.lastModifiedAt)
-                    : selectedPhoto.lastModified
-                    ? formatDate(selectedPhoto.lastModified)
-                    : "—"}
-                </span>
-
-                <span className="modal-detail-label">Type</span>
-                <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
-
-                <span className="modal-detail-label">Moment score</span>
-                <span className="modal-detail-value">{Math.round(getMomentScore(selectedPhoto))}</span>
-
-                <span className="modal-detail-label">Share views</span>
-                <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
-
-                {momentsMode && (
+                {momentsMode ? (
                   <>
+                    <span className="modal-detail-label">推荐值</span>
+                    <span className="modal-detail-value">{Math.round(getMomentScore(selectedPhoto))}</span>
+
+                    <span className="modal-detail-label">互动热度</span>
+                    <span className="modal-detail-value">
+                      {Math.round(
+                        Math.round(getMomentScore(selectedPhoto))
+                        + (selectedMomentInsight?.totalViews ?? 0) * MOMENT_ENGAGEMENT_VIEW_WEIGHT
+                        + (momentsShareViews[selectedPhoto.name] ?? 0) * MOMENT_ENGAGEMENT_SHARE_WEIGHT,
+                      )}
+                    </span>
+
                     <span className="modal-detail-label">查看次数</span>
                     <span className="modal-detail-value">{selectedMomentInsight?.totalViews ?? 0}</span>
+
+                    <span className="modal-detail-label">分享浏览</span>
+                    <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
 
                     <span className="modal-detail-label">最近查看</span>
                     <span className="modal-detail-value">{selectedMomentInsight?.lastViewedAt ? formatDate(selectedMomentInsight.lastViewedAt) : "暂无"}</span>
@@ -851,6 +855,29 @@ export default function PhotoGallery({
 
                     <span className="modal-detail-label">浏览高峰日</span>
                     <span className="modal-detail-value">{getPeakViewDay(selectedMomentInsight) ?? "暂无"}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="modal-detail-label">Created by</span>
+                    <span className="modal-detail-value">{selectedPhoto.createdBy ?? "—"}</span>
+
+                    <span className="modal-detail-label">Uploaded at</span>
+                    <span className="modal-detail-value">{selectedPhoto.createdAt ? formatDate(selectedPhoto.createdAt) : "—"}</span>
+
+                    <span className="modal-detail-label">Last modified by</span>
+                    <span className="modal-detail-value">{selectedPhoto.lastModifiedBy ?? "—"}</span>
+
+                    <span className="modal-detail-label">Last modified at</span>
+                    <span className="modal-detail-value">
+                      {selectedPhoto.lastModifiedAt
+                        ? formatDate(selectedPhoto.lastModifiedAt)
+                        : selectedPhoto.lastModified
+                        ? formatDate(selectedPhoto.lastModified)
+                        : "—"}
+                    </span>
+
+                    <span className="modal-detail-label">Type</span>
+                    <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
                   </>
                 )}
               </div>
