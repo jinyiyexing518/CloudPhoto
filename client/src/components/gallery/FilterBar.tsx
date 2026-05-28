@@ -7,6 +7,7 @@ export interface FilterState {
   uploader: string;
   dateFrom: string;
   dateTo: string;
+  favoriteOnly: boolean;
 }
 
 export const emptyFilter: FilterState = {
@@ -15,6 +16,7 @@ export const emptyFilter: FilterState = {
   uploader: "",
   dateFrom: "",
   dateTo: "",
+  favoriteOnly: false,
 };
 
 interface Props {
@@ -47,10 +49,10 @@ export default function FilterBar({
     debounceRef.current = setTimeout(() => onChange({ ...filters, name: value }), 300);
   };
 
-  const set = (key: keyof FilterState, value: string) =>
+  const set = (key: keyof FilterState, value: string | boolean) =>
     onChange({ ...filters, [key]: value });
 
-  const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo;
+  const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly;
 
   // Active filter chips (all except name which has inline clear)
   const activeChips: { label: string; key: keyof FilterState }[] = [];
@@ -58,6 +60,7 @@ export default function FilterBar({
   if (filters.uploader) activeChips.push({ label: `上传者: ${filters.uploader}`, key: "uploader" });
   if (filters.dateFrom) activeChips.push({ label: `从: ${filters.dateFrom}`, key: "dateFrom" });
   if (filters.dateTo) activeChips.push({ label: `至: ${filters.dateTo}`, key: "dateTo" });
+  if (filters.favoriteOnly) activeChips.push({ label: "仅收藏", key: "favoriteOnly" });
 
   return (
     <div className="filter-bar">
@@ -85,6 +88,14 @@ export default function FilterBar({
           </button>
         )}
 
+        <button
+          className={`filter-toggle-btn${filters.favoriteOnly ? " active" : ""}`}
+          onClick={() => set("favoriteOnly", !filters.favoriteOnly)}
+          type="button"
+        >
+          ★ 仅收藏
+        </button>
+
         {hasAny && (
           <span className="search-count">{filtered} / {total}</span>
         )}
@@ -96,7 +107,7 @@ export default function FilterBar({
           {activeChips.map((chip) => (
             <span key={chip.key} className="filter-chip">
               {chip.label}
-              <button className="filter-chip-remove" onClick={() => set(chip.key, "")}>✕</button>
+              <button className="filter-chip-remove" onClick={() => set(chip.key, chip.key === "favoriteOnly" ? false : "")}>✕</button>
             </span>
           ))}
         </div>

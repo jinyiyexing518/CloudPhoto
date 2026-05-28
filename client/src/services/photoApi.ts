@@ -348,6 +348,18 @@ export async function downloadPhotoApi(
   URL.revokeObjectURL(url);
 }
 
+export async function createPhotoShareLink(
+  name: string,
+  hours = 24,
+): Promise<{ url: string; expiresAt: string }> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/share?name=${encodeURIComponent(name)}&hours=${encodeURIComponent(String(hours))}`,
+    { headers: authHeaders() },
+  );
+  if (!response.ok) throw new Error("Failed to create share link");
+  return response.json() as Promise<{ url: string; expiresAt: string }>;
+}
+
 export async function renameFolderApi(
   oldFolder: string,
   newFolder: string,

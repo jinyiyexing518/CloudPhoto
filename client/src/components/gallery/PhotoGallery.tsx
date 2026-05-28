@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Photo, updatePhotoSubject, renamePhoto as apiRenamePhoto, downloadPhotoApi } from "../../services/photoApi";
+import { Photo, updatePhotoSubject, renamePhoto as apiRenamePhoto, downloadPhotoApi, createPhotoShareLink } from "../../services/photoApi";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 
@@ -57,6 +57,8 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareHours, setShareHours] = useState("24");
 
   // Batch selection
   const [selectMode, setSelectMode] = useState(false);
@@ -79,6 +81,34 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
     showToast(`已删除 ${selected.size} 张照片`, "success");
     exitSelectMode();
     setShowBatchConfirm(false);
+  };
+
+  const handleBatchRename = async () => {
+    if (selected.size === 0) return;
+    const prefix = prompt("请输入批量重命名前缀（例如：旅行）");
+    if (prefix == null) return;
+    const safePrefix = prefix.trim();
+    if (!safePrefix) {
+      showToast("前缀不能为空", "error");
+      return;
+    }
+    const startRaw = prompt("起始序号（默认 1）", "1");
+    const start = Math.max(1, Number.parseInt(startRaw ?? "1", 10) || 1);
+
+    const selectedList = flatPhotos.filter((p) => selected.has(p.name));
+    let failed = 0;
+    for (let i = 0; i < selectedList.length; i++) {
+      const p = selectedList[i];
+      const nextName = `${safePrefix}-${String(start + i).padStart(3, "0")}`;
+      try {
+        await apiRenamePhoto(p.name, nextName, userName);
+        onRenamePhoto(p.name, nextName);
+      } catch {
+        failed++;
+      }
+    }
+    if (failed > 0) showToast(`批量重命名完成，失败 ${failed} 张`, "error");
+    else showToast(`已重命名 ${selectedList.length} 张照片`, "success");
   };
 
   // Flat photo list for keyboard navigation (ordered as displayed: by date desc)
@@ -164,6 +194,21 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
     }
   };
 
+  const handleShare = async () => {
+    if (!selectedPhoto) return;
+    const hours = Math.max(1, Math.min(168, Number.parseInt(shareHours, 10) || 24));
+    setSharing(true);
+    try {
+      const { url, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
+      await navigator.clipboard.writeText(url);
+      showToast(`分享链接已复制（到期：${formatDate(expiresAt)}）`, "success");
+    } catch {
+      showToast("创建分享链接失败", "error");
+    } finally {
+      setSharing(false);
+    }
+  };
+
   if (photos.length === 0) {
     return (
       <div className="empty-gallery">
@@ -195,9 +240,14 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
           </>
         )}
         {selectMode && selected.size > 0 && (
-          <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>
-            删除 ({selected.size})
-          </button>
+          <>
+            <button className="batch-select-btn" onClick={() => void handleBatchRename()}>
+              重命名 ({selected.size})
+            </button>
+            <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>
+              删除 ({selected.size})
+            </button>
+          </>
         )}
       </div>
       {groups.map((group) => (
@@ -282,6 +332,17 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
               >
                 {downloading ? "⏳ 下载中…" : "⬇ 下载照片"}
               </button>
+              <div className="modal-share-row">
+                <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
+                  <option value="1">1 小时</option>
+                  <option value="24">24 小时</option>
+                  <option value="72">3 天</option>
+                  <option value="168">7 天</option>
+                </select>
+                <button className="modal-share-btn" onClick={() => void handleShare()} disabled={sharing}>
+                  {sharing ? "创建中…" : "🔗 复制分享链接"}
+                </button>
+              </div>
               <div className="modal-detail-grid">
                 <span className="modal-detail-label">Subject</span>
                 <span className="modal-detail-value modal-subject-cell">

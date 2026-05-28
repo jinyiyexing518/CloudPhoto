@@ -84,6 +84,7 @@ function AppContent() {
       if (filters.uploader && p.createdBy !== filters.uploader) return false;
       if (filters.dateFrom && date && date.slice(0, 10) < filters.dateFrom) return false;
       if (filters.dateTo && date && date.slice(0, 10) > filters.dateTo) return false;
+      if (filters.favoriteOnly && !p.favorite) return false;
       return true;
     });
   }, [photos, filters]);
