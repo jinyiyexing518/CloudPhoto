@@ -102,6 +102,23 @@ body {
 }
 .settings-btn:hover { background: #f3f4f6; }
 
+.install-app-btn {
+  background: #ecfeff;
+  border: 1px solid #67e8f9;
+  color: #0e7490;
+  border-radius: 14px;
+  padding: 3px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.install-app-btn:hover {
+  background: #cffafe;
+  border-color: #22d3ee;
+}
+
 .add-admin-btn {
   background: #f0fdf4;
   border: 1px solid #86efac;
@@ -1045,6 +1062,34 @@ body {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.pwa-update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ecfdf5;
+  border: 1px solid #86efac;
+  color: #166534;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+}
+
+.pwa-update-banner button {
+  border: none;
+  background: #16a34a;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.pwa-update-banner button:hover {
+  background: #15803d;
 }
 
 /* Upload area */

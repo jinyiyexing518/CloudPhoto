@@ -15,12 +15,20 @@ import AddAdminDialog from "./components/auth/AddAdminDialog";
 const SUPER_ADMIN = "zhangchi";
 type ViewTab = "timeline" | "folder";
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+}
+
 function AppContent() {
   const { user, logout } = useAuth();
   const { currentGroupId, groups, groupsLoaded } = useGroup();
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [canInstall, setCanInstall] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+  const deferredInstallPrompt = useRef<BeforeInstallPromptEvent | null>(null);
 
   // Location banner: shown briefly when entering a group or personal space
   const [locationBanner, setLocationBanner] = useState<string | null>(null);
@@ -34,6 +42,33 @@ function AppContent() {
     bannerTimer.current = setTimeout(() => setLocationBanner(null), 2200);
     return () => { if (bannerTimer.current) clearTimeout(bannerTimer.current); };
   }, [currentGroupId, groupsLoaded]); // groups intentionally omitted — only care when user switches
+
+  useEffect(() => {
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      deferredInstallPrompt.current = event as BeforeInstallPromptEvent;
+      setCanInstall(true);
+    };
+    const onAppInstalled = () => {
+      deferredInstallPrompt.current = null;
+      setCanInstall(false);
+      showToast("Cloud Photo 已安装到设备", "success");
+    };
+    const onUpdateReady = () => setUpdateReady(true);
+    const onOfflineReady = () => showToast("已启用离线基础访问", "success");
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
+    window.addEventListener("appinstalled", onAppInstalled);
+    window.addEventListener("cloudphoto-pwa-update-ready", onUpdateReady as EventListener);
+    window.addEventListener("cloudphoto-pwa-offline-ready", onOfflineReady as EventListener);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
+      window.removeEventListener("appinstalled", onAppInstalled);
+      window.removeEventListener("cloudphoto-pwa-update-ready", onUpdateReady as EventListener);
+      window.removeEventListener("cloudphoto-pwa-offline-ready", onOfflineReady as EventListener);
+    };
+  }, [showToast]);
 
   // Invite token from URL ?invite=<token>
   const [inviteToken, setInviteToken] = useState<string | null>(() => {
@@ -197,6 +232,25 @@ function AppContent() {
     }
   };
 
+  const handleInstallApp = async () => {
+    const promptEvent = deferredInstallPrompt.current;
+    if (!promptEvent) return;
+    await promptEvent.prompt();
+    const result = await promptEvent.userChoice;
+    if (result.outcome === "accepted") {
+      showToast("正在安装 Cloud Photo", "success");
+    }
+  };
+
+  const handleRefreshToUpdate = async () => {
+    const updateSW = (window as Window & { __CF_UPDATE_SW__?: (reloadPage?: boolean) => Promise<void> }).__CF_UPDATE_SW__;
+    if (!updateSW) {
+      window.location.reload();
+      return;
+    }
+    await updateSW(true);
+  };
+
   return (
     <div className="app">
       {locationBanner && (
@@ -213,6 +267,11 @@ function AppContent() {
             👤 {user?.displayName}
             {user?.role === "admin" && <span className="role-badge">Admin</span>}
           </span>
+          {canInstall && (
+            <button className="install-app-btn" onClick={() => void handleInstallApp()} title="安装应用">
+              安装 App
+            </button>
+          )}
           {user?.username === SUPER_ADMIN && (
             <button className="add-admin-btn" onClick={() => setShowAddAdmin(true)} title="添加 Admin">
               + Admin
@@ -228,6 +287,13 @@ function AppContent() {
       {inviteToken && <InviteAcceptPage token={inviteToken} onDone={dismissInvite} />}
 
       <main className="app-main">
+        {updateReady && (
+          <div className="pwa-update-banner">
+            <span>检测到新版本，点击即可更新。</span>
+            <button onClick={() => void handleRefreshToUpdate()}>立即更新</button>
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="view-tabs">
           <button

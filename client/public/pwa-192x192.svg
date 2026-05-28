@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Cloud Photo icon 192">
+  <defs>
+    <linearGradient id="g3" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#38bdf8" />
+      <stop offset="1" stop-color="#0284c7" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="42" fill="url(#g3)" />
+  <path d="M58 122a20 20 0 0 1 2-40 31 31 0 0 1 60 6h2a17 17 0 0 1 0 34H58Z" fill="#ffffff" opacity="0.96" />
+  <circle cx="96" cy="101" r="17" fill="#0ea5e9" />
+  <circle cx="96" cy="101" r="7.5" fill="#ffffff" />
+</svg>
