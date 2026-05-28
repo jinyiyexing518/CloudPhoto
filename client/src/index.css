@@ -2351,9 +2351,40 @@ body {
   .auth-card { padding: 28px 20px 24px; }
 
   /* ── Modal image ── */
+  .modal-content {
+    width: calc(100vw - 12px);
+    max-width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+    overflow-y: auto;
+  }
+
   .modal-content img {
     max-width: 100vw;
-    max-height: calc(100vh - 120px);
+    max-height: 42vh;
+  }
+
+  .modal-info {
+    max-height: none;
+    overflow-y: visible;
+    padding: 12px;
+  }
+
+  .modal-info-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .modal-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modal-favorite-btn,
+  .modal-move-btn,
+  .modal-delete-btn,
+  .modal-folder-input {
+    width: 100%;
   }
 
   .modal-detail-grid { font-size: 0.75rem; }
