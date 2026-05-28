@@ -472,6 +472,13 @@ export interface MomentInsight {
   updatedAt?: string;
 }
 
+export class ManagedMomentsUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ManagedMomentsUnavailableError";
+  }
+}
+
 interface ManagedShareLinksResponse {
   items?: ManagedShareLink[];
   managedUnavailable?: boolean;
@@ -527,11 +534,13 @@ export async function listMomentInsights(photoNames: string[]): Promise<Record<s
     `${API_BASE}/photos/moments/insights?${params.toString()}`,
     { headers: authHeaders() },
   );
+  const data = await response.json().catch(() => ({})) as { items?: MomentInsight[]; error?: string; managedUnavailable?: boolean; message?: string };
   if (!response.ok) {
-    const err = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(err.error ?? "Failed to fetch moment insights");
+    throw new Error(data.error ?? "Failed to fetch moment insights");
   }
-  const data = await response.json() as { items?: MomentInsight[] };
+  if (data.managedUnavailable) {
+    throw new ManagedMomentsUnavailableError(data.message ?? "Moments insights unavailable");
+  }
   const items = Array.isArray(data.items) ? data.items : [];
   return items.reduce<Record<string, MomentInsight>>((acc, item) => {
     if (!item.photoName) return acc;
@@ -555,13 +564,14 @@ export async function recordMomentViewApi(photoName: string, viewerName?: string
     },
   );
 
+  const data = await response.json().catch(() => ({})) as { item?: MomentInsight; ok?: boolean; managedUnavailable?: boolean; message?: string; error?: string };
   if (!response.ok) {
     if (response.status === 409) return null;
-    const err = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(err.error ?? "Failed to record moment view");
+    throw new Error(data.error ?? "Failed to record moment view");
   }
-
-  const data = await response.json().catch(() => ({})) as { item?: MomentInsight; ok?: boolean };
+  if (data.managedUnavailable) {
+    throw new ManagedMomentsUnavailableError(data.message ?? "Moments insights unavailable");
+  }
   if (data.ok === false) return null;
   return data.item ?? null;
 }

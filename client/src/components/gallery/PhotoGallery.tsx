@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Photo,
   updatePhotoSubject,
@@ -8,6 +8,7 @@ import {
   listMomentInsights,
   recordMomentViewApi,
   MomentInsight,
+  ManagedMomentsUnavailableError,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -169,6 +170,7 @@ export default function PhotoGallery({
   const [moving, setMoving] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>({});
+  const momentsUnavailableNoticeShown = useRef(false);
   const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>({
     query: "",
     engagementBand: "all",
@@ -290,8 +292,11 @@ export default function PhotoGallery({
       try {
         const map = await listMomentInsights(flatPhotos.map((photo) => photo.name));
         if (!cancelled) setMomentsInsightsMap(map);
-      } catch {
-        if (!cancelled) setMomentsInsightsMap({});
+      } catch (e) {
+        if (!cancelled && e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
+          momentsUnavailableNoticeShown.current = true;
+          showToast("重要片段浏览量暂时不可持久化，当前仅展示本次会话内的浏览变化", "info");
+        }
       }
     };
     void load();
@@ -416,19 +421,18 @@ export default function PhotoGallery({
         ...prev,
         [photoName]: serverItem,
       }));
-    }).catch(() => {
-      // Keep optimistic local state on transient failures.
+    }).catch((e) => {
+      if (e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
+        momentsUnavailableNoticeShown.current = true;
+        showToast("重要片段浏览量暂时不可持久化，当前仅展示本次会话内的浏览变化", "info");
+      }
     });
   }, [userName]);
-
-  useEffect(() => {
-    if (!momentsMode || !selectedPhoto) return;
-    trackMomentView(selectedPhoto.name);
-  }, [momentsMode, selectedPhoto, trackMomentView]);
 
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = modalPhotos[idx];
     if (!photo) return;
+    if (momentsMode) trackMomentView(photo.name);
     setSelectedIdx(idx);
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -437,7 +441,7 @@ export default function PhotoGallery({
     setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
-  }, [modalPhotos]);
+  }, [modalPhotos, momentsMode, trackMomentView]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -453,6 +457,7 @@ export default function PhotoGallery({
 
   const openModal = (photo: Photo) => {
     const idx = modalPhotos.findIndex((p) => p.name === photo.name);
+    if (momentsMode) trackMomentView(photo.name);
     setSelectedIdx(idx >= 0 ? idx : null);
     setSelectedPhoto(photo);
     setEditingSubject(false);
