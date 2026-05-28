@@ -47,15 +47,22 @@ build time (defaults to `/api`).
 - **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation; drag-and-drop between folders; extra folders persisted in `localStorage` per context
 - **Session persistence** — last-used group space and current folder path are remembered in `localStorage` per user; page refresh returns you exactly where you were
 - **Recycle bin** — deleting a photo soft-deletes it (blob metadata `deletedAt`); a dedicated 🗑️ Trash tab lets you restore photos to their original folder or permanently delete them; "清空回收站" bulk-deletes all
+- **Mobile sticky trash actions** — on small screens, restore and permanent-delete actions are pinned to a sticky bottom bar for one-hand operation
 - **Batch operations** — multi-select mode with batch delete and batch move to folder
 - **Multi-photo upload** — select multiple photos at once; sequential upload with per-folder progress (`⏳ 2/5`); partial-failure reporting; client-side MIME type + 20 MB size guard before upload
 - **Photo download** — download original file directly from the browser (mobile & desktop)
 - **Expiring share links** — generate per-photo public read links with configurable TTL (1h / 24h / 3d / 7d)
+- **One-click share copy** — share URL copy uses Clipboard API first, then legacy copy fallback; only falls back to manual copy prompt as a last resort
+- **Share link manager (local)** — the Settings → 📱 应用 tab shows recent valid share links with one-click copy/open/delete and one-click clear
 - **Photo rename** — change the display name of any photo without re-uploading
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
+- **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
+- **Important moments strip** — ranks and surfaces favorite/recent/annotated photos for quick re-entry
+- **Timeline pagination** — timeline initially loads the newest page and can load more progressively to keep first paint fast
 - **Search & filter** — filter by name, subject, uploader, date range
 - **Fullscreen modal** — view full details, edit subject / rename / download inline
+- **Long-filename-safe modal layout** — very long file names are truncated with ellipsis and will not overlap or hide action buttons such as rename
 - **Modal keyboard navigation** — ← / → keys to step through photos in a folder or timeline; Esc to close; prev/next buttons for mouse/touch; available in both Timeline and Folder views
 - **Toast notification system** — lightweight React-Context toast queue (success / error / info); auto-dismisses after 3.5 s; replaces all inline error banners
 - **Image shimmer skeleton** — animated shimmer placeholder shown while each photo thumbnail loads; fades in on completion to eliminate layout shift

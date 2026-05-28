@@ -110,7 +110,7 @@ export default function TrashView({ groupId, onRestored }: Props) {
     <div className="trash-view">
       <div className="trash-toolbar">
         <span className="trash-toolbar-count">{photos.length} 张照片</span>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="trash-toolbar-actions">
           <button className="trash-restore-all-btn" onClick={handleRestoreAll}>
             全部恢复
           </button>
@@ -160,6 +160,11 @@ export default function TrashView({ groupId, onRestored }: Props) {
             </div>
           );
         })}
+      </div>
+
+      <div className="trash-sticky-actions">
+        <button className="trash-restore-all-btn" onClick={handleRestoreAll}>全部恢复</button>
+        <button className="trash-empty-all-btn" onClick={handleEmptyTrash}>清空回收站</button>
       </div>
     </div>
   );

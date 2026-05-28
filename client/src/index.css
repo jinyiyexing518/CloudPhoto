@@ -1063,6 +1063,7 @@ body {
   align-items: center;
   gap: 12px;
   margin-bottom: 10px;
+  min-width: 0;
 }
 
 .modal-size {
@@ -1394,14 +1395,19 @@ body {
 }
 
 .modal-filename {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
-  margin-right: 8px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.modal-filename-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal-rename-btn {
@@ -2137,6 +2143,29 @@ body {
     margin-top: 2px !important;
   }
 
+  .trash-toolbar-actions {
+    display: none;
+  }
+
+  .trash-sticky-actions {
+    display: flex;
+  }
+
+  .settings-share-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .settings-share-actions {
+    justify-content: flex-end;
+  }
+
+  .insight-strip {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
   /* ── Auth card ── */
   .auth-card { padding: 28px 20px 24px; }
 
@@ -2433,6 +2462,46 @@ body {
 /* Group add-member success */
 .group-add-success { font-size: 13px; color: #166534; background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 10px; margin-top: 6px; }
 
+/* ===== Timeline insights ===== */
+.insight-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.insight-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.insight-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.timeline-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.timeline-more-btn {
+  border: 1px solid #93c5fd;
+  background: #f0f7ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.timeline-more-btn:hover {
+  background: #dbeafe;
+}
+
 /* ===== Trash View ===== */
 .trash-empty-state {
   display: flex;
@@ -2447,7 +2516,7 @@ body {
 .trash-empty-title { font-size: 1.1rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
 .trash-empty-sub { font-size: 0.85rem; }
 
-.trash-view { padding: 0 0 32px; }
+.trash-view { padding: 0 0 92px; }
 
 .trash-toolbar {
   display: flex;
@@ -2456,6 +2525,7 @@ body {
   padding: 12px 0 16px;
   gap: 12px;
 }
+.trash-toolbar-actions { display: flex; gap: 8px; }
 .trash-toolbar-count { font-size: 0.85rem; color: #6b7280; }
 .trash-restore-all-btn {
   background: none;
@@ -2558,6 +2628,16 @@ body {
 }
 .trash-delete-btn:hover:not(:disabled) { background: #fee2e2; }
 .trash-restore-btn:disabled, .trash-delete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.trash-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: none;
+  gap: 8px;
+  padding: 10px 0 4px;
+  background: linear-gradient(to top, #fff 70%, rgba(255,255,255,0));
+}
 
 /* ===== Settings Dialog ===== */
 .settings-dialog {
@@ -2663,3 +2743,76 @@ body {
 }
 .settings-save-btn:hover:not(:disabled) { background: #005da6; }
 .settings-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.settings-share-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-share-clear {
+  border: 1px solid #fca5a5;
+  background: #fff;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.settings-share-clear:hover { background: #fef2f2; }
+
+.settings-share-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-share-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-share-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-share-name {
+  font-size: 0.84rem;
+  color: #1f2937;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-share-expire {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.settings-share-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.settings-share-actions button {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.settings-share-actions button:hover { background: #f3f4f6; }

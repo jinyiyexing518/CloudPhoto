@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Photo, updatePhotoSubject, renamePhoto as apiRenamePhoto, downloadPhotoApi, createPhotoShareLink } from "../../services/photoApi";
+import { addRecentShareLink } from "../../services/shareLinksStore";
+import { copyText } from "../../services/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 
@@ -18,6 +20,8 @@ interface DateGroup {
   label: string;     // "May 25, 2026"
   photos: Photo[];
 }
+
+const PAGE_SIZE = 120;
 
 function groupByDate(photos: Photo[]): DateGroup[] {
   const map = new Map<string, Photo[]>();
@@ -60,6 +64,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Batch selection
   const [selectMode, setSelectMode] = useState(false);
@@ -125,6 +130,36 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
       return db.localeCompare(da);
     });
   }, [photos]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [photos]);
+
+  const visiblePhotos = useMemo(() => flatPhotos.slice(0, visibleCount), [flatPhotos, visibleCount]);
+
+  const memoryHighlights = useMemo(() => {
+    const now = new Date();
+    const month = now.getMonth();
+    const day = now.getDate();
+    return flatPhotos
+      .filter((p) => {
+        const raw = p.createdAt ?? p.lastModified;
+        if (!raw) return false;
+        const d = new Date(raw);
+        return d.getMonth() === month && d.getDate() === day && d.getFullYear() < now.getFullYear();
+      })
+      .slice(0, 8);
+  }, [flatPhotos]);
+
+  const importantMoments = useMemo(() => {
+    const scored = [...flatPhotos].map((p) => {
+      const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
+      const recencyDays = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60 * 24));
+      const score = (p.favorite ? 120 : 0) + (p.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
+      return { p, score };
+    });
+    return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 10);
+  }, [flatPhotos]);
 
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = flatPhotos[idx];
@@ -206,18 +241,17 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
     setSharing(true);
     try {
       const { url, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
-      let copied = false;
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(url);
-          copied = true;
-        }
-      } catch {
-        copied = false;
-      }
+      const copied = await copyText(url);
       if (!copied) {
         window.prompt("复制分享链接", url);
       }
+      const displayName = selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })();
+      addRecentShareLink({
+        photoName: selectedPhoto.name,
+        displayName,
+        url,
+        expiresAt,
+      });
       showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
     } catch (e) {
       showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");
@@ -236,7 +270,8 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
     );
   }
 
-  const groups = groupByDate(photos);
+  const groups = groupByDate(visiblePhotos);
+  const hasMore = visibleCount < flatPhotos.length;
 
   return (
     <>
@@ -267,6 +302,41 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
           </>
         )}
       </div>
+
+      {!selectMode && memoryHighlights.length > 0 && (
+        <section className="insight-section">
+          <h2 className="insight-title">📅 历史回忆</h2>
+          <div className="insight-strip">
+            {memoryHighlights.map((photo) => (
+              <PhotoCard
+                key={`memory-${photo.name}`}
+                photo={photo}
+                onClick={() => openModal(photo)}
+                onDelete={() => onDelete(photo.name)}
+                onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!selectMode && importantMoments.length > 0 && (
+        <section className="insight-section">
+          <h2 className="insight-title">⭐ 重要片段</h2>
+          <div className="insight-strip">
+            {importantMoments.map((photo) => (
+              <PhotoCard
+                key={`important-${photo.name}`}
+                photo={photo}
+                onClick={() => openModal(photo)}
+                onDelete={() => onDelete(photo.name)}
+                onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {groups.map((group) => (
         <section key={group.key} className="date-group">
           <h2 className="date-group-label">
@@ -289,6 +359,14 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
           </div>
         </section>
       ))}
+
+      {hasMore && (
+        <div className="timeline-more-wrap">
+          <button className="timeline-more-btn" onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}>
+            加载更多 ({visibleCount}/{flatPhotos.length})
+          </button>
+        </div>
+      )}
 
       {selectedPhoto && (
         <div
@@ -334,7 +412,12 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
                   </span>
                 ) : (
                   <span className="modal-filename">
-                    {selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })()}
+                    <span
+                      className="modal-filename-text"
+                      title={selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })()}
+                    >
+                      {selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })()}
+                    </span>
                     <button className="modal-rename-btn" title="重命名" onClick={() => setEditingName(true)}>✏ 重命名</button>
                   </span>
                 )}

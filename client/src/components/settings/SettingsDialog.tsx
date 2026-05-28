@@ -1,7 +1,9 @@
-import { useState, FormEvent } from "react";
+import { useState, useMemo, FormEvent } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useGroup } from "../../contexts/GroupContext";
 import { updateProfileApi, changePasswordApi, saveStoredAuth } from "../../services/photoApi";
+import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../services/shareLinksStore";
+import { copyText } from "../../services/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 
@@ -40,6 +42,8 @@ export default function SettingsDialog({
   const [confirmPw, setConfirmPw] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState("");
+  const [shareLinksVersion, setShareLinksVersion] = useState(0);
+  const shareLinks = useMemo(() => listRecentShareLinks(), [shareLinksVersion]);
 
   const handleSaveProfile = async (e: FormEvent) => {
     e.preventDefault();
@@ -72,6 +76,18 @@ export default function SettingsDialog({
       setPwError(err instanceof Error ? err.message : "修改失败");
     } finally {
       setPwSaving(false);
+    }
+  };
+
+  const refreshShareLinks = () => setShareLinksVersion((v) => v + 1);
+
+  const copyShareLink = async (url: string) => {
+    const copied = await copyText(url);
+    if (copied) {
+      showToast("链接已复制", "success");
+    } else {
+      window.prompt("复制分享链接", url);
+      showToast("已生成链接，请手动复制", "info");
     }
   };
 
@@ -180,15 +196,62 @@ export default function SettingsDialog({
               <div className="settings-divider" />
               <div className="settings-form" style={{ gap: 10 }}>
                 {!isStandalone && canInstall && (
-                  <button className="settings-save-btn" onClick={onInstallApp}>立即安装 App</button>
+                  <button type="button" className="settings-save-btn" onClick={onInstallApp}>立即安装 App</button>
                 )}
                 {!isStandalone && (
-                  <button className="settings-save-btn" onClick={onOpenInstallGuide}>查看安装指引</button>
+                  <button type="button" className="settings-save-btn" onClick={onOpenInstallGuide}>查看安装指引</button>
                 )}
                 <p className="add-admin-hint" style={{ marginTop: 4 }}>
                   说明：并非所有浏览器都支持一键安装。如果按钮不可用，请按安装指引手动添加到主屏幕。
                 </p>
               </div>
+
+              <div className="settings-divider" />
+
+              <div className="settings-share-header">
+                <span className="settings-info-label">分享链接管理</span>
+                {shareLinks.length > 0 && (
+                  <button
+                    type="button"
+                    className="settings-share-clear"
+                    onClick={() => {
+                      clearRecentShareLinks();
+                      refreshShareLinks();
+                      showToast("已清空本地分享记录", "success");
+                    }}
+                  >
+                    清空记录
+                  </button>
+                )}
+              </div>
+
+              {shareLinks.length === 0 ? (
+                <p className="add-admin-hint">暂无本机生成的有效分享链接。</p>
+              ) : (
+                <div className="settings-share-list">
+                  {shareLinks.map((item) => (
+                    <div key={item.id} className="settings-share-item">
+                      <div className="settings-share-meta">
+                        <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
+                        <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()}</div>
+                      </div>
+                      <div className="settings-share-actions">
+                        <button type="button" onClick={() => void copyShareLink(item.url)}>复制</button>
+                        <button type="button" onClick={() => window.open(item.url, "_blank", "noopener,noreferrer")}>打开</button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            removeRecentShareLink(item.id);
+                            refreshShareLinks();
+                          }}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

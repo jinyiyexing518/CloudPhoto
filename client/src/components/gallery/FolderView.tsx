@@ -6,6 +6,8 @@ import {
   downloadPhotoApi,
   createPhotoShareLink,
 } from "../../services/photoApi";
+import { addRecentShareLink } from "../../services/shareLinksStore";
+import { copyText } from "../../services/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 
@@ -621,18 +623,16 @@ function FolderContent({
     setSharing(true);
     try {
       const { url, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
-      let copied = false;
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(url);
-          copied = true;
-        }
-      } catch {
-        copied = false;
-      }
+      const copied = await copyText(url);
       if (!copied) {
         window.prompt("复制分享链接", url);
       }
+      addRecentShareLink({
+        photoName: selectedPhoto.name,
+        displayName: displayName(selectedPhoto),
+        url,
+        expiresAt,
+      });
       showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
     } catch (e) {
       showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");
@@ -870,7 +870,9 @@ function FolderContent({
                   </span>
                 ) : (
                   <span className="modal-filename">
-                    {displayName(selectedPhoto)}
+                    <span className="modal-filename-text" title={displayName(selectedPhoto)}>
+                      {displayName(selectedPhoto)}
+                    </span>
                     <button className="modal-rename-btn" title="重命名" onClick={() => setEditingName(true)}>✏ 重命名</button>
                   </span>
                 )}
