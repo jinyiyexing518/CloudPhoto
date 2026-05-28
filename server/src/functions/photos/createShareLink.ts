@@ -4,6 +4,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
+import { randomUUID } from "crypto";
 import {
   getBlobServiceClient,
   containerName,
@@ -11,7 +12,13 @@ import {
   generateSasUrlWithKey,
 } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { isGroupMember } from "../../utils/cosmosClient";
+import { isGroupMember, getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmosClient";
+
+function decodeMeta(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try { return Buffer.from(raw, "base64").toString("utf8") || undefined; }
+  catch { return raw || undefined; }
+}
 
 function delegationKeyExpiryMs(key: { signedExpiresOn?: string | Date }): number {
   const raw = key.signedExpiresOn;
@@ -138,10 +145,34 @@ app.http("createShareLink", {
         ? Math.min(requestedExpiresAtMs, keyExpiresAtMs - 60 * 1000)
         : requestedExpiresAtMs;
       const expiresAt = new Date(effectiveExpiresAtMs).toISOString();
+
+      const shareLinks = await getShareLinksContainer();
+      const linkId = randomUUID();
+      const createdAt = new Date().toISOString();
+      const displayName = decodeMeta(getMeta(props.metadata, "originalName"))
+        || actualBlobName.split("/").pop()
+        || actualBlobName;
+      const doc: ShareLinkDoc = {
+        id: linkId,
+        createdByUserId: payload.userId,
+        createdByName: payload.displayName,
+        blobName: actualBlobName,
+        displayName,
+        groupId: segs[0] === "groups" ? segs[1] : undefined,
+        createdAt,
+        expiresAt,
+        status: "active",
+        viewCount: 0,
+      };
+      await shareLinks.items.create(doc);
+
+      const origin = new URL(request.url).origin;
+      const managedUrl = `${origin}/api/photos/share/open/${encodeURIComponent(linkId)}`;
+
       return {
         status: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, expiresAt }),
+        body: JSON.stringify({ url: managedUrl, expiresAt, shareId: linkId, directUrl: url }),
       };
     } catch (error) {
       context.error("Create share link error:", error);

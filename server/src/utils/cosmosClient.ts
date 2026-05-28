@@ -170,3 +170,30 @@ export async function getInvitesContainer(): Promise<Container> {
   });
   return container;
 }
+
+export type ShareLinkStatus = "active" | "revoked" | "expired";
+
+export interface ShareLinkDoc {
+  id: string;
+  createdByUserId: string;
+  createdByName: string;
+  blobName: string;
+  displayName: string;
+  groupId?: string;
+  createdAt: string;
+  expiresAt: string;
+  status: ShareLinkStatus;
+  viewCount: number;
+  lastViewedAt?: string;
+  revokedAt?: string;
+}
+
+export async function getShareLinksContainer(): Promise<Container> {
+  const client = getClient();
+  const { database } = await client.databases.createIfNotExists({ id: databaseId });
+  const { container } = await database.containers.createIfNotExists({
+    id: "sharelinks",
+    partitionKey: { paths: ["/id"] },
+  });
+  return container;
+}

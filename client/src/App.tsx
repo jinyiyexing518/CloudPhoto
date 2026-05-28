@@ -15,7 +15,7 @@ import AddAdminDialog from "./components/auth/AddAdminDialog";
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 const UPDATE_PROMPT_DISMISS_UNTIL_KEY = "cf_update_prompt_dismiss_until";
-type ViewTab = "timeline" | "folder";
+type ViewTab = "timeline" | "folder" | "moments";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -104,7 +104,8 @@ function AppContent() {
   const tabKey = `cf_tab_${user?.username ?? "guest"}`;
   const [activeTab, setActiveTab] = useState<ViewTab>(() => {
     const stored = localStorage.getItem(tabKey);
-    return stored === "folder" ? "folder" : "timeline";
+    if (stored === "folder" || stored === "timeline" || stored === "moments") return stored;
+    return "timeline";
   });
   const switchTab = (tab: ViewTab) => {
     if (transferring) {
@@ -146,6 +147,16 @@ function AppContent() {
       return true;
     });
   }, [photos, filters]);
+
+  const importantPhotos = useMemo(() => {
+    const scored = [...filteredPhotos].map((p) => {
+      const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
+      const recencyDays = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60 * 24));
+      const score = (p.favorite ? 120 : 0) + (p.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
+      return { p, score };
+    });
+    return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 120);
+  }, [filteredPhotos]);
 
   const fetchPhotos = useCallback(async () => {
     try {
@@ -417,6 +428,12 @@ function AppContent() {
           >
             📁 文件夹
           </button>
+          <button
+            className={`view-tab${activeTab === "moments" ? " active" : ""}`}
+            onClick={() => switchTab("moments")}
+          >
+            ⭐ 重要片段
+          </button>
         </div>
 
         {/* Timeline hint */}
@@ -426,7 +443,13 @@ function AppContent() {
           </div>
         )}
 
-        {activeTab === "timeline" && (
+        {activeTab === "moments" && (
+          <div className="timeline-upload-hint">
+            ⭐ 这里展示按收藏、主题与近期权重排序的重点照片
+          </div>
+        )}
+
+        {(activeTab === "timeline" || activeTab === "moments") && (
           <FilterBar
             filters={filters}
             onChange={setFilters}
@@ -456,6 +479,19 @@ function AppContent() {
             onToggleFavorite={handleToggleFavorite}
             onDownloadStateChange={setDownloading}
             userName={user?.displayName}
+            showImportantMoments={false}
+          />
+        ) : activeTab === "moments" ? (
+          <PhotoGallery
+            photos={importantPhotos}
+            onDelete={handleDelete}
+            onSubjectUpdate={handleSubjectUpdate}
+            onRenamePhoto={handleRenamePhoto}
+            onToggleFavorite={handleToggleFavorite}
+            onDownloadStateChange={setDownloading}
+            userName={user?.displayName}
+            showMemoryHighlights={false}
+            showImportantMoments={false}
           />
         ) : (
           <FolderView

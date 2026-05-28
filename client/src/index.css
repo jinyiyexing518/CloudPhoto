@@ -2095,7 +2095,7 @@ body {
     border-radius: 8px;
     padding: 8px 10px;
     font-size: 0.8rem;
-    text-align: center;
+    text-align: left;
     background: #fff;
   }
 
@@ -2680,6 +2680,7 @@ body {
   color: #6b7280;
   margin-bottom: -1px;
   transition: color 0.15s;
+  text-align: left;
 }
 .settings-tab:hover { color: #374151; }
 .settings-tab.active { color: #0078d4; border-bottom-color: #0078d4; font-weight: 600; }
@@ -2688,6 +2689,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+  text-align: left;
 }
 
 .settings-section {
@@ -2703,7 +2705,7 @@ body {
 
 .settings-info-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 8px 0;
 }

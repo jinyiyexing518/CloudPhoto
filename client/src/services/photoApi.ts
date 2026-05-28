@@ -364,7 +364,7 @@ export async function downloadPhotoApi(
 export async function createPhotoShareLink(
   name: string,
   hours = 24,
-): Promise<{ url: string; expiresAt: string }> {
+): Promise<{ url: string; expiresAt: string; shareId?: string; directUrl?: string }> {
   let response: Response | null = null;
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -390,7 +390,55 @@ export async function createPhotoShareLink(
     const err = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? "Failed to create share link");
   }
-  return response.json() as Promise<{ url: string; expiresAt: string }>;
+  return response.json() as Promise<{ url: string; expiresAt: string; shareId?: string; directUrl?: string }>;
+}
+
+export interface ManagedShareLink {
+  id: string;
+  createdByUserId: string;
+  createdByName: string;
+  blobName: string;
+  displayName: string;
+  groupId?: string;
+  createdAt: string;
+  expiresAt: string;
+  status: "active" | "revoked" | "expired";
+  viewCount: number;
+  url?: string;
+  lastViewedAt?: string;
+  revokedAt?: string;
+}
+
+export async function listManagedShareLinks(): Promise<ManagedShareLink[]> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/share/links`,
+    { headers: authHeaders() },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Failed to fetch share links");
+  }
+  return response.json() as Promise<ManagedShareLink[]>;
+}
+
+export async function updateManagedShareLink(
+  linkId: string,
+  action: "revoke" | "extend",
+  hours?: number,
+): Promise<ManagedShareLink> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/share/links/${encodeURIComponent(linkId)}`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ action, hours }),
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Failed to update share link");
+  }
+  return response.json() as Promise<ManagedShareLink>;
 }
 
 export async function renameFolderApi(

@@ -44,8 +44,16 @@ app.http("restorePhoto", {
 
       const props = await blockBlobClient.getProperties();
       const existing: Record<string, string> = { ...(props.metadata ?? {}) };
-      delete existing.deletedAt;
-      delete existing.deletedBy;
+
+      // Azure metadata keys are effectively case-insensitive and are often returned in lowercase.
+      // Remove deleted markers defensively so restore works with historical/case-varied metadata.
+      for (const key of Object.keys(existing)) {
+        const lower = key.toLowerCase();
+        if (lower === "deletedat" || lower === "deletedby") {
+          delete existing[key];
+        }
+      }
+
       await blockBlobClient.setMetadata(existing);
 
       return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Photo restored" }) };

@@ -13,6 +13,8 @@ interface Props {
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onDownloadStateChange?: (downloading: boolean) => void;
   userName?: string;
+  showMemoryHighlights?: boolean;
+  showImportantMoments?: boolean;
 }
 
 interface DateGroup {
@@ -51,7 +53,17 @@ function groupByDate(photos: Photo[]): DateGroup[] {
   return groups;
 }
 
-export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRenamePhoto, onToggleFavorite, onDownloadStateChange, userName }: Props) {
+export default function PhotoGallery({
+  photos,
+  onDelete,
+  onSubjectUpdate,
+  onRenamePhoto,
+  onToggleFavorite,
+  onDownloadStateChange,
+  userName,
+  showMemoryHighlights = true,
+  showImportantMoments = true,
+}: Props) {
   const showToast = useToast();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
@@ -303,7 +315,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
         )}
       </div>
 
-      {!selectMode && memoryHighlights.length > 0 && (
+      {!selectMode && showMemoryHighlights && memoryHighlights.length > 0 && (
         <section className="insight-section">
           <h2 className="insight-title">📅 历史回忆</h2>
           <div className="insight-strip">
@@ -320,7 +332,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
         </section>
       )}
 
-      {!selectMode && importantMoments.length > 0 && (
+      {!selectMode && showImportantMoments && importantMoments.length > 0 && (
         <section className="insight-section">
           <h2 className="insight-title">⭐ 重要片段</h2>
           <div className="insight-strip">

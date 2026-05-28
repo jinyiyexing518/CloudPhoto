@@ -1,7 +1,14 @@
-import { useState, useMemo, FormEvent } from "react";
+import { useState, useMemo, useCallback, useEffect, FormEvent } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useGroup } from "../../contexts/GroupContext";
-import { updateProfileApi, changePasswordApi, saveStoredAuth } from "../../services/photoApi";
+import {
+  updateProfileApi,
+  changePasswordApi,
+  saveStoredAuth,
+  listManagedShareLinks,
+  updateManagedShareLink,
+  ManagedShareLink,
+} from "../../services/photoApi";
 import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../services/shareLinksStore";
 import { copyText } from "../../services/clipboard";
 import { useToast } from "../../contexts/ToastContext";
@@ -42,8 +49,32 @@ export default function SettingsDialog({
   const [confirmPw, setConfirmPw] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState("");
+
+  const [managedShareLinks, setManagedShareLinks] = useState<ManagedShareLink[]>([]);
+  const [managedLoading, setManagedLoading] = useState(false);
+  const [managedError, setManagedError] = useState("");
+  const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
+
   const [shareLinksVersion, setShareLinksVersion] = useState(0);
   const shareLinks = useMemo(() => listRecentShareLinks(), [shareLinksVersion]);
+
+  const loadManagedShareLinks = useCallback(async () => {
+    setManagedLoading(true);
+    setManagedError("");
+    try {
+      const links = await listManagedShareLinks();
+      setManagedShareLinks(links);
+    } catch (e) {
+      setManagedError(e instanceof Error ? e.message : "加载分享链接失败");
+    } finally {
+      setManagedLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "app") return;
+    void loadManagedShareLinks();
+  }, [tab, loadManagedShareLinks]);
 
   const handleSaveProfile = async (e: FormEvent) => {
     e.preventDefault();
@@ -88,6 +119,20 @@ export default function SettingsDialog({
     } else {
       window.prompt("复制分享链接", url);
       showToast("已生成链接，请手动复制", "info");
+    }
+  };
+
+  const handleManagedAction = async (item: ManagedShareLink, action: "revoke" | "extend") => {
+    if (action === "revoke" && !confirm("确认让这个分享链接立即失效吗？")) return;
+    setLinkBusyId(item.id);
+    try {
+      await updateManagedShareLink(item.id, action, action === "extend" ? 24 : undefined);
+      showToast(action === "revoke" ? "分享链接已失效" : "已延长 24 小时", "success");
+      await loadManagedShareLinks();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "更新分享链接失败", "error");
+    } finally {
+      setLinkBusyId(null);
     }
   };
 
@@ -209,7 +254,48 @@ export default function SettingsDialog({
               <div className="settings-divider" />
 
               <div className="settings-share-header">
-                <span className="settings-info-label">分享链接管理</span>
+                <span className="settings-info-label">云端分享链接（可维护）</span>
+                <button type="button" className="settings-share-clear" onClick={() => void loadManagedShareLinks()}>
+                  刷新
+                </button>
+              </div>
+
+              {managedLoading ? (
+                <p className="add-admin-hint">正在加载分享链接…</p>
+              ) : managedError ? (
+                <p className="auth-error">{managedError}</p>
+              ) : managedShareLinks.length === 0 ? (
+                <p className="add-admin-hint">暂无云端分享记录，先从照片详情创建一个分享链接。</p>
+              ) : (
+                <div className="settings-share-list">
+                  {managedShareLinks.map((item) => {
+                    const statusText = item.status === "active" ? "有效" : item.status === "revoked" ? "已失效" : "已过期";
+                    const busy = linkBusyId === item.id;
+                    const publicUrl = item.url ?? `${window.location.origin}/api/photos/share/open/${encodeURIComponent(item.id)}`;
+                    return (
+                      <div key={item.id} className="settings-share-item settings-share-item--managed">
+                        <div className="settings-share-meta">
+                          <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
+                          <div className="settings-share-expire">创建：{new Date(item.createdAt).toLocaleString()}</div>
+                          <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()} · 状态：{statusText}</div>
+                          <div className="settings-share-expire">浏览量：{item.viewCount} · 最近访问：{item.lastViewedAt ? new Date(item.lastViewedAt).toLocaleString() : "暂无"}</div>
+                        </div>
+                        <div className="settings-share-actions">
+                          <button type="button" onClick={() => void copyShareLink(publicUrl)}>复制</button>
+                          <button type="button" onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}>打开</button>
+                          <button type="button" onClick={() => void handleManagedAction(item, "extend")} disabled={busy || item.status !== "active"}>延长24h</button>
+                          <button type="button" onClick={() => void handleManagedAction(item, "revoke")} disabled={busy || item.status !== "active"}>立即失效</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="settings-divider" />
+
+              <div className="settings-share-header">
+                <span className="settings-info-label">本地分享记录（仅当前浏览器）</span>
                 {shareLinks.length > 0 && (
                   <button
                     type="button"

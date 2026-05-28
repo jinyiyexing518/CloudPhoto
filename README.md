@@ -24,7 +24,8 @@ cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4 (backend)
         │       ├── users    (partition: /id)
         │       ├── admins   (partition: /id)
         │       ├── groups   (partition: /id)
-        │       └── invites  (partition: /id)
+        │       ├── invites  (partition: /id)
+        │       └── sharelinks (partition: /id)
         │
         └── Azure Blob Storage (photostorage / photos)
                 └── Time-limited User Delegation SAS (2h, keyless)
@@ -53,12 +54,14 @@ build time (defaults to `/api`).
 - **Photo download** — download original file directly from the browser (mobile & desktop)
 - **Expiring share links** — generate per-photo public read links with configurable TTL (1h / 24h / 3d / 7d)
 - **One-click share copy** — share URL copy uses Clipboard API first, then legacy copy fallback; only falls back to manual copy prompt as a last resort
+- **Managed share links (cloud)** — in Settings you can revoke links early or extend expiry, with per-link status and lifecycle maintained on the backend
+- **Share analytics** — every managed share link records createdAt, viewCount, and lastViewedAt for operation visibility
 - **Share link manager (local)** — the Settings → 📱 应用 tab shows recent valid share links with one-click copy/open/delete and one-click clear
 - **Photo rename** — change the display name of any photo without re-uploading
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
-- **Important moments strip** — ranks and surfaces favorite/recent/annotated photos for quick re-entry
+- **Important moments tab** — important photos are ranked (favorite + subject + recency) and shown in a dedicated ⭐ tab, separate from timeline
 - **Timeline pagination** — timeline initially loads the newest page and can load more progressively to keep first paint fast
 - **Search & filter** — filter by name, subject, uploader, date range
 - **Fullscreen modal** — view full details, edit subject / rename / download inline
@@ -189,6 +192,9 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `POST`   | `/api/photos/upload?filename=<name>[&folder=<path>][&groupId=<id>]` | ✓ | Upload (raw binary body); rejects non-image MIME (415) and > 20 MB (413) |
 | `GET`    | `/api/photos/download?name=<blobName>` | ✓ | Proxy-download with `Content-Disposition: attachment` |
 | `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | Create expiring share link (`{ url, expiresAt }`) |
+| `GET`    | `/api/photos/share/open/{linkId}` | — | Open managed public share link (redirects to a short-lived SAS and increments view stats) |
+| `GET`    | `/api/photos/share/links` | ✓ | List current user's managed share links with status and analytics |
+| `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`) |
 | `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName |
 | `DELETE` | `/api/photos?name=<blobName>` | ✓ | Delete a photo by blob name |
