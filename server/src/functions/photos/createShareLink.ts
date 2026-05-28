@@ -4,9 +4,21 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName, generateSasUrl } from "../../utils/blobStorage";
+import {
+  getBlobServiceClient,
+  containerName,
+  getUserDelegationKey,
+  generateSasUrlWithKey,
+} from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
+
+function delegationKeyExpiryMs(key: { signedExpiresOn?: string | Date }): number {
+  const raw = key.signedExpiresOn;
+  if (!raw) return 0;
+  const ms = raw instanceof Date ? raw.getTime() : new Date(raw).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
 
 app.http("createShareLink", {
   methods: ["GET"],
@@ -77,8 +89,14 @@ app.http("createShareLink", {
         };
       }
 
-      const url = await generateSasUrl(blobName, hours);
-      const expiresAt = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+      const key = await getUserDelegationKey(hours);
+      const url = generateSasUrlWithKey(blobName, key, hours);
+      const requestedExpiresAtMs = Date.now() + hours * 3600 * 1000;
+      const keyExpiresAtMs = delegationKeyExpiryMs(key);
+      const effectiveExpiresAtMs = keyExpiresAtMs > 0
+        ? Math.min(requestedExpiresAtMs, keyExpiresAtMs - 60 * 1000)
+        : requestedExpiresAtMs;
+      const expiresAt = new Date(effectiveExpiresAtMs).toISOString();
       return {
         status: 200,
         headers: { "Content-Type": "application/json" },

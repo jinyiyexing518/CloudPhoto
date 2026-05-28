@@ -27,22 +27,35 @@ export function getBlobServiceClient(): BlobServiceClient {
 // Avoids one Azure control-plane call per listPhotos invocation.
 let _delegationKeyCache: { key: UserDelegationKey; expiresAt: number } | null = null;
 
+function delegationKeyExpiryMs(key: UserDelegationKey): number {
+  const raw = key.signedExpiresOn;
+  if (!raw) return 0;
+  const value = raw instanceof Date ? raw.getTime() : new Date(raw).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
 /**
  * Fetches (or returns a cached) User Delegation Key from Azure Storage.
  * Required Azure role: "Storage Blob Delegator" on the Storage Account.
  */
 export async function getUserDelegationKey(expiryHours = 2): Promise<UserDelegationKey> {
   const nowMs = Date.now();
+  const requiredExpiresAt = nowMs + expiryHours * 3600 * 1000;
   // Reuse cached key if it still has more than 10 minutes of validity
-  if (_delegationKeyCache && _delegationKeyCache.expiresAt - nowMs > 10 * 60 * 1000) {
+  if (
+    _delegationKeyCache &&
+    _delegationKeyCache.expiresAt - nowMs > 10 * 60 * 1000 &&
+    _delegationKeyCache.expiresAt >= requiredExpiresAt
+  ) {
     return _delegationKeyCache.key;
   }
   const client = getBlobServiceClient();
   // 5-minute back-date to absorb clock-skew between Azure nodes
   const startsOn = new Date(nowMs - 5 * 60 * 1000);
-  const expiresOn = new Date(nowMs + expiryHours * 3600 * 1000);
+  const expiresOn = new Date(requiredExpiresAt);
   const key = await client.getUserDelegationKey(startsOn, expiresOn);
-  _delegationKeyCache = { key, expiresAt: nowMs + expiryHours * 3600 * 1000 };
+  const keyExpiresAt = delegationKeyExpiryMs(key) || requiredExpiresAt;
+  _delegationKeyCache = { key, expiresAt: keyExpiresAt };
   return key;
 }
 
@@ -55,8 +68,14 @@ export function generateSasUrlWithKey(
   delegationKey: UserDelegationKey,
   expiryHours = 2
 ): string {
-  const startsOn = new Date(Date.now() - 5 * 60 * 1000);
-  const expiresOn = new Date(Date.now() + expiryHours * 3600 * 1000);
+  const nowMs = Date.now();
+  const startsOn = new Date(nowMs - 5 * 60 * 1000);
+  const requestedExpiresAt = nowMs + expiryHours * 3600 * 1000;
+  const keyExpiresAt = delegationKeyExpiryMs(delegationKey);
+  const expiresAtMs = keyExpiresAt > 0
+    ? Math.min(requestedExpiresAt, keyExpiresAt - 60 * 1000)
+    : requestedExpiresAt;
+  const expiresOn = new Date(expiresAtMs);
   const sasParams = generateBlobSASQueryParameters(
     {
       containerName,
