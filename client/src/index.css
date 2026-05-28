@@ -2384,16 +2384,24 @@ body {
   .auth-card { padding: 28px 20px 24px; }
 
   /* ── Modal image ── */
+  .modal-overlay {
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 6px;
+  }
+
   .modal-content {
     width: calc(100vw - 12px);
     max-width: calc(100vw - 12px);
     max-height: calc(100vh - 12px);
     overflow-y: auto;
+    margin: 0;
   }
 
   .modal-content img {
     max-width: 100vw;
-    max-height: 42vh;
+    max-height: 28vh;
   }
 
   .modal-info {
