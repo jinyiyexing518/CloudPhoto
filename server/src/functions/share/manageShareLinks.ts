@@ -89,47 +89,62 @@ app.http("listShareLinks", {
   authLevel: "anonymous",
   route: "photos/share/links",
   handler: async (request: HttpRequest): Promise<HttpResponseInit> => {
-    const payload = extractTokenFromHeader(request.headers.get("authorization") ?? "");
-    if (!payload) return json({ error: "Unauthorized" }, 401);
+    try {
+      const payload = extractTokenFromHeader(request.headers.get("authorization") ?? "");
+      if (!payload) return json({ error: "Unauthorized" }, 401);
 
-    const container = await getShareLinksContainer();
-    const { resources } = await container.items.query<ShareLinkDoc>({
-      query: "SELECT * FROM c WHERE c.createdByUserId = @uid ORDER BY c.createdAt DESC",
-      parameters: [{ name: "@uid", value: payload.userId }],
-    }).fetchAll();
+      const container = await getShareLinksContainer();
+      const { resources } = await container.items.query<ShareLinkDoc>({
+        query: "SELECT * FROM c WHERE c.createdByUserId = @uid ORDER BY c.createdAt DESC",
+        parameters: [{ name: "@uid", value: payload.userId }],
+      }).fetchAll();
 
-    const nowMs = Date.now();
-    const normalized: ShareLinkDoc[] = [];
-    for (const item of resources) {
-      const isExpiredByTime = new Date(item.expiresAt).getTime() <= nowMs;
-      if (item.status === "active" && isExpiredByTime) {
-        const patched: ShareLinkDoc = { ...item, status: "expired" };
-        normalized.push(patched);
-        try {
-          await container.item(item.id, item.id).replace(patched);
-        } catch {
-          // Best-effort status sync; listing should still proceed.
+      const nowMs = Date.now();
+      const normalized: ShareLinkDoc[] = [];
+      for (const item of resources) {
+        const displayName = (item.displayName ?? "").trim() || item.blobName?.split("/").pop() || item.id;
+        const expiresMs = new Date(item.expiresAt).getTime();
+        const isExpiredByTime = Number.isFinite(expiresMs) ? expiresMs <= nowMs : false;
+        const status = item.status ?? (isExpiredByTime ? "expired" : "active");
+        const normalizedItem: ShareLinkDoc = {
+          ...item,
+          displayName,
+          status,
+          viewCount: Number.isFinite(item.viewCount) ? item.viewCount : 0,
+        };
+
+        if (normalizedItem.status === "active" && isExpiredByTime) {
+          const patched: ShareLinkDoc = { ...normalizedItem, status: "expired" };
+          normalized.push(patched);
+          try {
+            await container.item(item.id, item.id).replace(patched);
+          } catch {
+            // Best-effort status sync; listing should still proceed.
+          }
+        } else {
+          normalized.push(normalizedItem);
         }
-      } else {
-        normalized.push(item);
       }
+
+      const statusFilter = (request.query.get("status") ?? "all").toLowerCase();
+      const q = (request.query.get("q") ?? "").trim().toLowerCase();
+      const filtered = normalized.filter((item) => {
+        if (statusFilter !== "all" && statusFilter !== item.status) return false;
+        if (q && !item.displayName.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const baseUrl = resolvePublicBaseUrl(request);
+      const withUrl = filtered.map((item) => ({
+        ...item,
+        url: `${baseUrl}/api/photos/share/open/${encodeURIComponent(item.id)}`,
+      }));
+
+      return json(withUrl);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to fetch share links";
+      return json({ error: message }, 500);
     }
-
-    const statusFilter = (request.query.get("status") ?? "all").toLowerCase();
-    const q = (request.query.get("q") ?? "").trim().toLowerCase();
-    const filtered = normalized.filter((item) => {
-      if (statusFilter !== "all" && statusFilter !== item.status) return false;
-      if (q && !item.displayName.toLowerCase().includes(q)) return false;
-      return true;
-    });
-
-    const baseUrl = resolvePublicBaseUrl(request);
-    const withUrl = filtered.map((item) => ({
-      ...item,
-      url: `${baseUrl}/api/photos/share/open/${encodeURIComponent(item.id)}`,
-    }));
-
-    return json(withUrl);
   },
 });
 
