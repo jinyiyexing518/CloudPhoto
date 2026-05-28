@@ -159,15 +159,17 @@ function AppContent() {
     );
   };
 
-  const handleMovePhoto = async (name: string, toFolder: string) => {
+  const handleMovePhoto = async (name: string, toFolder: string): Promise<boolean> => {
     // Optimistic update (folder display only; name updated after server confirms)
     setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
     try {
       const { newName } = await movePhotoToFolder(name, toFolder, user?.displayName || undefined);
       setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, name: newName, folder: toFolder } : p));
+      return true;
     } catch {
       showToast("移动照片失败", "error");
       await fetchPhotos();
+      return false;
     }
   };
 

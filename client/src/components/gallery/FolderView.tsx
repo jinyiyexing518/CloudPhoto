@@ -130,7 +130,7 @@ interface Props {
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
-  onMovePhoto: (name: string, toFolder: string) => Promise<void>;
+  onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   userName?: string;
   /** Unique key for localStorage persistence (e.g. groupId or "personal") */
@@ -265,6 +265,14 @@ export default function FolderView({
     return a.localeCompare(b);
   });
 
+  const moveByDragWithToast = async (photoName: string, fromFolder: string, toFolder: string) => {
+    if (fromFolder === toFolder) return;
+    const ok = await onMovePhoto(photoName, toFolder);
+    if (ok) {
+      showToast(`已移动到「${toFolder || UNCATEGORIZED}」`, "success");
+    }
+  };
+
   return (
     <div className="folder-view">
       {/* Breadcrumb */}
@@ -322,7 +330,7 @@ export default function FolderView({
               count={countPhotosUnder(photos, "")}
               onClick={() => setCurrentPath("")}
               onDrop={(photoName, fromFolder) => {
-                if (fromFolder !== "") void onMovePhoto(photoName, "");
+                void moveByDragWithToast(photoName, fromFolder, "");
               }}
             />
           )}
@@ -333,7 +341,7 @@ export default function FolderView({
               count={countPhotosUnder(photos, name)}
               onClick={() => navigateTo(name)}
               onDrop={(photoName, fromFolder) => {
-                if (fromFolder !== name) void onMovePhoto(photoName, name);
+                void moveByDragWithToast(photoName, fromFolder, name);
               }}
               onRename={onRenameFolder ? (newName) => void handleRenameFolder(name, newName) : undefined}
             />
@@ -353,7 +361,7 @@ export default function FolderView({
           onNavigate={navigateTo}
           onDropToSubFolder={(photoName, fromFolder, subFolderName) => {
             const target = fullFolderPath(subFolderName);
-            if (fromFolder !== target) void onMovePhoto(photoName, target);
+            void moveByDragWithToast(photoName, fromFolder, target);
           }}
           countPhotos={(subName) => countPhotosUnder(photos, fullFolderPath(subName))}
           allFolderPaths={allFolderPaths}
@@ -386,7 +394,7 @@ interface ContentProps {
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
-  onMovePhoto: (name: string, toFolder: string) => Promise<void>;
+  onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
   userName?: string;
 }
@@ -550,6 +558,14 @@ function FolderContent({
     return basename.replace(/^\d+-/, "");
   };
 
+  const moveByDragWithToast = async (photoName: string, fromFolder: string, toFolder: string) => {
+    if (fromFolder === toFolder) return;
+    const ok = await onMovePhoto(photoName, toFolder);
+    if (ok) {
+      showToast(`已移动到「${toFolder || UNCATEGORIZED}」`, "success");
+    }
+  };
+
   return (
     <section
       className={`folder-section${isDragOver ? " folder-drag-over" : ""}`}
@@ -563,7 +579,7 @@ function FolderContent({
         setIsDragOver(false);
         const name = e.dataTransfer.getData("photoName");
         const from = e.dataTransfer.getData("fromFolder");
-        if (name && from !== currentPath) void onMovePhoto(name, currentPath);
+        if (name) void moveByDragWithToast(name, from, currentPath);
       }}
     >
       <div className="photo-grid folder-section-grid">
