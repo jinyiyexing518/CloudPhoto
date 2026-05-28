@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, Photo } from "./services/photoApi";
+import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
@@ -121,6 +121,7 @@ function AppContent() {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
+  const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const transferring = uploadProgress !== null || downloading;
 
   // Derived lists for filter dropdowns
@@ -191,6 +192,29 @@ function AppContent() {
   }, [currentGroupId, showToast]);
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
+
+  useEffect(() => {
+    if (activeTab !== "moments") return;
+    let disposed = false;
+    const loadMomentsViews = async () => {
+      try {
+        const links = await listManagedShareLinks();
+        const counts = links.reduce<Record<string, number>>((acc, item) => {
+          const key = item.blobName;
+          if (!key) return acc;
+          acc[key] = (acc[key] ?? 0) + (item.viewCount ?? 0);
+          return acc;
+        }, {});
+        if (!disposed) setMomentsShareViews(counts);
+      } catch {
+        if (!disposed) setMomentsShareViews({});
+      }
+    };
+    void loadMomentsViews();
+    return () => {
+      disposed = true;
+    };
+  }, [activeTab]);
 
   useEffect(() => {
     if (!transferring) return;
@@ -522,6 +546,8 @@ function AppContent() {
             userName={user?.displayName}
             showMemoryHighlights={false}
             showImportantMoments={false}
+            momentsMode
+            momentsShareViews={momentsShareViews}
           />
         ) : (
           <FolderView

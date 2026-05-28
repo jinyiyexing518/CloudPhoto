@@ -16,6 +16,8 @@ interface Props {
   userName?: string;
   showMemoryHighlights?: boolean;
   showImportantMoments?: boolean;
+  momentsMode?: boolean;
+  momentsShareViews?: Record<string, number>;
 }
 
 interface DateGroup {
@@ -65,6 +67,8 @@ export default function PhotoGallery({
   userName,
   showMemoryHighlights = true,
   showImportantMoments = false,
+  momentsMode = false,
+  momentsShareViews = {},
 }: Props) {
   const showToast = useToast();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -176,6 +180,24 @@ export default function PhotoGallery({
     });
     return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 10);
   }, [flatPhotos]);
+
+  const getMomentScore = useCallback((photo: Photo): number => {
+    const ts = new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime();
+    const recencyDays = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60 * 24));
+    return (photo.favorite ? 120 : 0) + (photo.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
+  }, []);
+
+  const momentCards = useMemo(() => {
+    return flatPhotos.slice(0, visibleCount).map((photo, index) => {
+      const shareViews = momentsShareViews[photo.name] ?? 0;
+      return {
+        photo,
+        rank: index + 1,
+        score: Math.round(getMomentScore(photo)),
+        shareViews,
+      };
+    });
+  }, [flatPhotos, getMomentScore, momentsShareViews, visibleCount]);
 
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = flatPhotos[idx];
@@ -389,28 +411,54 @@ export default function PhotoGallery({
         </section>
       )}
 
-      {groups.map((group) => (
-        <section key={group.key} className="date-group">
-          <h2 className="date-group-label">
-            <span className="date-group-dot" />
-            {group.label}
-            <span className="date-group-count">{group.photos.length}</span>
-          </h2>
-          <div className="photo-grid">
-            {group.photos.map((photo) => (
-              <PhotoCard
-                key={photo.name}
-                photo={photo}
-                onClick={() => !selectMode && openModal(photo)}
-                onDelete={() => onDelete(photo.name)}
-                onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
-                selected={selectMode ? selected.has(photo.name) : undefined}
-                onSelect={selectMode ? (e) => { e.stopPropagation(); togglePhoto(photo.name); } : undefined}
-              />
-            ))}
+      {momentsMode ? (
+        <section className="moments-board">
+          <div className="moments-grid">
+            {momentCards.map(({ photo, rank, score, shareViews }) => {
+              const raw = photo.createdAt ?? photo.lastModified;
+              const dateText = raw ? formatDate(raw) : "—";
+              const display = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+              return (
+                <article key={photo.name} className="moments-card" onClick={() => openModal(photo)}>
+                  <div className="moments-rank">#{rank}</div>
+                  <img src={photo.url} alt={display} loading="lazy" className="moments-thumb" />
+                  <div className="moments-card-body">
+                    <div className="moments-title" title={display}>{display}</div>
+                    <div className="moments-chips">
+                      <span>推荐值 {score}</span>
+                      <span>分享浏览 {shareViews}</span>
+                    </div>
+                    <div className="moments-meta">👤 {photo.createdBy ?? "未知"} · {dateText}</div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
-      ))}
+      ) : (
+        groups.map((group) => (
+          <section key={group.key} className="date-group">
+            <h2 className="date-group-label">
+              <span className="date-group-dot" />
+              {group.label}
+              <span className="date-group-count">{group.photos.length}</span>
+            </h2>
+            <div className="photo-grid">
+              {group.photos.map((photo) => (
+                <PhotoCard
+                  key={photo.name}
+                  photo={photo}
+                  onClick={() => !selectMode && openModal(photo)}
+                  onDelete={() => onDelete(photo.name)}
+                  onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+                  selected={selectMode ? selected.has(photo.name) : undefined}
+                  onSelect={selectMode ? (e) => { e.stopPropagation(); togglePhoto(photo.name); } : undefined}
+                />
+              ))}
+            </div>
+          </section>
+        ))
+      )}
 
       {hasMore && (
         <div className="timeline-more-wrap">
@@ -566,6 +614,12 @@ export default function PhotoGallery({
 
                 <span className="modal-detail-label">Type</span>
                 <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
+
+                <span className="modal-detail-label">Moment score</span>
+                <span className="modal-detail-value">{Math.round(getMomentScore(selectedPhoto))}</span>
+
+                <span className="modal-detail-label">Share views</span>
+                <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
               </div>
             </div>
             {flatPhotos.length > 1 && (
