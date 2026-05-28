@@ -2722,6 +2722,24 @@ body {
   text-align: left;
 }
 
+/* Enforce left-aligned copy in profile/app sections. */
+.settings-section p,
+.settings-section .add-admin-hint,
+.settings-section .settings-info-label,
+.settings-section .settings-info-value,
+.settings-section .settings-share-meta,
+.settings-section .settings-share-name,
+.settings-section .settings-share-expire,
+.settings-section .auth-field label,
+.settings-section .auth-field input {
+  text-align: left;
+}
+
+.settings-section .settings-share-meta,
+.settings-section .auth-field {
+  align-items: flex-start;
+}
+
 .settings-trash {
   padding: 0;
   gap: 0;
