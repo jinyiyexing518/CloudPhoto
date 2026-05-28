@@ -37,7 +37,8 @@ interface DateGroup {
 
 interface MomentsFilterState {
   query: string;
-  viewBand: "all" | "viewed" | "hot" | "shared" | "favorite" | "unviewed";
+  browseBand: "all" | "viewed" | "hot" | "favorite" | "unviewed";
+  shareBand: "all" | "shared" | "notShared";
   sortBy: "engagement" | "views" | "recent" | "shares" | "recommended";
 }
 
@@ -153,7 +154,8 @@ export default function PhotoGallery({
   const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>({});
   const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>({
     query: "",
-    viewBand: "all",
+    browseBand: "all",
+    shareBand: "all",
     sortBy: "engagement",
   });
 
@@ -286,11 +288,12 @@ export default function PhotoGallery({
       const shareViews = momentsShareViews[photo.name] ?? 0;
       const haystack = `${photo.originalName ?? ""} ${photo.subject ?? ""} ${photo.createdBy ?? ""}`.toLowerCase();
       if (momentsFilters.query && !haystack.includes(momentsFilters.query.toLowerCase())) return false;
-      if (momentsFilters.viewBand === "viewed" && totalViews === 0) return false;
-      if (momentsFilters.viewBand === "hot" && totalViews < MOMENT_HOT_VIEW_THRESHOLD) return false;
-      if (momentsFilters.viewBand === "shared" && shareViews === 0) return false;
-      if (momentsFilters.viewBand === "favorite" && !photo.favorite) return false;
-      if (momentsFilters.viewBand === "unviewed" && totalViews > 0) return false;
+      if (momentsFilters.browseBand === "viewed" && totalViews === 0) return false;
+      if (momentsFilters.browseBand === "hot" && totalViews < MOMENT_HOT_VIEW_THRESHOLD) return false;
+      if (momentsFilters.browseBand === "favorite" && !photo.favorite) return false;
+      if (momentsFilters.browseBand === "unviewed" && totalViews > 0) return false;
+      if (momentsFilters.shareBand === "shared" && shareViews === 0) return false;
+      if (momentsFilters.shareBand === "notShared" && shareViews > 0) return false;
       return true;
     });
 
@@ -613,18 +616,32 @@ export default function PhotoGallery({
               value={momentsFilters.query}
               onChange={(e) => setMomentsFilters((prev) => ({ ...prev, query: e.target.value }))}
             />
-            <select
-              className="moments-filter-select"
-              value={momentsFilters.viewBand}
-              onChange={(e) => setMomentsFilters((prev) => ({ ...prev, viewBand: e.target.value as MomentsFilterState["viewBand"] }))}
-            >
-              <option value="all">全部状态</option>
-              <option value="hot">高频浏览</option>
-              <option value="viewed">已浏览</option>
-              <option value="shared">有分享访问</option>
-              <option value="favorite">已收藏</option>
-              <option value="unviewed">未浏览</option>
-            </select>
+            <label className="moments-filter-field">
+              <span className="moments-filter-field-label">浏览状态</span>
+              <select
+                className="moments-filter-select"
+                value={momentsFilters.browseBand}
+                onChange={(e) => setMomentsFilters((prev) => ({ ...prev, browseBand: e.target.value as MomentsFilterState["browseBand"] }))}
+              >
+                <option value="all">全部浏览状态</option>
+                <option value="hot">高频浏览</option>
+                <option value="viewed">已浏览</option>
+                <option value="favorite">已收藏</option>
+                <option value="unviewed">未浏览</option>
+              </select>
+            </label>
+            <label className="moments-filter-field">
+              <span className="moments-filter-field-label">分享状态</span>
+              <select
+                className="moments-filter-select"
+                value={momentsFilters.shareBand}
+                onChange={(e) => setMomentsFilters((prev) => ({ ...prev, shareBand: e.target.value as MomentsFilterState["shareBand"] }))}
+              >
+                <option value="all">全部分享状态</option>
+                <option value="shared">有分享访问</option>
+                <option value="notShared">无分享访问</option>
+              </select>
+            </label>
             <select
               className="moments-filter-select"
               value={momentsFilters.sortBy}
@@ -831,6 +848,7 @@ export default function PhotoGallery({
 
                 {momentsMode ? (
                   <>
+                    <span className="modal-detail-section">片段评分</span>
                     <span className="modal-detail-label">推荐值</span>
                     <span className="modal-detail-value">{Math.round(getMomentScore(selectedPhoto))}</span>
 
@@ -842,11 +860,9 @@ export default function PhotoGallery({
                       )}
                     </span>
 
+                    <span className="modal-detail-section">浏览指标</span>
                     <span className="modal-detail-label">浏览次数（应用内）</span>
                     <span className="modal-detail-value">{selectedMomentInsight?.totalViews ?? 0}</span>
-
-                    <span className="modal-detail-label">分享访问（外链）</span>
-                    <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
 
                     <span className="modal-detail-label">最近查看</span>
                     <span className="modal-detail-value">{selectedMomentInsight?.lastViewedAt ? formatDate(selectedMomentInsight.lastViewedAt) : "暂无"}</span>
@@ -856,6 +872,10 @@ export default function PhotoGallery({
 
                     <span className="modal-detail-label">浏览高峰日</span>
                     <span className="modal-detail-value">{getPeakViewDay(selectedMomentInsight) ?? "暂无"}</span>
+
+                    <span className="modal-detail-section">分享指标</span>
+                    <span className="modal-detail-label">分享访问（外链）</span>
+                    <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
                   </>
                 ) : (
                   <>

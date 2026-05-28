@@ -549,6 +549,34 @@ body {
   border-top: 1px solid #e5e7eb;
 }
 
+/* Keep mixed cards (folder/photo/upload) visually aligned in folder view grids */
+.folder-section-grid.photo-grid {
+  grid-auto-rows: 1fr;
+  align-items: stretch;
+}
+
+.folder-section-grid .photo-card,
+.folder-section-grid .folder-card,
+.folder-section-grid .folder-upload-group {
+  height: 100%;
+}
+
+.folder-section-grid .folder-card {
+  aspect-ratio: auto;
+}
+
+.folder-section-grid .folder-upload-group {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.folder-section-grid .folder-upload-card {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
 /* "+" upload card — same size as photo card */
 .folder-upload-card {
   background: #f8fafc;
@@ -682,6 +710,19 @@ body {
   min-width: 180px;
 }
 
+.moments-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.moments-filter-field-label {
+  font-size: 0.72rem;
+  color: #475569;
+  font-weight: 700;
+  padding-left: 2px;
+}
+
 .moments-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -803,6 +844,17 @@ body {
 .moments-meta {
   font-size: 0.72rem;
   color: #475569;
+}
+
+.modal-detail-section {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed #dbeafe;
+  font-size: 0.72rem;
+  color: #1d4ed8;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .hint-tab-link {
@@ -1421,6 +1473,8 @@ body {
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
 }
 
 .photo-card:hover {
@@ -1441,6 +1495,7 @@ body {
   overflow: hidden;
   cursor: pointer;
   background: #f3f4f6;
+  flex-shrink: 0;
 }
 
 .photo-thumbnail img {
@@ -1460,6 +1515,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .photo-name {
