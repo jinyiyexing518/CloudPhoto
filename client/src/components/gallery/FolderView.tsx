@@ -10,6 +10,7 @@ import { useToast } from "../../contexts/ToastContext";
 
 const UNCATEGORIZED = "(未分类)";
 const MOVE_UNSELECTED = "__UNSEL__";
+const MOVE_CREATE = "__CREATE__";
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -156,23 +157,28 @@ export default function FolderView({
   const [extraFolders, setExtraFolders] = useState<string[]>([]);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const hydratedContextRef = useRef<string | null>(null);
 
   // Restore extra (empty) folders and last-visited path from localStorage when context changes
   useEffect(() => {
+    hydratedContextRef.current = null;
     const stored = localStorage.getItem(`cf_xf_${contextKey}`);
     try { setExtraFolders(stored ? (JSON.parse(stored) as string[]) : []); } catch { setExtraFolders([]); }
     // null = root (key absent), "" = uncategorised, "folderName" = folder
     const storedPath = localStorage.getItem(`cf_path_${contextKey}`);
     setCurrentPath(storedPath !== null ? storedPath : null);
+    hydratedContextRef.current = contextKey;
   }, [contextKey]);
 
   // Persist extra folders whenever they change
   useEffect(() => {
+    if (hydratedContextRef.current !== contextKey) return;
     localStorage.setItem(`cf_xf_${contextKey}`, JSON.stringify(extraFolders));
   }, [extraFolders, contextKey]);
 
   // Persist current path whenever it changes
   useEffect(() => {
+    if (hydratedContextRef.current !== contextKey) return;
     if (currentPath === null) {
       localStorage.removeItem(`cf_path_${contextKey}`);
     } else {
@@ -451,6 +457,27 @@ function FolderContent({
   };
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
+  const requestNewFolderTarget = (): string | null => {
+    const raw = prompt("请输入新文件夹名称（会创建在当前目录下）");
+    if (raw == null) return null;
+    const name = raw.trim();
+    if (!name) {
+      showToast("文件夹名不能为空", "error");
+      return null;
+    }
+    if (name.includes("/")) {
+      showToast("文件夹名不能包含 /", "error");
+      return null;
+    }
+    return currentPath === "" ? name : `${currentPath}/${name}`;
+  };
+
+  const resolveMoveTarget = (value: string): string | null => {
+    if (value === MOVE_UNSELECTED) return null;
+    if (value !== MOVE_CREATE) return value;
+    return requestNewFolderTarget();
+  };
+
   // Navigate to a photo by index, resetting all edit state
   const navigateToPhoto = useCallback((idx: number, photoList: Photo[]) => {
     const photo = photoList[idx];
@@ -482,9 +509,10 @@ function FolderContent({
   };
   const handleBatchDelete = () => { for (const name of selected) onDelete(name); showToast(`已删除 ${selected.size} 张照片`, "success"); exitSelectMode(); setShowBatchConfirm(false); };
   const handleBatchMove = async () => {
-    if (batchMoveTo === MOVE_UNSELECTED) return;
+    const target = resolveMoveTarget(batchMoveTo);
+    if (!target) return;
     const count = selected.size;
-    await Promise.all([...selected].map((name) => onMovePhoto(name, batchMoveTo)));
+    await Promise.all([...selected].map((name) => onMovePhoto(name, target)));
     showToast(`已移动 ${count} 张照片`, "success");
     exitSelectMode();
   };
@@ -542,17 +570,22 @@ function FolderContent({
   };
 
   const handleMove = async () => {
-    if (!selectedPhoto || movingTo === MOVE_UNSELECTED) return;
-    await onMovePhoto(selectedPhoto.name, movingTo);
+    if (!selectedPhoto) return;
+    const target = resolveMoveTarget(movingTo);
+    if (!target) return;
+    await onMovePhoto(selectedPhoto.name, target);
+    showToast(`已移动到「${target || UNCATEGORIZED}」`, "success");
     setSelectedIdx(null);
     setSelectedPhoto(null);
   };
 
   const handleQuickMove = async () => {
-    if (!quickMovePhoto || quickMoveTo === MOVE_UNSELECTED) return;
-    const ok = await onMovePhoto(quickMovePhoto.name, quickMoveTo);
+    if (!quickMovePhoto) return;
+    const target = resolveMoveTarget(quickMoveTo);
+    if (!target) return;
+    const ok = await onMovePhoto(quickMovePhoto.name, target);
     if (ok) {
-      showToast(`已移动到「${quickMoveTo || UNCATEGORIZED}」`, "success");
+      showToast(`已移动到「${target || UNCATEGORIZED}」`, "success");
       setQuickMovePhoto(null);
       setQuickMoveTo(MOVE_UNSELECTED);
     }
@@ -619,6 +652,7 @@ function FolderContent({
                   onChange={(e) => setBatchMoveTo(e.target.value)}
                 >
                   <option value={MOVE_UNSELECTED}>移动到…</option>
+                  <option value={MOVE_CREATE}>+ 新建文件夹…</option>
                   {allFolderPaths.map((f) => (
                     <option key={f} value={f}>{f === "" ? "(未分类)" : f}</option>
                   ))}
@@ -820,6 +854,7 @@ function FolderContent({
                         onChange={(e) => setMovingTo(e.target.value)}
                       >
                         <option value={MOVE_UNSELECTED} disabled>— 选择目标文件夹 —</option>
+                        <option value={MOVE_CREATE}>+ 新建文件夹…</option>
                         <option value="">{UNCATEGORIZED}</option>
                         {allFolderPaths.filter((fp) => fp !== "" && fp !== currentPath).map((fp) => (
                           <option key={fp} value={fp}>{fp}</option>
@@ -892,6 +927,7 @@ function FolderContent({
               onChange={(e) => setQuickMoveTo(e.target.value)}
             >
               <option value={MOVE_UNSELECTED} disabled>— 选择目标文件夹 —</option>
+              <option value={MOVE_CREATE}>+ 新建文件夹…</option>
               {currentPath !== "" && <option value="">{UNCATEGORIZED}</option>}
               {allFolderPaths.filter((fp) => fp !== "" && fp !== currentPath).map((fp) => (
                 <option key={fp} value={fp}>{fp}</option>
