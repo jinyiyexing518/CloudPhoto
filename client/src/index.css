@@ -2705,6 +2705,12 @@ body {
   align-items: center;
   min-height: 0;
 }
+
+.gallery-batch-toolbar--folder {
+  padding: 12px 16px 0;
+  margin: 0;
+}
+
 .batch-select-btn {
   padding: 4px 12px;
   border-radius: 16px;

@@ -875,55 +875,54 @@ function FolderContent({
         if (name) void moveByDragWithToast(name, from, currentPath);
       }}
     >
+      {directPhotos.length > 0 && (
+        <div className="gallery-batch-toolbar gallery-batch-toolbar--folder">
+          <button
+            className={`batch-select-btn${selectMode ? " active" : ""}`}
+            onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+          >
+            {selectMode ? `取消选择` : "批量选择"}
+          </button>
+          {selectMode && (
+            <button className="batch-select-btn" onClick={toggleSelectAll}>
+              {allSelected ? "取消全选" : "全选"}
+            </button>
+          )}
+          {selectMode && <span className="batch-count">已选 {selected.size} 张</span>}
+          {selectMode && selected.size > 0 && (
+            <>
+              <button className="batch-select-btn" onClick={() => void handleBatchRename()}>重命名 ({selected.size})</button>
+              <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>删除 ({selected.size})</button>
+              <select
+                className="modal-move-select"
+                value={batchMoveTo}
+                onChange={(e) => setBatchMoveTo(e.target.value)}
+              >
+                <option value={MOVE_UNSELECTED}>移动到…</option>
+                <option value={MOVE_CREATE}>+ 新建文件夹…</option>
+                {allFolderPaths.map((f) => (
+                  <option key={f} value={f}>{f === "" ? "(未分类)" : f}</option>
+                ))}
+              </select>
+              {batchMoveTo !== MOVE_UNSELECTED && (
+                <button className="batch-select-btn" onClick={() => void handleBatchMove()}>确认移动</button>
+              )}
+            </>
+          )}
+          <button
+            className="batch-select-btn"
+            style={{ marginLeft: "auto", opacity: anyUploading ? 0.5 : 1 }}
+            onClick={() => !anyUploading && inputRef.current?.click()}
+            title="上传原图到当前文件夹"
+          >
+            {isMyUpload && uploadProgress
+              ? `⏳ ${uploadProgress.done}/${uploadProgress.total}`
+              : "+ 添加原图"}
+          </button>
+        </div>
+      )}
+
       <div className="photo-grid folder-section-grid">
-        {/* Batch toolbar */}
-        {directPhotos.length > 0 && (
-          <div className="gallery-batch-toolbar" style={{ gridColumn: "1 / -1" }}>
-            <button
-              className={`batch-select-btn${selectMode ? " active" : ""}`}
-              onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
-            >
-              {selectMode ? `取消选择` : "批量选择"}
-            </button>
-            {selectMode && (
-              <button className="batch-select-btn" onClick={toggleSelectAll}>
-                {allSelected ? "取消全选" : "全选"}
-              </button>
-            )}
-            {selectMode && <span className="batch-count">已选 {selected.size} 张</span>}
-            {selectMode && selected.size > 0 && (
-              <>
-                <button className="batch-select-btn" onClick={() => void handleBatchRename()}>重命名 ({selected.size})</button>
-                <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>删除 ({selected.size})</button>
-                <select
-                  className="modal-move-select"
-                  value={batchMoveTo}
-                  onChange={(e) => setBatchMoveTo(e.target.value)}
-                >
-                  <option value={MOVE_UNSELECTED}>移动到…</option>
-                  <option value={MOVE_CREATE}>+ 新建文件夹…</option>
-                  {allFolderPaths.map((f) => (
-                    <option key={f} value={f}>{f === "" ? "(未分类)" : f}</option>
-                  ))}
-                </select>
-                {batchMoveTo !== MOVE_UNSELECTED && (
-                  <button className="batch-select-btn" onClick={() => void handleBatchMove()}>确认移动</button>
-                )}
-              </>
-            )}
-            {/* Quick upload button — always visible in toolbar so user doesn't need to scroll */}
-            <button
-              className="batch-select-btn"
-              style={{ marginLeft: "auto", opacity: anyUploading ? 0.5 : 1 }}
-              onClick={() => !anyUploading && inputRef.current?.click()}
-              title="上传原图到当前文件夹"
-            >
-              {isMyUpload && uploadProgress
-                ? `⏳ ${uploadProgress.done}/${uploadProgress.total}`
-                : "+ 添加原图"}
-            </button>
-          </div>
-        )}
         {/* Sub-folder cards first */}
         {subFolders.map((sub) => (
           <FolderCard
