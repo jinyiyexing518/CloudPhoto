@@ -23,6 +23,14 @@ function isConcurrentConflict(error: unknown): boolean {
   return statusCode === 409 || statusCode === 412;
 }
 
+function isCosmosAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const statusCode = getStatusCode(error);
+  if (statusCode === 401 || statusCode === 403) return true;
+  const message = (error as { message?: string }).message ?? "";
+  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization/i.test(message);
+}
+
 async function mutateShareLinkWithRetry(
   container: Container,
   linkId: string,
@@ -140,6 +148,13 @@ app.http("listShareLinks", {
 
       return json(withUrl);
     } catch (e) {
+      if (isCosmosAuthError(e)) {
+        return json({
+          items: [],
+          managedUnavailable: true,
+          message: "云端链接维护暂不可用（缺少 Cosmos Data Plane 权限）",
+        });
+      }
       const message = e instanceof Error ? e.message : "Failed to fetch share links";
       return json({ error: message }, 500);
     }
@@ -160,51 +175,59 @@ app.http("updateShareLink", {
     const body = await request.json().catch(() => ({})) as { action?: "revoke" | "extend"; hours?: number };
     if (!body.action) return json({ error: "action required" }, 400);
 
-    const container = await getShareLinksContainer();
-    const result = await mutateShareLinkWithRetry(
-      container,
-      linkId,
-      (resource) => resource.createdByUserId === payload.userId || payload.role === "admin",
-      (resource, now) => {
-        const effectiveStatus = resource.status === "active" && new Date(resource.expiresAt).getTime() <= now
-          ? "expired"
-          : resource.status;
+    try {
+      const container = await getShareLinksContainer();
+      const result = await mutateShareLinkWithRetry(
+        container,
+        linkId,
+        (resource) => resource.createdByUserId === payload.userId || payload.role === "admin",
+        (resource, now) => {
+          const effectiveStatus = resource.status === "active" && new Date(resource.expiresAt).getTime() <= now
+            ? "expired"
+            : resource.status;
 
-        if (body.action === "revoke") {
-          if (effectiveStatus === "revoked") {
-            return { ok: true, updated: resource };
+          if (body.action === "revoke") {
+            if (effectiveStatus === "revoked") {
+              return { ok: true, updated: resource };
+            }
+            const nowIso = new Date().toISOString();
+            return {
+              ok: true,
+              updated: {
+                ...resource,
+                status: "revoked",
+                revokedAt: nowIso,
+                expiresAt: nowIso,
+              },
+            };
           }
-          const nowIso = new Date().toISOString();
+
+          if (effectiveStatus !== "active") {
+            return { ok: false, response: json({ error: "Only active links can be extended" }, 400) };
+          }
+          const extendHoursRaw = Number(body.hours ?? 24);
+          const extendHours = Number.isFinite(extendHoursRaw)
+            ? Math.max(1, Math.min(24 * 30, Math.floor(extendHoursRaw)))
+            : 24;
+          const baseMs = Math.max(now, new Date(resource.expiresAt).getTime());
           return {
             ok: true,
             updated: {
               ...resource,
-              status: "revoked",
-              revokedAt: nowIso,
-              expiresAt: nowIso,
+              expiresAt: new Date(baseMs + extendHours * 3600 * 1000).toISOString(),
             },
           };
-        }
+        },
+      );
 
-        if (effectiveStatus !== "active") {
-          return { ok: false, response: json({ error: "Only active links can be extended" }, 400) };
-        }
-        const extendHoursRaw = Number(body.hours ?? 24);
-        const extendHours = Number.isFinite(extendHoursRaw)
-          ? Math.max(1, Math.min(24 * 30, Math.floor(extendHoursRaw)))
-          : 24;
-        const baseMs = Math.max(now, new Date(resource.expiresAt).getTime());
-        return {
-          ok: true,
-          updated: {
-            ...resource,
-            expiresAt: new Date(baseMs + extendHours * 3600 * 1000).toISOString(),
-          },
-        };
-      },
-    );
-
-    if (!result.ok) return result.response;
-    return json(result.updated);
+      if (!result.ok) return result.response;
+      return json(result.updated);
+    } catch (e) {
+      if (isCosmosAuthError(e)) {
+        return json({ error: "云端链接维护暂不可用（缺少 Cosmos Data Plane 权限）" }, 503);
+      }
+      const message = e instanceof Error ? e.message : "Failed to update share link";
+      return json({ error: message }, 500);
+    }
   },
 });

@@ -436,6 +436,12 @@ export interface ManagedShareLink {
   revokedAt?: string;
 }
 
+interface ManagedShareLinksResponse {
+  items?: ManagedShareLink[];
+  managedUnavailable?: boolean;
+  message?: string;
+}
+
 export async function listManagedShareLinks(options?: { status?: "all" | "active" | "revoked" | "expired"; q?: string }): Promise<ManagedShareLink[]> {
   const params = new URLSearchParams();
   if (options?.status && options.status !== "all") params.set("status", options.status);
@@ -449,7 +455,9 @@ export async function listManagedShareLinks(options?: { status?: "all" | "active
     const err = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? "Failed to fetch share links");
   }
-  return response.json() as Promise<ManagedShareLink[]>;
+  const data = await response.json() as ManagedShareLink[] | ManagedShareLinksResponse;
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data.items) ? data.items : [];
 }
 
 export async function updateManagedShareLink(
