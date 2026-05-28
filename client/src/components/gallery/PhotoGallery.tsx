@@ -37,8 +37,10 @@ interface DateGroup {
 
 interface MomentsFilterState {
   query: string;
-  browseBand: "all" | "viewed" | "hot" | "favorite" | "unviewed";
-  shareBand: "all" | "shared" | "notShared";
+  engagementBand: "all" | "high" | "medium" | "low";
+  recommendationBand: "all" | "high" | "favorite" | "fresh";
+  viewBand: "all" | "hot" | "viewed" | "unviewed";
+  shareBand: "all" | "shared" | "viral" | "notShared";
   sortBy: "engagement" | "views" | "recent" | "shares" | "recommended";
 }
 
@@ -169,7 +171,9 @@ export default function PhotoGallery({
   const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>({});
   const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>({
     query: "",
-    browseBand: "all",
+    engagementBand: "all",
+    recommendationBand: "all",
+    viewBand: "all",
     shareBand: "all",
     sortBy: "engagement",
   });
@@ -301,13 +305,28 @@ export default function PhotoGallery({
       const insight = momentsInsightsMap[photo.name];
       const totalViews = insight?.totalViews ?? 0;
       const shareViews = momentsShareViews[photo.name] ?? 0;
+      const score = Math.round(getMomentScore(photo));
+      const recentBoost = insight?.lastViewedAt
+        ? Math.max(0, MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS - (Date.now() - new Date(insight.lastViewedAt).getTime()) / (1000 * 60 * 60))
+        : 0;
+      const engagement = score + totalViews * MOMENT_ENGAGEMENT_VIEW_WEIGHT + recentBoost;
       const haystack = `${photo.originalName ?? ""} ${photo.subject ?? ""} ${photo.createdBy ?? ""}`.toLowerCase();
       if (momentsFilters.query && !haystack.includes(momentsFilters.query.toLowerCase())) return false;
-      if (momentsFilters.browseBand === "viewed" && totalViews === 0) return false;
-      if (momentsFilters.browseBand === "hot" && totalViews < MOMENT_HOT_VIEW_THRESHOLD) return false;
-      if (momentsFilters.browseBand === "favorite" && !photo.favorite) return false;
-      if (momentsFilters.browseBand === "unviewed" && totalViews > 0) return false;
+      if (momentsFilters.engagementBand === "high" && engagement < 160) return false;
+      if (momentsFilters.engagementBand === "medium" && (engagement < 90 || engagement >= 160)) return false;
+      if (momentsFilters.engagementBand === "low" && engagement >= 90) return false;
+      if (momentsFilters.recommendationBand === "high" && score < 90) return false;
+      if (momentsFilters.recommendationBand === "favorite" && !photo.favorite) return false;
+      if (momentsFilters.recommendationBand === "fresh") {
+        const photoTime = new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime();
+        const photoAgeDays = (Date.now() - photoTime) / (1000 * 60 * 60 * 24);
+        if (!Number.isFinite(photoAgeDays) || photoAgeDays > 30) return false;
+      }
+      if (momentsFilters.viewBand === "viewed" && totalViews === 0) return false;
+      if (momentsFilters.viewBand === "hot" && totalViews < MOMENT_HOT_VIEW_THRESHOLD) return false;
+      if (momentsFilters.viewBand === "unviewed" && totalViews > 0) return false;
       if (momentsFilters.shareBand === "shared" && shareViews === 0) return false;
+      if (momentsFilters.shareBand === "viral" && shareViews < 3) return false;
       if (momentsFilters.shareBand === "notShared" && shareViews > 0) return false;
       return true;
     });
@@ -632,29 +651,55 @@ export default function PhotoGallery({
               onChange={(e) => setMomentsFilters((prev) => ({ ...prev, query: e.target.value }))}
             />
             <label className="moments-filter-field">
-              <span className="moments-filter-field-label">浏览状态</span>
+              <span className="moments-filter-field-label">热度</span>
               <select
                 className="moments-filter-select"
-                value={momentsFilters.browseBand}
-                onChange={(e) => setMomentsFilters((prev) => ({ ...prev, browseBand: e.target.value as MomentsFilterState["browseBand"] }))}
+                value={momentsFilters.engagementBand}
+                onChange={(e) => setMomentsFilters((prev) => ({ ...prev, engagementBand: e.target.value as MomentsFilterState["engagementBand"] }))}
               >
-                <option value="all">全部浏览状态</option>
-                <option value="hot">高频浏览</option>
-                <option value="viewed">已浏览</option>
-                <option value="favorite">已收藏</option>
-                <option value="unviewed">未浏览</option>
+                <option value="all">全部热度</option>
+                <option value="high">高热度</option>
+                <option value="medium">中热度</option>
+                <option value="low">低热度</option>
               </select>
             </label>
             <label className="moments-filter-field">
-              <span className="moments-filter-field-label">分享状态</span>
+              <span className="moments-filter-field-label">推荐值</span>
+              <select
+                className="moments-filter-select"
+                value={momentsFilters.recommendationBand}
+                onChange={(e) => setMomentsFilters((prev) => ({ ...prev, recommendationBand: e.target.value as MomentsFilterState["recommendationBand"] }))}
+              >
+                <option value="all">全部推荐值</option>
+                <option value="high">高推荐值</option>
+                <option value="favorite">已收藏优先</option>
+                <option value="fresh">近 30 天</option>
+              </select>
+            </label>
+            <label className="moments-filter-field">
+              <span className="moments-filter-field-label">浏览量</span>
+              <select
+                className="moments-filter-select"
+                value={momentsFilters.viewBand}
+                onChange={(e) => setMomentsFilters((prev) => ({ ...prev, viewBand: e.target.value as MomentsFilterState["viewBand"] }))}
+              >
+                <option value="all">全部浏览量</option>
+                <option value="hot">高频浏览</option>
+                <option value="viewed">已有浏览</option>
+                <option value="unviewed">暂无浏览</option>
+              </select>
+            </label>
+            <label className="moments-filter-field">
+              <span className="moments-filter-field-label">分享量</span>
               <select
                 className="moments-filter-select"
                 value={momentsFilters.shareBand}
                 onChange={(e) => setMomentsFilters((prev) => ({ ...prev, shareBand: e.target.value as MomentsFilterState["shareBand"] }))}
               >
-                <option value="all">全部分享状态</option>
-                <option value="shared">有分享访问</option>
-                <option value="notShared">无分享访问</option>
+                <option value="all">全部分享量</option>
+                <option value="shared">已有分享</option>
+                <option value="viral">高分享量</option>
+                <option value="notShared">暂无分享</option>
               </select>
             </label>
             <select

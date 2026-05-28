@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       injectRegister: false,
       includeAssets: ["favicon.svg", "apple-touch-icon.svg", "maskable-icon.svg"],
       manifest: {
@@ -39,8 +39,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,json}"],
         navigateFallback: "/index.html",
+        skipWaiting: true,
         runtimeCaching: [
           {
             urlPattern: /\/api\/.*$/i,
