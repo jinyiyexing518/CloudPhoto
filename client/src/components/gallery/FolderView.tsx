@@ -719,11 +719,11 @@ function FolderContent({
               className="batch-select-btn"
               style={{ marginLeft: "auto", opacity: anyUploading ? 0.5 : 1 }}
               onClick={() => !anyUploading && inputRef.current?.click()}
-              title="上传照片到当前文件夹"
+              title="上传原图到当前文件夹"
             >
               {isMyUpload && uploadProgress
                 ? `⏳ ${uploadProgress.done}/${uploadProgress.total}`
-                : "+ 添加照片"}
+                : "+ 添加原图"}
             </button>
           </div>
         )}
@@ -775,7 +775,7 @@ function FolderContent({
           <div
             className={`folder-upload-card${anyUploading ? " folder-upload-card--loading" : ""}`}
             onClick={() => !anyUploading && inputRef.current?.click()}
-            title="上传到当前文件夹"
+            title="上传原图到当前文件夹"
             role="button"
           >
             {isMyUpload && uploadProgress ? (
@@ -786,7 +786,7 @@ function FolderContent({
             ) : (
               <>
                 <span className="folder-upload-icon">{anyUploading ? "⏳" : "+"}</span>
-                <span className="folder-upload-label">添加照片</span>
+                <span className="folder-upload-label">添加原图</span>
               </>
             )}
             <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
@@ -862,7 +862,7 @@ function FolderContent({
                 onClick={() => void handleDownload()}
                 disabled={downloading}
               >
-                {downloading ? "⏳ 下载中…" : "⬇ 下载照片"}
+                {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
               </button>
               <div className="modal-share-row">
                 <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>

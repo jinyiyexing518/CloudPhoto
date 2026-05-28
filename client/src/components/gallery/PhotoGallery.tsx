@@ -330,7 +330,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
                 onClick={() => void handleDownload()}
                 disabled={downloading}
               >
-                {downloading ? "⏳ 下载中…" : "⬇ 下载照片"}
+                {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
               </button>
               <div className="modal-share-row">
                 <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
