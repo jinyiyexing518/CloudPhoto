@@ -73,6 +73,20 @@ function splitDisplayName(value: string): { baseName: string; extension: string 
   };
 }
 
+function normalizeRenameBaseName(value: string): string {
+  const trimmed = value.trim();
+  const lastDot = trimmed.lastIndexOf(".");
+  if (lastDot <= 0) return trimmed;
+  const suffix = trimmed.slice(lastDot + 1);
+  if (!/^[a-z0-9]{1,10}$/i.test(suffix)) return trimmed;
+  return trimmed.slice(0, lastDot).trimEnd();
+}
+
+function getPhotoExtension(photo: Photo): string {
+  const displayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+  return splitDisplayName(displayName).extension;
+}
+
 function getEditablePhotoName(photo: Photo): string {
   const displayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
   return splitDisplayName(displayName).baseName || displayName;
@@ -81,7 +95,8 @@ function getEditablePhotoName(photo: Photo): string {
 function buildRenamedPhotoName(photo: Photo, inputName: string): string {
   const currentDisplayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
   const { extension } = splitDisplayName(currentDisplayName);
-  return `${inputName.trim()}${extension}`;
+  const baseName = normalizeRenameBaseName(inputName);
+  return `${baseName}${extension}`;
 }
 
 function getTopViewer(insight?: MomentInsight): string | undefined {
@@ -444,7 +459,7 @@ export default function PhotoGallery({
 
   const saveName = async () => {
     if (!selectedPhoto) return;
-    const trimmed = nameInput.trim();
+    const trimmed = normalizeRenameBaseName(nameInput);
     if (!trimmed) return;
     const finalName = buildRenamedPhotoName(selectedPhoto, trimmed);
     setSavingName(true);
@@ -648,9 +663,9 @@ export default function PhotoGallery({
               onChange={(e) => setMomentsFilters((prev) => ({ ...prev, sortBy: e.target.value as MomentsFilterState["sortBy"] }))}
             >
               <option value="engagement">按互动热度排序</option>
-              <option value="views">按查看次数排序</option>
+              <option value="views">按浏览量排序</option>
               <option value="recent">按最近查看排序</option>
-              <option value="shares">按分享浏览排序</option>
+              <option value="shares">按分享量排序</option>
               <option value="recommended">按推荐值排序</option>
             </select>
           </div>
@@ -671,9 +686,9 @@ export default function PhotoGallery({
                       <span className="moments-score-pill">热度 {Math.round(engagement)}</span>
                     </div>
                     <div className="moments-chips">
-                      <span>浏览 {totalViews}</span>
+                      <span>浏览量 {totalViews}</span>
                       <span>推荐值 {score}</span>
-                      <span>分享访问 {shareViews}</span>
+                      <span>分享量 {shareViews}</span>
                     </div>
                     <div className="moments-energy">
                       <span className="moments-energy-label">热度进度</span>
@@ -757,6 +772,9 @@ export default function PhotoGallery({
                       }}
                       maxLength={120}
                     />
+                    <span className="modal-empty" style={{ marginLeft: 6 }}>
+                      后缀固定：{getPhotoExtension(selectedPhoto) || "（无）"}
+                    </span>
                     <button className="modal-subject-save" onClick={() => void saveName()} disabled={savingName}>
                       {savingName ? "..." : "保存"}
                     </button>
@@ -861,7 +879,7 @@ export default function PhotoGallery({
                     </span>
 
                     <span className="modal-detail-section">浏览指标</span>
-                    <span className="modal-detail-label">浏览次数（应用内）</span>
+                    <span className="modal-detail-label">浏览量（应用内）</span>
                     <span className="modal-detail-value">{selectedMomentInsight?.totalViews ?? 0}</span>
 
                     <span className="modal-detail-label">最近查看</span>
@@ -874,7 +892,7 @@ export default function PhotoGallery({
                     <span className="modal-detail-value">{getPeakViewDay(selectedMomentInsight) ?? "暂无"}</span>
 
                     <span className="modal-detail-section">分享指标</span>
-                    <span className="modal-detail-label">分享访问（外链）</span>
+                    <span className="modal-detail-label">分享量（外链）</span>
                     <span className="modal-detail-value">{momentsShareViews[selectedPhoto.name] ?? 0}</span>
                   </>
                 ) : (

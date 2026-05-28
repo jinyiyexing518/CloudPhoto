@@ -28,6 +28,20 @@ function splitDisplayName(value: string): { baseName: string; extension: string 
   };
 }
 
+function normalizeRenameBaseName(value: string): string {
+  const trimmed = value.trim();
+  const lastDot = trimmed.lastIndexOf(".");
+  if (lastDot <= 0) return trimmed;
+  const suffix = trimmed.slice(lastDot + 1);
+  if (!/^[a-z0-9]{1,10}$/i.test(suffix)) return trimmed;
+  return trimmed.slice(0, lastDot).trimEnd();
+}
+
+function getPhotoExtension(photo: Photo): string {
+  const displayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+  return splitDisplayName(displayName).extension;
+}
+
 function getEditablePhotoName(photo: Photo): string {
   const displayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
   return splitDisplayName(displayName).baseName || displayName;
@@ -36,7 +50,8 @@ function getEditablePhotoName(photo: Photo): string {
 function buildRenamedPhotoName(photo: Photo, inputName: string): string {
   const currentDisplayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
   const { extension } = splitDisplayName(currentDisplayName);
-  return `${inputName.trim()}${extension}`;
+  const baseName = normalizeRenameBaseName(inputName);
+  return `${baseName}${extension}`;
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -622,7 +637,7 @@ function FolderContent({
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
+    setNameInput(getEditablePhotoName(photo));
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
     setDownloading(false);
@@ -708,7 +723,7 @@ function FolderContent({
 
   const saveName = async () => {
     if (!selectedPhoto) return;
-    const trimmed = nameInput.trim();
+    const trimmed = normalizeRenameBaseName(nameInput);
     if (!trimmed) return;
     const finalName = buildRenamedPhotoName(selectedPhoto, trimmed);
     setSavingName(true);
@@ -997,6 +1012,9 @@ function FolderContent({
                       }}
                       maxLength={120}
                     />
+                    <span className="modal-empty" style={{ marginLeft: 6 }}>
+                      后缀固定：{getPhotoExtension(selectedPhoto) || "（无）"}
+                    </span>
                     <button className="modal-subject-save" onClick={() => void saveName()} disabled={savingName}>
                       {savingName ? "..." : "保存"}
                     </button>

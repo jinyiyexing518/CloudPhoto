@@ -7,6 +7,27 @@ import {
 import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 
+function decodeMeta(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    return Buffer.from(raw, "base64").toString("utf8") || undefined;
+  } catch {
+    return raw || undefined;
+  }
+}
+
+function splitDisplayName(value: string): { baseName: string; extension: string } {
+  const trimmed = value.trim();
+  const lastDot = trimmed.lastIndexOf(".");
+  if (lastDot <= 0 || lastDot === trimmed.length - 1) {
+    return { baseName: trimmed, extension: "" };
+  }
+  return {
+    baseName: trimmed.slice(0, lastDot),
+    extension: trimmed.slice(lastDot),
+  };
+}
+
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const statusCode = (error as { statusCode?: number }).statusCode;
@@ -50,7 +71,30 @@ app.http("updatePhotoMetadata", {
         const existing: Record<string, string> = { ...(props.metadata ?? {}) };
         const now = new Date().toISOString();
         if (body.subject !== undefined) existing.subject = b64(body.subject);
-        if (body.originalName !== undefined) existing.originalName = b64(body.originalName);
+        if (body.originalName !== undefined) {
+          const nextOriginalName = body.originalName.trim();
+          if (!nextOriginalName) {
+            return {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "originalName cannot be empty" }),
+            };
+          }
+
+          const blobBaseName = (blobName.split("/").pop() ?? blobName).replace(/^\d+-/, "");
+          const currentDisplayName = decodeMeta(existing.originalName) ?? blobBaseName;
+          const currentExt = splitDisplayName(currentDisplayName).extension.toLowerCase();
+          const nextExt = splitDisplayName(nextOriginalName).extension.toLowerCase();
+          if (currentExt !== nextExt) {
+            return {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "文件后缀不可修改，请仅编辑名称部分" }),
+            };
+          }
+
+          existing.originalName = b64(nextOriginalName);
+        }
         if (body.favorite !== undefined) existing.favorite = body.favorite ? "1" : "0";
         if (body.updatedBy) existing.lastModifiedBy = b64(body.updatedBy);
         existing.lastModifiedAt = now;
