@@ -8,6 +8,16 @@ import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
 
+function getStatusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const statusCode = (error as { statusCode?: number }).statusCode;
+  return typeof statusCode === "number" ? statusCode : undefined;
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  return getStatusCode(error) === 412;
+}
+
 /**
  * DELETE /api/photos?name=...
  * Soft-deletes a photo by stamping deletedAt / deletedBy into blob metadata.
@@ -46,16 +56,45 @@ app.http("deletePhoto", {
       const containerClient = blobServiceClient.getContainerClient(containerName);
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
-      const props = await blockBlobClient.getProperties();
-      const existing: Record<string, string> = { ...(props.metadata ?? {}) };
-      if (!existing.createdAt) {
-        existing.createdAt = props.createdOn?.toISOString()
-          ?? props.lastModified?.toISOString()
-          ?? new Date().toISOString();
+      const maxAttempts = 3;
+      let deleted = false;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const props = await blockBlobClient.getProperties();
+        const existing: Record<string, string> = { ...(props.metadata ?? {}) };
+        if (!existing.createdAt) {
+          existing.createdAt = props.createdOn?.toISOString()
+            ?? props.lastModified?.toISOString()
+            ?? new Date().toISOString();
+        }
+        existing.deletedAt = new Date().toISOString();
+        existing.deletedBy = payload.userId;
+
+        try {
+          await blockBlobClient.setMetadata(existing, {
+            conditions: props.etag ? { ifMatch: props.etag } : undefined,
+          });
+          deleted = true;
+          break;
+        } catch (e) {
+          if (isPreconditionFailed(e) && attempt < maxAttempts) continue;
+          if (isPreconditionFailed(e)) {
+            return {
+              status: 409,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Photo was modified concurrently, please retry" }),
+            };
+          }
+          throw e;
+        }
       }
-      existing.deletedAt = new Date().toISOString();
-      existing.deletedBy = payload.userId;
-      await blockBlobClient.setMetadata(existing);
+
+      if (!deleted) {
+        return {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Photo delete conflict, please retry" }),
+        };
+      }
 
       return {
         status: 200,

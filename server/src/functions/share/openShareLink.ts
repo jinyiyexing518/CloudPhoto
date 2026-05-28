@@ -61,12 +61,15 @@ app.http("openShareLink", {
       const key = await getUserDelegationKey(Math.min(remainingHours, 24));
       const sasUrl = generateSasUrlWithKey(resource.blobName, key, Math.min(remainingHours, 24));
 
-      const updated: ShareLinkDoc = {
-        ...resource,
-        viewCount: (resource.viewCount ?? 0) + 1,
-        lastViewedAt: new Date().toISOString(),
-      };
-      await links.item(resource.id, resource.id).replace(updated);
+      // Use atomic patch to avoid lost updates under concurrent opens.
+      try {
+        await links.item(resource.id, resource.id).patch([
+          { op: "incr", path: "/viewCount", value: 1 },
+          { op: "set", path: "/lastViewedAt", value: new Date().toISOString() },
+        ]);
+      } catch (e) {
+        context.warn("Share link stats update failed:", e);
+      }
 
       return {
         status: 302,

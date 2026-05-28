@@ -11,6 +11,16 @@ import {
 } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 
+function getStatusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const statusCode = (error as { statusCode?: number }).statusCode;
+  return typeof statusCode === "number" ? statusCode : undefined;
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  return getStatusCode(error) === 412;
+}
+
 app.http("movePhoto", {
   methods: ["POST"],
   authLevel: "anonymous",
@@ -82,13 +92,38 @@ app.http("movePhoto", {
       const sourceBlob = containerClient.getBlockBlobClient(name);
       const destBlob = containerClient.getBlockBlobClient(newBlobName);
 
+      const sourceProps = await sourceBlob.getProperties();
+      const sourceEtag = sourceProps.etag;
+
       // Server-side copy using a short-lived SAS on the source blob
       const sourceSasUrl = await generateSasUrl(name, 1);
-      const copyPoller = await destBlob.beginCopyFromURL(sourceSasUrl);
+      const copyPoller = await destBlob.beginCopyFromURL(sourceSasUrl, {
+        sourceConditions: sourceEtag ? { ifMatch: sourceEtag } : undefined,
+      });
       await copyPoller.pollUntilDone();
 
       // Remove the original blob
-      await sourceBlob.deleteIfExists();
+      try {
+        const deleted = await sourceBlob.deleteIfExists({
+          conditions: sourceEtag ? { ifMatch: sourceEtag } : undefined,
+        });
+        if (!deleted.succeeded) {
+          return {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Move conflict detected, please retry" }),
+          };
+        }
+      } catch (e) {
+        if (isPreconditionFailed(e)) {
+          return {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Photo changed during move, please retry" }),
+          };
+        }
+        throw e;
+      }
 
       return {
         status: 200,

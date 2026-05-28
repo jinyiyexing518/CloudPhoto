@@ -2,6 +2,19 @@ const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api"
 
 const TOKEN_KEY = "cloudphoto_token";
 const REFRESH_TOKEN_KEY = "cloudphoto_refresh_token";
+const DEFAULT_CONFLICT_MESSAGE = "资源已被他人修改，请刷新后重试";
+
+async function parseApiError(
+  response: Response,
+  fallback: string,
+  options?: { conflictMessage?: string },
+): Promise<string> {
+  if (response.status === 409) {
+    return options?.conflictMessage ?? DEFAULT_CONFLICT_MESSAGE;
+  }
+  const err = await response.json().catch(() => ({})) as { error?: string };
+  return err.error ?? fallback;
+}
 
 // ---- Stored auth helpers (used by AuthContext) ----
 export function saveStoredAuth(token: string, refreshToken?: string): void {
@@ -235,7 +248,9 @@ export async function updatePhotoSubject(
       body: JSON.stringify({ subject, updatedBy }),
     }
   );
-  if (!response.ok) throw new Error("Failed to update subject");
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "更新主题失败"));
+  }
 }
 
 export async function setPhotoFavorite(
@@ -251,7 +266,9 @@ export async function setPhotoFavorite(
       body: JSON.stringify({ favorite, updatedBy }),
     },
   );
-  if (!response.ok) throw new Error("Failed to update favorite");
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "更新收藏状态失败"));
+  }
 }
 
 export async function movePhotoToFolder(
@@ -268,7 +285,9 @@ export async function movePhotoToFolder(
     },
     30000,
   ).catch((e: unknown) => { throw new Error((e instanceof Error && e.name === "AbortError") ? "移动超时" : "网络错误"); });
-  if (!response.ok) throw new Error("Failed to move photo");
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "移动照片失败"));
+  }
   return response.json() as Promise<{ newName: string }>;
 }
 
@@ -277,7 +296,9 @@ export async function deletePhoto(name: string): Promise<void> {
     `${API_BASE}/photos?name=${encodeURIComponent(name)}`,
     { method: "DELETE", headers: authHeaders() }
   );
-  if (!response.ok) throw new Error("Failed to delete photo");
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "删除照片失败"));
+  }
 }
 
 // ---- Trash API ----
@@ -296,7 +317,9 @@ export async function restorePhoto(name: string): Promise<void> {
     `${API_BASE}/photos/trash/restore?name=${encodeURIComponent(name)}`,
     { method: "POST", headers: authHeaders() }
   );
-  if (!response.ok) throw new Error("Failed to restore photo");
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "恢复照片失败"));
+  }
 }
 
 export async function permanentlyDeletePhoto(name: string): Promise<void> {
@@ -304,7 +327,9 @@ export async function permanentlyDeletePhoto(name: string): Promise<void> {
     `${API_BASE}/photos/trash?name=${encodeURIComponent(name)}`,
     { method: "DELETE", headers: authHeaders() }
   );
-  if (!response.ok) throw new Error("Failed to permanently delete photo");
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "彻底删除照片失败"));
+  }
 }
 
 export async function renamePhoto(
@@ -320,7 +345,9 @@ export async function renamePhoto(
       body: JSON.stringify({ originalName: newOriginalName, updatedBy }),
     },
   );
-  if (!response.ok) throw new Error("Failed to rename photo");
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "重命名照片失败"));
+  }
 }
 
 export async function downloadPhotoApi(
@@ -439,8 +466,9 @@ export async function updateManagedShareLink(
     },
   );
   if (!response.ok) {
-    const err = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(err.error ?? "Failed to update share link");
+    throw new Error(await parseApiError(response, "更新分享链接失败", {
+      conflictMessage: "分享链接已被其他操作更新，请刷新后重试",
+    }));
   }
   return response.json() as Promise<ManagedShareLink>;
 }

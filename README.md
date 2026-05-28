@@ -61,6 +61,8 @@ build time (defaults to `/api`).
 - **Flexible share extension** — managed links can be extended with selectable presets (1h / 24h / 3d / 7d / 30d) instead of fixed 24h only
 - **Share analytics** — every managed share link records createdAt, viewCount, and lastViewedAt for operation visibility
 - **Automatic expiry reconciliation** — while listing managed links, backend auto-normalizes time-expired active links to `expired` for accurate status display
+- **Optimistic concurrency safety** — metadata update / move / delete / restore / share maintenance all use conditional writes (ETag + retry) to prevent concurrent overwrite
+- **Unified conflict UX** — when backend returns `409` conflict, frontend shows a consistent toast message (`资源已被他人修改，请刷新后重试`)
 - **Share link manager (local)** — the Settings → 📱 应用 tab shows recent valid share links with one-click copy/open/delete and one-click clear
 - **Photo rename** — change the display name of any photo without re-uploading
 - **Move photos** — move photos between folders via UI or drag-and-drop
@@ -201,10 +203,10 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | Create expiring share link (`{ url, expiresAt }`) |
 | `GET`    | `/api/photos/share/open/{linkId}` | — | Open managed public share link (redirects to a short-lived SAS and increments view stats) |
 | `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | List current user's managed share links with optional status/name filtering |
-| `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`, `hours=1..720`) |
+| `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`, `hours=1..720`); conflict returns `409` |
 | `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
-| `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName |
-| `DELETE` | `/api/photos?name=<blobName>` | ✓ | Delete a photo by blob name |
+| `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName; conflict returns `409` |
+| `DELETE` | `/api/photos?name=<blobName>` | ✓ | Soft-delete a photo by blob name; conflict returns `409` |
 
 **`GET /api/photos` ownership rules:**
 - `?groupId=<id>` — requester must be a member of that group
