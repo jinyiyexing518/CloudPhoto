@@ -731,44 +731,45 @@ body {
     linear-gradient(180deg, #f8fbff 0%, #f1f5ff 100%);
   border: 1px solid #dbeafe;
   border-radius: 18px;
-  padding: 16px;
+  padding: 12px 14px 14px;
 }
 
 .moments-filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin: 0 0 14px;
+  align-items: end;
+  gap: 8px;
+  margin: 0 0 10px;
 }
 
 .moments-filter-input,
 .moments-filter-select {
   border: 1px solid #bfdbfe;
   background: #fff;
-  border-radius: 12px;
-  padding: 9px 12px;
-  font-size: 0.85rem;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
   color: #1f2937;
 }
 
 .moments-filter-input {
-  flex: 1 1 260px;
-  min-width: 220px;
+  flex: 1 1 240px;
+  min-width: 200px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .moments-filter-select {
-  min-width: 180px;
+  min-width: 160px;
 }
 
 .moments-filter-field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
 }
 
 .moments-filter-field-label {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: #475569;
   font-weight: 700;
   padding-left: 2px;
@@ -2442,9 +2443,10 @@ body {
   .folder-section-name { font-size: 0.88rem; }
 
   .folder-new-btn { font-size: 0.82rem; padding: 6px 12px; }
-  .folder-share-controls { width: 100%; }
+  .folder-view-toolbar { gap: 8px; align-items: center; }
+  .folder-share-controls { width: auto; max-width: 100%; }
   .folder-share-select,
-  .folder-share-btn { width: 100%; }
+  .folder-share-btn { width: auto; max-width: 100%; }
   .folder-create-row { width: 100%; gap: 6px; }
   .folder-name-input { flex: 1 1 100%; width: 100%; }
   .folder-create-confirm,
@@ -2454,13 +2456,19 @@ body {
   .folder-upload-card { min-height: 100px; }
 
   .moments-filter-bar {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .moments-filter-input,
   .moments-filter-select {
     width: 100%;
     min-width: 0;
+  }
+
+  .moments-filter-input {
+    grid-column: 1 / -1;
   }
 
   /* ── Filter bar ── */
@@ -2673,16 +2681,18 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 8px 0 12px;
+  padding: 0;
+  margin: 0 0 6px;
   align-items: center;
+  min-height: 0;
 }
 .batch-select-btn {
-  padding: 5px 14px;
+  padding: 4px 12px;
   border-radius: 16px;
   border: 1.5px solid #0078d4;
   color: #0078d4;
   background: #fff;
-  font-size: 0.84rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.15s;
 }
