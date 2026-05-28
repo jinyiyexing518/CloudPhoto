@@ -206,8 +206,19 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
     setSharing(true);
     try {
       const { url, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
-      await navigator.clipboard.writeText(url);
-      showToast(`分享链接已复制（到期：${formatDate(expiresAt)}）`, "success");
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+          copied = true;
+        }
+      } catch {
+        copied = false;
+      }
+      if (!copied) {
+        window.prompt("复制分享链接", url);
+      }
+      showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
     } catch (e) {
       showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");
     } finally {

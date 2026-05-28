@@ -26,9 +26,14 @@ function AppContent() {
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
   const deferredInstallPrompt = useRef<BeforeInstallPromptEvent | null>(null);
+  const ua = navigator.userAgent.toLowerCase();
+  const isIOS = /iphone|ipad|ipod/.test(ua);
+  const isAndroid = /android/.test(ua);
 
   // Location banner: shown briefly when entering a group or personal space
   const [locationBanner, setLocationBanner] = useState<string | null>(null);
@@ -44,6 +49,10 @@ function AppContent() {
   }, [currentGroupId, groupsLoaded]); // groups intentionally omitted — only care when user switches
 
   useEffect(() => {
+    const standalone = window.matchMedia("(display-mode: standalone)").matches
+      || ((navigator as Navigator & { standalone?: boolean }).standalone === true);
+    setIsStandalone(standalone);
+
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       deferredInstallPrompt.current = event as BeforeInstallPromptEvent;
@@ -52,6 +61,7 @@ function AppContent() {
     const onAppInstalled = () => {
       deferredInstallPrompt.current = null;
       setCanInstall(false);
+      setIsStandalone(true);
       showToast("Cloud Photo 已安装到设备", "success");
     };
     const onUpdateReady = () => setUpdateReady(true);
@@ -267,6 +277,29 @@ function AppContent() {
     await updateSW(true);
   };
 
+  const installGuideText = useMemo(() => {
+    if (isIOS) {
+      return [
+        "1. 使用 Safari 打开本网站",
+        "2. 点击底部分享按钮",
+        "3. 选择“添加到主屏幕”",
+        "4. 返回桌面后从图标启动",
+      ];
+    }
+    if (isAndroid) {
+      return [
+        "1. 使用 Chrome/Edge 打开本网站",
+        "2. 点击地址栏安装图标，或菜单里的“安装应用”",
+        "3. 安装后可从桌面图标启动",
+      ];
+    }
+    return [
+      "1. 使用 Chrome 或 Edge 打开本网站",
+      "2. 点击地址栏安装图标，或菜单里的“安装应用”",
+      "3. 安装后可在桌面/开始菜单启动",
+    ];
+  }, [isAndroid, isIOS]);
+
   return (
     <div className="app">
       {locationBanner && (
@@ -288,6 +321,11 @@ function AppContent() {
               安装 App
             </button>
           )}
+          {!isStandalone && (
+            <button className="install-help-btn" onClick={() => setShowInstallGuide(true)} title="安装指引">
+              安装指引
+            </button>
+          )}
           {user?.username === SUPER_ADMIN && (
             <button className="add-admin-btn" onClick={() => setShowAddAdmin(true)} title="添加 Admin">
               + Admin
@@ -301,6 +339,21 @@ function AppContent() {
       {showAddAdmin && <AddAdminDialog onClose={() => setShowAddAdmin(false)} />}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} onPhotosRestored={fetchPhotos} />}
       {inviteToken && <InviteAcceptPage token={inviteToken} onDone={dismissInvite} />}
+      {showInstallGuide && (
+        <div className="dialog-overlay" onClick={() => setShowInstallGuide(false)}>
+          <div className="add-admin-dialog install-guide-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="add-admin-header">
+              <span>安装使用指引</span>
+              <button className="dialog-close-btn" onClick={() => setShowInstallGuide(false)}>✕</button>
+            </div>
+            <p className="add-admin-hint">{isStandalone ? "当前已是 App 模式" : "可同时作为网站和 App 使用"}</p>
+            <ol className="install-guide-list">
+              {installGuideText.map((item) => <li key={item}>{item}</li>)}
+            </ol>
+            <p className="install-guide-note">提示：上传或下载过程中，请不要刷新页面或关闭应用窗口。</p>
+          </div>
+        </div>
+      )}
 
       <main className="app-main">
         {updateReady && (

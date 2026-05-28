@@ -2,6 +2,8 @@
 
 A full-stack personal cloud photo storage app with user authentication, JWT refresh tokens, group sharing, folder organisation, and zero-key security via Azure Managed Identity.
 
+For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
+
 **Frontend:** React 18 + Vite 5 → deployed to **Azure Static Web Apps**  
 **Backend:** Azure Functions v4 (Node.js 24, TypeScript) → deployed to **Azure Functions** (`cloudphoto-api`)  
 **Storage:** Azure Blob Storage (`photostorage` / `photos`) — accessed via **User Delegation SAS** (no account key)  

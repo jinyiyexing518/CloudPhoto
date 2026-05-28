@@ -327,15 +327,28 @@ export async function downloadPhotoApi(
   name: string,
   filename: string,
 ): Promise<void> {
-  const response = await fetchWithTimeout(
-    `${API_BASE}/photos/download?name=${encodeURIComponent(name)}`,
-    { headers: authHeaders() },
-    60000,
-  ).catch((e: unknown) => {
-    throw new Error(
-      e instanceof Error && e.name === "AbortError" ? "下载超时" : "网络错误",
-    );
-  });
+  let response: Response | null = null;
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await fetchWithTimeout(
+        `${API_BASE}/photos/download?name=${encodeURIComponent(name)}`,
+        { headers: authHeaders() },
+        60000,
+      );
+      if (response.ok || response.status < 500 || attempt === 1) break;
+    } catch (e: unknown) {
+      lastError = e instanceof Error ? e : new Error("网络错误");
+      if (attempt === 1) {
+        throw new Error(
+          lastError.name === "AbortError" ? "下载超时" : "网络错误",
+        );
+      }
+    }
+  }
+  if (!response) {
+    throw new Error(lastError?.name === "AbortError" ? "下载超时" : "网络错误");
+  }
   if (!response.ok) throw new Error("Download failed");
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
@@ -352,10 +365,27 @@ export async function createPhotoShareLink(
   name: string,
   hours = 24,
 ): Promise<{ url: string; expiresAt: string }> {
-  const response = await fetchWithTimeout(
-    `${API_BASE}/photos/share?name=${encodeURIComponent(name)}&hours=${encodeURIComponent(String(hours))}`,
-    { headers: authHeaders() },
-  );
+  let response: Response | null = null;
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await fetchWithTimeout(
+        `${API_BASE}/photos/share?name=${encodeURIComponent(name)}&hours=${encodeURIComponent(String(hours))}`,
+        { headers: authHeaders() },
+      );
+      if (response.ok || response.status < 500 || attempt === 1) break;
+    } catch (e: unknown) {
+      lastError = e instanceof Error ? e : new Error("网络错误");
+      if (attempt === 1) {
+        throw new Error(lastError.name === "AbortError" ? "创建分享链接超时" : "网络错误");
+      }
+    }
+  }
+
+  if (!response) {
+    throw new Error(lastError?.name === "AbortError" ? "创建分享链接超时" : "网络错误");
+  }
+
   if (!response.ok) {
     const err = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? "Failed to create share link");
