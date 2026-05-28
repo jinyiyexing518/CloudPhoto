@@ -70,6 +70,7 @@ app.http("listTrash", {
         createdBy: string | undefined;
         deletedAt: string | undefined;
         deletedBy: string | undefined;
+        deletedByName: string | undefined;
       }> = [];
 
       const delegationKey = await getUserDelegationKey();
@@ -99,6 +100,7 @@ app.http("listTrash", {
           createdBy: decodeMeta(getMeta(blob.metadata, "createdBy")),
           deletedAt: getMeta(blob.metadata, "deletedAt"),
           deletedBy: getMeta(blob.metadata, "deletedBy"),
+          deletedByName: decodeMeta(getMeta(blob.metadata, "deletedByName")),
         });
       }
 

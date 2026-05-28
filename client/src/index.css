@@ -561,6 +561,11 @@ body {
   height: 100%;
 }
 
+.folder-section-grid .photo-card,
+.folder-section-grid .folder-card {
+  aspect-ratio: 1 / 1.22;
+}
+
 .folder-section-grid .folder-card {
   aspect-ratio: auto;
 }
@@ -2363,6 +2368,10 @@ body {
 
   /* ── Folder ── */
   .folder-section-grid { padding: 10px; }
+  .folder-section-grid .photo-card,
+  .folder-section-grid .folder-card {
+    aspect-ratio: 1 / 1.2;
+  }
   .folder-section-header { padding: 10px 12px; }
   .folder-section-name { font-size: 0.88rem; }
 

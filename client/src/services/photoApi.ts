@@ -196,6 +196,7 @@ export interface Photo {
   lastModifiedBy?: string;
   deletedAt?: string;
   deletedBy?: string;
+  deletedByName?: string;
 }
 
 export async function listPhotos(groupId = ""): Promise<Photo[]> {

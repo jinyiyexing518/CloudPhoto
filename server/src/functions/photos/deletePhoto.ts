@@ -8,6 +8,8 @@ import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 import { isGroupMember } from "../../utils/cosmosClient";
 
+const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
+
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const statusCode = (error as { statusCode?: number }).statusCode;
@@ -68,6 +70,7 @@ app.http("deletePhoto", {
         }
         existing.deletedAt = new Date().toISOString();
         existing.deletedBy = payload.userId;
+        existing.deletedByName = b64(payload.displayName || payload.username || payload.userId);
 
         try {
           await blockBlobClient.setMetadata(existing, {

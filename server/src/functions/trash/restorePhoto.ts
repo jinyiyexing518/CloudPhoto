@@ -62,7 +62,7 @@ app.http("restorePhoto", {
         // Remove deleted markers defensively so restore works with historical/case-varied metadata.
         for (const key of Object.keys(existing)) {
           const lower = key.toLowerCase();
-          if (lower === "deletedat" || lower === "deletedby") {
+          if (lower === "deletedat" || lower === "deletedby" || lower === "deletedbyname") {
             delete existing[key];
           }
         }

@@ -14,7 +14,6 @@ import AddAdminDialog from "./components/auth/AddAdminDialog";
 
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
-const UPDATE_PROMPT_DISMISS_UNTIL_KEY = "cf_update_prompt_dismiss_until";
 type ViewTab = "timeline" | "folder" | "moments";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -68,8 +67,6 @@ function AppContent() {
       showToast("Cloud Photo 已安装到设备", "success");
     };
     const onUpdateReady = () => {
-      const suppressUntil = Number(localStorage.getItem(UPDATE_PROMPT_DISMISS_UNTIL_KEY) ?? "0");
-      if (suppressUntil > Date.now()) return;
       setUpdateReady(true);
     };
     const onOfflineReady = () => showToast("已启用离线基础访问", "success");
@@ -339,8 +336,6 @@ function AppContent() {
   };
 
   const handleLaterUpdate = () => {
-    // Snooze update reminder for 6 hours.
-    localStorage.setItem(UPDATE_PROMPT_DISMISS_UNTIL_KEY, String(Date.now() + 6 * 60 * 60 * 1000));
     setUpdateReady(false);
   };
 

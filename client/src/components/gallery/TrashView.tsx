@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Photo, listTrashPhotos, restorePhoto, permanentlyDeletePhoto } from "../../services/photoApi";
 import { useToast } from "../../contexts/ToastContext";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface Props {
   groupId: string; // "" = personal trash
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function TrashView({ groupId, onRestored }: Props) {
+  const { user } = useAuth();
   const showToast = useToast();
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,6 +127,15 @@ export default function TrashView({ groupId, onRestored }: Props) {
           const deletedDate = p.deletedAt
             ? new Date(p.deletedAt).toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" })
             : "未知";
+          const deletedBy = p.deletedByName
+            ? p.deletedBy === user?.id
+              ? `${p.deletedByName}（我）`
+              : p.deletedByName
+            : p.deletedBy
+              ? p.deletedBy === user?.id
+                ? `${user?.displayName ?? "我"}（我）`
+                : p.deletedBy
+              : "未知用户";
           const folder = p.folder ? p.folder : "（根目录）";
           const busy = busyNames.has(p.name);
           return (
@@ -137,6 +148,7 @@ export default function TrashView({ groupId, onRestored }: Props) {
                 <div className="trash-card-meta">
                   <span>📁 {folder}</span>
                   <span>🗑 {deletedDate}</span>
+                  <span>👤 删除人：{deletedBy}</span>
                 </div>
               </div>
               <div className="trash-card-actions">
