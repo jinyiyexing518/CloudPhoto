@@ -2064,6 +2064,79 @@ body {
   .add-admin-dialog        { max-width: calc(100vw - 32px); }
   .group-settings-dialog   { width: calc(100vw - 16px); }
 
+  .settings-dialog {
+    width: calc(100vw - 12px);
+    max-height: 92vh;
+    border-radius: 14px;
+  }
+
+  .settings-header {
+    padding: 14px 14px 0;
+    font-size: 0.95rem;
+  }
+
+  .settings-tabs {
+    padding: 10px 10px 0;
+    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: none;
+  }
+
+  .settings-tab {
+    margin-bottom: 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    text-align: center;
+    background: #fff;
+  }
+
+  .settings-tab.active {
+    border-color: #93c5fd;
+    background: #f0f7ff;
+    border-bottom-color: #93c5fd;
+  }
+
+  .settings-body {
+    padding: 12px;
+  }
+
+  .settings-section {
+    gap: 10px;
+  }
+
+  .settings-info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 6px 0;
+  }
+
+  .settings-info-label {
+    width: auto;
+    font-size: 0.76rem;
+  }
+
+  .settings-info-value {
+    font-size: 0.84rem;
+    word-break: break-all;
+  }
+
+  .settings-save-btn {
+    align-self: stretch;
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+  }
+
+  .settings-section .add-admin-hint {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    margin-top: 2px !important;
+  }
+
   /* ── Auth card ── */
   .auth-card { padding: 28px 20px 24px; }
 
