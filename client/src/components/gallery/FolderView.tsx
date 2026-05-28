@@ -466,20 +466,35 @@ export default function FolderView({
               <button className="dialog-close-btn" onClick={() => !sharingFolder && setShowShareFolderDialog(false)}>✕</button>
             </div>
             <p className="add-admin-hint">选择这个文件夹分享链接的有效期。</p>
+            <div className="share-folder-summary">
+              <span className="share-folder-label">当前文件夹</span>
+              <strong>{currentPath === "" ? "未分类" : currentPath}</strong>
+            </div>
             <div className="share-folder-field">
-              <label className="share-folder-label" htmlFor="folder-share-hours">有效期</label>
-              <select
-                id="folder-share-hours"
-                className="folder-share-select"
-                value={folderShareHours}
-                onChange={(e) => setFolderShareHours(e.target.value)}
-                disabled={sharingFolder}
-              >
-                <option value="1">1 小时</option>
-                <option value="24">24 小时</option>
-                <option value="72">3 天</option>
-                <option value="168">7 天</option>
-              </select>
+              <label className="share-folder-label">有效期</label>
+              <div className="share-folder-options" role="radiogroup" aria-label="分享有效期">
+                {[
+                  { value: "1", label: "1 小时", hint: "临时分享" },
+                  { value: "24", label: "24 小时", hint: "当天有效" },
+                  { value: "72", label: "3 天", hint: "短期协作" },
+                  { value: "168", label: "7 天", hint: "一周内访问" },
+                ].map((option) => {
+                  const active = folderShareHours === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`share-folder-option${active ? " active" : ""}`}
+                      aria-pressed={active}
+                      onClick={() => setFolderShareHours(option.value)}
+                      disabled={sharingFolder}
+                    >
+                      <span className="share-folder-option-title">{option.label}</span>
+                      <span className="share-folder-option-hint">{option.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="confirm-actions">
               <button className="confirm-cancel-btn" onClick={() => setShowShareFolderDialog(false)} disabled={sharingFolder}>取消</button>
