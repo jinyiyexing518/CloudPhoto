@@ -409,9 +409,13 @@ export interface ManagedShareLink {
   revokedAt?: string;
 }
 
-export async function listManagedShareLinks(): Promise<ManagedShareLink[]> {
+export async function listManagedShareLinks(options?: { status?: "all" | "active" | "revoked" | "expired"; q?: string }): Promise<ManagedShareLink[]> {
+  const params = new URLSearchParams();
+  if (options?.status && options.status !== "all") params.set("status", options.status);
+  if (options?.q?.trim()) params.set("q", options.q.trim());
+  const qs = params.toString();
   const response = await fetchWithTimeout(
-    `${API_BASE}/photos/share/links`,
+    `${API_BASE}/photos/share/links${qs ? `?${qs}` : ""}`,
     { headers: authHeaders() },
   );
   if (!response.ok) {

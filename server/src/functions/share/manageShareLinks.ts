@@ -28,8 +28,33 @@ app.http("listShareLinks", {
       parameters: [{ name: "@uid", value: payload.userId }],
     }).fetchAll();
 
+    const nowMs = Date.now();
+    const normalized: ShareLinkDoc[] = [];
+    for (const item of resources) {
+      const isExpiredByTime = new Date(item.expiresAt).getTime() <= nowMs;
+      if (item.status === "active" && isExpiredByTime) {
+        const patched: ShareLinkDoc = { ...item, status: "expired" };
+        normalized.push(patched);
+        try {
+          await container.item(item.id, item.id).replace(patched);
+        } catch {
+          // Best-effort status sync; listing should still proceed.
+        }
+      } else {
+        normalized.push(item);
+      }
+    }
+
+    const statusFilter = (request.query.get("status") ?? "all").toLowerCase();
+    const q = (request.query.get("q") ?? "").trim().toLowerCase();
+    const filtered = normalized.filter((item) => {
+      if (statusFilter !== "all" && statusFilter !== item.status) return false;
+      if (q && !item.displayName.toLowerCase().includes(q)) return false;
+      return true;
+    });
+
     const origin = new URL(request.url).origin;
-    const withUrl = resources.map((item) => ({
+    const withUrl = filtered.map((item) => ({
       ...item,
       url: `${origin}/api/photos/share/open/${encodeURIComponent(item.id)}`,
     }));

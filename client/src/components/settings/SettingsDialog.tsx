@@ -54,6 +54,9 @@ export default function SettingsDialog({
   const [managedLoading, setManagedLoading] = useState(false);
   const [managedError, setManagedError] = useState("");
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
+  const [shareStatusFilter, setShareStatusFilter] = useState<"all" | "active" | "revoked" | "expired">("all");
+  const [shareSearch, setShareSearch] = useState("");
+  const [extendHours, setExtendHours] = useState("24");
 
   const [shareLinksVersion, setShareLinksVersion] = useState(0);
   const shareLinks = useMemo(() => listRecentShareLinks(), [shareLinksVersion]);
@@ -62,14 +65,17 @@ export default function SettingsDialog({
     setManagedLoading(true);
     setManagedError("");
     try {
-      const links = await listManagedShareLinks();
+      const links = await listManagedShareLinks({
+        status: shareStatusFilter,
+        q: shareSearch,
+      });
       setManagedShareLinks(links);
     } catch (e) {
       setManagedError(e instanceof Error ? e.message : "加载分享链接失败");
     } finally {
       setManagedLoading(false);
     }
-  }, []);
+  }, [shareSearch, shareStatusFilter]);
 
   useEffect(() => {
     if (tab !== "app") return;
@@ -126,8 +132,9 @@ export default function SettingsDialog({
     if (action === "revoke" && !confirm("确认让这个分享链接立即失效吗？")) return;
     setLinkBusyId(item.id);
     try {
-      await updateManagedShareLink(item.id, action, action === "extend" ? 24 : undefined);
-      showToast(action === "revoke" ? "分享链接已失效" : "已延长 24 小时", "success");
+      const duration = Math.max(1, Math.min(24 * 30, Number.parseInt(extendHours, 10) || 24));
+      await updateManagedShareLink(item.id, action, action === "extend" ? duration : undefined);
+      showToast(action === "revoke" ? "分享链接已失效" : `已延长 ${duration} 小时`, "success");
       await loadManagedShareLinks();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "更新分享链接失败", "error");
@@ -260,6 +267,40 @@ export default function SettingsDialog({
                 </button>
               </div>
 
+              <div className="settings-share-toolbar">
+                <input
+                  className="settings-share-search"
+                  type="text"
+                  placeholder="按文件名搜索"
+                  value={shareSearch}
+                  onChange={(e) => setShareSearch(e.target.value)}
+                />
+                <select
+                  className="settings-share-filter"
+                  value={shareStatusFilter}
+                  onChange={(e) => setShareStatusFilter(e.target.value as "all" | "active" | "revoked" | "expired")}
+                >
+                  <option value="all">全部状态</option>
+                  <option value="active">有效</option>
+                  <option value="expired">已过期</option>
+                  <option value="revoked">已失效</option>
+                </select>
+                <button type="button" className="settings-share-apply" onClick={() => void loadManagedShareLinks()}>
+                  应用筛选
+                </button>
+              </div>
+
+              <div className="settings-share-extend-row">
+                <span className="settings-share-extend-label">默认延长：</span>
+                <select className="settings-share-filter" value={extendHours} onChange={(e) => setExtendHours(e.target.value)}>
+                  <option value="1">1 小时</option>
+                  <option value="24">24 小时</option>
+                  <option value="72">3 天</option>
+                  <option value="168">7 天</option>
+                  <option value="720">30 天</option>
+                </select>
+              </div>
+
               {managedLoading ? (
                 <p className="add-admin-hint">正在加载分享链接…</p>
               ) : managedError ? (
@@ -283,7 +324,7 @@ export default function SettingsDialog({
                         <div className="settings-share-actions">
                           <button type="button" onClick={() => void copyShareLink(publicUrl)}>复制</button>
                           <button type="button" onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}>打开</button>
-                          <button type="button" onClick={() => void handleManagedAction(item, "extend")} disabled={busy || item.status !== "active"}>延长24h</button>
+                          <button type="button" onClick={() => void handleManagedAction(item, "extend")} disabled={busy || item.status !== "active"}>延长</button>
                           <button type="button" onClick={() => void handleManagedAction(item, "revoke")} disabled={busy || item.status !== "active"}>立即失效</button>
                         </div>
                       </div>

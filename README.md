@@ -57,7 +57,10 @@ build time (defaults to `/api`).
 - **Expiring share links** — generate per-photo public read links with configurable TTL (1h / 24h / 3d / 7d)
 - **One-click share copy** — share URL copy uses Clipboard API first, then legacy copy fallback; only falls back to manual copy prompt as a last resort
 - **Managed share links (cloud)** — in Settings you can revoke links early or extend expiry, with per-link status and lifecycle maintained on the backend
+- **Managed share filters** — cloud share links support server-side filtering by status (`active` / `expired` / `revoked`) and fuzzy search by filename
+- **Flexible share extension** — managed links can be extended with selectable presets (1h / 24h / 3d / 7d / 30d) instead of fixed 24h only
 - **Share analytics** — every managed share link records createdAt, viewCount, and lastViewedAt for operation visibility
+- **Automatic expiry reconciliation** — while listing managed links, backend auto-normalizes time-expired active links to `expired` for accurate status display
 - **Share link manager (local)** — the Settings → 📱 应用 tab shows recent valid share links with one-click copy/open/delete and one-click clear
 - **Photo rename** — change the display name of any photo without re-uploading
 - **Move photos** — move photos between folders via UI or drag-and-drop
@@ -197,8 +200,8 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `GET`    | `/api/photos/download?name=<blobName>` | ✓ | Proxy-download with `Content-Disposition: attachment` |
 | `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | Create expiring share link (`{ url, expiresAt }`) |
 | `GET`    | `/api/photos/share/open/{linkId}` | — | Open managed public share link (redirects to a short-lived SAS and increments view stats) |
-| `GET`    | `/api/photos/share/links` | ✓ | List current user's managed share links with status and analytics |
-| `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`) |
+| `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | List current user's managed share links with optional status/name filtering |
+| `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`, `hours=1..720`) |
 | `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName |
 | `DELETE` | `/api/photos?name=<blobName>` | ✓ | Delete a photo by blob name |
