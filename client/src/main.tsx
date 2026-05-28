@@ -6,19 +6,25 @@ import "./index.css";
 const registerPwa = async () => {
   if (!("serviceWorker" in navigator)) return;
   const { registerSW } = await import("virtual:pwa-register");
+  let refreshTriggered = false;
   const updateSW = registerSW({
     immediate: true,
     onRegisteredSW(_, registration) {
       if (!registration) return;
       const checkForUpdates = () => { void registration.update(); };
       checkForUpdates();
-      window.setInterval(checkForUpdates, 60 * 1000);
+      window.setInterval(checkForUpdates, 30 * 1000);
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") checkForUpdates();
       });
       window.addEventListener("focus", checkForUpdates);
+      window.addEventListener("online", checkForUpdates);
     },
     onNeedRefresh() {
+      if (!refreshTriggered) {
+        refreshTriggered = true;
+        void updateSW(true);
+      }
       window.dispatchEvent(new Event("cloudphoto-pwa-update-ready"));
     },
     onOfflineReady() {
