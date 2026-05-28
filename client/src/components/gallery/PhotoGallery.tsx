@@ -280,16 +280,17 @@ export default function PhotoGallery({
     const hours = Math.max(1, Math.min(168, Number.parseInt(shareHours, 10) || 24));
     setSharing(true);
     try {
-      const { url, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
-      const copied = await copyText(url);
+      const { url, directUrl, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
+      const finalUrl = directUrl ?? url;
+      const copied = await copyText(finalUrl);
       if (!copied) {
-        window.prompt("复制分享链接", url);
+        window.prompt("复制分享链接", finalUrl);
       }
       const displayName = selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })();
       addRecentShareLink({
         photoName: selectedPhoto.name,
         displayName,
-        url,
+        url: finalUrl,
         expiresAt,
       });
       showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
