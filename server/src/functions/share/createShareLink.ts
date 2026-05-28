@@ -58,6 +58,14 @@ function resolvePublicBaseUrl(request: HttpRequest): string {
   return normalizeBaseUrl(new URL(request.url).origin);
 }
 
+function isCosmosWriteAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const statusCode = (error as { statusCode?: number }).statusCode;
+  if (statusCode === 401 || statusCode === 403) return true;
+  const message = (error as { message?: string }).message ?? "";
+  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization/i.test(message);
+}
+
 app.http("createShareLink", {
   methods: ["GET"],
   authLevel: "anonymous",
@@ -159,7 +167,6 @@ app.http("createShareLink", {
         : requestedExpiresAtMs;
       const expiresAt = new Date(effectiveExpiresAtMs).toISOString();
 
-      const shareLinks = await getShareLinksContainer();
       const linkId = randomUUID();
       const createdAt = new Date().toISOString();
       const displayName = decodeMeta(getMeta(props.metadata, "originalName"))
@@ -177,15 +184,34 @@ app.http("createShareLink", {
         status: "active",
         viewCount: 0,
       };
-      await shareLinks.items.create(doc);
+
+      let managedShareAvailable = true;
+      try {
+        const shareLinks = await getShareLinksContainer();
+        await shareLinks.items.create(doc);
+      } catch (e) {
+        if (isCosmosWriteAuthError(e)) {
+          managedShareAvailable = false;
+          context.warn("Managed share link unavailable due to Cosmos RBAC; falling back to direct SAS", e);
+        } else {
+          throw e;
+        }
+      }
 
       const baseUrl = resolvePublicBaseUrl(request);
       const managedUrl = `${baseUrl}/api/photos/share/open/${encodeURIComponent(linkId)}`;
+      const finalUrl = managedShareAvailable ? managedUrl : url;
 
       return {
         status: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: managedUrl, expiresAt, shareId: linkId, directUrl: url }),
+        body: JSON.stringify({
+          url: finalUrl,
+          expiresAt,
+          shareId: managedShareAvailable ? linkId : undefined,
+          directUrl: url,
+          managed: managedShareAvailable,
+        }),
       };
     } catch (error) {
       context.error("Create share link error:", error);
