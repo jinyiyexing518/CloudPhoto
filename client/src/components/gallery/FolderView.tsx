@@ -16,6 +16,29 @@ const UNCATEGORIZED = "(未分类)";
 const MOVE_UNSELECTED = "__UNSEL__";
 const MOVE_CREATE = "__CREATE__";
 
+function splitDisplayName(value: string): { baseName: string; extension: string } {
+  const trimmed = value.trim();
+  const lastDot = trimmed.lastIndexOf(".");
+  if (lastDot <= 0 || lastDot === trimmed.length - 1) {
+    return { baseName: trimmed, extension: "" };
+  }
+  return {
+    baseName: trimmed.slice(0, lastDot),
+    extension: trimmed.slice(lastDot),
+  };
+}
+
+function getEditablePhotoName(photo: Photo): string {
+  const displayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+  return splitDisplayName(displayName).baseName || displayName;
+}
+
+function buildRenamedPhotoName(photo: Photo, inputName: string): string {
+  const currentDisplayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+  const { extension } = splitDisplayName(currentDisplayName);
+  return `${inputName.trim()}${extension}`;
+}
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 /** Returns immediate child sub-folder names at the given path level. */
@@ -645,7 +668,7 @@ function FolderContent({
     let failed = 0;
     for (let i = 0; i < selectedList.length; i++) {
       const p = selectedList[i];
-      const nextName = `${safePrefix}-${String(start + i).padStart(3, "0")}`;
+      const nextName = buildRenamedPhotoName(p, `${safePrefix}-${String(start + i).padStart(3, "0")}`);
       try {
         await apiRenamePhoto(p.name, nextName, userName);
         onRenamePhoto(p.name, nextName);
@@ -664,7 +687,7 @@ function FolderContent({
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
+    setNameInput(getEditablePhotoName(photo));
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
     setDownloading(false);
@@ -687,11 +710,12 @@ function FolderContent({
     if (!selectedPhoto) return;
     const trimmed = nameInput.trim();
     if (!trimmed) return;
+    const finalName = buildRenamedPhotoName(selectedPhoto, trimmed);
     setSavingName(true);
     try {
-      await apiRenamePhoto(selectedPhoto.name, trimmed, userName);
-      onRenamePhoto(selectedPhoto.name, trimmed);
-      setSelectedPhoto({ ...selectedPhoto, originalName: trimmed });
+      await apiRenamePhoto(selectedPhoto.name, finalName, userName);
+      onRenamePhoto(selectedPhoto.name, finalName);
+      setSelectedPhoto({ ...selectedPhoto, originalName: finalName });
       setEditingName(false);
     } finally {
       setSavingName(false);

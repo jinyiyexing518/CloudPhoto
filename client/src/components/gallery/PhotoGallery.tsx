@@ -28,6 +28,29 @@ interface DateGroup {
 
 const PAGE_SIZE = 120;
 
+function splitDisplayName(value: string): { baseName: string; extension: string } {
+  const trimmed = value.trim();
+  const lastDot = trimmed.lastIndexOf(".");
+  if (lastDot <= 0 || lastDot === trimmed.length - 1) {
+    return { baseName: trimmed, extension: "" };
+  }
+  return {
+    baseName: trimmed.slice(0, lastDot),
+    extension: trimmed.slice(lastDot),
+  };
+}
+
+function getEditablePhotoName(photo: Photo): string {
+  const displayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+  return splitDisplayName(displayName).baseName || displayName;
+}
+
+function buildRenamedPhotoName(photo: Photo, inputName: string): string {
+  const currentDisplayName = photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "");
+  const { extension } = splitDisplayName(currentDisplayName);
+  return `${inputName.trim()}${extension}`;
+}
+
 function groupByDate(photos: Photo[]): DateGroup[] {
   const map = new Map<string, Photo[]>();
 
@@ -207,7 +230,7 @@ export default function PhotoGallery({
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
+    setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
   }, [flatPhotos]);
@@ -231,7 +254,7 @@ export default function PhotoGallery({
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
-    setNameInput(photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, ""));
+    setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
     setDownloading(false);
   };
@@ -253,11 +276,12 @@ export default function PhotoGallery({
     if (!selectedPhoto) return;
     const trimmed = nameInput.trim();
     if (!trimmed) return;
+    const finalName = buildRenamedPhotoName(selectedPhoto, trimmed);
     setSavingName(true);
     try {
-      await apiRenamePhoto(selectedPhoto.name, trimmed, userName);
-      onRenamePhoto(selectedPhoto.name, trimmed);
-      setSelectedPhoto({ ...selectedPhoto, originalName: trimmed });
+      await apiRenamePhoto(selectedPhoto.name, finalName, userName);
+      onRenamePhoto(selectedPhoto.name, finalName);
+      setSelectedPhoto({ ...selectedPhoto, originalName: finalName });
       setEditingName(false);
     } finally {
       setSavingName(false);

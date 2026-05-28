@@ -2417,8 +2417,16 @@ body {
   }
 
   .modal-actions-row {
+    order: -1;
+    position: sticky;
+    top: -12px;
+    z-index: 2;
     flex-direction: column;
     align-items: stretch;
+    margin: 0 -12px 10px;
+    padding: 12px;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
   }
 
   .modal-favorite-btn,
