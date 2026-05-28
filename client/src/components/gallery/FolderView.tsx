@@ -303,7 +303,7 @@ export default function FolderView({
       {/* Toolbar */}
       <div className="folder-view-toolbar">
         {creatingFolder ? (
-          <span className="folder-create-row">
+          <div className="folder-create-row">
             <input
               autoFocus
               className="folder-name-input"
@@ -319,7 +319,7 @@ export default function FolderView({
             />
             <button className="folder-create-confirm" onClick={createFolder}>确认</button>
             <button className="folder-create-cancel" onClick={() => setCreatingFolder(false)}>取消</button>
-          </span>
+          </div>
         ) : (
           <button className="folder-new-btn" onClick={() => setCreatingFolder(true)}>
             {currentPath === null ? "+ 新建文件夹" : "+ 新建子文件夹"}
