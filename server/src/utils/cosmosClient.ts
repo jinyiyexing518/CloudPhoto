@@ -10,6 +10,7 @@ function getClient(): CosmosClient {
   if (!_client) {
     // On Azure Functions: uses System-assigned Managed Identity.
     // Locally: falls back to Azure CLI credentials (az login).
+    // Runtime access only uses existing database/container resources.
     // Required role: "Cosmos DB Built-in Data Contributor" assigned via
     //   az cosmosdb sql role assignment create ...
     _client = new CosmosClient({ endpoint, aadCredentials: new DefaultAzureCredential() });
@@ -17,26 +18,20 @@ function getClient(): CosmosClient {
   return _client;
 }
 
+function getDatabase() {
+  return getClient().database(databaseId);
+}
+
+function getContainer(containerId: string): Container {
+  return getDatabase().container(containerId);
+}
+
 export async function getUsersContainer(): Promise<Container> {
-  const client = getClient();
-  const { database } = await client.databases.createIfNotExists({ id: databaseId });
-  const { container } = await database.containers.createIfNotExists({
-    id: "users",
-    partitionKey: { paths: ["/id"] },
-    uniqueKeyPolicy: {
-      uniqueKeys: [
-        { paths: ["/username"] },
-        { paths: ["/email"] },
-      ],
-    },
-  });
-  return container;
+  return getContainer("users");
 }
 
 export async function isAdminCandidate(email: string, username: string): Promise<boolean> {
-  const client = getClient();
-  const database = client.database(databaseId);
-  const container = database.container("admins");
+  const container = getContainer("admins");
   const { resources } = await container.items
     .query({
       query: "SELECT VALUE COUNT(1) FROM c WHERE c.email = @email OR c.username = @username",
@@ -50,9 +45,7 @@ export async function isAdminCandidate(email: string, username: string): Promise
 }
 
 export async function getAdminsContainer(): Promise<Container> {
-  const client = getClient();
-  const database = client.database(databaseId);
-  return database.container("admins");
+  return getContainer("admins");
 }
 
 export interface UserDoc {
@@ -89,13 +82,7 @@ export interface GroupDoc {
 }
 
 export async function getGroupsContainer(): Promise<Container> {
-  const client = getClient();
-  const { database } = await client.databases.createIfNotExists({ id: databaseId });
-  const { container } = await database.containers.createIfNotExists({
-    id: "groups",
-    partitionKey: { paths: ["/id"] },
-  });
-  return container;
+  return getContainer("groups");
 }
 
 export async function getUserById(userId: string): Promise<UserDoc | null> {
@@ -162,13 +149,7 @@ export interface InviteDoc {
 }
 
 export async function getInvitesContainer(): Promise<Container> {
-  const client = getClient();
-  const { database } = await client.databases.createIfNotExists({ id: databaseId });
-  const { container } = await database.containers.createIfNotExists({
-    id: "invites",
-    partitionKey: { paths: ["/id"] },
-  });
-  return container;
+  return getContainer("invites");
 }
 
 export type ShareLinkStatus = "active" | "revoked" | "expired";
@@ -193,11 +174,5 @@ export interface ShareLinkDoc {
 }
 
 export async function getShareLinksContainer(): Promise<Container> {
-  const client = getClient();
-  const { database } = await client.databases.createIfNotExists({ id: databaseId });
-  const { container } = await database.containers.createIfNotExists({
-    id: "sharelinks",
-    partitionKey: { paths: ["/id"] },
-  });
-  return container;
+  return getContainer("sharelinks");
 }
