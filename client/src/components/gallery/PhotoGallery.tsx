@@ -8,6 +8,7 @@ interface Props {
   onDelete: (name: string) => void;
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
+  onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   userName?: string;
 }
 
@@ -45,7 +46,7 @@ function groupByDate(photos: Photo[]): DateGroup[] {
   return groups;
 }
 
-export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRenamePhoto, userName }: Props) {
+export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRenamePhoto, onToggleFavorite, userName }: Props) {
   const showToast = useToast();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
@@ -213,6 +214,7 @@ export default function PhotoGallery({ photos, onDelete, onSubjectUpdate, onRena
                 photo={photo}
                 onClick={() => !selectMode && openModal(photo)}
                 onDelete={() => onDelete(photo.name)}
+                onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
                 selected={selectMode ? selected.has(photo.name) : undefined}
                 onSelect={selectMode ? (e) => { e.stopPropagation(); togglePhoto(photo.name); } : undefined}
               />

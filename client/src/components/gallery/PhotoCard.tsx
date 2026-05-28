@@ -6,6 +6,7 @@ interface Props {
   onClick: () => void;
   onDelete: () => void;
   onMoveRequest?: () => void;
+  onToggleFavorite?: (next: boolean) => void;
   /** When defined, card is in selection mode: clicking selects/deselects */
   selected?: boolean;
   onSelect?: (e: React.MouseEvent) => void;
@@ -19,6 +20,7 @@ export default function PhotoCard({
   onClick,
   onDelete,
   onMoveRequest,
+  onToggleFavorite,
   selected,
   onSelect,
   draggable,
@@ -73,6 +75,18 @@ export default function PhotoCard({
                   }}
                 >
                   →
+                </button>
+              )}
+              {onToggleFavorite && (
+                <button
+                  className={`favorite-btn${photo.favorite ? " favorite-btn--on" : ""}`}
+                  title={photo.favorite ? "取消收藏" : "收藏"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite(!photo.favorite);
+                  }}
+                >
+                  ★
                 </button>
               )}
               <button

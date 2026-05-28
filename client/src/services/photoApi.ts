@@ -170,6 +170,7 @@ export interface Photo {
   name: string;
   originalName?: string;
   subject?: string;
+  favorite?: boolean;
   folder?: string;
   groupId?: string;
   url: string;
@@ -235,6 +236,22 @@ export async function updatePhotoSubject(
     }
   );
   if (!response.ok) throw new Error("Failed to update subject");
+}
+
+export async function setPhotoFavorite(
+  name: string,
+  favorite: boolean,
+  updatedBy?: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ favorite, updatedBy }),
+    },
+  );
+  if (!response.ok) throw new Error("Failed to update favorite");
 }
 
 export async function movePhotoToFolder(

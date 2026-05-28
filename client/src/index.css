@@ -1170,6 +1170,29 @@ body {
   background: #dbeafe;
 }
 
+.favorite-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  opacity: 0.55;
+  color: #9ca3af;
+  transition: opacity 0.2s, color 0.2s;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.favorite-btn:hover {
+  opacity: 1;
+  color: #f59e0b;
+}
+
+.favorite-btn--on {
+  opacity: 1;
+  color: #f59e0b;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

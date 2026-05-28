@@ -72,6 +72,7 @@ app.http("listPhotos", {
         contentType: string | undefined;
         createdAt: string | undefined;
         createdBy: string | undefined;
+        favorite: boolean;
         lastModifiedAt: string | undefined;
         lastModifiedBy: string | undefined;
       }> = [];
@@ -104,6 +105,7 @@ app.http("listPhotos", {
           contentType: blob.properties.contentType,
           createdAt: getMeta(blob.metadata, "createdAt"),
           createdBy: decodeMeta(getMeta(blob.metadata, "createdBy")),
+          favorite: getMeta(blob.metadata, "favorite") === "1" || getMeta(blob.metadata, "favorite") === "true",
           lastModifiedAt: getMeta(blob.metadata, "lastModifiedAt"),
           lastModifiedBy: decodeMeta(getMeta(blob.metadata, "lastModifiedBy")),
         });

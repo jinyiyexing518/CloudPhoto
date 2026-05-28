@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, Photo } from "./services/photoApi";
+import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, Photo } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
@@ -159,6 +159,18 @@ function AppContent() {
     );
   };
 
+  const handleToggleFavorite = async (name: string, favorite: boolean): Promise<boolean> => {
+    setPhotos((prev) => prev.map((p) => (p.name === name ? { ...p, favorite } : p)));
+    try {
+      await setPhotoFavorite(name, favorite, user?.displayName || undefined);
+      return true;
+    } catch {
+      showToast(favorite ? "收藏失败" : "取消收藏失败", "error");
+      await fetchPhotos();
+      return false;
+    }
+  };
+
   const handleMovePhoto = async (name: string, toFolder: string): Promise<boolean> => {
     // Optimistic update (folder display only; name updated after server confirms)
     setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
@@ -265,6 +277,7 @@ function AppContent() {
             onDelete={handleDelete}
             onSubjectUpdate={handleSubjectUpdate}
             onRenamePhoto={handleRenamePhoto}
+            onToggleFavorite={handleToggleFavorite}
             userName={user?.displayName}
           />
         ) : (
@@ -274,6 +287,7 @@ function AppContent() {
             onDelete={handleDelete}
             onSubjectUpdate={handleSubjectUpdate}
             onRenamePhoto={handleRenamePhoto}
+            onToggleFavorite={handleToggleFavorite}
             onUploadToFolder={handleUploadToFolder}
             uploadProgress={uploadProgress}
             onMovePhoto={handleMovePhoto}

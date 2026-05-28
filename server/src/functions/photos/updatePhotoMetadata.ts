@@ -23,6 +23,7 @@ app.http("updatePhotoMetadata", {
       const body = (await request.json()) as {
         subject?: string;
         originalName?: string;
+        favorite?: boolean;
         updatedBy?: string;
       };
 
@@ -38,6 +39,7 @@ app.http("updatePhotoMetadata", {
       const now = new Date().toISOString();
       if (body.subject !== undefined) existing.subject = b64(body.subject);
       if (body.originalName !== undefined) existing.originalName = b64(body.originalName);
+      if (body.favorite !== undefined) existing.favorite = body.favorite ? "1" : "0";
       if (body.updatedBy) existing.lastModifiedBy = b64(body.updatedBy);
       existing.lastModifiedAt = now;
 

@@ -129,6 +129,7 @@ interface Props {
   onDelete: (name: string) => void;
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
+  onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
@@ -145,6 +146,7 @@ export default function FolderView({
   onDelete,
   onSubjectUpdate,
   onRenamePhoto,
+  onToggleFavorite,
   onUploadToFolder,
   uploadProgress,
   onMovePhoto,
@@ -374,6 +376,7 @@ export default function FolderView({
           onDelete={onDelete}
           onSubjectUpdate={onSubjectUpdate}
           onRenamePhoto={onRenamePhoto}
+          onToggleFavorite={onToggleFavorite}
           onUploadToFolder={onUploadToFolder}
           uploadProgress={uploadProgress}
           onMovePhoto={onMovePhoto}
@@ -398,6 +401,7 @@ interface ContentProps {
   onDelete: (name: string) => void;
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
+  onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { done: number; total: number; folder: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
@@ -416,6 +420,7 @@ function FolderContent({
   onDelete,
   onSubjectUpdate,
   onRenamePhoto,
+  onToggleFavorite,
   onUploadToFolder,
   uploadProgress,
   onMovePhoto,
@@ -694,6 +699,7 @@ function FolderContent({
             photo={photo}
             onClick={() => !selectMode && openModal(photo)}
             onDelete={() => onDelete(photo.name)}
+            onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
             onMoveRequest={!selectMode ? () => {
               setQuickMovePhoto(photo);
               setQuickMoveTo(MOVE_UNSELECTED);
