@@ -2722,6 +2722,16 @@ body {
   text-align: left;
 }
 
+/* Final alignment guard: ensure settings content is left-aligned even if other rules override it. */
+.settings-dialog .settings-body,
+.settings-dialog .settings-body * {
+  text-align: left !important;
+}
+
+.settings-dialog .settings-body button {
+  text-align: center !important;
+}
+
 /* Enforce left-aligned copy in profile/app sections. */
 .settings-section p,
 .settings-section .add-admin-hint,
