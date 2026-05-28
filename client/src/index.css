@@ -1129,6 +1129,49 @@ body {
   background: #15803d;
 }
 
+.pwa-install-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+}
+
+.pwa-install-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pwa-install-actions button {
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.pwa-install-actions button:hover {
+  background: #1d4ed8;
+}
+
+.pwa-install-actions .pwa-install-later {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.pwa-install-actions .pwa-install-later:hover {
+  background: #cbd5e1;
+}
+
 /* Upload area */
 .upload-area {
   border: 2px dashed #c0c7d0;
@@ -2006,6 +2049,16 @@ body {
   .filter-main-row { flex-wrap: wrap; }
   .filter-panel { flex-direction: column; gap: 8px; }
   .filter-field { min-width: unset; width: 100%; }
+
+  .pwa-update-banner,
+  .pwa-install-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pwa-install-actions {
+    justify-content: flex-end;
+  }
 
   /* ── Dialogs: full-width on small screens ── */
   .add-admin-dialog        { max-width: calc(100vw - 32px); }

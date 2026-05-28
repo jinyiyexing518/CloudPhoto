@@ -13,6 +13,7 @@ import AuthPage from "./components/auth/AuthPage";
 import AddAdminDialog from "./components/auth/AddAdminDialog";
 
 const SUPER_ADMIN = "zhangchi";
+const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 type ViewTab = "timeline" | "folder";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -30,6 +31,7 @@ function AppContent() {
   const [canInstall, setCanInstall] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [installBannerDismissed, setInstallBannerDismissed] = useState<boolean>(() => localStorage.getItem(INSTALL_BANNER_DISMISSED_KEY) === "1");
   const deferredInstallPrompt = useRef<BeforeInstallPromptEvent | null>(null);
   const ua = navigator.userAgent.toLowerCase();
   const isIOS = /iphone|ipad|ipod/.test(ua);
@@ -277,6 +279,11 @@ function AppContent() {
     await updateSW(true);
   };
 
+  const dismissInstallBanner = () => {
+    setInstallBannerDismissed(true);
+    localStorage.setItem(INSTALL_BANNER_DISMISSED_KEY, "1");
+  };
+
   const installGuideText = useMemo(() => {
     if (isIOS) {
       return [
@@ -299,6 +306,12 @@ function AppContent() {
       "3. 安装后可在桌面/开始菜单启动",
     ];
   }, [isAndroid, isIOS]);
+
+  const installBannerText = useMemo(() => {
+    if (isIOS) return "可安装为 App：在 Safari 中点“分享 -> 添加到主屏幕”。";
+    if (canInstall) return "可安装为 App：点击“立即安装”后，可从桌面图标直接打开。";
+    return "可安装为 App：打开安装指引，按设备步骤安装到桌面/主屏幕。";
+  }, [canInstall, isIOS]);
 
   return (
     <div className="app">
@@ -360,6 +373,20 @@ function AppContent() {
           <div className="pwa-update-banner">
             <span>检测到新版本，点击即可更新。</span>
             <button onClick={() => void handleRefreshToUpdate()}>立即更新</button>
+          </div>
+        )}
+
+        {!isStandalone && !installBannerDismissed && (
+          <div className="pwa-install-banner">
+            <span>{installBannerText}</span>
+            <div className="pwa-install-actions">
+              {canInstall ? (
+                <button onClick={() => void handleInstallApp()}>立即安装</button>
+              ) : (
+                <button onClick={() => setShowInstallGuide(true)}>查看安装指引</button>
+              )}
+              <button className="pwa-install-later" onClick={dismissInstallBanner}>稍后</button>
+            </div>
           </div>
         )}
 

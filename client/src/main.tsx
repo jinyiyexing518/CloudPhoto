@@ -8,6 +8,15 @@ const registerPwa = async () => {
   const { registerSW } = await import("virtual:pwa-register");
   const updateSW = registerSW({
     immediate: true,
+    onRegisteredSW(_, registration) {
+      if (!registration) return;
+      const checkForUpdates = () => { void registration.update(); };
+      checkForUpdates();
+      window.setInterval(checkForUpdates, 60 * 1000);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") checkForUpdates();
+      });
+    },
     onNeedRefresh() {
       window.dispatchEvent(new Event("cloudphoto-pwa-update-ready"));
     },
