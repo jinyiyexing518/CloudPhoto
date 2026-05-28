@@ -179,7 +179,6 @@ export async function getShareLinksContainer(): Promise<Container> {
 }
 
 export interface MomentInsightDoc {
-  docType: "momentInsight";
   id: string;
   photoName: string;
   scopeType: "personal" | "group";
@@ -191,4 +190,8 @@ export interface MomentInsightDoc {
   dailyViews: Record<string, number>;
   createdAt: string;
   updatedAt: string;
+}
+
+export async function getMomentsContainer(): Promise<Container> {
+  return getContainer("moments");
 }

@@ -25,9 +25,8 @@ cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4 (backend)
         │       ├── admins   (partition: /id)
         │       ├── groups   (partition: /id)
         │       ├── invites  (partition: /id)
-        │       └── sharelinks (partition: /id)
-        │             ├── docType=share (managed share links)
-        │             └── docType=momentInsight (cross-device moments insights)
+        │       ├── sharelinks (partition: /id)
+        │       └── moments (partition: /id)
         │
         └── Azure Blob Storage (photostorage / photos)
                 └── Time-limited User Delegation SAS (2h, keyless)
@@ -168,10 +167,9 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
 }
 ```
 
-### MomentInsightDoc (`sharelinks` container, `docType="momentInsight"`)
+### MomentInsightDoc (`moments` container)
 ```jsonc
 {
-  "docType": "momentInsight",
   "id": "moment:<base64(photoName)>",
   "photoName": "personal/<userId>/<folder>/<file>",
   "scopeType": "personal" | "group",
@@ -189,17 +187,16 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
 Moments scoring model used by the frontend:
 
 $$
-	ext{recommendationScore} =
+(\text{recommendationScore}) =
 (\text{favorite}?120:0)
 +(\text{subject}?20:0)
 +\max(0, 40-\text{recencyDays})
 $$
 
 $$
-	ext{engagementScore} =
-	ext{recommendationScore}
+(\text{engagementScore}) =
+(\text{recommendationScore})
 +24\times\text{totalViews}
-+10\times\text{shareViews}
 +\text{recentViewBoost(0..72h)}
 $$
 

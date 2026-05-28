@@ -18,7 +18,7 @@
 - 前端：React 18 + TypeScript + Vite 5
 - 后端：Azure Functions v4 + Node.js 24 + TypeScript
 - 存储：Azure Blob Storage（照片）
-- 数据：Azure Cosmos DB NoSQL（users/admins/groups/invites/sharelinks）
+- 数据：Azure Cosmos DB NoSQL（users/admins/groups/invites/sharelinks/moments）
 - 鉴权：JWT access + refresh，客户端 401 自动刷新重试
 - 访问凭据：DefaultAzureCredential（本地 Azure CLI，云上托管身份）
 - CI/CD：GitHub Actions（前后端分离）
@@ -86,7 +86,7 @@
 	- `POST /api/photos/moments/view`（记录一次浏览）
 3. 洞察写入需有并发保护（ETag 或同等级乐观并发）
 4. 洞察需记录：totalViews、lastViewedAt、viewers 计数字典、dailyViews 计数字典
-5. 推荐值与互动热度需可复现，推荐公式至少包含：收藏、主题、新近度；热度至少包含：推荐值、浏览权重、分享浏览权重、最近查看加成
+5. 推荐值与互动热度需可复现，推荐公式至少包含：收藏、主题、新近度；热度至少包含：推荐值、浏览权重、最近查看加成（分享访问作为独立指标）
 
 ### 3.5.1 并发一致性（图片与分享）
 
@@ -144,7 +144,7 @@
 2. Function App（Linux，Node 24）
 3. Static Web Apps
 4. Storage Account + Blob Container（如 photos）
-5. Cosmos DB NoSQL + Database + 容器：users/admins/groups/invites
+5. Cosmos DB NoSQL + Database + 容器：users/admins/groups/invites/sharelinks/moments
 6. （可选）Azure Communication Services（邮件邀请）
 
 ## 5.2 RBAC
@@ -242,12 +242,12 @@ Function App 的系统分配托管身份需要：
 - invites（/id）
 - sharelinks（/id）
 
+- moments（/id）
+
 说明：
 
-1. `sharelinks` 容器中允许多文档类型，至少包含：
-	- `docType=share`（分享链接）
-	- `docType=momentInsight`（重要片段洞察）
-2. 分享管理查询应过滤到 share 文档，避免与洞察文档混读
+1. `sharelinks` 仅保存分享链接记录
+2. `moments` 容器仅保存重要片段洞察（浏览次数、按天统计、常看用户）
 
 ## 8.2 Blob metadata
 

@@ -5,7 +5,7 @@ import {
   InvocationContext,
 } from "@azure/functions";
 import {
-  getShareLinksContainer,
+  getMomentsContainer,
   isGroupMember,
   MomentInsightDoc,
 } from "../../utils/cosmosClient";
@@ -33,7 +33,7 @@ function isCosmosUnavailable(error: unknown): boolean {
   const statusCode = getStatusCode(error);
   if (statusCode === 401 || statusCode === 403 || statusCode === 404) return true;
   const message = (error as { message?: string } | undefined)?.message ?? "";
-  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization|NotFound|Resource Not Found|Owner resource does not exist|sharelinks/i.test(message);
+  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization|NotFound|Resource Not Found|Owner resource does not exist|moments/i.test(message);
 }
 
 function isConcurrentConflict(error: unknown): boolean {
@@ -116,11 +116,10 @@ app.http("listMomentInsights", {
     const ids = allowedNames.map(toMomentInsightId);
 
     try {
-      const container = await getShareLinksContainer();
+      const container = await getMomentsContainer();
       const query = {
-        query: "SELECT * FROM c WHERE c.docType = @docType AND ARRAY_CONTAINS(@ids, c.id)",
+        query: "SELECT * FROM c WHERE ARRAY_CONTAINS(@ids, c.id)",
         parameters: [
-          { name: "@docType", value: "momentInsight" },
           { name: "@ids", value: ids },
         ],
       };
@@ -141,7 +140,11 @@ app.http("listMomentInsights", {
       });
     } catch (e) {
       if (isCosmosUnavailable(e)) {
-        return json({ items: [], managedUnavailable: true });
+        return json({
+          items: [],
+          managedUnavailable: true,
+          message: "Moments insights unavailable (moments container missing or Cosmos Data Plane permission insufficient)",
+        });
       }
       const message = e instanceof Error ? e.message : "Failed to load moment insights";
       return json({ error: message }, 500);
@@ -182,7 +185,7 @@ app.http("recordMomentView", {
     const maxAttempts = 3;
 
     try {
-      const container = await getShareLinksContainer();
+      const container = await getMomentsContainer();
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const now = new Date().toISOString();
         const { resource } = await container
@@ -192,7 +195,6 @@ app.http("recordMomentView", {
 
         if (!resource) {
           const doc: MomentInsightDoc = {
-            docType: "momentInsight",
             id,
             photoName,
             scopeType: scope.scopeType,
@@ -216,7 +218,6 @@ app.http("recordMomentView", {
 
         const updated: MomentInsightDoc = {
           ...resource,
-          docType: "momentInsight",
           photoName,
           scopeType: scope.scopeType,
           scopeId: scope.scopeId,
@@ -254,7 +255,11 @@ app.http("recordMomentView", {
       return json({ error: "Moment insight update conflict, please retry" }, 409);
     } catch (e) {
       if (isCosmosUnavailable(e)) {
-        return json({ ok: false, managedUnavailable: true });
+        return json({
+          ok: false,
+          managedUnavailable: true,
+          message: "Moments insights unavailable (moments container missing or Cosmos Data Plane permission insufficient)",
+        });
       }
       context.error("Record moment view error:", e);
       const message = e instanceof Error ? e.message : "Failed to record moment view";
