@@ -526,13 +526,13 @@ export async function updateManagedShareLink(
 
 export async function listMomentInsights(photoNames: string[]): Promise<Record<string, MomentInsight>> {
   if (photoNames.length === 0) return {};
-  const params = new URLSearchParams();
-  for (const name of photoNames) {
-    if (name.trim()) params.append("name", name);
-  }
   const response = await fetchWithTimeout(
-    `${API_BASE}/photos/moments/insights?${params.toString()}`,
-    { headers: authHeaders() },
+    `${API_BASE}/photos/moments/insights`,
+    {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ photoNames }),
+    },
   );
   const data = await response.json().catch(() => ({})) as { items?: MomentInsight[]; error?: string; managedUnavailable?: boolean; message?: string };
   if (!response.ok) {

@@ -87,17 +87,25 @@ async function canAccessPhotoScope(
 }
 
 app.http("listMomentInsights", {
-  methods: ["GET"],
+  methods: ["GET", "POST"],
   authLevel: "anonymous",
   route: "photos/moments/insights",
   handler: async (request: HttpRequest): Promise<HttpResponseInit> => {
     const payload = extractTokenFromHeader(request.headers.get("authorization") ?? "");
     if (!payload) return json({ error: "Unauthorized" }, 401);
 
-    const names = request.query
-      .getAll("name")
-      .map((value) => value.trim())
-      .filter(Boolean);
+    const body = request.method === "POST"
+      ? (await request.json().catch(() => ({})) as { photoNames?: string[] })
+      : undefined;
+
+    const names = request.method === "POST"
+      ? (Array.isArray(body?.photoNames) ? body.photoNames : [])
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : request.query
+          .getAll("name")
+          .map((value) => value.trim())
+          .filter(Boolean);
 
     if (names.length === 0) return json({ items: [] });
 
