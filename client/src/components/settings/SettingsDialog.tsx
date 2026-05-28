@@ -59,7 +59,10 @@ export default function SettingsDialog({
   const [extendHours, setExtendHours] = useState("24");
 
   const [shareLinksVersion, setShareLinksVersion] = useState(0);
-  const shareLinks = useMemo(() => listRecentShareLinks(), [shareLinksVersion]);
+  const shareLinks = useMemo(() => {
+    const links = listRecentShareLinks();
+    return Array.isArray(links) ? links : [];
+  }, [shareLinksVersion]);
 
   const loadManagedShareLinks = useCallback(async () => {
     setManagedLoading(true);
@@ -146,6 +149,9 @@ export default function SettingsDialog({
 
   const safeManagedShareLinks = Array.isArray(managedShareLinks)
     ? managedShareLinks.filter((item): item is ManagedShareLink => !!item && typeof item.id === "string")
+    : [];
+  const safeShareLinks = Array.isArray(shareLinks)
+    ? shareLinks.filter((item) => !!item && typeof item.id === "string" && typeof item.url === "string")
     : [];
 
   return (
@@ -342,7 +348,7 @@ export default function SettingsDialog({
 
               <div className="settings-share-header">
                 <span className="settings-info-label">本地分享记录（仅当前浏览器）</span>
-                {shareLinks.length > 0 && (
+                {safeShareLinks.length > 0 && (
                   <button
                     type="button"
                     className="settings-share-clear"
@@ -357,11 +363,11 @@ export default function SettingsDialog({
                 )}
               </div>
 
-              {shareLinks.length === 0 ? (
+              {safeShareLinks.length === 0 ? (
                 <p className="add-admin-hint">暂无本机生成的有效分享链接。</p>
               ) : (
                 <div className="settings-share-list">
-                  {shareLinks.map((item) => (
+                  {safeShareLinks.map((item) => (
                     <div key={item.id} className="settings-share-item">
                       <div className="settings-share-meta">
                         <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
