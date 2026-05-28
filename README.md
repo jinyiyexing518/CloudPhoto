@@ -48,6 +48,7 @@ build time (defaults to `/api`).
 - **Batch operations** — multi-select mode with batch delete and batch move to folder
 - **Multi-photo upload** — select multiple photos at once; sequential upload with per-folder progress (`⏳ 2/5`); partial-failure reporting; client-side MIME type + 20 MB size guard before upload
 - **Photo download** — download original file directly from the browser (mobile & desktop)
+- **Expiring share links** — generate per-photo public read links with configurable TTL (1h / 24h / 3d / 7d)
 - **Photo rename** — change the display name of any photo without re-uploading
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
@@ -67,6 +68,8 @@ build time (defaults to `/api`).
 - **Delete with confirmation** — custom confirm dialog (no browser `alert`)
 - **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px
 - **Admin tools** — super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote other users to admin
+- **PWA app mode** — installable as an app on desktop/mobile (manifest + service worker + update prompt)
+- **Transfer safety guard** — while upload/download is in progress, tab switching is blocked and browser refresh/close shows unload confirmation
 - **Keyless security** — no storage account keys or Cosmos DB keys anywhere; `DefaultAzureCredential` (Managed Identity on Azure, Azure CLI locally)
 - **CI/CD** — GitHub Actions with OIDC authentication (no stored passwords); separate workflows for frontend and backend, triggered only on relevant path changes
 
@@ -176,6 +179,7 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 | `GET`    | `/api/photos[?groupId=<id>]` | ✓ | List photos; each URL is a 2-hour User Delegation SAS |
 | `POST`   | `/api/photos/upload?filename=<name>[&folder=<path>][&groupId=<id>]` | ✓ | Upload (raw binary body); rejects non-image MIME (415) and > 20 MB (413) |
 | `GET`    | `/api/photos/download?name=<blobName>` | ✓ | Proxy-download with `Content-Disposition: attachment` |
+| `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | Create expiring share link (`{ url, expiresAt }`) |
 | `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName |
 | `DELETE` | `/api/photos?name=<blobName>` | ✓ | Delete a photo by blob name |
@@ -341,6 +345,7 @@ Open [http://localhost:3000](http://localhost:3000).
 1. Create a Storage Account (e.g. `photostorage`)
 2. Create a container named `photos` with **Private** access
 3. No access keys needed — grant Managed Identity RBAC roles (below)
+4. If share links must open on public internet, Storage Account networking must allow public access (or equivalent routed access). Private-endpoint-only storage will make copied share links unreachable outside private network.
 
 ### Function App Application Settings
 
@@ -430,6 +435,31 @@ Both use **OIDC authentication** (no stored Azure passwords/keys).
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token |
 | `VITE_API_BASE` | `https://cloudphoto-api.azurewebsites.net/api` |
 
+---
+
+## PWA Install Guide
+
+The frontend is installable as a PWA and can run in both browser mode and app mode.
+
+### Desktop (Chrome / Edge)
+
+1. Open the production site over HTTPS
+2. Click the install icon in the address bar (or browser menu -> Install app)
+3. Launch from desktop/start menu as a standalone app window
+
+### Android (Chrome)
+
+1. Open the production site over HTTPS
+2. Browser menu -> Install app / Add to Home screen
+
+### iOS (Safari)
+
+1. Open the production site in Safari
+2. Tap Share
+3. Tap Add to Home Screen
+
+> iOS does not fire `beforeinstallprompt`, so in-app install buttons may not appear there.
+
 ### OIDC Service Principal Setup
 
 ```bash
@@ -461,9 +491,14 @@ CloudPhoto/
 │
 ├── client/                      # React 18 + Vite 5
 │   ├── public/
-│   │   └── staticwebapp.config.json  # SPA fallback routing for SWA
+│   │   ├── favicon.svg
+│   │   ├── apple-touch-icon.svg
+│   │   ├── pwa-192x192.svg
+│   │   ├── pwa-512x512.svg
+│   │   └── maskable-icon.svg
+│   ├── staticwebapp.config.json  # SPA fallback routing for SWA
 │   └── src/
-│       ├── App.tsx              # Root component — layout, upload handler, file validation
+│       ├── App.tsx              # Root component — layout, transfer guard, PWA install/update hints
 │       ├── index.css            # Global styles + responsive breakpoints + batch-select UI
 │       ├── contexts/
 │       │   ├── AuthContext.tsx  # JWT auth state: login / register / logout / token persistence
@@ -474,8 +509,8 @@ CloudPhoto/
 │       │   │   ├── AuthPage.tsx          # Login / Register tab UI
 │       │   │   └── AddAdminDialog.tsx    # Promote user to admin
 │       │   ├── gallery/
-│       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection toolbar
-│       │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop, batch ops
+│       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection + expiring share links
+│       │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop, batch ops, share links
 │       │   │   ├── TrashView.tsx         # Recycle bin — restore or permanently delete
 │       │   │   ├── PhotoCard.tsx         # Thumbnail + selection badge + delete confirmation
 │       │   │   └── FilterBar.tsx         # Filter by name / subject / uploader / date range
@@ -484,7 +519,7 @@ CloudPhoto/
 │       │       ├── CreateGroupDialog.tsx # Create group form
 │       │       └── GroupSettings.tsx     # Members list + danger zone
 │       └── services/
-│           ├── photoApi.ts      # API calls with 15s timeout; 401→refresh→retry mutex; token helpers
+│           ├── photoApi.ts      # API calls with 15s timeout; 401→refresh→retry mutex; share-link/download helpers
 │           └── groupApi.ts      # Group CRUD API calls
 │
 └── server/                      # Azure Functions v4 (Node.js 24 + TypeScript)
@@ -501,9 +536,14 @@ CloudPhoto/
         │   │   ├── listPhotos.ts        # GET    /api/photos (shared delegation key)
         │   │   ├── uploadPhoto.ts       # POST   /api/photos/upload (MIME + size guard)
         │   │   ├── downloadPhoto.ts     # GET    /api/photos/download
+        │   │   ├── createShareLink.ts   # GET    /api/photos/share (expiring URL)
         │   │   ├── movePhoto.ts         # POST   /api/photos/move
         │   │   ├── updatePhotoMetadata.ts  # PATCH /api/photos/metadata (JWT required)
         │   │   └── deletePhoto.ts       # DELETE /api/photos (JWT required)
+        │   ├── trash/
+        │   │   ├── listTrash.ts         # GET    /api/photos/trash
+        │   │   ├── restorePhoto.ts      # POST   /api/photos/trash/restore
+        │   │   └── deleteTrashItem.ts   # DELETE /api/photos/trash
         │   └── groups/
         │       ├── createGroup.ts       # POST   /api/groups
         │       ├── listGroups.ts        # GET    /api/groups
@@ -512,6 +552,12 @@ CloudPhoto/
         │       ├── deleteGroup.ts       # DELETE /api/groups/{groupId}
         │       ├── addMember.ts         # POST   /api/groups/{groupId}/members
         │       └── removeMember.ts      # DELETE /api/groups/{groupId}/members/{memberId}
+        │   └── invites/
+        │       ├── createInvite.ts      # POST   /api/groups/{groupId}/invites
+        │       ├── getInvite.ts         # GET    /api/invites/{token}
+        │       ├── respondInvite.ts     # POST   /api/invites/{token}/respond
+        │       ├── listGroupInvites.ts  # GET    /api/groups/{groupId}/invites
+        │       └── cancelInvite.ts      # DELETE /api/invites/{token}
         └── utils/
             ├── blobStorage.ts   # DefaultAzureCredential + User Delegation SAS (2h)
             ├── cosmosClient.ts  # DefaultAzureCredential + Cosmos DB client
