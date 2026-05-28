@@ -2966,6 +2966,14 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+}
+
+.settings-share-header .settings-info-label {
+  width: auto;
+  max-width: none;
+  flex: 1;
+  white-space: nowrap;
 }
 
 .settings-share-clear {
