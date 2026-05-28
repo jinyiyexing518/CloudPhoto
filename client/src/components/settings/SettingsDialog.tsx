@@ -14,7 +14,19 @@ import { copyText } from "../../features/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 
-type SettingsTab = "profile" | "security" | "trash";
+type SettingsTab = "profile" | "security" | "trash" | "diagnostics";
+
+const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
+const MOMENTS_DIAGNOSTICS_KEY = "cloudphoto_moments_diagnostics_v1";
+
+interface DiagnosticsSnapshot {
+  serviceWorkerCount: number;
+  localMomentsCount: number;
+  localMomentsLastViewedAt?: string;
+  persistenceStatus: string;
+  persistenceMessage?: string;
+  persistenceUpdatedAt?: string;
+}
 
 interface Props {
   onClose: () => void;
@@ -42,6 +54,11 @@ export default function SettingsDialog({
   const { currentGroupId } = useGroup();
   const showToast = useToast();
   const [tab, setTab] = useState<SettingsTab | "app">("profile");
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot>({
+    serviceWorkerCount: 0,
+    localMomentsCount: 0,
+    persistenceStatus: "unknown",
+  });
 
   // Profile tab
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
@@ -90,6 +107,70 @@ export default function SettingsDialog({
     if (tab !== "app") return;
     void loadManagedShareLinks();
   }, [tab, loadManagedShareLinks]);
+
+  useEffect(() => {
+    if (tab !== "diagnostics") return;
+    let cancelled = false;
+    const loadDiagnostics = async () => {
+      let serviceWorkerCount = 0;
+      if ("serviceWorker" in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          serviceWorkerCount = registrations.length;
+        } catch {
+          serviceWorkerCount = 0;
+        }
+      }
+
+      let localMomentsCount = 0;
+      let localMomentsLastViewedAt: string | undefined;
+      try {
+        const raw = localStorage.getItem(MOMENTS_LOCAL_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Record<string, { lastViewedAt?: string }>;
+          const entries = Object.values(parsed ?? {});
+          localMomentsCount = entries.length;
+          localMomentsLastViewedAt = entries
+            .map((item) => item?.lastViewedAt)
+            .filter((value): value is string => !!value)
+            .sort()
+            .pop();
+        }
+      } catch {
+        localMomentsCount = 0;
+      }
+
+      let persistenceStatus = "unknown";
+      let persistenceMessage: string | undefined;
+      let persistenceUpdatedAt: string | undefined;
+      try {
+        const raw = localStorage.getItem(MOMENTS_DIAGNOSTICS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as { status?: string; message?: string; updatedAt?: string };
+          persistenceStatus = parsed.status ?? "unknown";
+          persistenceMessage = parsed.message;
+          persistenceUpdatedAt = parsed.updatedAt;
+        }
+      } catch {
+        persistenceStatus = "unknown";
+      }
+
+      if (!cancelled) {
+        setDiagnostics({
+          serviceWorkerCount,
+          localMomentsCount,
+          localMomentsLastViewedAt,
+          persistenceStatus,
+          persistenceMessage,
+          persistenceUpdatedAt,
+        });
+      }
+    };
+    void loadDiagnostics();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
 
   const handleSaveProfile = async (e: FormEvent) => {
     e.preventDefault();
@@ -173,6 +254,7 @@ export default function SettingsDialog({
           <button className={`settings-tab${tab === "profile" ? " active" : ""}`} onClick={() => setTab("profile")}>👤 个人信息</button>
           <button className={`settings-tab${tab === "security" ? " active" : ""}`} onClick={() => setTab("security")}>🔒 安全</button>
           <button className={`settings-tab${tab === "app" ? " active" : ""}`} onClick={() => setTab("app")}>📱 应用</button>
+          <button className={`settings-tab${tab === "diagnostics" ? " active" : ""}`} onClick={() => setTab("diagnostics")}>🩺 诊断</button>
           <button className={`settings-tab${tab === "trash" ? " active" : ""}`} onClick={() => setTab("trash")}>🗑️ 回收站</button>
         </div>
 
@@ -401,6 +483,59 @@ export default function SettingsDialog({
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "diagnostics" && (
+            <div className="settings-section">
+              <div className="settings-info-row">
+                <span className="settings-info-label">前端版本</span>
+                <span className="settings-info-value">v{appVersion}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">构建时间</span>
+                <span className="settings-info-value">{appBuildTimeText}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">运行模式</span>
+                <span className="settings-info-value">{isStandalone ? "已安装 App / PWA" : "普通网页"}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">SW 注册数</span>
+                <span className="settings-info-value">{diagnostics.serviceWorkerCount}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">本地浏览记录</span>
+                <span className="settings-info-value">{diagnostics.localMomentsCount} 条</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">最近本地浏览</span>
+                <span className="settings-info-value">{diagnostics.localMomentsLastViewedAt ? new Date(diagnostics.localMomentsLastViewedAt).toLocaleString("zh-CN") : "暂无"}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">持久化状态</span>
+                <span className="settings-info-value">
+                  {diagnostics.persistenceStatus === "server-synced"
+                    ? "服务端已同步"
+                    : diagnostics.persistenceStatus === "server-unavailable"
+                    ? "服务端不可用，当前仅本地保存"
+                    : diagnostics.persistenceStatus === "local-only"
+                    ? "当前仅本地保存"
+                    : "未检测"}
+                </span>
+              </div>
+              {diagnostics.persistenceUpdatedAt && (
+                <div className="settings-info-row">
+                  <span className="settings-info-label">状态时间</span>
+                  <span className="settings-info-value">{new Date(diagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}</span>
+                </div>
+              )}
+              {diagnostics.persistenceMessage && (
+                <div className="settings-info-row">
+                  <span className="settings-info-label">诊断信息</span>
+                  <span className="settings-info-value">{diagnostics.persistenceMessage}</span>
                 </div>
               )}
             </div>

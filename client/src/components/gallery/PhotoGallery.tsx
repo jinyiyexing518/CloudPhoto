@@ -64,6 +64,9 @@ const MOMENT_HOT_VIEW_THRESHOLD = 3;
 const MOMENT_ENGAGEMENT_VIEW_WEIGHT = 24;
 const MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS = 72;
 const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
+const MOMENTS_DIAGNOSTICS_KEY = "cloudphoto_moments_diagnostics_v1";
+
+type MomentsDiagnosticsStatus = "unknown" | "local-only" | "server-synced" | "server-unavailable";
 
 function splitDisplayName(value: string): { baseName: string; extension: string } {
   const trimmed = value.trim();
@@ -142,6 +145,19 @@ function writeLocalMomentInsights(map: Record<string, MomentInsight>): void {
     localStorage.setItem(MOMENTS_LOCAL_STORAGE_KEY, JSON.stringify(map));
   } catch {
     // Ignore localStorage quota and privacy mode failures.
+  }
+}
+
+function writeMomentsDiagnostics(status: MomentsDiagnosticsStatus, details?: { message?: string; photoCount?: number }): void {
+  try {
+    localStorage.setItem(MOMENTS_DIAGNOSTICS_KEY, JSON.stringify({
+      status,
+      message: details?.message,
+      photoCount: details?.photoCount,
+      updatedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // Ignore localStorage failures.
   }
 }
 
@@ -348,6 +364,7 @@ export default function PhotoGallery({
 
   useEffect(() => {
     writeLocalMomentInsights(momentsInsightsMap);
+    writeMomentsDiagnostics("local-only", { photoCount: Object.keys(momentsInsightsMap).length });
   }, [momentsInsightsMap]);
 
   useEffect(() => {
@@ -357,11 +374,16 @@ export default function PhotoGallery({
       try {
         const map = await listMomentInsights(flatPhotos.map((photo) => photo.name));
         if (!cancelled) {
+          writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(map).length });
           setMomentsInsightsMap((prev) => mergeMomentInsightMaps(prev, map));
         }
       } catch (e) {
         if (!cancelled && e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
           momentsUnavailableNoticeShown.current = true;
+          writeMomentsDiagnostics("server-unavailable", {
+            message: e.message,
+            photoCount: Object.keys(momentsInsightsMap).length,
+          });
           showToast("重要片段浏览量暂时不可持久化，当前仅展示本次会话内的浏览变化", "info");
         }
       }
@@ -484,16 +506,21 @@ export default function PhotoGallery({
 
     void recordMomentViewApi(photoName, userName).then((serverItem) => {
       if (!serverItem) return;
+      writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(momentsInsightsMap).length });
       setMomentsInsightsMap((prev) => ({
         ...mergeMomentInsightMaps(prev, { [photoName]: serverItem }),
       }));
     }).catch((e) => {
       if (e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
         momentsUnavailableNoticeShown.current = true;
+        writeMomentsDiagnostics("server-unavailable", {
+          message: e.message,
+          photoCount: Object.keys(momentsInsightsMap).length,
+        });
         showToast("重要片段浏览量暂时不可持久化，当前仅展示本次会话内的浏览变化", "info");
       }
     });
-  }, [userName]);
+  }, [momentsInsightsMap, userName]);
 
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = modalPhotos[idx];
