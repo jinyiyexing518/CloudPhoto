@@ -45,6 +45,21 @@ function candidateBlobNames(rawName: string): string[] {
   return [...result];
 }
 
+function normalizeBaseUrl(raw: string): string {
+  return raw.replace(/\/+$/, "");
+}
+
+function resolvePublicBaseUrl(request: HttpRequest): string {
+  const appBase = process.env.APP_BASE_URL?.trim();
+  if (appBase) return normalizeBaseUrl(appBase);
+
+  const proto = request.headers.get("x-forwarded-proto");
+  const host = request.headers.get("x-forwarded-host");
+  if (proto && host) return normalizeBaseUrl(`${proto}://${host}`);
+
+  return normalizeBaseUrl(new URL(request.url).origin);
+}
+
 app.http("createShareLink", {
   methods: ["GET"],
   authLevel: "anonymous",
@@ -166,8 +181,8 @@ app.http("createShareLink", {
       };
       await shareLinks.items.create(doc);
 
-      const origin = new URL(request.url).origin;
-      const managedUrl = `${origin}/api/photos/share/open/${encodeURIComponent(linkId)}`;
+      const baseUrl = resolvePublicBaseUrl(request);
+      const managedUrl = `${baseUrl}/api/photos/share/open/${encodeURIComponent(linkId)}`;
 
       return {
         status: 200,

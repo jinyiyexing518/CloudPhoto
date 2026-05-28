@@ -69,6 +69,21 @@ function json(body: unknown, status = 200): HttpResponseInit {
   };
 }
 
+function normalizeBaseUrl(raw: string): string {
+  return raw.replace(/\/+$/, "");
+}
+
+function resolvePublicBaseUrl(request: HttpRequest): string {
+  const appBase = process.env.APP_BASE_URL?.trim();
+  if (appBase) return normalizeBaseUrl(appBase);
+
+  const proto = request.headers.get("x-forwarded-proto");
+  const host = request.headers.get("x-forwarded-host");
+  if (proto && host) return normalizeBaseUrl(`${proto}://${host}`);
+
+  return normalizeBaseUrl(new URL(request.url).origin);
+}
+
 app.http("listShareLinks", {
   methods: ["GET"],
   authLevel: "anonymous",
@@ -108,10 +123,10 @@ app.http("listShareLinks", {
       return true;
     });
 
-    const origin = new URL(request.url).origin;
+    const baseUrl = resolvePublicBaseUrl(request);
     const withUrl = filtered.map((item) => ({
       ...item,
-      url: `${origin}/api/photos/share/open/${encodeURIComponent(item.id)}`,
+      url: `${baseUrl}/api/photos/share/open/${encodeURIComponent(item.id)}`,
     }));
 
     return json(withUrl);
