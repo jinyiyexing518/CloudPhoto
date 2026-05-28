@@ -33,6 +33,11 @@ export default function SettingsDialog({
   onInstallApp,
   onOpenInstallGuide,
 }: Props) {
+  const appVersion = __APP_VERSION__;
+  const appBuildTime = new Date(__APP_BUILD_TIME__);
+  const appBuildTimeText = Number.isNaN(appBuildTime.getTime())
+    ? __APP_BUILD_TIME__
+    : appBuildTime.toLocaleString("zh-CN");
   const { user, updateUser } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
@@ -251,6 +256,14 @@ export default function SettingsDialog({
               <div className="settings-info-row">
                 <span className="settings-info-label">当前模式</span>
                 <span className="settings-info-value">{isStandalone ? "App 模式" : "网页模式"}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">前端版本</span>
+                <span className="settings-info-value">v{appVersion}</span>
+              </div>
+              <div className="settings-info-row">
+                <span className="settings-info-label">构建时间</span>
+                <span className="settings-info-value">{appBuildTimeText}</span>
               </div>
               <div className="settings-info-row">
                 <span className="settings-info-label">一键安装</span>
