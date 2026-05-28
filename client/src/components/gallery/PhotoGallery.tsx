@@ -62,7 +62,7 @@ export default function PhotoGallery({
   onDownloadStateChange,
   userName,
   showMemoryHighlights = true,
-  showImportantMoments = true,
+  showImportantMoments = false,
 }: Props) {
   const showToast = useToast();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);

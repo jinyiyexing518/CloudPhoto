@@ -161,11 +161,11 @@ export default function SettingsDialog({
         </div>
 
         {/* Tab content */}
-        <div className="settings-body">
+        <div className="settings-body" style={{ textAlign: "left" }}>
 
           {/* ── 个人信息 ── */}
           {tab === "profile" && (
-            <div className="settings-section">
+            <div className="settings-section" style={{ textAlign: "left", alignItems: "stretch" }}>
               {/* Read-only info */}
               <div className="settings-info-row">
                 <span className="settings-info-label">用户名</span>
@@ -208,7 +208,7 @@ export default function SettingsDialog({
 
           {/* ── 安全 ── */}
           {tab === "security" && (
-            <div className="settings-section">
+            <div className="settings-section" style={{ textAlign: "left", alignItems: "stretch" }}>
               <form onSubmit={handleChangePassword} className="settings-form">
                 <div className="auth-field">
                   <label>当前密码</label>
