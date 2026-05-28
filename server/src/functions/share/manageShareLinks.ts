@@ -26,9 +26,9 @@ function isConcurrentConflict(error: unknown): boolean {
 function isCosmosAuthError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const statusCode = getStatusCode(error);
-  if (statusCode === 401 || statusCode === 403) return true;
+  if (statusCode === 401 || statusCode === 403 || statusCode === 404) return true;
   const message = (error as { message?: string }).message ?? "";
-  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization/i.test(message);
+  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization|NotFound|Owner resource does not exist|sharelinks/i.test(message);
 }
 
 async function mutateShareLinkWithRetry(
@@ -152,7 +152,7 @@ app.http("listShareLinks", {
         return json({
           items: [],
           managedUnavailable: true,
-          message: "云端链接维护暂不可用（缺少 Cosmos Data Plane 权限）",
+          message: "云端链接维护暂不可用（sharelinks 容器缺失或 Cosmos Data Plane 权限不足）",
         });
       }
       const message = e instanceof Error ? e.message : "Failed to fetch share links";
@@ -224,7 +224,7 @@ app.http("updateShareLink", {
       return json(result.updated);
     } catch (e) {
       if (isCosmosAuthError(e)) {
-        return json({ error: "云端链接维护暂不可用（缺少 Cosmos Data Plane 权限）" }, 503);
+        return json({ error: "云端链接维护暂不可用（sharelinks 容器缺失或 Cosmos Data Plane 权限不足）" }, 503);
       }
       const message = e instanceof Error ? e.message : "Failed to update share link";
       return json({ error: message }, 500);

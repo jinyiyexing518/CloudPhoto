@@ -75,6 +75,14 @@ function isCosmosWriteAuthError(error: unknown): boolean {
   return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization/i.test(message);
 }
 
+function isCosmosManagedShareUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const statusCode = (error as { statusCode?: number }).statusCode;
+  if (statusCode === 401 || statusCode === 403 || statusCode === 404) return true;
+  const message = (error as { message?: string }).message ?? "";
+  return /Request blocked by Auth|cosmos-native-rbac|cannot be authorized by AAD token|Authorization|NotFound|Owner resource does not exist|sharelinks/i.test(message);
+}
+
 app.http("createShareLink", {
   methods: ["GET"],
   authLevel: "anonymous",
@@ -171,11 +179,11 @@ app.http("createShareLink", {
           const shareLinks = await getShareLinksContainer();
           await shareLinks.items.create(doc);
         } catch (e) {
-          if (isCosmosWriteAuthError(e)) {
+          if (isCosmosManagedShareUnavailable(e)) {
             return {
               status: 503,
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ error: "Folder sharing requires managed share storage permissions" }),
+              body: JSON.stringify({ error: "Folder sharing requires the existing Cosmos sharelinks container and managed share permissions" }),
             };
           }
           throw e;
@@ -285,9 +293,9 @@ app.http("createShareLink", {
         const shareLinks = await getShareLinksContainer();
         await shareLinks.items.create(doc);
       } catch (e) {
-        if (isCosmosWriteAuthError(e)) {
+        if (isCosmosManagedShareUnavailable(e)) {
           managedShareAvailable = false;
-          context.warn("Managed share link unavailable due to Cosmos RBAC; falling back to direct SAS", e);
+          context.warn("Managed share link unavailable due to Cosmos config/container access; falling back to direct SAS", e);
         } else {
           throw e;
         }
