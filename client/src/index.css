@@ -453,15 +453,52 @@ body {
 
 
 .folder-new-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  width: fit-content;
+  flex: 0 0 auto;
   background: #f0f7ff;
   border: 1px dashed #93c5fd;
   color: #0078d4;
   border-radius: 8px;
-  padding: 7px 16px;
+  padding: 7px 14px;
   font-size: 0.88rem;
   cursor: pointer;
   transition: background 0.15s;
 }
+.folder-view-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.folder-share-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.folder-share-select {
+  width: auto;
+  min-width: 88px;
+  flex: 0 0 auto;
+}
+
+.folder-share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  padding: 7px 14px;
+}
+
 
 .folder-new-btn:hover { background: #dbeafe; }
 
