@@ -276,14 +276,13 @@ body {
 
 /* ===== View Tabs ===== */
 .view-tabs-shell {
-  position: relative;
+  position: sticky;
+  top: 72px;
+  z-index: 9;
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin-bottom: 20px;
-  top: 72px;
-  z-index: 9;
-  position: sticky;
   background: #f8fafc;
   backdrop-filter: blur(12px);
   border: 1px solid rgba(226, 232, 240, 0.92);
@@ -292,14 +291,16 @@ body {
   padding: 12px 14px 10px;
 }
 
+/* Fills gap above + covers top rounded-corner transparent areas with page bg,
+   preventing scroll content from showing through when sticky. */
 .view-tabs-shell::before {
   content: "";
   position: absolute;
   left: -1px;
   right: -1px;
   top: -300px;
-  height: 302px;
-  background: #f8fafc;
+  height: 322px; /* 300px above + 22px past border-radius:18px corner area */
+  background: #f0f2f5;
   pointer-events: none;
   z-index: -1;
 }
@@ -564,7 +565,7 @@ body {
   padding: 12px 14px;
   margin-bottom: 14px;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.03);
 }
@@ -1143,7 +1144,7 @@ body {
   background: #0078d4;
   color: #fff;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   padding: 7px 16px;
   font-size: 0.88rem;
   cursor: pointer;
@@ -1153,7 +1154,7 @@ body {
   background: none;
   border: 1px solid #d1d5db;
   color: #555;
-  border-radius: 7px;
+  border-radius: 8px;
   padding: 7px 12px;
   font-size: 0.88rem;
   cursor: pointer;
@@ -1248,7 +1249,7 @@ body {
 .folder-upload-card {
   background: #f8fafc;
   border: 2px dashed #cbd5e1;
-  border-radius: 10px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1315,7 +1316,7 @@ body {
   gap: 6px;
   background: #f0f7ff;
   border: 1px solid #bfdbfe;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 11px 18px;
   font-size: 0.88rem;
   color: #374151;
@@ -1716,7 +1717,7 @@ body {
   font-size: 0.7rem;
   background: #fef9c3;
   color: #92400e;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 1px 5px;
   font-weight: 600;
 }
@@ -2145,7 +2146,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .workspace-sidebar-backdrop {
@@ -2437,7 +2438,7 @@ body {
   background: #ecfdf5;
   border: 1px solid #86efac;
   color: #166534;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 14px;
   font-size: 0.88rem;
 }
@@ -2465,7 +2466,7 @@ body {
   background: #eff6ff;
   border: 1px solid #bfdbfe;
   color: #1e3a8a;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 14px;
   font-size: 0.88rem;
 }
@@ -2536,7 +2537,7 @@ body {
 .photo-card {
   position: relative;
   background: #fff;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   transition: transform 0.2s, box-shadow 0.2s;
@@ -2932,7 +2933,7 @@ body {
   gap: 12px;
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 14px 16px;
 }
 
@@ -2977,7 +2978,7 @@ body {
   font-size: 0.70rem;
   background: #eff6ff;
   color: #2563eb;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 1px 6px;
   white-space: nowrap;
   overflow: hidden;
