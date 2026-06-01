@@ -320,6 +320,11 @@ body {
   letter-spacing: 0.08em;
   color: #64748b;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .view-tabs-hint {
@@ -344,7 +349,7 @@ body {
   scrollbar-width: none;
   white-space: nowrap;
   scroll-behavior: smooth;
-  padding: 2px 36px 2px 2px;
+  padding: 2px 8px 2px 2px;
 }
 
 .view-tabs::-webkit-scrollbar {
@@ -585,7 +590,8 @@ body {
 
 .view-tabs-fade--right {
   right: 0;
-  background: linear-gradient(270deg, #f8fafc 25%, rgba(248, 250, 252, 0));
+  width: 56px;
+  background: linear-gradient(270deg, #f8fafc 45%, rgba(248, 250, 252, 0));
 }
 
 .workspace-summary {
@@ -3719,9 +3725,13 @@ body {
 
   /* ── View tabs ── */
   .view-tabs-meta {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
+    align-items: center;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .view-tabs-hint {
+    display: none;
   }
 
   .view-tabs-shell {
