@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import FilterBar, { FilterState } from "../gallery/FilterBar";
 
 interface MomentsStats {
@@ -82,12 +82,30 @@ export default function WorkspaceSidebar({
 }: Props) {
   if (activeTab === "folder") return null;
 
+  const topbarRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // iOS Safari requires an explicit pixel height on the scroll container.
+  // CSS flex/grid 1fr heights are not always honoured for overflow:scroll.
+  useEffect(() => {
+    if (!isOpen) return;
+    function applyHeight() {
+      if (!topbarRef.current || !contentRef.current) return;
+      const available = window.innerHeight;
+      const topbarH = topbarRef.current.offsetHeight;
+      contentRef.current.style.height = `${available - topbarH}px`;
+    }
+    applyHeight();
+    window.addEventListener("resize", applyHeight);
+    return () => window.removeEventListener("resize", applyHeight);
+  }, [isOpen]);
+
   return (
     <>
       {isOpen && <div className="workspace-sidebar-backdrop" onClick={onClose} />}
       <aside className={`workspace-sidebar${isOpen ? " workspace-sidebar--open" : ""}`}>
         <div className="workspace-sidebar-shell">
-          <div className="workspace-sidebar-topbar">
+          <div className="workspace-sidebar-topbar" ref={topbarRef}>
             <div>
               <span className="workspace-sidebar-kicker">{activeTab === "timeline" ? "Timeline" : "Moments"}</span>
               <h2>{activeTab === "timeline" ? "侧边工具栏" : "片段侧边栏"}</h2>
@@ -95,7 +113,7 @@ export default function WorkspaceSidebar({
             <button className="workspace-sidebar-close" onClick={onClose}>✕</button>
           </div>
 
-          <div className="workspace-sidebar-content">
+          <div className="workspace-sidebar-content" ref={contentRef}>
             {activeTab === "timeline" ? (
               <>
                 <SidebarSection title="时间线筛选" subtitle="筛选、统计和整理动作都收进这里，主区专注看照片。">
