@@ -8,6 +8,8 @@ export interface FilterState {
   dateFrom: string;
   dateTo: string;
   favoriteOnly: boolean;
+  missingSubjectOnly: boolean;
+  uncategorizedOnly: boolean;
 }
 
 export const emptyFilter: FilterState = {
@@ -17,6 +19,8 @@ export const emptyFilter: FilterState = {
   dateFrom: "",
   dateTo: "",
   favoriteOnly: false,
+  missingSubjectOnly: false,
+  uncategorizedOnly: false,
 };
 
 interface Props {
@@ -52,7 +56,7 @@ export default function FilterBar({
   const set = (key: keyof FilterState, value: string | boolean) =>
     onChange({ ...filters, [key]: value });
 
-  const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly;
+  const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly || filters.missingSubjectOnly || filters.uncategorizedOnly;
 
   // Active filter chips (all except name which has inline clear)
   const activeChips: { label: string; key: keyof FilterState }[] = [];
@@ -61,6 +65,8 @@ export default function FilterBar({
   if (filters.dateFrom) activeChips.push({ label: `从: ${filters.dateFrom}`, key: "dateFrom" });
   if (filters.dateTo) activeChips.push({ label: `至: ${filters.dateTo}`, key: "dateTo" });
   if (filters.favoriteOnly) activeChips.push({ label: "仅收藏", key: "favoriteOnly" });
+  if (filters.missingSubjectOnly) activeChips.push({ label: "缺少主题", key: "missingSubjectOnly" });
+  if (filters.uncategorizedOnly) activeChips.push({ label: "未分类", key: "uncategorizedOnly" });
 
   return (
     <div className="filter-bar">
@@ -94,6 +100,22 @@ export default function FilterBar({
           type="button"
         >
           ★ 仅收藏
+        </button>
+
+        <button
+          className={`filter-toggle-btn${filters.missingSubjectOnly ? " active" : ""}`}
+          onClick={() => set("missingSubjectOnly", !filters.missingSubjectOnly)}
+          type="button"
+        >
+          🏷 无主题
+        </button>
+
+        <button
+          className={`filter-toggle-btn${filters.uncategorizedOnly ? " active" : ""}`}
+          onClick={() => set("uncategorizedOnly", !filters.uncategorizedOnly)}
+          type="button"
+        >
+          📂 未分类
         </button>
 
         {hasAny && (

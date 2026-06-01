@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo } from "./services/photoApi";
+import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo, ManagedShareLink } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
 import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
@@ -21,6 +21,14 @@ interface HomeDiagnosticsSnapshot {
   localMomentsCount: number;
   persistenceStatus: "unknown" | "local-only" | "server-synced" | "server-unavailable";
   persistenceUpdatedAt?: string;
+}
+
+interface HomeActivityItem {
+  id: string;
+  icon: string;
+  title: string;
+  meta: string;
+  timestamp: number;
 }
 
 interface BeforeInstallPromptEvent extends Event {
@@ -127,6 +135,7 @@ function AppContent() {
   const [downloading, setDownloading] = useState(false);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
+  const [managedShareLinks, setManagedShareLinks] = useState<ManagedShareLink[]>([]);
   const [managedShareLinksCount, setManagedShareLinksCount] = useState(0);
   const [managedShareViewsTotal, setManagedShareViewsTotal] = useState(0);
   const [topSharedPhotoName, setTopSharedPhotoName] = useState<string | null>(null);
@@ -157,6 +166,8 @@ function AppContent() {
       if (filters.dateFrom && date && date.slice(0, 10) < filters.dateFrom) return false;
       if (filters.dateTo && date && date.slice(0, 10) > filters.dateTo) return false;
       if (filters.favoriteOnly && !p.favorite) return false;
+      if (filters.missingSubjectOnly && Boolean(p.subject?.trim())) return false;
+      if (filters.uncategorizedOnly && Boolean((p.folder ?? "").trim())) return false;
       return true;
     });
   }, [photos, filters]);
@@ -183,6 +194,16 @@ function AppContent() {
 
   const favoriteCount = useMemo(
     () => photos.filter((photo) => photo.favorite).length,
+    [photos],
+  );
+
+  const missingSubjectCount = useMemo(
+    () => photos.filter((photo) => !photo.subject?.trim()).length,
+    [photos],
+  );
+
+  const uncategorizedCount = useMemo(
+    () => photos.filter((photo) => !(photo.folder ?? "").trim()).length,
     [photos],
   );
 
@@ -215,6 +236,55 @@ function AppContent() {
     const ts = latestPhoto.createdAt ?? latestPhoto.lastModified;
     return ts ? new Date(ts).toLocaleString("zh-CN") : "暂无上传时间";
   }, [photos]);
+
+  const expiringSoonShareLinks = useMemo(() => {
+    const now = Date.now();
+    const twoDaysMs = 48 * 60 * 60 * 1000;
+    return managedShareLinks.filter((item) => {
+      const expiresAt = new Date(item.expiresAt).getTime();
+      return item.status === "active" && Number.isFinite(expiresAt) && expiresAt > now && expiresAt - now <= twoDaysMs;
+    });
+  }, [managedShareLinks]);
+
+  const recentActivity = useMemo<HomeActivityItem[]>(() => {
+    const uploadItems = [...photos]
+      .filter((photo) => photo.createdAt || photo.lastModified)
+      .sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())
+      .slice(0, 3)
+      .map((photo) => ({
+        id: `upload:${photo.name}`,
+        icon: "📤",
+        title: `${photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "")} 已上传`,
+        meta: `${photo.createdBy ?? "未知上传者"} · ${new Date(photo.createdAt ?? photo.lastModified ?? 0).toLocaleString("zh-CN")}`,
+        timestamp: new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime(),
+      }));
+
+    const shareItems = [...managedShareLinks]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 2)
+      .map((item) => ({
+        id: `share:${item.id}`,
+        icon: "🔗",
+        title: `${item.displayName} 已创建分享`,
+        meta: `${item.createdByName} · ${new Date(item.createdAt).toLocaleString("zh-CN")}`,
+        timestamp: new Date(item.createdAt).getTime(),
+      }));
+
+    const syncItem = homeDiagnostics.persistenceUpdatedAt
+      ? [{
+          id: "sync-status",
+          icon: "🩺",
+          title: homeDiagnostics.persistenceStatus === "server-synced" ? "浏览同步正常" : "浏览同步状态已更新",
+          meta: `${homeDiagnostics.localMomentsCount} 条本地记录 · ${new Date(homeDiagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}`,
+          timestamp: new Date(homeDiagnostics.persistenceUpdatedAt).getTime(),
+        }]
+      : [];
+
+    return [...uploadItems, ...shareItems, ...syncItem]
+      .filter((item) => Number.isFinite(item.timestamp))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 6);
+  }, [homeDiagnostics.localMomentsCount, homeDiagnostics.persistenceStatus, homeDiagnostics.persistenceUpdatedAt, managedShareLinks, photos]);
 
   const momentsStats = useMemo(() => {
     const now = Date.now();
@@ -257,12 +327,14 @@ function AppContent() {
         const links = await listManagedShareLinks();
         if (disposed) return;
         const safeLinks = Array.isArray(links) ? links : [];
+        setManagedShareLinks(safeLinks);
         setManagedShareLinksCount(safeLinks.filter((item) => item.status === "active").length);
         setManagedShareViewsTotal(safeLinks.reduce((sum, item) => sum + (item.viewCount ?? 0), 0));
         const topLink = [...safeLinks].sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0))[0];
         setTopSharedPhotoName(topLink?.displayName ?? null);
       } catch {
         if (!disposed) {
+          setManagedShareLinks([]);
           setManagedShareLinksCount(0);
           setManagedShareViewsTotal(0);
           setTopSharedPhotoName(null);
@@ -488,6 +560,23 @@ function AppContent() {
     switchTab("timeline");
   };
 
+  const jumpToMissingSubjectPhotos = () => {
+    setFilters((prev) => ({
+      ...emptyFilter,
+      favoriteOnly: prev.favoriteOnly,
+      missingSubjectOnly: true,
+    }));
+    switchTab("timeline");
+  };
+
+  const jumpToUncategorizedPhotos = () => {
+    setFilters({
+      ...emptyFilter,
+      uncategorizedOnly: true,
+    });
+    switchTab("timeline");
+  };
+
   const installGuideText = useMemo(() => {
     if (isIOS) {
       return [
@@ -700,6 +789,69 @@ function AppContent() {
               本地浏览记录 {homeDiagnostics.localMomentsCount} 条{homeDiagnostics.persistenceUpdatedAt ? ` · 更新于 ${new Date(homeDiagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}` : ""}
             </div>
             <button className="insights-hub-btn" onClick={() => openSettingsTab("diagnostics")}>打开诊断页</button>
+          </article>
+        </section>
+
+        <section className="pm-panels">
+          <article className="pm-panel pm-panel--activity">
+            <div className="pm-panel-head">
+              <div>
+                <p className="pm-panel-kicker">新功能 1</p>
+                <h3 className="pm-panel-title">最近活动流</h3>
+              </div>
+              <span className="pm-panel-badge">{recentActivity.length} 条</span>
+            </div>
+            <div className="pm-activity-list">
+              {recentActivity.length === 0 ? (
+                <p className="pm-panel-empty">还没有足够的上传、分享或同步活动，先从文件夹上传一批照片开始。</p>
+              ) : recentActivity.map((item) => (
+                <div key={item.id} className="pm-activity-item">
+                  <span className="pm-activity-icon">{item.icon}</span>
+                  <div className="pm-activity-copy">
+                    <div className="pm-activity-title">{item.title}</div>
+                    <div className="pm-activity-meta">{item.meta}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="pm-panel pm-panel--cleanup">
+            <div className="pm-panel-head">
+              <div>
+                <p className="pm-panel-kicker">新功能 2</p>
+                <h3 className="pm-panel-title">内容整理助手</h3>
+              </div>
+              <span className="pm-panel-badge">待处理 {missingSubjectCount + uncategorizedCount}</span>
+            </div>
+            <div className="pm-action-grid">
+              <button className="pm-action-card" onClick={jumpToMissingSubjectPhotos}>
+                <strong>{missingSubjectCount}</strong>
+                <span>张照片缺少主题</span>
+                <em>去时间线集中补主题</em>
+              </button>
+              <button className="pm-action-card" onClick={jumpToUncategorizedPhotos}>
+                <strong>{uncategorizedCount}</strong>
+                <span>张照片还未分类</span>
+                <em>先筛出未分类照片再整理</em>
+              </button>
+            </div>
+          </article>
+
+          <article className="pm-panel pm-panel--watchlist">
+            <div className="pm-panel-head">
+              <div>
+                <p className="pm-panel-kicker">新功能 3</p>
+                <h3 className="pm-panel-title">分享预警卡</h3>
+              </div>
+              <span className="pm-panel-badge">{expiringSoonShareLinks.length} 条即将到期</span>
+            </div>
+            <div className="pm-watchlist-copy">
+              <div className="pm-watchlist-line">48 小时内到期：{expiringSoonShareLinks.length} 条</div>
+              <div className="pm-watchlist-line">当前最热分享：{topSharedPhotoName ?? "暂无"}</div>
+              <div className="pm-watchlist-line">建议：及时延长高价值链接，避免外部访问失效。</div>
+            </div>
+            <button className="pm-panel-btn" onClick={() => openSettingsTab("app")}>进入分享管理</button>
           </article>
         </section>
 

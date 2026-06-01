@@ -71,6 +71,9 @@ build time (defaults to `/api`).
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Workspace summary card** — the home surface now highlights current space, photo/folder/favorite/subject totals, current runtime mode (web vs app), and provides quick entry points to folder management, moments, and diagnostics
 - **Home insights hub** — the landing view now surfaces recent uploads, share performance, and moments sync health as action-oriented cards so users can jump directly to the most relevant next step
+- **Recent activity feed** — the home page now aggregates the latest uploads, share creations, and sync updates into a compact activity stream so users can immediately see what changed most recently
+- **Cleanup assistant** — the dashboard now highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views
+- **Share watchlist** — the home page now flags active share links expiring within 48 hours and provides a direct path into share maintenance
 - **Count-aware tab navigation** — Timeline / Folder / Moments tabs now display live counts so users can judge where to go without trial-and-error switching
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
 - **Important moments tab** — moments are ranked by engagement and shown in a dedicated ⭐ tab with independent filters and sort modes
@@ -81,7 +84,7 @@ build time (defaults to `/api`).
 - **Moments details focus** — moments modal details focus on recommendation score + engagement metrics (not timeline-style upload/modify metadata)
 - **Recoverable empty states** — timeline and moments now show actionable no-result states with one-click reset / go-to-folder recovery actions instead of passive blank screens
 - **Timeline pagination** — timeline initially loads the newest page and can load more progressively to keep first paint fast
-- **Search & filter** — filter by name, subject, uploader, date range
+- **Search & filter** — filter by name, subject, uploader, date range, missing subject, and uncategorised photos
 - **Fullscreen modal** — view full details, edit subject / rename / download inline
 - **Long-filename-safe modal layout** — very long file names are truncated with ellipsis and will not overlap or hide action buttons such as rename
 - **Modal keyboard navigation** — ← / → keys to step through photos in a folder or timeline; Esc to close; prev/next buttons for mouse/touch; available in both Timeline and Folder views
