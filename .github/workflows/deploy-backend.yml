@@ -64,12 +64,13 @@ jobs:
       - name: Create deployment zip
         run: |
           cd packages/server
-          zip -r ../deployment.zip . \
+          zip -r ../../deployment.zip . \
             --exclude ".git/*" \
             --exclude ".github/*" \
             --exclude "src/*" \
             --exclude "tsconfig.json" \
-            --exclude "*.test.ts"
+            --exclude "*.test.ts" \
+            --exclude "local.settings.json"
 
       - name: Deploy to Azure Functions
         run: |
