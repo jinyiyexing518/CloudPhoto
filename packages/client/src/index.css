@@ -291,6 +291,7 @@ body {
   border-radius: 18px;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
   padding: 12px 14px 10px;
+  overflow: hidden;
 }
 
 /* Fills gap above + covers top rounded-corner transparent areas with page bg,
