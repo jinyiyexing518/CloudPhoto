@@ -70,8 +70,8 @@ build time (defaults to `/api`).
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Photo-first focus toolbar** — the home surface now uses a compact top toolbar to show current space, lightweight counts, runtime mode, and a few high-value navigation actions without pushing photo content too far down the page
-- **Full-height slide-in workspace sidebar** — timeline and moments now use a full-height right-side panel with explicit slide-in / slide-out motion, making it visually obvious that tools are entering from the side instead of competing with the photo grid
-- **Floating pill controls** — the sidebar entry is now a capsule-style floating control group with larger, clearer touch targets so users can immediately spot filtering, cleanup, and insight entry points
+- **Full-height partial-width workspace sidebar** — timeline and moments now use a full-height right-side panel that occupies roughly 80%–90% of the horizontal space, leaving a visible darkened margin so it reads clearly as a side panel instead of a full takeover
+- **Grouped floating pill controls** — the sidebar entry is now a capsule-style floating control group with a primary pill and secondary chips, giving users clearer, more discoverable entry points into filtering, cleanup, sharing, and diagnostics
 - **Recent activity feed** — the sidebar can surface the latest uploads, share creations, and sync updates without forcing those summaries above the photo content
 - **Cleanup assistant** — the sidebar highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
 - **Share watchlist** — the sidebar flags active share links expiring within 48 hours and provides a direct path into share maintenance

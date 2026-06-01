@@ -95,82 +95,84 @@ export default function WorkspaceSidebar({
             <button className="workspace-sidebar-close" onClick={onClose}>✕</button>
           </div>
 
-          {activeTab === "timeline" ? (
-            <>
-              <SidebarSection title="时间线筛选" subtitle="筛选、统计和整理动作都收进这里，主区专注看照片。">
-                <FilterBar
-                  filters={filters}
-                  onChange={onFiltersChange}
-                  uploaders={uploaders}
-                  subjects={subjects}
-                  total={totalPhotos}
-                  filtered={filteredPhotos}
-                />
-              </SidebarSection>
+          <div className="workspace-sidebar-content">
+            {activeTab === "timeline" ? (
+              <>
+                <SidebarSection title="时间线筛选" subtitle="筛选、统计和整理动作都收进这里，主区专注看照片。">
+                  <FilterBar
+                    filters={filters}
+                    onChange={onFiltersChange}
+                    uploaders={uploaders}
+                    subjects={subjects}
+                    total={totalPhotos}
+                    filtered={filteredPhotos}
+                  />
+                </SidebarSection>
 
-              <SidebarSection title="快捷整理" subtitle="点击后会直接定位到需要你处理的照片。">
-                <div className="workspace-sidebar-note">最近一次上传：{latestUploadText}</div>
-                <div className="workspace-sidebar-action-grid">
-                  <button className="workspace-sidebar-action" onClick={onJumpRecentUploads}>
-                    <strong>{recentUploadsCount}</strong>
-                    <span>最近上传</span>
-                  </button>
-                  <button className="workspace-sidebar-action" onClick={onJumpMissingSubject}>
-                    <strong>{missingSubjectCount}</strong>
-                    <span>缺少主题</span>
-                  </button>
-                  <button className="workspace-sidebar-action" onClick={onJumpUncategorized}>
-                    <strong>{uncategorizedCount}</strong>
-                    <span>未分类</span>
-                  </button>
-                </div>
-              </SidebarSection>
-            </>
-          ) : (
-            <>
-              <SidebarSection title="重要片段概览" subtitle="把热度、收藏和最近性收成一个侧边洞察面板。">
-                <div className="workspace-sidebar-stats">
-                  <div><strong>{momentsStats.total}</strong><span>重点照片</span></div>
-                  <div><strong>{momentsStats.favoriteCount}</strong><span>已收藏</span></div>
-                  <div><strong>{momentsStats.withSubjectCount}</strong><span>有主题</span></div>
-                  <div><strong>{momentsStats.recentCount}</strong><span>近 30 天</span></div>
-                </div>
-                <div className="workspace-sidebar-note">当前筛选范围：{momentsStats.filteredTotal}</div>
-              </SidebarSection>
+                <SidebarSection title="快捷整理" subtitle="点击后会直接定位到需要你处理的照片。">
+                  <div className="workspace-sidebar-note">最近一次上传：{latestUploadText}</div>
+                  <div className="workspace-sidebar-action-grid">
+                    <button className="workspace-sidebar-action" onClick={onJumpRecentUploads}>
+                      <strong>{recentUploadsCount}</strong>
+                      <span>最近上传</span>
+                    </button>
+                    <button className="workspace-sidebar-action" onClick={onJumpMissingSubject}>
+                      <strong>{missingSubjectCount}</strong>
+                      <span>缺少主题</span>
+                    </button>
+                    <button className="workspace-sidebar-action" onClick={onJumpUncategorized}>
+                      <strong>{uncategorizedCount}</strong>
+                      <span>未分类</span>
+                    </button>
+                  </div>
+                </SidebarSection>
+              </>
+            ) : (
+              <>
+                <SidebarSection title="重要片段概览" subtitle="把热度、收藏和最近性收成一个侧边洞察面板。">
+                  <div className="workspace-sidebar-stats">
+                    <div><strong>{momentsStats.total}</strong><span>重点照片</span></div>
+                    <div><strong>{momentsStats.favoriteCount}</strong><span>已收藏</span></div>
+                    <div><strong>{momentsStats.withSubjectCount}</strong><span>有主题</span></div>
+                    <div><strong>{momentsStats.recentCount}</strong><span>近 30 天</span></div>
+                  </div>
+                  <div className="workspace-sidebar-note">当前筛选范围：{momentsStats.filteredTotal}</div>
+                </SidebarSection>
 
-              <SidebarSection title="分享与同步" subtitle="需要维护时直接在这里进入目标区。">
-                <div className="workspace-sidebar-list">
-                  <button className="workspace-sidebar-list-item" onClick={onOpenManagedShares}>
-                    <span>有效分享链接</span>
-                    <strong>{managedShareLinksCount}</strong>
-                  </button>
-                  <button className="workspace-sidebar-list-item" onClick={onOpenManagedShares}>
-                    <span>累计分享浏览</span>
-                    <strong>{managedShareViewsTotal}</strong>
-                  </button>
-                  <button className="workspace-sidebar-list-item" onClick={onOpenManagedShares}>
-                    <span>48 小时内到期</span>
-                    <strong>{expiringSoonShareLinksCount}</strong>
-                  </button>
-                </div>
-                <div className="workspace-sidebar-note">当前最热分享：{topSharedPhotoName ?? "暂无"}</div>
-                <div className="workspace-sidebar-note">
-                  浏览同步：
-                  {homeDiagnostics.persistenceStatus === "server-synced"
-                    ? " 服务端已同步"
-                    : homeDiagnostics.persistenceStatus === "server-unavailable"
-                    ? " 服务端暂不可用"
-                    : homeDiagnostics.persistenceStatus === "local-only"
-                    ? " 当前仅本地保存"
-                    : " 等待诊断数据"}
-                </div>
-                <div className="workspace-sidebar-buttons">
-                  <button className="workspace-sidebar-primary" onClick={onOpenManagedShares}>打开分享管理</button>
-                  <button className="workspace-sidebar-secondary" onClick={onOpenDiagnostics}>打开诊断页</button>
-                </div>
-              </SidebarSection>
-            </>
-          )}
+                <SidebarSection title="分享与同步" subtitle="需要维护时直接在这里进入目标区。">
+                  <div className="workspace-sidebar-list">
+                    <button className="workspace-sidebar-list-item" onClick={onOpenManagedShares}>
+                      <span>有效分享链接</span>
+                      <strong>{managedShareLinksCount}</strong>
+                    </button>
+                    <button className="workspace-sidebar-list-item" onClick={onOpenManagedShares}>
+                      <span>累计分享浏览</span>
+                      <strong>{managedShareViewsTotal}</strong>
+                    </button>
+                    <button className="workspace-sidebar-list-item" onClick={onOpenManagedShares}>
+                      <span>48 小时内到期</span>
+                      <strong>{expiringSoonShareLinksCount}</strong>
+                    </button>
+                  </div>
+                  <div className="workspace-sidebar-note">当前最热分享：{topSharedPhotoName ?? "暂无"}</div>
+                  <div className="workspace-sidebar-note">
+                    浏览同步：
+                    {homeDiagnostics.persistenceStatus === "server-synced"
+                      ? " 服务端已同步"
+                      : homeDiagnostics.persistenceStatus === "server-unavailable"
+                      ? " 服务端暂不可用"
+                      : homeDiagnostics.persistenceStatus === "local-only"
+                      ? " 当前仅本地保存"
+                      : " 等待诊断数据"}
+                  </div>
+                  <div className="workspace-sidebar-buttons">
+                    <button className="workspace-sidebar-primary" onClick={onOpenManagedShares}>打开分享管理</button>
+                    <button className="workspace-sidebar-secondary" onClick={onOpenDiagnostics}>打开诊断页</button>
+                  </div>
+                </SidebarSection>
+              </>
+            )}
+          </div>
         </div>
       </aside>
     </>

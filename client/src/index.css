@@ -2065,7 +2065,7 @@ body {
   position: fixed;
   top: 0;
   right: 0;
-  width: min(440px, 92vw);
+  width: clamp(320px, 84vw, 520px);
   height: 100vh;
   opacity: 0;
   pointer-events: none;
@@ -2084,12 +2084,19 @@ body {
   background: rgba(255, 255, 255, 0.97);
   border: 1px solid #dbe4f0;
   border-radius: 28px 0 0 28px;
-  box-shadow: -22px 0 48px rgba(15, 23, 42, 0.16);
+  box-shadow: -28px 0 56px rgba(15, 23, 42, 0.18);
   backdrop-filter: blur(12px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   height: 100vh;
+}
+
+.workspace-sidebar-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 24px;
 }
 
 .workspace-sidebar-topbar {
@@ -2265,8 +2272,8 @@ body {
 }
 
 .workspace-fab-pill {
-  min-width: 216px;
-  min-height: 64px;
+  min-width: 224px;
+  min-height: 68px;
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -2309,6 +2316,11 @@ body {
   border: 1px solid #dbe4f0;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
   padding: 11px 16px;
+}
+
+.workspace-fab-chip-group {
+  display: flex;
+  gap: 10px;
 }
 
 .workspace-fab-chip:hover {
@@ -3413,7 +3425,7 @@ body {
   }
 
   .workspace-sidebar {
-    width: min(100vw, 420px);
+    width: min(88vw, 420px);
   }
 
   .workspace-sidebar-backdrop {
@@ -3439,8 +3451,13 @@ body {
     min-height: 58px;
   }
 
-  .workspace-fab-chip {
+  .workspace-fab-chip-group {
     width: 100%;
+    justify-content: flex-end;
+  }
+
+  .workspace-fab-chip {
+    flex: 1;
   }
 
   /* ── View tabs ── */

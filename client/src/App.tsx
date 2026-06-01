@@ -701,12 +701,20 @@ function AppContent() {
                     <em>{activeTab === "timeline" ? "打开时间线侧栏" : "打开重要片段侧栏"}</em>
                   </span>
                 </button>
-                <button
-                  className="workspace-fab-chip"
-                  onClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
-                >
-                  {activeTab === "timeline" ? "最近上传" : "分享管理"}
-                </button>
+                <div className="workspace-fab-chip-group">
+                  <button
+                    className="workspace-fab-chip"
+                    onClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
+                  >
+                    {activeTab === "timeline" ? "最近上传" : "分享管理"}
+                  </button>
+                  <button
+                    className="workspace-fab-chip workspace-fab-chip--secondary"
+                    onClick={activeTab === "timeline" ? jumpToMissingSubjectPhotos : () => openSettingsTab("diagnostics", "diagnostics")}
+                  >
+                    {activeTab === "timeline" ? "去整理" : "看诊断"}
+                  </button>
+                </div>
               </div>
             )}
 
