@@ -69,8 +69,8 @@ build time (defaults to `/api`).
 - **Photo rename** — change the display name of any photo without re-uploading
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
-- **Workspace summary card** — the home surface now highlights current space, photo/folder/favorite/subject totals, current runtime mode (web vs app), and provides quick entry points to folder management, moments, and diagnostics
-- **Home insights hub** — the landing view now surfaces recent uploads, share performance, and moments sync health as action-oriented cards that not only switch views, but also scroll users directly to the most relevant target content
+- **Photo-first focus toolbar** — the home surface now uses a compact top toolbar to show current space, lightweight counts, runtime mode, and a few high-value navigation actions without pushing photo content too far down the page
+- **Collapsible dashboard drawer** — home insights, recent activity, cleanup assistant, and share watchlist are now grouped into an optional expandable panel so the default view stays visually focused on photos
 - **Recent activity feed** — the home page now aggregates the latest uploads, share creations, and sync updates into a compact activity stream so users can immediately see what changed most recently
 - **Cleanup assistant** — the dashboard now highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
 - **Share watchlist** — the home page now flags active share links expiring within 48 hours and provides a direct path into share maintenance

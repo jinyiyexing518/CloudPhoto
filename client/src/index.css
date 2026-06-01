@@ -458,6 +458,120 @@ body {
   background: #f8fafc;
 }
 
+.focus-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.03);
+}
+
+.focus-toolbar-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.focus-toolbar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.focus-toolbar-title {
+  font-size: 1.02rem;
+  color: #0f172a;
+  margin: 0;
+}
+
+.focus-toolbar-mode {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.focus-toolbar-mode--app {
+  background: #ecfeff;
+  border-color: #a5f3fc;
+  color: #0f766e;
+}
+
+.focus-toolbar-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.focus-toolbar-badge {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+
+.focus-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.focus-toolbar-btn {
+  border: none;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-toolbar-btn:hover {
+  background: #1e293b;
+}
+
+.focus-toolbar-btn--secondary {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.focus-toolbar-btn--secondary:hover {
+  background: #dbeafe;
+}
+
+.focus-toolbar-btn--ghost {
+  background: #fff;
+  color: #334155;
+  border: 1px solid #d1d5db;
+}
+
+.focus-toolbar-btn--ghost:hover {
+  background: #f8fafc;
+}
+
+.dashboard-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 18px;
+}
+
 .insights-hub {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3029,6 +3143,17 @@ body {
     gap: 12px;
   }
 
+  .focus-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .focus-toolbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .workspace-summary-head {
     flex-direction: column;
     align-items: stretch;
@@ -3066,6 +3191,7 @@ body {
   }
 
   .workspace-summary-btn,
+  .focus-toolbar-btn,
   .empty-gallery-btn,
   .empty-gallery-btn--secondary,
   .insights-hub-btn,

@@ -44,6 +44,7 @@ function AppContent() {
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [dashboardExpanded, setDashboardExpanded] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsEntryTab>("profile");
   const [settingsFocusTarget, setSettingsFocusTarget] = useState<SettingsFocusTarget>("overview");
   const [settingsFocusItemId, setSettingsFocusItemId] = useState<string | undefined>(undefined);
@@ -749,54 +750,38 @@ function AppContent() {
           </button>
         </div>
 
-        <section className="workspace-summary">
-          <div className="workspace-summary-head">
-            <div>
-              <p className="workspace-summary-kicker">当前工作区</p>
-              <h2 className="workspace-summary-title">{groupLabel}</h2>
-              <p className="workspace-summary-sub">
-                {currentGroupId === "" ? "管理你的个人照片、收藏和回忆。" : "在当前群组里统一管理照片、分享和回顾。"}
-              </p>
+        <section className="focus-toolbar">
+          <div className="focus-toolbar-main">
+            <div className="focus-toolbar-title-row">
+              <h2 className="focus-toolbar-title">{groupLabel}</h2>
+              <span className={`focus-toolbar-mode${isStandalone ? " focus-toolbar-mode--app" : ""}`}>
+                {isStandalone ? "App 模式" : "网页模式"}
+              </span>
             </div>
-            <span className={`workspace-summary-mode${isStandalone ? " workspace-summary-mode--app" : ""}`}>
-              {isStandalone ? "App 模式" : "网页模式"}
-            </span>
-          </div>
-          <div className="workspace-summary-metrics">
-            <div className="workspace-summary-card">
-              <strong>{photos.length}</strong>
-              <span>照片总数</span>
-            </div>
-            <div className="workspace-summary-card">
-              <strong>{folderCount}</strong>
-              <span>已使用文件夹</span>
-            </div>
-            <div className="workspace-summary-card">
-              <strong>{favoriteCount}</strong>
-              <span>已收藏照片</span>
-            </div>
-            <div className="workspace-summary-card">
-              <strong>{subjectCount}</strong>
-              <span>已标注主题</span>
+            <div className="focus-toolbar-badges">
+              <span className="focus-toolbar-badge">{photos.length} 张照片</span>
+              <span className="focus-toolbar-badge">{folderCount} 个文件夹</span>
+              <span className="focus-toolbar-badge">{favoriteCount} 张收藏</span>
+              <span className="focus-toolbar-badge">{subjectCount} 个主题</span>
             </div>
           </div>
-          <div className="workspace-summary-actions">
+          <div className="focus-toolbar-actions">
             {activeTab !== "folder" && (
-              <button className="workspace-summary-btn" onClick={() => switchTab("folder")}>
-                去文件夹上传 / 整理
+              <button className="focus-toolbar-btn" onClick={() => switchTab("folder")}>
+                去整理照片
               </button>
             )}
-            {activeTab !== "moments" && importantPhotos.length > 0 && (
-              <button className="workspace-summary-btn workspace-summary-btn--secondary" onClick={() => switchTab("moments")}>
-                查看重要片段
-              </button>
-            )}
-            <button className="workspace-summary-btn workspace-summary-btn--ghost" onClick={() => setShowSettings(true)}>
-              打开设置 / 诊断
+            <button className="focus-toolbar-btn focus-toolbar-btn--secondary" onClick={jumpToRecentUploads}>
+              最近上传
+            </button>
+            <button className="focus-toolbar-btn focus-toolbar-btn--ghost" onClick={() => setDashboardExpanded((value) => !value)}>
+              {dashboardExpanded ? "收起洞察" : "展开洞察"}
             </button>
           </div>
         </section>
 
+        {dashboardExpanded && (
+          <section className="dashboard-drawer">
         <section className="insights-hub">
           <article className="insights-hub-card insights-hub-card--recent">
             <div className="insights-hub-kicker">最近上传</div>
@@ -836,7 +821,7 @@ function AppContent() {
           <article className="pm-panel pm-panel--activity">
             <div className="pm-panel-head">
               <div>
-                <p className="pm-panel-kicker">新功能 1</p>
+                <p className="pm-panel-kicker">动态</p>
                 <h3 className="pm-panel-title">最近活动流</h3>
               </div>
               <span className="pm-panel-badge">{recentActivity.length} 条</span>
@@ -859,7 +844,7 @@ function AppContent() {
           <article className="pm-panel pm-panel--cleanup">
             <div className="pm-panel-head">
               <div>
-                <p className="pm-panel-kicker">新功能 2</p>
+                <p className="pm-panel-kicker">整理</p>
                 <h3 className="pm-panel-title">内容整理助手</h3>
               </div>
               <span className="pm-panel-badge">待处理 {missingSubjectCount + uncategorizedCount}</span>
@@ -881,7 +866,7 @@ function AppContent() {
           <article className="pm-panel pm-panel--watchlist">
             <div className="pm-panel-head">
               <div>
-                <p className="pm-panel-kicker">新功能 3</p>
+                <p className="pm-panel-kicker">预警</p>
                 <h3 className="pm-panel-title">分享预警卡</h3>
               </div>
               <span className="pm-panel-badge">{expiringSoonShareLinks.length} 条即将到期</span>
@@ -896,6 +881,8 @@ function AppContent() {
             </button>
           </article>
         </section>
+          </section>
+        )}
 
         {/* Timeline hint */}
         {activeTab === "timeline" && (
