@@ -339,7 +339,7 @@ cd CloudPhoto
 yarn install
 ```
 
-**2. Configure backend secrets** — create `server/local.settings.json` (git-ignored):
+**2. Configure backend secrets** — create `packages/server/local.settings.json` (git-ignored):
 
 ```json
 {
@@ -400,8 +400,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Feature Folder Convention
 
-- Client share feature utilities are grouped under `client/src/features/share/`.
-- Server share-related HTTP functions are grouped under `server/src/functions/share/`.
+- Client share feature utilities are grouped under `packages/client/src/features/share/`.
+- Server share-related HTTP functions are grouped under `packages/server/src/functions/share/`.
 - Keep new cross-cutting features grouped by domain to avoid scattering logic under generic folders.
 
 ---
@@ -505,8 +505,8 @@ Two workflows run automatically on push to `main`:
 
 | Workflow | File | Trigger |
 |----------|------|---------|
-| Deploy Backend | `.github/workflows/deploy-backend.yml` | `server/**` changed |
-| Deploy Frontend | `.github/workflows/deploy-frontend.yml` | `client/**` changed |
+| Deploy Backend | `.github/workflows/deploy-backend.yml` | `packages/server/**` changed |
+| Deploy Frontend | `.github/workflows/deploy-frontend.yml` | `packages/client/**` changed |
 
 Both use **OIDC authentication** (no stored Azure passwords/keys).
 
