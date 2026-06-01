@@ -312,7 +312,7 @@ export default function PhotoGallery({
     if (!focusPhotoName) return;
     const focusIndex = flatPhotos.findIndex((photo) => photo.name === focusPhotoName);
     if (focusIndex >= 0 && focusIndex + 1 > visibleCount) {
-      setVisibleCount(focusIndex + 1);
+      setVisibleCount(Math.max(PAGE_SIZE, Math.ceil((focusIndex + 1) / PAGE_SIZE) * PAGE_SIZE));
     }
   }, [flatPhotos, focusPhotoName, visibleCount]);
 
@@ -321,7 +321,7 @@ export default function PhotoGallery({
   useEffect(() => {
     if (!focusPhotoName || focusRequestKey === undefined) return;
     const frame = window.requestAnimationFrame(() => {
-      focusCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      focusCardRef.current?.scrollIntoView({ behavior: "auto", block: "nearest" });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [focusPhotoName, focusRequestKey, visiblePhotos]);
