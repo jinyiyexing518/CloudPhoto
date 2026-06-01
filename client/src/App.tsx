@@ -687,15 +687,27 @@ function AppContent() {
           </button>
         </div>
 
-        <div className={`workspace-layout${(activeTab === "timeline" || activeTab === "moments") && sidebarOpen ? " workspace-layout--with-sidebar" : ""}`}>
+        <div className="workspace-layout">
           <div className="workspace-main">
             {(activeTab === "timeline" || activeTab === "moments") && (
-              <button
-                className={`workspace-sidebar-handle${sidebarOpen ? " workspace-sidebar-handle--hidden" : ""}`}
-                onClick={() => setSidebarOpen(true)}
-              >
-                {activeTab === "timeline" ? "筛选与整理" : "片段洞察"}
-              </button>
+              <div className={`workspace-fab-rail${sidebarOpen ? " workspace-fab-rail--hidden" : ""}`}>
+                <button
+                  className="workspace-fab-pill"
+                  onClick={() => setSidebarOpen(true)}
+                >
+                  <span className="workspace-fab-icon">{activeTab === "timeline" ? "⚙" : "✦"}</span>
+                  <span className="workspace-fab-copy">
+                    <strong>{activeTab === "timeline" ? "筛选与整理" : "片段洞察"}</strong>
+                    <em>{activeTab === "timeline" ? "打开时间线侧栏" : "打开重要片段侧栏"}</em>
+                  </span>
+                </button>
+                <button
+                  className="workspace-fab-chip"
+                  onClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
+                >
+                  {activeTab === "timeline" ? "最近上传" : "分享管理"}
+                </button>
+              </div>
             )}
 
             {loading ? (
