@@ -147,6 +147,7 @@ function AppContent() {
   });
   const [timelineFocusPhotoName, setTimelineFocusPhotoName] = useState<string | null>(null);
   const [timelineFocusRequestKey, setTimelineFocusRequestKey] = useState(0);
+  const scrollLockYRef = useRef(0);
   const transferring = uploadProgress !== null || downloading;
 
   useEffect(() => {
@@ -159,11 +160,28 @@ function AppContent() {
     if (!sidebarOpen) return;
     const previousBodyOverflow = document.body.style.overflow;
     const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyWidth = document.body.style.width;
+    const previousBodyLeft = document.body.style.left;
+    const previousBodyRight = document.body.style.right;
+    scrollLockYRef.current = window.scrollY;
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollLockYRef.current}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
     return () => {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.width = previousBodyWidth;
+      document.body.style.left = previousBodyLeft;
+      document.body.style.right = previousBodyRight;
+      window.scrollTo({ top: scrollLockYRef.current, behavior: "auto" });
     };
   }, [sidebarOpen]);
 

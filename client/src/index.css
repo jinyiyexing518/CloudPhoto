@@ -284,13 +284,26 @@ body {
   top: 72px;
   z-index: 9;
   position: sticky;
-  background: rgba(248, 250, 252, 0.96);
+  background: #f8fafc;
   backdrop-filter: blur(12px);
   border: 1px solid rgba(226, 232, 240, 0.92);
   border-radius: 18px;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
   padding: 12px 14px 10px;
   overflow: hidden;
+}
+
+.view-tabs-shell::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: -14px;
+  height: 16px;
+  background: #f8fafc;
+  border-left: 1px solid rgba(226, 232, 240, 0.92);
+  border-right: 1px solid rgba(226, 232, 240, 0.92);
+  pointer-events: none;
 }
 
 .view-tabs-meta {
@@ -322,6 +335,7 @@ body {
 .view-tabs {
   display: flex;
   gap: 8px;
+  background: #f8fafc;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -413,12 +427,12 @@ body {
 
 .view-tabs-fade--left {
   left: 0;
-  background: linear-gradient(90deg, rgba(248, 250, 252, 0.98) 25%, rgba(248, 250, 252, 0));
+  background: linear-gradient(90deg, #f8fafc 25%, rgba(248, 250, 252, 0));
 }
 
 .view-tabs-fade--right {
   right: 0;
-  background: linear-gradient(270deg, rgba(248, 250, 252, 0.98) 25%, rgba(248, 250, 252, 0));
+  background: linear-gradient(270deg, #f8fafc 25%, rgba(248, 250, 252, 0));
 }
 
 .workspace-summary {
@@ -2145,6 +2159,7 @@ body {
   opacity: 1;
   pointer-events: auto;
   transition: opacity 0.26s ease;
+  touch-action: none;
 }
 
 .workspace-sidebar {
@@ -2183,6 +2198,9 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding-bottom: 24px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .workspace-sidebar-topbar {
