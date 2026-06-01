@@ -56,21 +56,16 @@ jobs:
           echo "Azure login failed twice. Please verify OIDC federated credential and subscription access for the configured service principal."
           exit 1
 
-      - name: Install server production dependencies
+      - name: Create deployment package
         run: |
-          cd packages/server
+          mkdir -p deploy-stage
+          cp -r packages/server/dist deploy-stage/
+          cp packages/server/package.json deploy-stage/
+          cp packages/server/host.json deploy-stage/
+          cp packages/server/.funcignore deploy-stage/ 2>/dev/null || true
+          cd deploy-stage
           npm install --production --no-package-lock
-
-      - name: Create deployment zip
-        run: |
-          cd packages/server
-          zip -r ../../deployment.zip . \
-            --exclude ".git/*" \
-            --exclude ".github/*" \
-            --exclude "src/*" \
-            --exclude "tsconfig.json" \
-            --exclude "*.test.ts" \
-            --exclude "local.settings.json"
+          zip -r ../deployment.zip .
 
       - name: Deploy to Azure Functions
         run: |
