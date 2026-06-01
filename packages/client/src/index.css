@@ -362,11 +362,11 @@ body {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 10px;
+  gap: 6px;
   background: #f8fafc;
   border: 1px solid transparent;
-  padding: 12px 18px;
-  font-size: 0.96rem;
+  padding: 10px 12px;
+  font-size: 0.93rem;
   color: #64748b;
   cursor: pointer;
   position: relative;
@@ -2358,11 +2358,12 @@ body {
 .workspace-sidebar-content {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding-bottom: max(24px, env(safe-area-inset-bottom));
-  overscroll-behavior: contain;
+  /* Use overflow-y:scroll (not auto) — iOS Safari needs explicit scroll not auto */
+  overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  overscroll-behavior: contain;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
 }
 
 .workspace-sidebar-topbar {
@@ -3146,8 +3147,9 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 140px;
+  flex-shrink: 1;
 }
 
 /* Modal subject editing */
@@ -3742,7 +3744,7 @@ body {
     padding-top: 8px;
   }
 
-  .view-tab { padding: 8px 14px; font-size: 0.85rem; }
+  .view-tab { padding: 7px 10px; font-size: 0.83rem; gap: 5px; }
   .view-tab-count { min-width: 20px; height: 20px; font-size: 0.7rem; }
 
   .view-tabs-fade {
