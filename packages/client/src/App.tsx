@@ -167,15 +167,15 @@ function AppContent() {
   useEffect(() => {
     if (!sidebarOpen) return;
     const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
     const previousBodyPosition = document.body.style.position;
     const previousBodyTop = document.body.style.top;
     const previousBodyWidth = document.body.style.width;
     const previousBodyLeft = document.body.style.left;
     const previousBodyRight = document.body.style.right;
     scrollLockYRef.current = window.scrollY;
+    // iOS Safari: only lock body (position:fixed trick). Do NOT set html overflow:hidden —
+    // with viewport-fit=cover that suppresses scroll on all position:fixed children (the sidebar).
     document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
     document.body.style.position = "fixed";
     document.body.style.top = `-${scrollLockYRef.current}px`;
     document.body.style.left = "0";
@@ -183,7 +183,6 @@ function AppContent() {
     document.body.style.width = "100%";
     return () => {
       document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
       document.body.style.position = previousBodyPosition;
       document.body.style.top = previousBodyTop;
       document.body.style.width = previousBodyWidth;
