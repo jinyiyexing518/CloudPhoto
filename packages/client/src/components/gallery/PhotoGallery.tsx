@@ -348,7 +348,16 @@ export default function PhotoGallery({
   useEffect(() => {
     if (!focusPhotoName || focusRequestKey === undefined) return;
     const frame = window.requestAnimationFrame(() => {
-      focusCardRef.current?.scrollIntoView({ behavior: "auto", block: "nearest" });
+      const el = focusCardRef.current;
+      if (!el) return;
+      // Measure actual sticky coverage so we never land behind the header/tab-bar
+      const appHeader = document.querySelector<HTMLElement>(".app-header");
+      const tabShell = document.querySelector<HTMLElement>(".view-tabs-shell");
+      const stickyHeight = (appHeader?.offsetHeight ?? 64) + (tabShell?.offsetHeight ?? 140) + 20;
+      const rect = el.getBoundingClientRect();
+      if (rect.top < stickyHeight || rect.bottom > window.innerHeight) {
+        window.scrollTo({ top: window.scrollY + rect.top - stickyHeight, behavior: "auto" });
+      }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [focusPhotoName, focusRequestKey, visiblePhotos]);

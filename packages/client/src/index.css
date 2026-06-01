@@ -896,14 +896,14 @@ body {
 
 .gallery-focus-card {
   border-radius: 14px;
-  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.22);
-  animation: gallery-focus-pulse 1.6s ease;
+  animation: gallery-focus-pulse 2.0s ease forwards;
 }
 
 @keyframes gallery-focus-pulse {
-  0% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(0, 120, 212, 0.34); }
-  45% { transform: scale(1.01); box-shadow: 0 0 0 6px rgba(0, 120, 212, 0.12); }
-  100% { transform: scale(1); box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.22); }
+  0%   { transform: scale(0.98); box-shadow: 0 0 0 0   rgba(0, 120, 212, 0.0); }
+  25%  { transform: scale(1.01); box-shadow: 0 0 0 6px rgba(0, 120, 212, 0.28); }
+  60%  { transform: scale(1);    box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.18); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0   rgba(0, 120, 212, 0.0); }
 }
 
 .pm-panels {

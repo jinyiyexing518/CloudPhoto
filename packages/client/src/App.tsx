@@ -150,6 +150,7 @@ function AppContent() {
   const scrollLockYRef = useRef(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const lastFocusRefreshRef = useRef<number>(0);
+  const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transferring = uploadProgress !== null || downloading;
 
   useEffect(() => {
@@ -462,6 +463,16 @@ function AppContent() {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [transferring]);
+
+  // Auto-clear focus highlight 2.2 s after it is set (animation is 1.6 s)
+  useEffect(() => {
+    if (!timelineFocusPhotoName) return;
+    if (focusClearTimerRef.current) clearTimeout(focusClearTimerRef.current);
+    focusClearTimerRef.current = setTimeout(() => setTimelineFocusPhotoName(null), 2200);
+    return () => {
+      if (focusClearTimerRef.current) clearTimeout(focusClearTimerRef.current);
+    };
+  }, [timelineFocusPhotoName]);
 
   // Scroll-to-top button visibility
   useEffect(() => {
