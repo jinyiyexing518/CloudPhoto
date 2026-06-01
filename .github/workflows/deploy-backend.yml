@@ -24,15 +24,13 @@ jobs:
         with:
           node-version: "24"
           cache: "yarn"
-          cache-dependency-path: server/yarn.lock
+          cache-dependency-path: yarn.lock
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-        working-directory: server
 
       - name: Build TypeScript
-        run: yarn build
-        working-directory: server
+        run: yarn workspace cloudphoto-server build
 
       - name: Azure Login (attempt 1)
         id: azure_login_first

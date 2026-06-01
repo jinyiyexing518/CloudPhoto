@@ -26,15 +26,13 @@ jobs:
         with:
           node-version: "24"
           cache: "yarn"
-          cache-dependency-path: client/yarn.lock
+          cache-dependency-path: yarn.lock
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-        working-directory: client
 
       - name: Build
-        run: yarn build
-        working-directory: client
+        run: yarn workspace cloudphoto-client build
         env:
           # Full URL of the Azure Function App, e.g. https://cloudphoto-api.azurewebsites.net/api
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}

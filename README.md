@@ -321,7 +321,7 @@ All protected routes require `Authorization: Bearer <accessToken>`.
 ### Prerequisites
 
 - Node.js 24+
-- Yarn (`npm install -g yarn`)
+- Yarn (repo standard; keep a single root `yarn.lock`)
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
 - Azure CLI (`az login` — used by `DefaultAzureCredential` locally)
 
@@ -336,6 +336,7 @@ npm install -g azure-functions-core-tools@4 --unsafe-perm true
 ```bash
 git clone https://github.com/jinyiyexing518/CloudPhoto.git
 cd CloudPhoto
+yarn install
 ```
 
 **2. Configure backend secrets** — create `server/local.settings.json` (git-ignored):
@@ -389,10 +390,10 @@ az cosmosdb sql role assignment create \
 
 ```bash
 # Terminal 1 — Backend
-cd server && yarn && yarn start   # func start on localhost:7071
+yarn dev:server                   # func start on localhost:7071
 
 # Terminal 2 — Frontend
-cd client && yarn && yarn dev     # Vite on localhost:3000 (proxies /api → :7071)
+yarn dev:client                   # Vite on localhost:3000 (proxies /api → :7071)
 ```
 
 Open [http://localhost:3000](http://localhost:3000).

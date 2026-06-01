@@ -1,7 +1,15 @@
 {
   "name": "cloudphoto",
   "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
-    "build": "cd client && yarn install && yarn build"
+    "build": "yarn build:client && yarn build:server",
+    "build:client": "yarn workspace cloudphoto-client build",
+    "build:server": "yarn workspace cloudphoto-server build",
+    "dev:client": "yarn workspace cloudphoto-client dev",
+    "dev:server": "yarn workspace cloudphoto-server start"
   }
 }
