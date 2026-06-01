@@ -2352,17 +2352,18 @@ body {
   box-shadow: -28px 0 56px rgba(15, 23, 42, 0.18);
   backdrop-filter: blur(12px);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  height: 100vh; /* fallback for old iOS */
+  /* CSS Grid — more iOS Safari-reliable than flex for scroll containers.
+     auto row = topbar; 1fr row = scrollable content area. */
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh; /* fallback */
   height: -webkit-fill-available; /* iOS Safari < 15 */
   height: 100dvh;
 }
 
 .workspace-sidebar-content {
-  flex: 1;
+  /* Grid child: 1fr row gives explicit height, so iOS Safari scroll works */
   min-height: 0;
-  /* Use overflow-y:scroll (not auto) — iOS Safari needs explicit scroll not auto */
   overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
@@ -3653,10 +3654,11 @@ body {
   .app-header h1 {
     font-size: 1.1rem;
     flex-shrink: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 50vw;
+  }
+
+  /* hide greeting on narrow screens to keep header height predictable */
+  .header-greeting {
+    display: none;
   }
 
   /* GroupSwitcher fills the rest of the first row */
