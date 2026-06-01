@@ -167,28 +167,20 @@ function AppContent() {
 
   useEffect(() => {
     if (!sidebarOpen) return;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousBodyPosition = document.body.style.position;
-    const previousBodyTop = document.body.style.top;
-    const previousBodyWidth = document.body.style.width;
-    const previousBodyLeft = document.body.style.left;
-    const previousBodyRight = document.body.style.right;
     scrollLockYRef.current = window.scrollY;
-    // iOS Safari: only lock body (position:fixed trick). Do NOT set html overflow:hidden —
-    // with viewport-fit=cover that suppresses scroll on all position:fixed children (the sidebar).
+    // Desktop: overflow:hidden prevents wheel/keyboard scroll.
+    // iOS Safari: position:fixed on body breaks overflow:scroll in fixed children (the sidebar),
+    // so we suppress scroll via touchmove instead.
     document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollLockYRef.current}px`;
-    document.body.style.left = "0";
-    document.body.style.right = "0";
-    document.body.style.width = "100%";
+    const preventBodyScroll = (e: TouchEvent) => {
+      const sidebarContent = document.querySelector(".workspace-sidebar-content");
+      if (sidebarContent && sidebarContent.contains(e.target as Node)) return;
+      e.preventDefault();
+    };
+    document.addEventListener("touchmove", preventBodyScroll, { passive: false });
     return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.body.style.position = previousBodyPosition;
-      document.body.style.top = previousBodyTop;
-      document.body.style.width = previousBodyWidth;
-      document.body.style.left = previousBodyLeft;
-      document.body.style.right = previousBodyRight;
+      document.body.style.overflow = "";
+      document.removeEventListener("touchmove", preventBodyScroll);
       window.scrollTo({ top: scrollLockYRef.current, behavior: "auto" });
     };
   }, [sidebarOpen]);
@@ -1036,7 +1028,7 @@ function AppContent() {
                   className={`quick-chip quick-chip--folder${filters.folder === folder ? " active" : ""}`}
                   onClick={() => setFilters((f) => ({ ...f, folder: f.folder === folder ? "" : folder }))}
                   title={folder}
-                >📁 {folder}</button>
+                >📁 {folder.split("/").filter(Boolean).pop() ?? folder}</button>
               ))}
               {activeFiltersCount > 0 && (
                 <button className="quick-chip quick-chip--clear" onClick={() => setFilters(emptyFilter)}>✕ 清空</button>
