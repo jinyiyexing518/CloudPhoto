@@ -71,6 +71,7 @@ build time (defaults to `/api`).
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Photo-first focus toolbar** — the home surface now uses a compact top toolbar to show current space, lightweight counts, runtime mode, and a few high-value navigation actions without pushing photo content too far down the page
 - **Contextual workspace sidebar** — timeline and moments now use an elegant right-side panel that opens by default on entry, keeping filters and insights off the photo grid while still one tap away
+- **Prominent sidebar actions** — the sidebar entry button and key action cards are intentionally larger and higher-contrast so users can immediately spot filtering, cleanup, and insight entry points
 - **Recent activity feed** — the sidebar can surface the latest uploads, share creations, and sync updates without forcing those summaries above the photo content
 - **Cleanup assistant** — the sidebar highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
 - **Share watchlist** — the sidebar flags active share links expiring within 48 hours and provides a direct path into share maintenance
