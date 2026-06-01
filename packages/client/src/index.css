@@ -290,7 +290,6 @@ body {
   border-radius: 18px;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
   padding: 12px 14px 10px;
-  overflow: hidden;
 }
 
 .view-tabs-shell::before {
@@ -298,12 +297,11 @@ body {
   position: absolute;
   left: -1px;
   right: -1px;
-  top: -14px;
-  height: 16px;
+  top: -300px;
+  height: 302px;
   background: #f8fafc;
-  border-left: 1px solid rgba(226, 232, 240, 0.92);
-  border-right: 1px solid rgba(226, 232, 240, 0.92);
   pointer-events: none;
+  z-index: -1;
 }
 
 .view-tabs-meta {
@@ -3959,7 +3957,9 @@ body {
   .app-main { padding: 16px; }
 }
 
-@media (display-mode: standalone) and (max-width: 900px) {
+@media (display-mode: standalone) and (max-width: 1280px),
+       (display-mode: minimal-ui) and (max-width: 1280px),
+       (display-mode: fullscreen) and (max-width: 1280px) {
   .photo-grid,
   .insight-strip,
   .moments-grid {
