@@ -56,6 +56,11 @@ jobs:
           echo "Azure login failed twice. Please verify OIDC federated credential and subscription access for the configured service principal."
           exit 1
 
+      - name: Install server production dependencies
+        run: |
+          cd server
+          npm install --production --no-package-lock
+
       - name: Create deployment zip
         run: |
           cd server
