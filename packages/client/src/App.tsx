@@ -122,14 +122,6 @@ function AppContent() {
     if (stored === "folder" || stored === "timeline" || stored === "moments") return stored;
     return "timeline";
   });
-  const switchTab = useCallback((tab: ViewTab) => {
-    if (transferring) {
-      showToast("传输进行中，请等待上传/下载完成后再切换页面", "error");
-      return;
-    }
-    setActiveTab(tab);
-    localStorage.setItem(tabKey, tab);
-  }, [transferring, showToast, tabKey]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -157,6 +149,15 @@ function AppContent() {
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const transferring = uploadProgress !== null || downloading;
+
+  const switchTab = (tab: ViewTab) => {
+    if (transferring) {
+      showToast("传输进行中，请等待上传/下载完成后再切换页面", "error");
+      return;
+    }
+    setActiveTab(tab);
+    localStorage.setItem(tabKey, tab);
+  };
 
   useEffect(() => {
     if (activeTab === "timeline" || activeTab === "moments") {
