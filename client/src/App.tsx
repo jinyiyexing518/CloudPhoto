@@ -16,6 +16,7 @@ const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 type ViewTab = "timeline" | "folder" | "moments";
 type SettingsEntryTab = "profile" | "security" | "trash" | "diagnostics" | "app";
+type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
 
 interface HomeDiagnosticsSnapshot {
   localMomentsCount: number;
@@ -29,6 +30,7 @@ interface HomeActivityItem {
   title: string;
   meta: string;
   timestamp: number;
+  action: () => void;
 }
 
 interface BeforeInstallPromptEvent extends Event {
@@ -43,6 +45,8 @@ function AppContent() {
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsEntryTab>("profile");
+  const [settingsFocusTarget, setSettingsFocusTarget] = useState<SettingsFocusTarget>("overview");
+  const [settingsFocusItemId, setSettingsFocusItemId] = useState<string | undefined>(undefined);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
@@ -143,6 +147,8 @@ function AppContent() {
     localMomentsCount: 0,
     persistenceStatus: "unknown",
   });
+  const [timelineFocusPhotoName, setTimelineFocusPhotoName] = useState<string | null>(null);
+  const [timelineFocusRequestKey, setTimelineFocusRequestKey] = useState(0);
   const transferring = uploadProgress !== null || downloading;
 
   // Derived lists for filter dropdowns
@@ -257,6 +263,10 @@ function AppContent() {
         title: `${photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "")} 已上传`,
         meta: `${photo.createdBy ?? "未知上传者"} · ${new Date(photo.createdAt ?? photo.lastModified ?? 0).toLocaleString("zh-CN")}`,
         timestamp: new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime(),
+        action: () => jumpToTimelinePhoto(photo.name, {
+          dateFrom: new Date(new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+          dateTo: new Date(photo.createdAt ?? photo.lastModified ?? 0).toISOString().slice(0, 10),
+        }),
       }));
 
     const shareItems = [...managedShareLinks]
@@ -268,6 +278,7 @@ function AppContent() {
         title: `${item.displayName} 已创建分享`,
         meta: `${item.createdByName} · ${new Date(item.createdAt).toLocaleString("zh-CN")}`,
         timestamp: new Date(item.createdAt).getTime(),
+        action: () => openSettingsTab("app", "managed-shares", item.id),
       }));
 
     const syncItem = homeDiagnostics.persistenceUpdatedAt
@@ -277,6 +288,7 @@ function AppContent() {
           title: homeDiagnostics.persistenceStatus === "server-synced" ? "浏览同步正常" : "浏览同步状态已更新",
           meta: `${homeDiagnostics.localMomentsCount} 条本地记录 · ${new Date(homeDiagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}`,
           timestamp: new Date(homeDiagnostics.persistenceUpdatedAt).getTime(),
+          action: () => openSettingsTab("diagnostics", "diagnostics"),
         }]
       : [];
 
@@ -544,37 +556,61 @@ function AppContent() {
     localStorage.setItem(INSTALL_BANNER_DISMISSED_KEY, "1");
   };
 
-  const openSettingsTab = (tab: SettingsEntryTab) => {
+  const openSettingsTab = (tab: SettingsEntryTab, focusTarget: SettingsFocusTarget = "overview", focusItemId?: string) => {
     setSettingsInitialTab(tab);
+    setSettingsFocusTarget(focusTarget);
+    setSettingsFocusItemId(focusItemId);
     setShowSettings(true);
+  };
+
+  const jumpToTimelinePhoto = (photoName: string, nextFilters?: Partial<FilterState>) => {
+    setFilters({
+      ...emptyFilter,
+      ...nextFilters,
+    });
+    setTimelineFocusPhotoName(photoName);
+    setTimelineFocusRequestKey(Date.now());
+    switchTab("timeline");
   };
 
   const jumpToRecentUploads = () => {
     const today = new Date();
     const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    setFilters((prev) => ({
-      ...prev,
+    const targetPhoto = [...recentUploads].sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())[0];
+    if (!targetPhoto) {
+      switchTab("timeline");
+      return;
+    }
+    jumpToTimelinePhoto(targetPhoto.name, {
       dateFrom: sevenDaysAgo.toISOString().slice(0, 10),
       dateTo: today.toISOString().slice(0, 10),
-    }));
-    switchTab("timeline");
+    });
   };
 
   const jumpToMissingSubjectPhotos = () => {
-    setFilters((prev) => ({
-      ...emptyFilter,
-      favoriteOnly: prev.favoriteOnly,
+    const targetPhoto = [...photos]
+      .filter((photo) => !photo.subject?.trim())
+      .sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())[0];
+    if (!targetPhoto) {
+      switchTab("timeline");
+      return;
+    }
+    jumpToTimelinePhoto(targetPhoto.name, {
       missingSubjectOnly: true,
-    }));
-    switchTab("timeline");
+    });
   };
 
   const jumpToUncategorizedPhotos = () => {
-    setFilters({
-      ...emptyFilter,
+    const targetPhoto = [...photos]
+      .filter((photo) => !(photo.folder ?? "").trim())
+      .sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())[0];
+    if (!targetPhoto) {
+      switchTab("timeline");
+      return;
+    }
+    jumpToTimelinePhoto(targetPhoto.name, {
       uncategorizedOnly: true,
     });
-    switchTab("timeline");
   };
 
   const installGuideText = useMemo(() => {
@@ -640,6 +676,8 @@ function AppContent() {
           canInstall={canInstall}
           isStandalone={isStandalone}
           initialTab={settingsInitialTab}
+          initialFocusTarget={settingsFocusTarget}
+          initialFocusItemId={settingsFocusItemId}
           onInstallApp={() => void handleInstallApp()}
           onOpenInstallGuide={() => setShowInstallGuide(true)}
         />
@@ -771,7 +809,9 @@ function AppContent() {
             <div className="insights-hub-kicker">分享表现</div>
             <div className="insights-hub-value">有效链接 {managedShareLinksCount} 条</div>
             <div className="insights-hub-meta">累计分享浏览 {managedShareViewsTotal} 次{topSharedPhotoName ? ` · 最热：${topSharedPhotoName}` : ""}</div>
-            <button className="insights-hub-btn" onClick={() => openSettingsTab("app")}>管理分享链接</button>
+            <button className="insights-hub-btn" onClick={() => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}>
+              管理分享链接
+            </button>
           </article>
 
           <article className="insights-hub-card insights-hub-card--health">
@@ -788,7 +828,7 @@ function AppContent() {
             <div className="insights-hub-meta">
               本地浏览记录 {homeDiagnostics.localMomentsCount} 条{homeDiagnostics.persistenceUpdatedAt ? ` · 更新于 ${new Date(homeDiagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}` : ""}
             </div>
-            <button className="insights-hub-btn" onClick={() => openSettingsTab("diagnostics")}>打开诊断页</button>
+            <button className="insights-hub-btn" onClick={() => openSettingsTab("diagnostics", "diagnostics")}>打开诊断页</button>
           </article>
         </section>
 
@@ -805,13 +845,13 @@ function AppContent() {
               {recentActivity.length === 0 ? (
                 <p className="pm-panel-empty">还没有足够的上传、分享或同步活动，先从文件夹上传一批照片开始。</p>
               ) : recentActivity.map((item) => (
-                <div key={item.id} className="pm-activity-item">
+                <button key={item.id} className="pm-activity-item" onClick={item.action}>
                   <span className="pm-activity-icon">{item.icon}</span>
                   <div className="pm-activity-copy">
                     <div className="pm-activity-title">{item.title}</div>
                     <div className="pm-activity-meta">{item.meta}</div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </article>
@@ -851,7 +891,9 @@ function AppContent() {
               <div className="pm-watchlist-line">当前最热分享：{topSharedPhotoName ?? "暂无"}</div>
               <div className="pm-watchlist-line">建议：及时延长高价值链接，避免外部访问失效。</div>
             </div>
-            <button className="pm-panel-btn" onClick={() => openSettingsTab("app")}>进入分享管理</button>
+            <button className="pm-panel-btn" onClick={() => openSettingsTab("app", "managed-shares", expiringSoonShareLinks[0]?.id)}>
+              进入分享管理
+            </button>
           </article>
         </section>
 
@@ -926,6 +968,8 @@ function AppContent() {
             onDownloadStateChange={setDownloading}
             userName={user?.displayName}
             showImportantMoments={false}
+            focusPhotoName={timelineFocusPhotoName ?? undefined}
+            focusRequestKey={timelineFocusRequestKey}
           />
         ) : activeTab === "moments" ? (
           <PhotoGallery

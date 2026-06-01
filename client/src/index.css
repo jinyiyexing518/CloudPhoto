@@ -527,6 +527,18 @@ body {
   background: #1e293b;
 }
 
+.gallery-focus-card {
+  border-radius: 14px;
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.22);
+  animation: gallery-focus-pulse 1.6s ease;
+}
+
+@keyframes gallery-focus-pulse {
+  0% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(0, 120, 212, 0.34); }
+  45% { transform: scale(1.01); box-shadow: 0 0 0 6px rgba(0, 120, 212, 0.12); }
+  100% { transform: scale(1); box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.22); }
+}
+
 .pm-panels {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
@@ -594,6 +606,7 @@ body {
 }
 
 .pm-activity-item {
+  border: none;
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -601,6 +614,14 @@ body {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid #e2e8f0;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.pm-activity-item:hover {
+  background: #f8fbff;
+  border-color: #bfdbfe;
 }
 
 .pm-activity-icon {
@@ -4043,6 +4064,11 @@ body {
   justify-content: space-between;
   gap: 8px;
   align-items: center;
+}
+
+.settings-share-item--target {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
 .settings-share-meta {

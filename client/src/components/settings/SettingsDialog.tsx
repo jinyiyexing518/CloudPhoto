@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, FormEvent } from "react";
+import { useState, useMemo, useCallback, useEffect, FormEvent, useRef } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useGroup } from "../../contexts/GroupContext";
 import {
@@ -16,6 +16,7 @@ import TrashView from "../gallery/TrashView";
 
 type SettingsTab = "profile" | "security" | "trash" | "diagnostics";
 type SettingsEntryTab = SettingsTab | "app";
+type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
 
 const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
 const MOMENTS_DIAGNOSTICS_KEY = "cloudphoto_moments_diagnostics_v1";
@@ -35,6 +36,8 @@ interface Props {
   canInstall?: boolean;
   isStandalone?: boolean;
   initialTab?: SettingsEntryTab;
+  initialFocusTarget?: SettingsFocusTarget;
+  initialFocusItemId?: string;
   onInstallApp?: () => void;
   onOpenInstallGuide?: () => void;
 }
@@ -45,6 +48,8 @@ export default function SettingsDialog({
   canInstall = false,
   isStandalone = false,
   initialTab = "profile",
+  initialFocusTarget = "overview",
+  initialFocusItemId,
   onInstallApp,
   onOpenInstallGuide,
 }: Props) {
@@ -57,6 +62,10 @@ export default function SettingsDialog({
   const { currentGroupId } = useGroup();
   const showToast = useToast();
   const [tab, setTab] = useState<SettingsEntryTab>(initialTab);
+  const settingsBodyRef = useRef<HTMLDivElement | null>(null);
+  const managedSharesRef = useRef<HTMLDivElement | null>(null);
+  const diagnosticsRef = useRef<HTMLDivElement | null>(null);
+  const managedShareItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot>({
     serviceWorkerCount: 0,
     localMomentsCount: 0,
@@ -110,6 +119,26 @@ export default function SettingsDialog({
     if (tab !== "app") return;
     void loadManagedShareLinks();
   }, [tab, loadManagedShareLinks]);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (tab === "app") {
+      if (initialFocusItemId && managedShareItemRefs.current[initialFocusItemId]) {
+        managedShareItemRefs.current[initialFocusItemId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (initialFocusTarget === "managed-shares") {
+        managedSharesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    if (tab === "diagnostics" && initialFocusTarget === "diagnostics") {
+      diagnosticsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [initialFocusItemId, initialFocusTarget, managedShareLinks, tab]);
 
   useEffect(() => {
     if (tab !== "diagnostics") return;
@@ -262,7 +291,7 @@ export default function SettingsDialog({
         </div>
 
         {/* Tab content */}
-        <div className="settings-body" style={{ textAlign: "left" }}>
+        <div className="settings-body" style={{ textAlign: "left" }} ref={settingsBodyRef}>
 
           {/* ── 个人信息 ── */}
           {tab === "profile" && (
@@ -369,7 +398,7 @@ export default function SettingsDialog({
 
               <div className="settings-divider" />
 
-              <div className="settings-share-header">
+              <div className="settings-share-header" ref={managedSharesRef}>
                 <span className="settings-info-label">云端分享链接（可维护）</span>
                 <button type="button" className="settings-share-clear" onClick={() => void loadManagedShareLinks()}>
                   刷新
@@ -423,7 +452,11 @@ export default function SettingsDialog({
                     const busy = linkBusyId === item.id;
                     const publicUrl = item.url ?? `${window.location.origin}/api/photos/share/open/${encodeURIComponent(item.id)}`;
                     return (
-                      <div key={item.id} className="settings-share-item settings-share-item--managed">
+                      <div
+                        key={item.id}
+                        className={`settings-share-item settings-share-item--managed${initialFocusItemId === item.id ? " settings-share-item--target" : ""}`}
+                        ref={(node) => { managedShareItemRefs.current[item.id] = node; }}
+                      >
                         <div className="settings-share-meta">
                           <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
                           <div className="settings-share-expire">创建：{new Date(item.createdAt).toLocaleString()}</div>
@@ -492,7 +525,7 @@ export default function SettingsDialog({
           )}
 
           {tab === "diagnostics" && (
-            <div className="settings-section">
+            <div className="settings-section" ref={diagnosticsRef}>
               <div className="settings-info-row">
                 <span className="settings-info-label">前端版本</span>
                 <span className="settings-info-value">v{appVersion}</span>

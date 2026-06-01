@@ -70,9 +70,9 @@ build time (defaults to `/api`).
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Workspace summary card** — the home surface now highlights current space, photo/folder/favorite/subject totals, current runtime mode (web vs app), and provides quick entry points to folder management, moments, and diagnostics
-- **Home insights hub** — the landing view now surfaces recent uploads, share performance, and moments sync health as action-oriented cards so users can jump directly to the most relevant next step
+- **Home insights hub** — the landing view now surfaces recent uploads, share performance, and moments sync health as action-oriented cards that not only switch views, but also scroll users directly to the most relevant target content
 - **Recent activity feed** — the home page now aggregates the latest uploads, share creations, and sync updates into a compact activity stream so users can immediately see what changed most recently
-- **Cleanup assistant** — the dashboard now highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views
+- **Cleanup assistant** — the dashboard now highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
 - **Share watchlist** — the home page now flags active share links expiring within 48 hours and provides a direct path into share maintenance
 - **Count-aware tab navigation** — Timeline / Folder / Moments tabs now display live counts so users can judge where to go without trial-and-error switching
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
@@ -80,7 +80,7 @@ build time (defaults to `/api`).
 - **Moments cross-device analytics** — open/navigate in moments records views to backend (Cosmos), including total views, last viewed time, top viewer, and peak day; counters are updated atomically in Cosmos and no longer rely on local page-only state
 - **Moments local fallback** — if the backend moments store is temporarily unavailable, the client preserves view counts locally across refreshes and marks the session as local-only until server sync resumes
 - **Moments diagnostics tab** — Settings now includes a dedicated diagnostics tab showing frontend version/build time, service worker count, local moments cache size, and whether moments persistence is local-only or server-synced
-- **Settings deep links** — home-level action cards can open Settings directly on the App or Diagnostics tabs, reducing navigation cost for share maintenance and troubleshooting
+- **Settings deep links** — home-level action cards can open Settings directly on the App or Diagnostics tabs and scroll to the relevant section or share entry, reducing navigation cost for share maintenance and troubleshooting
 - **Moments details focus** — moments modal details focus on recommendation score + engagement metrics (not timeline-style upload/modify metadata)
 - **Recoverable empty states** — timeline and moments now show actionable no-result states with one-click reset / go-to-folder recovery actions instead of passive blank screens
 - **Timeline pagination** — timeline initially loads the newest page and can load more progressively to keep first paint fast

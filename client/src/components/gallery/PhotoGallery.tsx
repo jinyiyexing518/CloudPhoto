@@ -28,6 +28,8 @@ interface Props {
   showImportantMoments?: boolean;
   momentsMode?: boolean;
   momentsShareViews?: Record<string, number>;
+  focusPhotoName?: string;
+  focusRequestKey?: number;
 }
 
 interface DateGroup {
@@ -213,8 +215,11 @@ export default function PhotoGallery({
   showImportantMoments = false,
   momentsMode = false,
   momentsShareViews = {},
+  focusPhotoName,
+  focusRequestKey,
 }: Props) {
   const showToast = useToast();
+  const focusCardRef = useRef<HTMLDivElement | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [editingSubject, setEditingSubject] = useState(false);
@@ -303,7 +308,23 @@ export default function PhotoGallery({
     setVisibleCount(PAGE_SIZE);
   }, [photos]);
 
+  useEffect(() => {
+    if (!focusPhotoName) return;
+    const focusIndex = flatPhotos.findIndex((photo) => photo.name === focusPhotoName);
+    if (focusIndex >= 0 && focusIndex + 1 > visibleCount) {
+      setVisibleCount(focusIndex + 1);
+    }
+  }, [flatPhotos, focusPhotoName, visibleCount]);
+
   const visiblePhotos = useMemo(() => flatPhotos.slice(0, visibleCount), [flatPhotos, visibleCount]);
+
+  useEffect(() => {
+    if (!focusPhotoName || focusRequestKey === undefined) return;
+    const frame = window.requestAnimationFrame(() => {
+      focusCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusPhotoName, focusRequestKey, visiblePhotos]);
 
   const memoryHighlights = useMemo(() => {
     const now = new Date();
@@ -848,15 +869,20 @@ export default function PhotoGallery({
             </h2>
             <div className="photo-grid">
               {group.photos.map((photo) => (
-                <PhotoCard
+                <div
                   key={photo.name}
-                  photo={photo}
-                  onClick={() => !selectMode && openModal(photo)}
-                  onDelete={() => onDelete(photo.name)}
-                  onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
-                  selected={selectMode ? selected.has(photo.name) : undefined}
-                  onSelect={selectMode ? (e) => { e.stopPropagation(); togglePhoto(photo.name); } : undefined}
-                />
+                  ref={photo.name === focusPhotoName ? focusCardRef : null}
+                  className={photo.name === focusPhotoName ? "gallery-focus-card" : undefined}
+                >
+                  <PhotoCard
+                    photo={photo}
+                    onClick={() => !selectMode && openModal(photo)}
+                    onDelete={() => onDelete(photo.name)}
+                    onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+                    selected={selectMode ? selected.has(photo.name) : undefined}
+                    onSelect={selectMode ? (e) => { e.stopPropagation(); togglePhoto(photo.name); } : undefined}
+                  />
+                </div>
               ))}
             </div>
           </section>
