@@ -76,11 +76,13 @@ build time (defaults to `/api`).
 - **Cleanup assistant** — the sidebar highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
 - **Share watchlist** — the sidebar flags active share links expiring within 48 hours and provides a direct path into share maintenance
 - **Count-aware tab navigation** — Timeline / Folder / Moments tabs now display live counts so users can judge where to go without trial-and-error switching
+- **Stable top tab rail** — the three primary tabs now avoid awkward wrapping by using a compact, horizontally stable rail that stays readable on narrower widths
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
 - **Important moments tab** — moments are ranked by engagement and shown in a dedicated ⭐ tab with independent filters and sort modes
 - **Moments cross-device analytics** — open/navigate in moments records views to backend (Cosmos), including total views, last viewed time, top viewer, and peak day; counters are updated atomically in Cosmos and no longer rely on local page-only state
 - **Moments local fallback** — if the backend moments store is temporarily unavailable, the client preserves view counts locally across refreshes and marks the session as local-only until server sync resumes
 - **Moments diagnostics tab** — Settings now includes a dedicated diagnostics tab showing frontend version/build time, service worker count, local moments cache size, and whether moments persistence is local-only or server-synced
+- **Card-based settings panel** — Settings now uses a stronger visual hierarchy with hero headers, grouped cards, and denser information blocks so profile, security, app, and diagnostics content are easier to scan
 - **Settings deep links** — home-level action cards can open Settings directly on the App or Diagnostics tabs and scroll to the relevant section or share entry, reducing navigation cost for share maintenance and troubleshooting
 - **Moments details focus** — moments modal details focus on recommendation score + engagement metrics (not timeline-style upload/modify metadata)
 - **Recoverable empty states** — timeline and moments now show actionable no-result states with one-click reset / go-to-folder recovery actions instead of passive blank screens

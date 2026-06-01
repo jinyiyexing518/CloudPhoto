@@ -272,6 +272,16 @@ export default function SettingsDialog({
     ? shareLinks.filter((item) => !!item && typeof item.id === "string" && typeof item.url === "string")
     : [];
 
+  const settingsHero = tab === "profile"
+    ? { icon: "👤", title: "个人信息", description: "查看账号身份信息，并维护昵称等基础资料。" }
+    : tab === "security"
+    ? { icon: "🔒", title: "安全中心", description: "统一管理密码和账号安全相关操作。" }
+    : tab === "app"
+    ? { icon: "📱", title: "应用与分享", description: "查看应用状态、安装能力，以及分享链接的维护情况。" }
+    : tab === "diagnostics"
+    ? { icon: "🩺", title: "诊断中心", description: "快速判断当前版本、缓存、同步和持久化状态。" }
+    : { icon: "🗑️", title: "回收站", description: "恢复误删内容，或彻底清理不再需要的照片。" };
+
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
@@ -292,28 +302,44 @@ export default function SettingsDialog({
 
         {/* Tab content */}
         <div className="settings-body" style={{ textAlign: "left" }} ref={settingsBodyRef}>
+          <section className="settings-hero">
+            <div className="settings-hero-icon">{settingsHero.icon}</div>
+            <div className="settings-hero-copy">
+              <h2>{settingsHero.title}</h2>
+              <p>{settingsHero.description}</p>
+            </div>
+          </section>
 
           {/* ── 个人信息 ── */}
           {tab === "profile" && (
-            <div className="settings-section" style={{ textAlign: "left", alignItems: "stretch" }}>
+            <div className="settings-section settings-section--stacked" style={{ textAlign: "left", alignItems: "stretch" }}>
               {/* Read-only info */}
-              <div className="settings-info-row">
-                <span className="settings-info-label">用户名</span>
-                <span className="settings-info-value">@{user?.username}</span>
+              <div className="settings-card settings-card--soft">
+                <div className="settings-card-head">
+                  <h3>账号概览</h3>
+                  <span className="settings-card-badge">@{user?.username}</span>
+                </div>
+                <div className="settings-info-grid">
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">用户名</span>
+                    <span className="settings-info-value">@{user?.username}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">邮箱</span>
+                    <span className="settings-info-value">{user?.email}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">角色</span>
+                    <span className="settings-info-value">{user?.role === "admin" ? "管理员" : "普通用户"}</span>
+                  </div>
+                </div>
               </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">邮箱</span>
-                <span className="settings-info-value">{user?.email}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">角色</span>
-                <span className="settings-info-value">{user?.role === "admin" ? "管理员" : "普通用户"}</span>
-              </div>
-
-              <div className="settings-divider" />
 
               {/* Editable */}
-              <form onSubmit={handleSaveProfile} className="settings-form">
+              <form onSubmit={handleSaveProfile} className="settings-form settings-card">
+                <div className="settings-card-head">
+                  <h3>个人资料</h3>
+                </div>
                 <div className="auth-field">
                   <label>昵称（显示名）</label>
                   <input
@@ -339,7 +365,11 @@ export default function SettingsDialog({
           {/* ── 安全 ── */}
           {tab === "security" && (
             <div className="settings-section" style={{ textAlign: "left", alignItems: "stretch" }}>
-              <form onSubmit={handleChangePassword} className="settings-form">
+              <form onSubmit={handleChangePassword} className="settings-form settings-card">
+                <div className="settings-card-head">
+                  <h3>密码管理</h3>
+                  <span className="settings-card-note">建议使用更长、更独特的密码组合</span>
+                </div>
                 <div className="auth-field">
                   <label>当前密码</label>
                   <input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} autoComplete="current-password" />
@@ -366,25 +396,34 @@ export default function SettingsDialog({
 
           {/* ── 应用 ── */}
           {tab === "app" && (
-            <div className="settings-section">
-              <div className="settings-info-row">
-                <span className="settings-info-label">当前模式</span>
-                <span className="settings-info-value">{isStandalone ? "App 模式" : "网页模式"}</span>
+            <div className="settings-section settings-section--stacked">
+              <div className="settings-card settings-card--soft">
+                <div className="settings-card-head">
+                  <h3>应用状态</h3>
+                </div>
+                <div className="settings-info-grid">
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">当前模式</span>
+                    <span className="settings-info-value">{isStandalone ? "App 模式" : "网页模式"}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">前端版本</span>
+                    <span className="settings-info-value">v{appVersion}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">构建时间</span>
+                    <span className="settings-info-value">{appBuildTimeText}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">一键安装</span>
+                    <span className="settings-info-value">{canInstall ? "当前浏览器支持" : "当前浏览器可能不支持"}</span>
+                  </div>
+                </div>
               </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">前端版本</span>
-                <span className="settings-info-value">v{appVersion}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">构建时间</span>
-                <span className="settings-info-value">{appBuildTimeText}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">一键安装</span>
-                <span className="settings-info-value">{canInstall ? "当前浏览器支持" : "当前浏览器可能不支持"}</span>
-              </div>
-              <div className="settings-divider" />
-              <div className="settings-form" style={{ gap: 10 }}>
+              <div className="settings-form settings-card" style={{ gap: 10 }}>
+                <div className="settings-card-head">
+                  <h3>安装与启动</h3>
+                </div>
                 {!isStandalone && canInstall && (
                   <button type="button" className="settings-save-btn" onClick={onInstallApp}>立即安装 App</button>
                 )}
@@ -396,184 +435,199 @@ export default function SettingsDialog({
                 </p>
               </div>
 
-              <div className="settings-divider" />
-
-              <div className="settings-share-header" ref={managedSharesRef}>
-                <span className="settings-info-label">云端分享链接（可维护）</span>
-                <button type="button" className="settings-share-clear" onClick={() => void loadManagedShareLinks()}>
-                  刷新
-                </button>
-              </div>
-
-              <div className="settings-share-toolbar">
-                <input
-                  className="settings-share-search"
-                  type="text"
-                  placeholder="按文件名搜索"
-                  value={shareSearch}
-                  onChange={(e) => setShareSearch(e.target.value)}
-                />
-                <select
-                  className="settings-share-filter"
-                  value={shareStatusFilter}
-                  onChange={(e) => setShareStatusFilter(e.target.value as "all" | "active" | "revoked" | "expired")}
-                >
-                  <option value="all">全部状态</option>
-                  <option value="active">有效</option>
-                  <option value="expired">已过期</option>
-                  <option value="revoked">已失效</option>
-                </select>
-                <button type="button" className="settings-share-apply" onClick={() => void loadManagedShareLinks()}>
-                  应用筛选
-                </button>
-              </div>
-
-              <div className="settings-share-extend-row">
-                <span className="settings-share-extend-label">默认延长：</span>
-                <select className="settings-share-filter" value={extendHours} onChange={(e) => setExtendHours(e.target.value)}>
-                  <option value="1">1 小时</option>
-                  <option value="24">24 小时</option>
-                  <option value="72">3 天</option>
-                  <option value="168">7 天</option>
-                  <option value="720">30 天</option>
-                </select>
-              </div>
-
-              {managedLoading ? (
-                <p className="add-admin-hint">正在加载分享链接…</p>
-              ) : managedError ? (
-                <p className="auth-error">{managedError}</p>
-              ) : safeManagedShareLinks.length === 0 ? (
-                <p className="add-admin-hint">暂无云端分享记录，先从照片详情创建一个分享链接。</p>
-              ) : (
-                <div className="settings-share-list">
-                  {safeManagedShareLinks.map((item) => {
-                    const statusText = item.status === "active" ? "有效" : item.status === "revoked" ? "已失效" : "已过期";
-                    const busy = linkBusyId === item.id;
-                    const publicUrl = item.url ?? `${window.location.origin}/api/photos/share/open/${encodeURIComponent(item.id)}`;
-                    return (
-                      <div
-                        key={item.id}
-                        className={`settings-share-item settings-share-item--managed${initialFocusItemId === item.id ? " settings-share-item--target" : ""}`}
-                        ref={(node) => { managedShareItemRefs.current[item.id] = node; }}
-                      >
-                        <div className="settings-share-meta">
-                          <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
-                          <div className="settings-share-expire">创建：{new Date(item.createdAt).toLocaleString()}</div>
-                          <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()} · 状态：{statusText}</div>
-                          <div className="settings-share-expire">浏览量：{item.viewCount} · 最近访问：{item.lastViewedAt ? new Date(item.lastViewedAt).toLocaleString() : "暂无"}</div>
-                        </div>
-                        <div className="settings-share-actions">
-                          <button type="button" onClick={() => void copyShareLink(publicUrl)}>复制</button>
-                          <button type="button" onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}>打开</button>
-                          <button type="button" onClick={() => void handleManagedAction(item, "extend")} disabled={busy || item.status !== "active"}>延长</button>
-                          <button type="button" onClick={() => void handleManagedAction(item, "revoke")} disabled={busy || item.status !== "active"}>立即失效</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="settings-divider" />
-
-              <div className="settings-share-header">
-                <span className="settings-info-label">本地分享记录（仅当前浏览器）</span>
-                {safeShareLinks.length > 0 && (
-                  <button
-                    type="button"
-                    className="settings-share-clear"
-                    onClick={() => {
-                      clearRecentShareLinks();
-                      refreshShareLinks();
-                      showToast("已清空本地分享记录", "success");
-                    }}
-                  >
-                    清空记录
+              <div className="settings-card settings-card--soft">
+                <div className="settings-share-header" ref={managedSharesRef}>
+                  <span className="settings-info-label">云端分享链接（可维护）</span>
+                  <button type="button" className="settings-share-clear" onClick={() => void loadManagedShareLinks()}>
+                    刷新
                   </button>
+                </div>
+
+                <div className="settings-share-toolbar">
+                  <input
+                    className="settings-share-search"
+                    type="text"
+                    placeholder="按文件名搜索"
+                    value={shareSearch}
+                    onChange={(e) => setShareSearch(e.target.value)}
+                  />
+                  <select
+                    className="settings-share-filter"
+                    value={shareStatusFilter}
+                    onChange={(e) => setShareStatusFilter(e.target.value as "all" | "active" | "revoked" | "expired")}
+                  >
+                    <option value="all">全部状态</option>
+                    <option value="active">有效</option>
+                    <option value="expired">已过期</option>
+                    <option value="revoked">已失效</option>
+                  </select>
+                  <button type="button" className="settings-share-apply" onClick={() => void loadManagedShareLinks()}>
+                    应用筛选
+                  </button>
+                </div>
+
+                <div className="settings-share-extend-row">
+                  <span className="settings-share-extend-label">默认延长：</span>
+                  <select className="settings-share-filter" value={extendHours} onChange={(e) => setExtendHours(e.target.value)}>
+                    <option value="1">1 小时</option>
+                    <option value="24">24 小时</option>
+                    <option value="72">3 天</option>
+                    <option value="168">7 天</option>
+                    <option value="720">30 天</option>
+                  </select>
+                </div>
+
+                {managedLoading ? (
+                  <p className="add-admin-hint">正在加载分享链接…</p>
+                ) : managedError ? (
+                  <p className="auth-error">{managedError}</p>
+                ) : safeManagedShareLinks.length === 0 ? (
+                  <p className="add-admin-hint">暂无云端分享记录，先从照片详情创建一个分享链接。</p>
+                ) : (
+                  <div className="settings-share-list">
+                    {safeManagedShareLinks.map((item) => {
+                      const statusText = item.status === "active" ? "有效" : item.status === "revoked" ? "已失效" : "已过期";
+                      const busy = linkBusyId === item.id;
+                      const publicUrl = item.url ?? `${window.location.origin}/api/photos/share/open/${encodeURIComponent(item.id)}`;
+                      return (
+                        <div
+                          key={item.id}
+                          className={`settings-share-item settings-share-item--managed${initialFocusItemId === item.id ? " settings-share-item--target" : ""}`}
+                          ref={(node) => { managedShareItemRefs.current[item.id] = node; }}
+                        >
+                          <div className="settings-share-meta">
+                            <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
+                            <div className="settings-share-expire">创建：{new Date(item.createdAt).toLocaleString()}</div>
+                            <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()} · 状态：{statusText}</div>
+                            <div className="settings-share-expire">浏览量：{item.viewCount} · 最近访问：{item.lastViewedAt ? new Date(item.lastViewedAt).toLocaleString() : "暂无"}</div>
+                          </div>
+                          <div className="settings-share-actions">
+                            <button type="button" onClick={() => void copyShareLink(publicUrl)}>复制</button>
+                            <button type="button" onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}>打开</button>
+                            <button type="button" onClick={() => void handleManagedAction(item, "extend")} disabled={busy || item.status !== "active"}>延长</button>
+                            <button type="button" onClick={() => void handleManagedAction(item, "revoke")} disabled={busy || item.status !== "active"}>立即失效</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
-              {safeShareLinks.length === 0 ? (
-                <p className="add-admin-hint">暂无本机生成的有效分享链接。</p>
-              ) : (
-                <div className="settings-share-list">
-                  {safeShareLinks.map((item) => (
-                    <div key={item.id} className="settings-share-item">
-                      <div className="settings-share-meta">
-                        <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
-                        <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()}</div>
-                      </div>
-                      <div className="settings-share-actions">
-                        <button type="button" onClick={() => void copyShareLink(item.url)}>复制</button>
-                        <button type="button" onClick={() => window.open(item.url, "_blank", "noopener,noreferrer")}>打开</button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            removeRecentShareLink(item.id);
-                            refreshShareLinks();
-                          }}
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+              <div className="settings-card">
+                <div className="settings-share-header">
+                  <span className="settings-info-label">本地分享记录（仅当前浏览器）</span>
+                  {safeShareLinks.length > 0 && (
+                    <button
+                      type="button"
+                      className="settings-share-clear"
+                      onClick={() => {
+                        clearRecentShareLinks();
+                        refreshShareLinks();
+                        showToast("已清空本地分享记录", "success");
+                      }}
+                    >
+                      清空记录
+                    </button>
+                  )}
                 </div>
-              )}
+
+                {safeShareLinks.length === 0 ? (
+                  <p className="add-admin-hint">暂无本机生成的有效分享链接。</p>
+                ) : (
+                  <div className="settings-share-list">
+                    {safeShareLinks.map((item) => (
+                      <div key={item.id} className="settings-share-item">
+                        <div className="settings-share-meta">
+                          <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
+                          <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()}</div>
+                        </div>
+                        <div className="settings-share-actions">
+                          <button type="button" onClick={() => void copyShareLink(item.url)}>复制</button>
+                          <button type="button" onClick={() => window.open(item.url, "_blank", "noopener,noreferrer")}>打开</button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              removeRecentShareLink(item.id);
+                              refreshShareLinks();
+                            }}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {tab === "diagnostics" && (
             <div className="settings-section" ref={diagnosticsRef}>
-              <div className="settings-info-row">
-                <span className="settings-info-label">前端版本</span>
-                <span className="settings-info-value">v{appVersion}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">构建时间</span>
-                <span className="settings-info-value">{appBuildTimeText}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">运行模式</span>
-                <span className="settings-info-value">{isStandalone ? "已安装 App / PWA" : "普通网页"}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">SW 注册数</span>
-                <span className="settings-info-value">{diagnostics.serviceWorkerCount}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">本地浏览记录</span>
-                <span className="settings-info-value">{diagnostics.localMomentsCount} 条</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">最近本地浏览</span>
-                <span className="settings-info-value">{diagnostics.localMomentsLastViewedAt ? new Date(diagnostics.localMomentsLastViewedAt).toLocaleString("zh-CN") : "暂无"}</span>
-              </div>
-              <div className="settings-info-row">
-                <span className="settings-info-label">持久化状态</span>
-                <span className="settings-info-value">
-                  {diagnostics.persistenceStatus === "server-synced"
-                    ? "服务端已同步"
-                    : diagnostics.persistenceStatus === "server-unavailable"
-                    ? "服务端不可用，当前仅本地保存"
-                    : diagnostics.persistenceStatus === "local-only"
-                    ? "当前仅本地保存"
-                    : "未检测"}
-                </span>
-              </div>
-              {diagnostics.persistenceUpdatedAt && (
-                <div className="settings-info-row">
-                  <span className="settings-info-label">状态时间</span>
-                  <span className="settings-info-value">{new Date(diagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}</span>
+              <div className="settings-card settings-card--soft">
+                <div className="settings-card-head">
+                  <h3>运行概览</h3>
                 </div>
-              )}
-              {diagnostics.persistenceMessage && (
-                <div className="settings-info-row">
-                  <span className="settings-info-label">诊断信息</span>
-                  <span className="settings-info-value">{diagnostics.persistenceMessage}</span>
+                <div className="settings-info-grid">
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">前端版本</span>
+                    <span className="settings-info-value">v{appVersion}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">构建时间</span>
+                    <span className="settings-info-value">{appBuildTimeText}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">运行模式</span>
+                    <span className="settings-info-value">{isStandalone ? "已安装 App / PWA" : "普通网页"}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">SW 注册数</span>
+                    <span className="settings-info-value">{diagnostics.serviceWorkerCount}</span>
+                  </div>
                 </div>
-              )}
+              </div>
+
+              <div className="settings-card">
+                <div className="settings-card-head">
+                  <h3>同步与缓存</h3>
+                </div>
+                <div className="settings-info-grid">
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">本地浏览记录</span>
+                    <span className="settings-info-value">{diagnostics.localMomentsCount} 条</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">最近本地浏览</span>
+                    <span className="settings-info-value">{diagnostics.localMomentsLastViewedAt ? new Date(diagnostics.localMomentsLastViewedAt).toLocaleString("zh-CN") : "暂无"}</span>
+                  </div>
+                  <div className="settings-info-row">
+                    <span className="settings-info-label">持久化状态</span>
+                    <span className="settings-info-value">
+                      {diagnostics.persistenceStatus === "server-synced"
+                        ? "服务端已同步"
+                        : diagnostics.persistenceStatus === "server-unavailable"
+                        ? "服务端不可用，当前仅本地保存"
+                        : diagnostics.persistenceStatus === "local-only"
+                        ? "当前仅本地保存"
+                        : "未检测"}
+                    </span>
+                  </div>
+                  {diagnostics.persistenceUpdatedAt && (
+                    <div className="settings-info-row">
+                      <span className="settings-info-label">状态时间</span>
+                      <span className="settings-info-value">{new Date(diagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}</span>
+                    </div>
+                  )}
+                  {diagnostics.persistenceMessage && (
+                    <div className="settings-info-row">
+                      <span className="settings-info-label">诊断信息</span>
+                      <span className="settings-info-value">{diagnostics.persistenceMessage}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
