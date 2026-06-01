@@ -6,6 +6,8 @@ import {
   downloadPhotoApi,
   createPhotoShareLink,
   createFolderShareLink,
+  recordMomentViewApi,
+  ManagedMomentsUnavailableError,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -623,12 +625,14 @@ function FolderContent({
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
   const [showMovePanel, setShowMovePanel] = useState(false);
   const [movingTo, setMovingTo] = useState(MOVE_UNSELECTED);
   const [quickMovePhoto, setQuickMovePhoto] = useState<Photo | null>(null);
   const [quickMoveTo, setQuickMoveTo] = useState(MOVE_UNSELECTED);
+  const momentsUnavailableNoticeShown = useRef(false);
 
   const isMyUpload = uploadProgress?.folder === currentPath;
   const anyUploading = uploadProgress !== null;
@@ -670,10 +674,20 @@ function FolderContent({
     return requestNewFolderTarget();
   };
 
+  const trackPhotoView = useCallback((photoName: string) => {
+    void recordMomentViewApi(photoName, userName).catch((error) => {
+      if (error instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
+        momentsUnavailableNoticeShown.current = true;
+        showToast("照片浏览量暂时不可持久化，稍后会继续尝试同步", "info");
+      }
+    });
+  }, [showToast, userName]);
+
   // Navigate to a photo by index, resetting all edit state
   const navigateToPhoto = useCallback((idx: number, photoList: Photo[]) => {
     const photo = photoList[idx];
     if (!photo) return;
+    trackPhotoView(photo.name);
     setSelectedIdx(idx);
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -682,8 +696,9 @@ function FolderContent({
     setNameInput(getEditablePhotoName(photo));
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
+    setShowOriginalPreview(false);
     setDownloading(false);
-  }, []);
+  }, [trackPhotoView]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -739,6 +754,7 @@ function FolderContent({
 
   const openModal = (photo: Photo) => {
     const idx = directPhotos.findIndex((p) => p.name === photo.name);
+    trackPhotoView(photo.name);
     setSelectedIdx(idx >= 0 ? idx : null);
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -747,6 +763,7 @@ function FolderContent({
     setNameInput(getEditablePhotoName(photo));
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
+    setShowOriginalPreview(false);
     setDownloading(false);
   };
 
@@ -1013,9 +1030,9 @@ function FolderContent({
 
       {/* ── Modal ── */}
       {selectedPhoto && (
-        <div className="modal-overlay" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}>
+        <div className="modal-overlay" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}>✕</button>
+            <button className="modal-close" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}>✕</button>
             {/* Prev / Next navigation */}
             {selectedIdx !== null && selectedIdx > 0 && (
               <button
@@ -1035,7 +1052,13 @@ function FolderContent({
                 ›
               </button>
             )}
-            <img src={selectedPhoto.url} alt={displayName(selectedPhoto)} />
+            <img
+              src={selectedPhoto.url}
+              alt={displayName(selectedPhoto)}
+              className="modal-image"
+              onClick={() => setShowOriginalPreview(true)}
+              title="点击预览原图"
+            />
             <div className="modal-info">
 
               {/* Filename row with rename */}
@@ -1079,6 +1102,13 @@ function FolderContent({
                 disabled={downloading}
               >
                 {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
+              </button>
+
+              <button
+                className="modal-preview-btn"
+                onClick={() => setShowOriginalPreview(true)}
+              >
+                🔍 预览原图
               </button>
 
               <div className="modal-actions-row">
@@ -1190,6 +1220,18 @@ function FolderContent({
             {directPhotos.length > 1 && (
               <div className="modal-nav-hint">\u2190 \u2192 \u952e\u5207\u6362 \u00b7 Esc \u5173\u95ed</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {selectedPhoto && showOriginalPreview && (
+        <div className="modal-preview-overlay" onClick={() => setShowOriginalPreview(false)}>
+          <div className="modal-preview-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowOriginalPreview(false)}>✕</button>
+            <a className="modal-preview-open" href={selectedPhoto.url} target="_blank" rel="noreferrer">
+              在新窗口打开原图
+            </a>
+            <img src={selectedPhoto.url} alt={displayName(selectedPhoto)} className="modal-preview-image" />
           </div>
         </div>
       )}

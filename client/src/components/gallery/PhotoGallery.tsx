@@ -189,6 +189,17 @@ function groupByDate(photos: Photo[]): DateGroup[] {
   return groups;
 }
 
+function createDefaultMomentsFilters(): MomentsFilterState {
+  return {
+    query: "",
+    engagementBand: "all",
+    recommendationBand: "all",
+    viewBand: "all",
+    shareBand: "all",
+    sortBy: "engagement",
+  };
+}
+
 export default function PhotoGallery({
   photos,
   onDelete,
@@ -213,6 +224,7 @@ export default function PhotoGallery({
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
   const [moveFolderInput, setMoveFolderInput] = useState("");
@@ -220,14 +232,7 @@ export default function PhotoGallery({
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>(() => readLocalMomentInsights());
   const momentsUnavailableNoticeShown = useRef(false);
-  const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>({
-    query: "",
-    engagementBand: "all",
-    recommendationBand: "all",
-    viewBand: "all",
-    shareBand: "all",
-    sortBy: "engagement",
-  });
+  const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>(createDefaultMomentsFilters);
 
   // Batch selection
   const [selectMode, setSelectMode] = useState(false);
@@ -356,7 +361,7 @@ export default function PhotoGallery({
             message: e.message,
             photoCount: Object.keys(momentsInsightsMap).length,
           });
-          showToast("重要片段浏览量暂时不可持久化，当前仅展示本次会话内的浏览变化", "info");
+          showToast("照片浏览量暂时不可持久化，当前设备会先本地记录浏览变化", "info");
         }
       }
     };
@@ -490,7 +495,7 @@ export default function PhotoGallery({
           message: e.message,
           photoCount: Object.keys(momentsInsightsMap).length,
         });
-        showToast("重要片段浏览量暂时不可持久化，当前仅展示本次会话内的浏览变化", "info");
+        showToast("照片浏览量暂时不可持久化，当前设备会先本地记录浏览变化", "info");
       }
     });
   }, [momentsInsightsMap, userName]);
@@ -498,7 +503,7 @@ export default function PhotoGallery({
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = modalPhotos[idx];
     if (!photo) return;
-    if (momentsMode) trackMomentView(photo.name);
+    trackMomentView(photo.name);
     setSelectedIdx(idx);
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -506,8 +511,9 @@ export default function PhotoGallery({
     setEditingName(false);
     setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
+    setShowOriginalPreview(false);
     setDownloading(false);
-  }, [modalPhotos, momentsMode, trackMomentView]);
+  }, [modalPhotos, trackMomentView]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -523,7 +529,7 @@ export default function PhotoGallery({
 
   const openModal = (photo: Photo) => {
     const idx = modalPhotos.findIndex((p) => p.name === photo.name);
-    if (momentsMode) trackMomentView(photo.name);
+    trackMomentView(photo.name);
     setSelectedIdx(idx >= 0 ? idx : null);
     setSelectedPhoto(photo);
     setEditingSubject(false);
@@ -531,6 +537,7 @@ export default function PhotoGallery({
     setEditingName(false);
     setNameInput(getEditablePhotoName(photo));
     setMoveFolderInput(photo.folder ?? "");
+    setShowOriginalPreview(false);
     setDownloading(false);
   };
 
@@ -637,9 +644,9 @@ export default function PhotoGallery({
   if (photos.length === 0) {
     return (
       <div className="empty-gallery">
-        <div className="empty-gallery-icon">📷</div>
-        <p className="empty-gallery-title">还没有照片</p>
-        <p className="empty-gallery-sub">切换到「文件夹」视图，选择文件夹后上传照片</p>
+        <div className="empty-gallery-icon">{momentsMode ? "⭐" : "📷"}</div>
+        <p className="empty-gallery-title">{momentsMode ? "还没有可展示的重要片段" : "还没有照片"}</p>
+        <p className="empty-gallery-sub">{momentsMode ? "先在时间线或文件夹中浏览、收藏并补充主题，系统会逐步沉淀出更有价值的重点照片。" : "切换到「文件夹」视图，选择文件夹后上传照片"}</p>
       </div>
     );
   }
@@ -785,6 +792,18 @@ export default function PhotoGallery({
               <option value="recommended">按推荐值排序</option>
             </select>
           </div>
+          {momentCards.length === 0 ? (
+            <div className="empty-gallery empty-gallery--actionable moments-empty-state">
+              <div className="empty-gallery-icon">🧭</div>
+              <p className="empty-gallery-title">当前筛选下没有命中的重要片段</p>
+              <p className="empty-gallery-sub">建议先放宽热度、浏览量或分享量条件，再看系统推荐结果。</p>
+              <div className="empty-gallery-actions">
+                <button className="empty-gallery-btn" onClick={() => setMomentsFilters(createDefaultMomentsFilters())}>
+                  重置片段筛选
+                </button>
+              </div>
+            </div>
+          ) : (
           <div className="moments-grid">
             {momentCards.map(({ photo, rank, score, shareViews, totalViews, lastViewedAt, topViewer, engagement }) => {
               const raw = photo.createdAt ?? photo.lastModified;
@@ -817,6 +836,7 @@ export default function PhotoGallery({
               );
             })}
           </div>
+          )}
         </section>
       ) : (
         groups.map((group) => (
@@ -854,7 +874,7 @@ export default function PhotoGallery({
       {selectedPhoto && (
         <div
           className="modal-overlay"
-          onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}
+          onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}
         >
           <div
             className="modal-content"
@@ -862,7 +882,7 @@ export default function PhotoGallery({
           >
             <button
               className="modal-close"
-              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); }}
+              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}
             >
               ✕
             </button>
@@ -872,7 +892,13 @@ export default function PhotoGallery({
             {selectedIdx !== null && selectedIdx < modalPhotos.length - 1 && (
               <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title="下一张 (→)">›</button>
             )}
-            <img src={selectedPhoto.url} alt={selectedPhoto.name} />
+            <img
+              src={selectedPhoto.url}
+              alt={selectedPhoto.name}
+              className="modal-image"
+              onClick={() => setShowOriginalPreview(true)}
+              title="点击预览原图"
+            />
             <div className="modal-info">
               <div className="modal-info-row">
                 {editingName ? (
@@ -917,6 +943,13 @@ export default function PhotoGallery({
                 disabled={downloading}
               >
                 {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
+              </button>
+
+              <button
+                className="modal-preview-btn"
+                onClick={() => setShowOriginalPreview(true)}
+              >
+                🔍 预览原图
               </button>
 
               <div className="modal-actions-row">
@@ -1040,6 +1073,18 @@ export default function PhotoGallery({
             {modalPhotos.length > 1 && (
               <div className="modal-nav-hint">← → 键切换 · Esc 关闭</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {selectedPhoto && showOriginalPreview && (
+        <div className="modal-preview-overlay" onClick={() => setShowOriginalPreview(false)}>
+          <div className="modal-preview-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowOriginalPreview(false)}>✕</button>
+            <a className="modal-preview-open" href={selectedPhoto.url} target="_blank" rel="noreferrer">
+              在新窗口打开原图
+            </a>
+            <img src={selectedPhoto.url} alt={selectedPhoto.name} className="modal-preview-image" />
           </div>
         </div>
       )}

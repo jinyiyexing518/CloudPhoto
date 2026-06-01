@@ -156,6 +156,31 @@ function AppContent() {
     return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 120);
   }, [photos]);
 
+  const groupLabel = useMemo(() => {
+    if (currentGroupId === "") return "个人空间";
+    return groups.find((group) => group.id === currentGroupId)?.name ?? "群组空间";
+  }, [currentGroupId, groups]);
+
+  const folderCount = useMemo(
+    () => new Set(photos.map((photo) => (photo.folder ?? "").trim()).filter(Boolean)).size,
+    [photos],
+  );
+
+  const favoriteCount = useMemo(
+    () => photos.filter((photo) => photo.favorite).length,
+    [photos],
+  );
+
+  const subjectCount = useMemo(
+    () => photos.filter((photo) => Boolean(photo.subject?.trim())).length,
+    [photos],
+  );
+
+  const timelineHasActiveFilters = useMemo(
+    () => Boolean(filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly),
+    [filters],
+  );
+
   const momentsStats = useMemo(() => {
     const now = Date.now();
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -458,21 +483,72 @@ function AppContent() {
             className={`view-tab${activeTab === "timeline" ? " active" : ""}`}
             onClick={() => switchTab("timeline")}
           >
-            🕐 时间线
+            <span>🕐 时间线</span>
+            <span className="view-tab-count">{filteredPhotos.length}</span>
           </button>
           <button
             className={`view-tab${activeTab === "folder" ? " active" : ""}`}
             onClick={() => switchTab("folder")}
           >
-            📁 文件夹
+            <span>📁 文件夹</span>
+            <span className="view-tab-count">{folderCount}</span>
           </button>
           <button
             className={`view-tab${activeTab === "moments" ? " active" : ""}`}
             onClick={() => switchTab("moments")}
           >
-            ⭐ 重要片段
+            <span>⭐ 重要片段</span>
+            <span className="view-tab-count">{importantPhotos.length}</span>
           </button>
         </div>
+
+        <section className="workspace-summary">
+          <div className="workspace-summary-head">
+            <div>
+              <p className="workspace-summary-kicker">当前工作区</p>
+              <h2 className="workspace-summary-title">{groupLabel}</h2>
+              <p className="workspace-summary-sub">
+                {currentGroupId === "" ? "管理你的个人照片、收藏和回忆。" : "在当前群组里统一管理照片、分享和回顾。"}
+              </p>
+            </div>
+            <span className={`workspace-summary-mode${isStandalone ? " workspace-summary-mode--app" : ""}`}>
+              {isStandalone ? "App 模式" : "网页模式"}
+            </span>
+          </div>
+          <div className="workspace-summary-metrics">
+            <div className="workspace-summary-card">
+              <strong>{photos.length}</strong>
+              <span>照片总数</span>
+            </div>
+            <div className="workspace-summary-card">
+              <strong>{folderCount}</strong>
+              <span>已使用文件夹</span>
+            </div>
+            <div className="workspace-summary-card">
+              <strong>{favoriteCount}</strong>
+              <span>已收藏照片</span>
+            </div>
+            <div className="workspace-summary-card">
+              <strong>{subjectCount}</strong>
+              <span>已标注主题</span>
+            </div>
+          </div>
+          <div className="workspace-summary-actions">
+            {activeTab !== "folder" && (
+              <button className="workspace-summary-btn" onClick={() => switchTab("folder")}>
+                去文件夹上传 / 整理
+              </button>
+            )}
+            {activeTab !== "moments" && importantPhotos.length > 0 && (
+              <button className="workspace-summary-btn workspace-summary-btn--secondary" onClick={() => switchTab("moments")}>
+                查看重要片段
+              </button>
+            )}
+            <button className="workspace-summary-btn workspace-summary-btn--ghost" onClick={() => setShowSettings(true)}>
+              打开设置 / 诊断
+            </button>
+          </div>
+        </section>
 
         {/* Timeline hint */}
         {activeTab === "timeline" && (
@@ -517,6 +593,22 @@ function AppContent() {
           <div className="load-error">
             <p>加载照片失败</p>
             <button className="retry-btn" onClick={() => void fetchPhotos()}>重试</button>
+          </div>
+        ) : activeTab === "timeline" && photos.length > 0 && filteredPhotos.length === 0 ? (
+          <div className="empty-gallery empty-gallery--actionable">
+            <div className="empty-gallery-icon">🔎</div>
+            <p className="empty-gallery-title">当前筛选没有匹配照片</p>
+            <p className="empty-gallery-sub">可以一键清空筛选，或者去文件夹视图继续上传和整理。</p>
+            <div className="empty-gallery-actions">
+              {timelineHasActiveFilters && (
+                <button className="empty-gallery-btn" onClick={() => setFilters(emptyFilter)}>
+                  清空筛选
+                </button>
+              )}
+              <button className="empty-gallery-btn empty-gallery-btn--secondary" onClick={() => switchTab("folder")}>
+                去文件夹视图
+              </button>
+            </div>
           </div>
         ) : activeTab === "timeline" ? (
           <PhotoGallery
