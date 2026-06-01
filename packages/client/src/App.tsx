@@ -133,7 +133,7 @@ function AppContent() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string; currentFile?: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
@@ -148,6 +148,8 @@ function AppContent() {
   const [timelineFocusPhotoName, setTimelineFocusPhotoName] = useState<string | null>(null);
   const [timelineFocusRequestKey, setTimelineFocusRequestKey] = useState(0);
   const scrollLockYRef = useRef(0);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const lastFocusRefreshRef = useRef<number>(0);
   const transferring = uploadProgress !== null || downloading;
 
   useEffect(() => {
@@ -256,6 +258,43 @@ function AppContent() {
     () => Boolean(filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly),
     [filters],
   );
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.name) count++;
+    if (filters.subject) count++;
+    if (filters.uploader) count++;
+    if (filters.dateFrom || filters.dateTo) count++;
+    if (filters.favoriteOnly) count++;
+    if (filters.missingSubjectOnly) count++;
+    if (filters.uncategorizedOnly) count++;
+    return count;
+  }, [filters]);
+
+  const activeDateChip = useMemo(() => {
+    const now = new Date().toISOString().slice(0, 10);
+    const week = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const month = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (filters.dateFrom === now && filters.dateTo === now) return "today";
+    if (filters.dateFrom === week && filters.dateTo === now) return "week";
+    if (filters.dateFrom === month && filters.dateTo === now) return "month";
+    return null;
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const applyQuickDateFilter = useCallback((period: "today" | "week" | "month" | null) => {
+    const now = new Date().toISOString().slice(0, 10);
+    if (period === "today") {
+      setFilters((f) => ({ ...f, dateFrom: now, dateTo: now }));
+    } else if (period === "week") {
+      const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      setFilters((f) => ({ ...f, dateFrom: from, dateTo: now }));
+    } else if (period === "month") {
+      const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      setFilters((f) => ({ ...f, dateFrom: from, dateTo: now }));
+    } else {
+      setFilters((f) => ({ ...f, dateFrom: "", dateTo: "" }));
+    }
+  }, []);
 
   const recentUploads = useMemo(() => {
     const now = Date.now();
@@ -424,6 +463,43 @@ function AppContent() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [transferring]);
 
+  // Scroll-to-top button visibility
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 500);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Auto-refresh when window regains focus (max once per 60 s)
+  useEffect(() => {
+    const onFocus = () => {
+      const now = Date.now();
+      if (now - lastFocusRefreshRef.current > 60_000) {
+        lastFocusRefreshRef.current = now;
+        void fetchPhotos();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchPhotos]);
+
+  // Keyboard shortcuts: R = refresh, Escape = close sidebar
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as Element)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        void fetchPhotos();
+      }
+      if (e.key === "Escape") {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fetchPhotos]);
+
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
     const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
     const MAX_SIZE_BYTES = 20 * 1024 * 1024;
@@ -438,16 +514,17 @@ function AppContent() {
     }
     const valid = fileArray.filter((f) => ALLOWED_TYPES.has(f.type) && f.size <= MAX_SIZE_BYTES);
     if (valid.length === 0) return;
-    setUploadProgress({ done: 0, total: valid.length, folder });
+    setUploadProgress({ done: 0, total: valid.length, folder, currentFile: valid[0]?.name });
     const failed: string[] = [];
     for (let i = 0; i < valid.length; i++) {
+      setUploadProgress({ done: i, total: valid.length, folder, currentFile: valid[i].name });
       try {
         await uploadPhoto(valid[i], user?.displayName || undefined, subject || undefined, folder || undefined, currentGroupId || undefined);
       } catch {
         failed.push(valid[i].name);
       }
-      setUploadProgress({ done: i + 1, total: valid.length, folder });
     }
+    setUploadProgress({ done: valid.length, total: valid.length, folder });
     await fetchPhotos();
     setUploadProgress(null);
     if (failed.length > 0) {
@@ -647,7 +724,12 @@ function AppContent() {
       <header className="app-header">
         <h1>Cloud Photo</h1>
         <GroupSwitcher />
-        <span className="photo-count">{photos.length} photos</span>
+        <span className="photo-count">
+          {photos.length.toLocaleString()} 张
+          {recentUploads.length > 0 && (
+            <span className="photo-count-recent">+{recentUploads.length} 近7天</span>
+          )}
+        </span>
         <div className="user-badge">
           <span className="user-name-btn">
             👤 {user?.displayName}
@@ -695,6 +777,32 @@ function AppContent() {
       )}
 
       <main className="app-main">
+        {transferring && (
+          <div className="transfer-banner">
+            {uploadProgress ? (
+              <>
+                <span className="transfer-banner-icon">⬆️</span>
+                <span className="transfer-banner-text">
+                  {uploadProgress.currentFile
+                    ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.done + 1}/${uploadProgress.total})`
+                    : `上传中… (${uploadProgress.done}/${uploadProgress.total})`}
+                </span>
+                <div className="transfer-banner-track">
+                  <div
+                    className="transfer-banner-fill"
+                    style={{ width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="transfer-banner-icon">⬇️</span>
+                <span className="transfer-banner-text">下载中，请勿关闭页面</span>
+              </>
+            )}
+          </div>
+        )}
+
         {updateReady && (
           <div className="pwa-update-banner">
             <span>检测到新版本，点击即可更新。</span>
@@ -739,6 +847,7 @@ function AppContent() {
           >
             <span>🕐 时间线</span>
             <span className="view-tab-count">{filteredPhotos.length}</span>
+            {activeFiltersCount > 0 && <span className="view-tab-filter-dot" />}
           </button>
           <button
             className={`view-tab${activeTab === "folder" ? " active" : ""}`}
@@ -755,6 +864,29 @@ function AppContent() {
             <span className="view-tab-count">{importantPhotos.length}</span>
           </button>
           </div>
+          {activeTab === "timeline" && (
+            <div className="quick-date-chips">
+              <button
+                className={`quick-chip${activeDateChip === "today" ? " active" : ""}`}
+                onClick={() => applyQuickDateFilter(activeDateChip === "today" ? null : "today")}
+              >今日</button>
+              <button
+                className={`quick-chip${activeDateChip === "week" ? " active" : ""}`}
+                onClick={() => applyQuickDateFilter(activeDateChip === "week" ? null : "week")}
+              >本周</button>
+              <button
+                className={`quick-chip${activeDateChip === "month" ? " active" : ""}`}
+                onClick={() => applyQuickDateFilter(activeDateChip === "month" ? null : "month")}
+              >本月</button>
+              <button
+                className={`quick-chip${filters.favoriteOnly ? " active" : ""}`}
+                onClick={() => setFilters((f) => ({ ...f, favoriteOnly: !f.favoriteOnly }))}
+              >⭐ 收藏</button>
+              {activeFiltersCount > 0 && (
+                <button className="quick-chip quick-chip--clear" onClick={() => setFilters(emptyFilter)}>✕ 清空</button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="workspace-layout">
@@ -779,7 +911,16 @@ function AppContent() {
             <p>加载照片失败</p>
             <button className="retry-btn" onClick={() => void fetchPhotos()}>重试</button>
           </div>
-        ) : activeTab === "timeline" && photos.length > 0 && filteredPhotos.length === 0 ? (
+        ) : photos.length === 0 ? (
+          <div className="empty-gallery">
+            <div className="empty-gallery-icon">📷</div>
+            <p className="empty-gallery-title">还没有照片</p>
+            <p className="empty-gallery-sub">前往文件夹视图，开始上传你的第一张照片吧</p>
+            <div className="empty-gallery-actions">
+              <button className="empty-gallery-btn" onClick={() => switchTab("folder")}>去上传照片</button>
+            </div>
+          </div>
+        ) : activeTab === "timeline" && filteredPhotos.length === 0 ? (
           <div className="empty-gallery empty-gallery--actionable">
             <div className="empty-gallery-icon">🔎</div>
             <p className="empty-gallery-title">当前筛选没有匹配照片</p>
@@ -875,6 +1016,15 @@ function AppContent() {
           />
         </div>
       </main>
+
+      {showScrollTop && (
+        <button
+          className="scroll-top-btn"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          title="返回顶部"
+          aria-label="返回顶部"
+        >↑</button>
+      )}
     </div>
   );
 }

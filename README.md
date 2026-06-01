@@ -78,6 +78,15 @@ build time (defaults to `/api`).
 - **Count-aware tab navigation** — Timeline / Folder / Moments tabs now display live counts so users can judge where to go without trial-and-error switching
 - **Stable top tab rail** — the three primary tabs now avoid awkward wrapping by using a compact, horizontally stable rail that stays readable on narrower widths
 - **Visible drag affordance** — the top tab rail now includes clearer swipe/drag cues so users understand it can scroll horizontally instead of mistaking clipped tabs for a rendering bug
+- **Quick date filter chips** — "今日 / 本周 / 本月 / ⭐ 收藏" one-tap chip row in the timeline tab bar for instant date-scoped browsing without opening the sidebar; active chip is highlighted and "✕ 清空" appears when any filter is on
+- **Active filter indicator dot** — a small amber dot appears on the Timeline tab label whenever any filter is active so users never lose track of a hidden search
+- **Empty-album first-run state** — when a space has no photos yet, the gallery shows a friendly "还没有照片" prompt with a direct CTA to the upload view instead of a blank grid
+- **Transfer progress banner** — while uploading, a sticky amber banner at the top of the content area displays the current filename and a live progress bar (e.g. "上传中 IMG_001.jpg (3/10)"); during download it shows a "下载中" notice
+- **Scroll-to-top button** — a floating circular button appears after scrolling 500 px and smoothly returns the viewport to the top with one tap; hidden during sidebar scroll-lock
+- **Window-focus auto-refresh** — switching back to the app from another tab or app silently re-fetches the photo list (throttled to at most once per 60 s) so multi-device edits appear without manual reload
+- **Keyboard shortcuts** — press **R** to instantly refresh photos from anywhere on the page; press **Escape** to dismiss the workspace sidebar (both shortcuts skip input/textarea focus)
+- **Upload filename in progress** — upload progress now tracks the current file being sent so in-flight status shows exactly which photo is uploading rather than a generic count
+- **Photo count header badge** — the header count now uses locale-formatted numerals (e.g. "1,234 张") and shows a green "+N 近7天" pill when photos were uploaded in the last 7 days
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
 - **Important moments tab** — moments are ranked by engagement and shown in a dedicated ⭐ tab with independent filters and sort modes
 - **Moments cross-device analytics** — open/navigate in moments records views to backend (Cosmos), including total views, last viewed time, top viewer, and peak day; counters are updated atomically in Cosmos and no longer rely on local page-only state
