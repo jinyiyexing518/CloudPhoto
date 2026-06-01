@@ -2320,7 +2320,7 @@ body {
   top: 0;
   right: 0;
   width: clamp(300px, 80vw, 460px);
-  height: 100vh;
+  height: 100dvh;
   opacity: 0;
   pointer-events: none;
   transform: translateX(108%);
@@ -2343,14 +2343,14 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
 }
 
 .workspace-sidebar-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: 24px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
