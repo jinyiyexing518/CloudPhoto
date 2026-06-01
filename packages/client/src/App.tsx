@@ -831,8 +831,9 @@ function AppContent() {
         <div className={`view-tabs-shell${viewTabsScrollable ? " view-tabs-shell--scrollable" : ""}`}>
           <div className="view-tabs-meta">
             <span className="view-tabs-title">浏览视图</span>
-            {viewTabsScrollable && <span className="view-tabs-hint">左右滑动切换</span>}
+            {viewTabsScrollable && <span className="view-tabs-hint">← 左右滑动 →</span>}
           </div>
+          <div className="view-tabs-scroll-area">
           <div className={`view-tabs-fade view-tabs-fade--left${viewTabsShowLeft ? " is-visible" : ""}`} />
           <div className={`view-tabs-fade view-tabs-fade--right${viewTabsShowRight ? " is-visible" : ""}`} />
           <div className="view-tabs" ref={viewTabsRef} onScroll={() => {
@@ -863,6 +864,7 @@ function AppContent() {
             <span>⭐ 重要片段</span>
             <span className="view-tab-count">{importantPhotos.length}</span>
           </button>
+          </div>
           </div>
           {activeTab === "timeline" && (
             <div className="quick-date-chips">
