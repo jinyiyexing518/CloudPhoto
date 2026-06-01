@@ -118,6 +118,15 @@ build time (defaults to `/api`).
 - **Admin tools** — super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote other users to admin
 - **PWA app mode** — installable as an app on desktop/mobile (manifest + service worker + update prompt)
 - **Browser-first update mode** — regular browser sessions prefer immediate updates by unregistering stale service workers; only installed standalone mode keeps persistent SW caching semantics
+- **Reading progress bar** — a thin gradient bar at the very top of the viewport fills as the user scrolls through the photo timeline, providing instant spatial orientation
+- **Global drag-drop hint** — dragging image files anywhere over the app window triggers a full-screen overlay guiding users to the folder view; dropping auto-redirects and shows a toast, eliminating the "how do I upload?" discoverability gap
+- **Keyboard shortcuts help panel** — press `?` at any time (or click ⌨️ in the header) to open a floating cheatsheet of all keyboard shortcuts; press Escape or `?` again to dismiss
+- **Backspace / Delete clears filters** — when any filter is active and focus is not in an input, pressing Backspace or Delete clears all timeline filters in one keystroke with a toast confirmation
+- **Folder quick-filter chips** — the timeline chip row now shows up to 4 folder chips alongside the date chips, letting users instantly scope the timeline to a single folder without opening the sidebar
+- **Today uploads notice** — when photos were uploaded today, a green notice bar appears above the timeline grid with a one-tap button to toggle "今日" filter; removed when no uploads for today
+- **Time-of-day greeting** — the header title shows a contextual greeting ("早上好", "下午好", "晚上好") so the UI feels alive even before photos load
+- **Upload file size summary** — the upload progress banner now shows total file count and MB (e.g. "5 张 · 12.3 MB") alongside the per-file name so users can judge remaining time at a glance
+- **Weekly summary card** — a collapsible "📊 本周概况" card below the filter chips surfaces this-week uploads, total favorites, folder count, and today count in a compact table; includes a "📋 复制周报" button that places a text summary on the clipboard for easy sharing
 - **Dev refresh stability** — local Vite dev mode disables SW registration by default to avoid development-time refresh loops
 - **Dev refresh stability** — PWA service worker registration is disabled in Vite dev mode to avoid local development refresh loops
 - **Transfer safety guard** — while upload/download is in progress, tab switching is blocked and browser refresh/close shows unload confirmation

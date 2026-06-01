@@ -122,14 +122,14 @@ function AppContent() {
     if (stored === "folder" || stored === "timeline" || stored === "moments") return stored;
     return "timeline";
   });
-  const switchTab = (tab: ViewTab) => {
+  const switchTab = useCallback((tab: ViewTab) => {
     if (transferring) {
       showToast("传输进行中，请等待上传/下载完成后再切换页面", "error");
       return;
     }
     setActiveTab(tab);
     localStorage.setItem(tabKey, tab);
-  };
+  }, [transferring, showToast, tabKey]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -151,6 +151,11 @@ function AppContent() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const lastFocusRefreshRef = useRef<number>(0);
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
+  const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const transferring = uploadProgress !== null || downloading;
 
   useEffect(() => {
@@ -211,9 +216,39 @@ function AppContent() {
       if (filters.favoriteOnly && !p.favorite) return false;
       if (filters.missingSubjectOnly && Boolean(p.subject?.trim())) return false;
       if (filters.uncategorizedOnly && Boolean((p.folder ?? "").trim())) return false;
+      if (filters.folder && (p.folder ?? "").trim() !== filters.folder) return false;
       return true;
     });
   }, [photos, filters]);
+
+  const todayUploads = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return photos.filter((p) => (p.createdAt ?? p.lastModified ?? "").slice(0, 10) === today);
+  }, [photos]);
+
+  const greetingText = useMemo(() => {
+    const h = new Date().getHours();
+    if (h < 6) return "夜深了";
+    if (h < 12) return "早上好";
+    if (h < 18) return "下午好";
+    return "晚上好";
+  }, []);
+
+  const weeklyStats = useMemo(() => {
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const thisWeek = photos.filter((p) => {
+      const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
+      return Number.isFinite(ts) && now - ts <= weekMs;
+    }).length;
+    const favorites = photos.filter((p) => p.favorite).length;
+    return { thisWeek, favorites };
+  }, [photos]);
+
+  const availableFolders = useMemo(
+    () => [...new Set(photos.map((p) => (p.folder ?? "").trim()).filter(Boolean))].sort(),
+    [photos]
+  );
 
   const importantPhotos = useMemo(() => {
     const scored = [...photos].map((p) => {
@@ -474,9 +509,14 @@ function AppContent() {
     };
   }, [timelineFocusPhotoName]);
 
-  // Scroll-to-top button visibility
+  // Scroll-to-top button visibility + reading progress
   useEffect(() => {
-    const onScroll = () => setShowScrollTop(window.scrollY > 500);
+    const onScroll = () => {
+      const y = window.scrollY;
+      setShowScrollTop(y > 500);
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      setScrollProgress(docHeight > 0 ? Math.min(100, (y / docHeight) * 100) : 0);
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -494,7 +534,7 @@ function AppContent() {
     return () => window.removeEventListener("focus", onFocus);
   }, [fetchPhotos]);
 
-  // Keyboard shortcuts: R = refresh, Escape = close sidebar
+  // Keyboard shortcuts: R = refresh, ? = shortcuts help, Backspace = clear filters, Escape = close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as Element)?.tagName;
@@ -503,13 +543,64 @@ function AppContent() {
         e.preventDefault();
         void fetchPhotos();
       }
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setShowShortcutsHelp((v) => !v);
+      }
+      if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (activeFiltersCount > 0) {
+          e.preventDefault();
+          setFilters(emptyFilter);
+          showToast("已清空所有筛选", "success");
+        }
+      }
       if (e.key === "Escape") {
         setSidebarOpen(false);
+        setShowShortcutsHelp(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fetchPhotos]);
+  }, [fetchPhotos, activeFiltersCount, showToast]);
+
+  // Global drag-over: desktop-only (only attach on non-touch devices)
+  useEffect(() => {
+    // Skip on touch-primary devices to avoid interfering with touch scroll
+    if (window.matchMedia("(hover: none)").matches) return;
+    let enterCount = 0;
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      enterCount++;
+      setIsDragOver(true);
+    };
+    const onDragLeave = () => {
+      enterCount = Math.max(0, enterCount - 1);
+      if (enterCount === 0) setIsDragOver(false);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      enterCount = 0;
+      setIsDragOver(false);
+      if (e.dataTransfer?.files.length) {
+        e.preventDefault();
+        setActiveTab("folder");
+        localStorage.setItem(tabKey, "folder");
+        showToast("已切换到文件夹视图，选择文件夹后上传", "success");
+      }
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [tabKey, showToast]);
 
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
     const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
@@ -525,6 +616,8 @@ function AppContent() {
     }
     const valid = fileArray.filter((f) => ALLOWED_TYPES.has(f.type) && f.size <= MAX_SIZE_BYTES);
     if (valid.length === 0) return;
+    const totalMB = (valid.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)).toFixed(1);
+    setUploadTotalSize(`${valid.length} 张 · ${totalMB} MB`);
     setUploadProgress({ done: 0, total: valid.length, folder, currentFile: valid[0]?.name });
     const failed: string[] = [];
     for (let i = 0; i < valid.length; i++) {
@@ -538,6 +631,7 @@ function AppContent() {
     setUploadProgress({ done: valid.length, total: valid.length, folder });
     await fetchPhotos();
     setUploadProgress(null);
+    setUploadTotalSize(null);
     if (failed.length > 0) {
       showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
     } else {
@@ -727,13 +821,47 @@ function AppContent() {
 
   return (
     <div className="app">
+      {/* Reading progress bar */}
+      {scrollProgress > 0 && (
+        <div className="scroll-progress-bar" style={{ width: `${scrollProgress}%` }} />
+      )}
+
+      {/* Global drag-drop overlay */}
+      {isDragOver && (
+        <div className="drag-overlay">
+          <div className="drag-overlay-content">
+            <div className="drag-overlay-icon">📂</div>
+            <p className="drag-overlay-title">松开后跳转到文件夹视图上传</p>
+            <p className="drag-overlay-sub">支持 JPG、PNG、WebP、HEIC 等格式</p>
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard shortcuts help overlay */}
+      {showShortcutsHelp && (
+        <div className="dialog-overlay" onClick={() => setShowShortcutsHelp(false)}>
+          <div className="shortcuts-help-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="shortcuts-help-header">
+              <span>⌨️ 键盘快捷键</span>
+              <button className="dialog-close-btn" onClick={() => setShowShortcutsHelp(false)}>✕</button>
+            </div>
+            <ul className="shortcuts-list">
+              <li><kbd>R</kbd><span>刷新照片列表</span></li>
+              <li><kbd>?</kbd><span>显示 / 关闭本面板</span></li>
+              <li><kbd>⌫ Backspace</kbd><span>清空所有筛选条件</span></li>
+              <li><kbd>Esc</kbd><span>关闭侧边栏 / 弹框</span></li>
+              <li><kbd>← →</kbd><span>照片详情上一张 / 下一张</span></li>
+            </ul>
+          </div>
+        </div>
+      )}
       {locationBanner && (
         <div className="location-banner" key={locationBanner}>
           {locationBanner}
         </div>
       )}
       <header className="app-header">
-        <h1>Cloud Photo</h1>
+        <h1>Cloud Photo <span className="header-greeting">{greetingText} 👋</span></h1>
         <GroupSwitcher />
         <span className="photo-count">
           {photos.length.toLocaleString()} 张
@@ -753,6 +881,7 @@ function AppContent() {
           )}
           <button className="logout-btn" onClick={logout} title="退出登录">退出</button>
           <button className="settings-btn" onClick={() => setShowSettings(true)} title="设置">⚙️</button>
+          <button className="shortcuts-help-btn" onClick={() => setShowShortcutsHelp(true)} title="键盘快捷键 (?)">⌨️</button>
         </div>
       </header>
 
@@ -793,11 +922,16 @@ function AppContent() {
             {uploadProgress ? (
               <>
                 <span className="transfer-banner-icon">⬆️</span>
-                <span className="transfer-banner-text">
-                  {uploadProgress.currentFile
-                    ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.done + 1}/${uploadProgress.total})`
-                    : `上传中… (${uploadProgress.done}/${uploadProgress.total})`}
-                </span>
+                <div className="transfer-banner-body">
+                  <span className="transfer-banner-text">
+                    {uploadProgress.currentFile
+                      ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.done + 1}/${uploadProgress.total})`
+                      : `上传中… (${uploadProgress.done}/${uploadProgress.total})`}
+                  </span>
+                  {uploadTotalSize && (
+                    <span className="transfer-banner-size">{uploadTotalSize}</span>
+                  )}
+                </div>
                 <div className="transfer-banner-track">
                   <div
                     className="transfer-banner-fill"
@@ -895,8 +1029,52 @@ function AppContent() {
                 className={`quick-chip${filters.favoriteOnly ? " active" : ""}`}
                 onClick={() => setFilters((f) => ({ ...f, favoriteOnly: !f.favoriteOnly }))}
               >⭐ 收藏</button>
+              {availableFolders.slice(0, 4).map((folder) => (
+                <button
+                  key={folder}
+                  className={`quick-chip quick-chip--folder${filters.folder === folder ? " active" : ""}`}
+                  onClick={() => setFilters((f) => ({ ...f, folder: f.folder === folder ? "" : folder }))}
+                  title={folder}
+                >📁 {folder}</button>
+              ))}
               {activeFiltersCount > 0 && (
                 <button className="quick-chip quick-chip--clear" onClick={() => setFilters(emptyFilter)}>✕ 清空</button>
+              )}
+            </div>
+          )}
+          {activeTab === "timeline" && photos.length > 0 && (
+            <div className="weekly-summary-card">
+              <button
+                className="weekly-summary-toggle"
+                onClick={() => setWeeklyCardExpanded((v) => !v)}
+              >
+                <span>📊 本周概况</span>
+                <span className="weekly-summary-chevron">{weeklyCardExpanded ? "▲" : "▼"}</span>
+              </button>
+              {weeklyCardExpanded && (
+                <div className="weekly-summary-body">
+                  <div className="weekly-summary-row">
+                    <span>📸 本周上传</span><strong>{weeklyStats.thisWeek} 张</strong>
+                  </div>
+                  <div className="weekly-summary-row">
+                    <span>⭐ 总收藏</span><strong>{weeklyStats.favorites} 张</strong>
+                  </div>
+                  <div className="weekly-summary-row">
+                    <span>📁 文件夹</span><strong>{availableFolders.length} 个</strong>
+                  </div>
+                  {todayUploads.length > 0 && (
+                    <div className="weekly-summary-row weekly-summary-row--highlight">
+                      <span>🌟 今日上传</span><strong>{todayUploads.length} 张</strong>
+                    </div>
+                  )}
+                  <button
+                    className="share-summary-btn"
+                    onClick={() => {
+                      const text = `📷 Cloud Photo 周报\n本周上传：${weeklyStats.thisWeek} 张\n总收藏：${weeklyStats.favorites} 张\n文件夹：${availableFolders.length} 个\n总照片：${photos.length} 张`;
+                      void navigator.clipboard.writeText(text).then(() => showToast("周报已复制到剪贴板 📋", "success"));
+                    }}
+                  >📋 复制周报</button>
+                </div>
               )}
             </div>
           )}
@@ -950,6 +1128,16 @@ function AppContent() {
             </div>
           </div>
             ) : activeTab === "timeline" ? (
+              <>
+                {todayUploads.length > 0 && activeTab === "timeline" && !filters.dateFrom && (
+                  <div className="today-uploads-notice">
+                    <span>📸 今天上传了 <strong>{todayUploads.length}</strong> 张</span>
+                    <button
+                      className="today-uploads-jump"
+                      onClick={() => applyQuickDateFilter(activeDateChip === "today" ? null : "today")}
+                    >{activeDateChip === "today" ? "取消筛选" : "仅查看今日"}</button>
+                  </div>
+                )}
               <PhotoGallery
                 photos={filteredPhotos}
                 onDelete={handleDelete}
@@ -964,6 +1152,7 @@ function AppContent() {
                 focusPhotoName={timelineFocusPhotoName ?? undefined}
                 focusRequestKey={timelineFocusRequestKey}
               />
+              </>
             ) : activeTab === "moments" ? (
               <PhotoGallery
                 photos={importantPhotos}

@@ -10,6 +10,7 @@ export interface FilterState {
   favoriteOnly: boolean;
   missingSubjectOnly: boolean;
   uncategorizedOnly: boolean;
+  folder: string;
 }
 
 export const emptyFilter: FilterState = {
@@ -21,6 +22,7 @@ export const emptyFilter: FilterState = {
   favoriteOnly: false,
   missingSubjectOnly: false,
   uncategorizedOnly: false,
+  folder: "",
 };
 
 interface Props {
@@ -56,7 +58,7 @@ export default function FilterBar({
   const set = (key: keyof FilterState, value: string | boolean) =>
     onChange({ ...filters, [key]: value });
 
-  const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly || filters.missingSubjectOnly || filters.uncategorizedOnly;
+  const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly || filters.missingSubjectOnly || filters.uncategorizedOnly || filters.folder;
 
   // Active filter chips (all except name which has inline clear)
   const activeChips: { label: string; key: keyof FilterState }[] = [];
@@ -67,6 +69,7 @@ export default function FilterBar({
   if (filters.favoriteOnly) activeChips.push({ label: "仅收藏", key: "favoriteOnly" });
   if (filters.missingSubjectOnly) activeChips.push({ label: "缺少主题", key: "missingSubjectOnly" });
   if (filters.uncategorizedOnly) activeChips.push({ label: "未分类", key: "uncategorizedOnly" });
+  if (filters.folder) activeChips.push({ label: `📁 ${filters.folder}`, key: "folder" });
 
   return (
     <div className="filter-bar">
