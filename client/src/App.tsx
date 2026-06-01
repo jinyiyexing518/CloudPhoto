@@ -382,7 +382,7 @@ function AppContent() {
         const counts = links.reduce<Record<string, number>>((acc, item) => {
           const key = item.blobName;
           if (!key) return acc;
-          acc[key] = (acc[key] ?? 0) + (item.viewCount ?? 0);
+          acc[key] = (acc[key] ?? 0) + 1;
           return acc;
         }, {});
         if (!disposed) setMomentsShareViews(counts);
@@ -459,6 +459,13 @@ function AppContent() {
     setPhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, originalName: newOriginalName } : p))
     );
+  };
+
+  const handleMomentShareCreated = (photoName: string) => {
+    setMomentsShareViews((prev) => ({
+      ...prev,
+      [photoName]: (prev[photoName] ?? 0) + 1,
+    }));
   };
 
   const handleToggleFavorite = async (name: string, favorite: boolean): Promise<boolean> => {
@@ -779,6 +786,7 @@ function AppContent() {
                 onToggleFavorite={handleToggleFavorite}
                 onMovePhoto={handleMovePhoto}
                 onDownloadStateChange={setDownloading}
+                onShareCreated={handleMomentShareCreated}
                 userName={user?.displayName}
                 showImportantMoments={false}
                 focusPhotoName={timelineFocusPhotoName ?? undefined}
@@ -793,6 +801,7 @@ function AppContent() {
                 onToggleFavorite={handleToggleFavorite}
                 onMovePhoto={handleMovePhoto}
                 onDownloadStateChange={setDownloading}
+                onShareCreated={handleMomentShareCreated}
                 userName={user?.displayName}
                 showMemoryHighlights={false}
                 showImportantMoments={false}
@@ -812,6 +821,7 @@ function AppContent() {
                 onMovePhoto={handleMovePhoto}
                 onRenameFolder={handleRenameFolder}
                 onDownloadStateChange={setDownloading}
+                onShareCreated={handleMomentShareCreated}
                 userName={user?.displayName}
                 currentGroupId={currentGroupId || undefined}
                 contextKey={currentGroupId || "personal"}

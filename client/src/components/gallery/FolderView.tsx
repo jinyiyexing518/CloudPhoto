@@ -179,6 +179,7 @@ interface Props {
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
+  onShareCreated?: (photoName: string) => void;
   userName?: string;
   currentGroupId?: string;
   /** Unique key for localStorage persistence (e.g. groupId or "personal") */
@@ -198,6 +199,7 @@ export default function FolderView({
   onMovePhoto,
   onRenameFolder,
   onDownloadStateChange,
+  onShareCreated,
   userName,
   currentGroupId,
   contextKey = "personal",
@@ -561,6 +563,7 @@ export default function FolderView({
           onMovePhoto={onMovePhoto}
           onRenameSubFolder={onRenameFolder ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
           onDownloadStateChange={onDownloadStateChange}
+          onShareCreated={onShareCreated}
           userName={userName}
         />
       )}
@@ -587,6 +590,7 @@ interface ContentProps {
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
   onDownloadStateChange?: (downloading: boolean) => void;
+  onShareCreated?: (photoName: string) => void;
   userName?: string;
 }
 
@@ -607,6 +611,7 @@ function FolderContent({
   onMovePhoto,
   onRenameSubFolder,
   onDownloadStateChange,
+  onShareCreated,
   userName,
 }: ContentProps) {
   const showToast = useToast();
@@ -824,6 +829,7 @@ function FolderContent({
         url: finalUrl,
         expiresAt,
       });
+      onShareCreated?.(selectedPhoto.name);
       showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
     } catch (e) {
       showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");

@@ -23,6 +23,7 @@ interface Props {
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onMovePhoto?: (name: string, toFolder: string) => Promise<boolean>;
   onDownloadStateChange?: (downloading: boolean) => void;
+  onShareCreated?: (photoName: string) => void;
   userName?: string;
   showMemoryHighlights?: boolean;
   showImportantMoments?: boolean;
@@ -235,6 +236,7 @@ export default function PhotoGallery({
   onToggleFavorite,
   onMovePhoto,
   onDownloadStateChange,
+  onShareCreated,
   userName,
   showMemoryHighlights = true,
   showImportantMoments = false,
@@ -645,6 +647,7 @@ export default function PhotoGallery({
         url: finalUrl,
         expiresAt,
       });
+      onShareCreated?.(selectedPhoto.name);
       showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
     } catch (e) {
       showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");
