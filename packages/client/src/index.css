@@ -3750,7 +3750,7 @@ body {
   }
 
   .view-tabs-shell {
-    top: calc(115px + env(safe-area-inset-top, 0px));
+    top: calc(82px + env(safe-area-inset-top, 0px));
     padding-top: 8px;
   }
 
