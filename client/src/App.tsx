@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo, ManagedShareLink } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
-import FilterBar, { FilterState, emptyFilter } from "./components/gallery/FilterBar";
+import { FilterState, emptyFilter } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
-import HomeDashboard from "./components/home/HomeDashboard";
+import WorkspaceSidebar from "./components/home/WorkspaceSidebar";
 import SettingsDialog from "./components/settings/SettingsDialog";
 import InviteAcceptPage from "./components/invites/InviteAcceptPage";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -25,15 +25,6 @@ interface HomeDiagnosticsSnapshot {
   persistenceUpdatedAt?: string;
 }
 
-interface HomeActivityItem {
-  id: string;
-  icon: string;
-  title: string;
-  meta: string;
-  timestamp: number;
-  action: () => void;
-}
-
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
@@ -45,7 +36,7 @@ function AppContent() {
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [dashboardExpanded, setDashboardExpanded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsEntryTab>("profile");
   const [settingsFocusTarget, setSettingsFocusTarget] = useState<SettingsFocusTarget>("overview");
   const [settingsFocusItemId, setSettingsFocusItemId] = useState<string | undefined>(undefined);
@@ -153,6 +144,12 @@ function AppContent() {
   const [timelineFocusRequestKey, setTimelineFocusRequestKey] = useState(0);
   const transferring = uploadProgress !== null || downloading;
 
+  useEffect(() => {
+    if (activeTab === "timeline" || activeTab === "moments") {
+      setSidebarOpen(true);
+    }
+  }, [activeTab]);
+
   // Derived lists for filter dropdowns
   const uploaders = useMemo(
     () => [...new Set(photos.map((p) => p.createdBy).filter(Boolean) as string[])].sort(),
@@ -190,18 +187,8 @@ function AppContent() {
     return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 120);
   }, [photos]);
 
-  const groupLabel = useMemo(() => {
-    if (currentGroupId === "") return "个人空间";
-    return groups.find((group) => group.id === currentGroupId)?.name ?? "群组空间";
-  }, [currentGroupId, groups]);
-
   const folderCount = useMemo(
     () => new Set(photos.map((photo) => (photo.folder ?? "").trim()).filter(Boolean)).size,
-    [photos],
-  );
-
-  const favoriteCount = useMemo(
-    () => photos.filter((photo) => photo.favorite).length,
     [photos],
   );
 
@@ -212,11 +199,6 @@ function AppContent() {
 
   const uncategorizedCount = useMemo(
     () => photos.filter((photo) => !(photo.folder ?? "").trim()).length,
-    [photos],
-  );
-
-  const subjectCount = useMemo(
-    () => photos.filter((photo) => Boolean(photo.subject?.trim())).length,
     [photos],
   );
 
@@ -253,52 +235,6 @@ function AppContent() {
       return item.status === "active" && Number.isFinite(expiresAt) && expiresAt > now && expiresAt - now <= twoDaysMs;
     });
   }, [managedShareLinks]);
-
-  const recentActivity = useMemo<HomeActivityItem[]>(() => {
-    const uploadItems = [...photos]
-      .filter((photo) => photo.createdAt || photo.lastModified)
-      .sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())
-      .slice(0, 3)
-      .map((photo) => ({
-        id: `upload:${photo.name}`,
-        icon: "📤",
-        title: `${photo.originalName || (photo.name.split("/").pop() ?? photo.name).replace(/^\d+-/, "")} 已上传`,
-        meta: `${photo.createdBy ?? "未知上传者"} · ${new Date(photo.createdAt ?? photo.lastModified ?? 0).toLocaleString("zh-CN")}`,
-        timestamp: new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime(),
-        action: () => jumpToTimelinePhoto(photo.name, {
-          dateFrom: new Date(new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-          dateTo: new Date(photo.createdAt ?? photo.lastModified ?? 0).toISOString().slice(0, 10),
-        }),
-      }));
-
-    const shareItems = [...managedShareLinks]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 2)
-      .map((item) => ({
-        id: `share:${item.id}`,
-        icon: "🔗",
-        title: `${item.displayName} 已创建分享`,
-        meta: `${item.createdByName} · ${new Date(item.createdAt).toLocaleString("zh-CN")}`,
-        timestamp: new Date(item.createdAt).getTime(),
-        action: () => openSettingsTab("app", "managed-shares", item.id),
-      }));
-
-    const syncItem = homeDiagnostics.persistenceUpdatedAt
-      ? [{
-          id: "sync-status",
-          icon: "🩺",
-          title: homeDiagnostics.persistenceStatus === "server-synced" ? "浏览同步正常" : "浏览同步状态已更新",
-          meta: `${homeDiagnostics.localMomentsCount} 条本地记录 · ${new Date(homeDiagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}`,
-          timestamp: new Date(homeDiagnostics.persistenceUpdatedAt).getTime(),
-          action: () => openSettingsTab("diagnostics", "diagnostics"),
-        }]
-      : [];
-
-    return [...uploadItems, ...shareItems, ...syncItem]
-      .filter((item) => Number.isFinite(item.timestamp))
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 6);
-  }, [homeDiagnostics.localMomentsCount, homeDiagnostics.persistenceStatus, homeDiagnostics.persistenceUpdatedAt, managedShareLinks, photos]);
 
   const momentsStats = useMemo(() => {
     const now = Date.now();
@@ -751,70 +687,18 @@ function AppContent() {
           </button>
         </div>
 
-        <HomeDashboard
-          activeTab={activeTab}
-          groupLabel={groupLabel}
-          isStandalone={isStandalone}
-          dashboardExpanded={dashboardExpanded}
-          photoCount={photos.length}
-          folderCount={folderCount}
-          favoriteCount={favoriteCount}
-          subjectCount={subjectCount}
-          recentUploadsCount={recentUploads.length}
-          latestUploadText={latestUploadText}
-          managedShareLinksCount={managedShareLinksCount}
-          managedShareViewsTotal={managedShareViewsTotal}
-          topSharedPhotoName={topSharedPhotoName}
-          homeDiagnostics={homeDiagnostics}
-          recentActivity={recentActivity}
-          missingSubjectCount={missingSubjectCount}
-          uncategorizedCount={uncategorizedCount}
-          expiringSoonShareLinksCount={expiringSoonShareLinks.length}
-          onOpenFolder={() => switchTab("folder")}
-          onJumpRecentUploads={jumpToRecentUploads}
-          onToggleDashboard={() => setDashboardExpanded((value) => !value)}
-          onOpenManagedShares={() => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
-          onOpenDiagnostics={() => openSettingsTab("diagnostics", "diagnostics")}
-          onJumpMissingSubject={jumpToMissingSubjectPhotos}
-          onJumpUncategorized={jumpToUncategorizedPhotos}
-          onOpenExpiringShares={() => openSettingsTab("app", "managed-shares", expiringSoonShareLinks[0]?.id)}
-        />
+        <div className="workspace-layout">
+          <div className="workspace-main">
+            {(activeTab === "timeline" || activeTab === "moments") && (
+              <button
+                className={`workspace-sidebar-handle${sidebarOpen ? " workspace-sidebar-handle--hidden" : ""}`}
+                onClick={() => setSidebarOpen(true)}
+              >
+                {activeTab === "timeline" ? "筛选与整理" : "片段洞察"}
+              </button>
+            )}
 
-        {/* Timeline hint */}
-        {activeTab === "timeline" && (
-          <div className="timeline-upload-hint">
-            📁 请切换到「<button className="hint-tab-link" onClick={() => switchTab("folder")}>文件夹</button>」视图来添加照片
-          </div>
-        )}
-
-        {activeTab === "moments" && (
-          <div className="timeline-upload-hint">
-            ⭐ 这里展示按互动热度排序的重点照片（浏览记录跨设备持久化）
-          </div>
-        )}
-
-        {activeTab === "moments" && (
-          <div className="moments-stats-bar">
-            <span>重点照片：{momentsStats.total}</span>
-            <span>已收藏：{momentsStats.favoriteCount}</span>
-            <span>有主题：{momentsStats.withSubjectCount}</span>
-            <span>近 30 天：{momentsStats.recentCount}</span>
-            <span>筛选范围：{momentsStats.filteredTotal}</span>
-          </div>
-        )}
-
-        {activeTab === "timeline" && (
-          <FilterBar
-            filters={filters}
-            onChange={setFilters}
-            uploaders={uploaders}
-            subjects={subjects}
-            total={photos.length}
-            filtered={filteredPhotos.length}
-          />
-        )}
-
-        {loading ? (
+            {loading ? (
           <div className="loading">
             <div className="loading-spinner" />
             <span>加载中…</span>
@@ -840,53 +724,82 @@ function AppContent() {
               </button>
             </div>
           </div>
-        ) : activeTab === "timeline" ? (
-          <PhotoGallery
-            photos={filteredPhotos}
-            onDelete={handleDelete}
-            onSubjectUpdate={handleSubjectUpdate}
-            onRenamePhoto={handleRenamePhoto}
-            onToggleFavorite={handleToggleFavorite}
-            onMovePhoto={handleMovePhoto}
-            onDownloadStateChange={setDownloading}
-            userName={user?.displayName}
-            showImportantMoments={false}
-            focusPhotoName={timelineFocusPhotoName ?? undefined}
-            focusRequestKey={timelineFocusRequestKey}
+            ) : activeTab === "timeline" ? (
+              <PhotoGallery
+                photos={filteredPhotos}
+                onDelete={handleDelete}
+                onSubjectUpdate={handleSubjectUpdate}
+                onRenamePhoto={handleRenamePhoto}
+                onToggleFavorite={handleToggleFavorite}
+                onMovePhoto={handleMovePhoto}
+                onDownloadStateChange={setDownloading}
+                userName={user?.displayName}
+                showImportantMoments={false}
+                focusPhotoName={timelineFocusPhotoName ?? undefined}
+                focusRequestKey={timelineFocusRequestKey}
+              />
+            ) : activeTab === "moments" ? (
+              <PhotoGallery
+                photos={importantPhotos}
+                onDelete={handleDelete}
+                onSubjectUpdate={handleSubjectUpdate}
+                onRenamePhoto={handleRenamePhoto}
+                onToggleFavorite={handleToggleFavorite}
+                onMovePhoto={handleMovePhoto}
+                onDownloadStateChange={setDownloading}
+                userName={user?.displayName}
+                showMemoryHighlights={false}
+                showImportantMoments={false}
+                momentsMode
+                momentsShareViews={momentsShareViews}
+              />
+            ) : (
+              <FolderView
+                key={currentGroupId || "personal"}
+                photos={photos}
+                onDelete={handleDelete}
+                onSubjectUpdate={handleSubjectUpdate}
+                onRenamePhoto={handleRenamePhoto}
+                onToggleFavorite={handleToggleFavorite}
+                onUploadToFolder={handleUploadToFolder}
+                uploadProgress={uploadProgress}
+                onMovePhoto={handleMovePhoto}
+                onRenameFolder={handleRenameFolder}
+                onDownloadStateChange={setDownloading}
+                userName={user?.displayName}
+                currentGroupId={currentGroupId || undefined}
+                contextKey={currentGroupId || "personal"}
+              />
+            )}
+          </div>
+
+          <WorkspaceSidebar
+            activeTab={activeTab}
+            isOpen={sidebarOpen}
+            filters={filters}
+            onFiltersChange={setFilters}
+            uploaders={uploaders}
+            subjects={subjects}
+            totalPhotos={photos.length}
+            filteredPhotos={filteredPhotos.length}
+            recentUploadsCount={recentUploads.length}
+            latestUploadText={latestUploadText}
+            missingSubjectCount={missingSubjectCount}
+            uncategorizedCount={uncategorizedCount}
+            managedShareLinksCount={managedShareLinksCount}
+            managedShareViewsTotal={managedShareViewsTotal}
+            expiringSoonShareLinksCount={expiringSoonShareLinks.length}
+            topSharedPhotoName={topSharedPhotoName}
+            homeDiagnostics={homeDiagnostics}
+            momentsStats={momentsStats}
+            onJumpRecentUploads={jumpToRecentUploads}
+            onJumpMissingSubject={jumpToMissingSubjectPhotos}
+            onJumpUncategorized={jumpToUncategorizedPhotos}
+            onOpenManagedShares={() => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
+            onOpenDiagnostics={() => openSettingsTab("diagnostics", "diagnostics")}
+            onClose={() => setSidebarOpen(false)}
           />
-        ) : activeTab === "moments" ? (
-          <PhotoGallery
-            photos={importantPhotos}
-            onDelete={handleDelete}
-            onSubjectUpdate={handleSubjectUpdate}
-            onRenamePhoto={handleRenamePhoto}
-            onToggleFavorite={handleToggleFavorite}
-            onMovePhoto={handleMovePhoto}
-            onDownloadStateChange={setDownloading}
-            userName={user?.displayName}
-            showMemoryHighlights={false}
-            showImportantMoments={false}
-            momentsMode
-            momentsShareViews={momentsShareViews}
-          />
-        ) : (
-          <FolderView
-            key={currentGroupId || "personal"}
-            photos={photos}
-            onDelete={handleDelete}
-            onSubjectUpdate={handleSubjectUpdate}
-            onRenamePhoto={handleRenamePhoto}
-            onToggleFavorite={handleToggleFavorite}
-            onUploadToFolder={handleUploadToFolder}
-            uploadProgress={uploadProgress}
-            onMovePhoto={handleMovePhoto}
-            onRenameFolder={handleRenameFolder}
-            onDownloadStateChange={setDownloading}
-            userName={user?.displayName}
-            currentGroupId={currentGroupId || undefined}
-            contextKey={currentGroupId || "personal"}
-          />
-        )}
+        </div>
       </main>
     </div>
   );

@@ -70,10 +70,10 @@ build time (defaults to `/api`).
 - **Move photos** — move photos between folders via UI or drag-and-drop
 - **Timeline view** — date-grouped photo gallery, newest first
 - **Photo-first focus toolbar** — the home surface now uses a compact top toolbar to show current space, lightweight counts, runtime mode, and a few high-value navigation actions without pushing photo content too far down the page
-- **Collapsible dashboard drawer** — home insights, recent activity, cleanup assistant, and share watchlist are now grouped into an optional expandable panel so the default view stays visually focused on photos
-- **Recent activity feed** — the home page now aggregates the latest uploads, share creations, and sync updates into a compact activity stream so users can immediately see what changed most recently
-- **Cleanup assistant** — the dashboard now highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
-- **Share watchlist** — the home page now flags active share links expiring within 48 hours and provides a direct path into share maintenance
+- **Contextual workspace sidebar** — timeline and moments now use an elegant right-side panel that opens by default on entry, keeping filters and insights off the photo grid while still one tap away
+- **Recent activity feed** — the sidebar can surface the latest uploads, share creations, and sync updates without forcing those summaries above the photo content
+- **Cleanup assistant** — the sidebar highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
+- **Share watchlist** — the sidebar flags active share links expiring within 48 hours and provides a direct path into share maintenance
 - **Count-aware tab navigation** — Timeline / Folder / Moments tabs now display live counts so users can judge where to go without trial-and-error switching
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
 - **Important moments tab** — moments are ranked by engagement and shown in a dedicated ⭐ tab with independent filters and sort modes
@@ -589,7 +589,7 @@ CloudPhoto/
 │       │   │   ├── AuthPage.tsx          # Login / Register tab UI
 │       │   │   └── AddAdminDialog.tsx    # Promote user to admin
 │       │   ├── home/
-│       │   │   └── HomeDashboard.tsx     # Home focus toolbar + collapsible dashboard drawer
+│       │   │   └── WorkspaceSidebar.tsx  # Context-aware right sidebar for timeline / moments filters and insights
 │       │   ├── gallery/
 │       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection + focused photo targeting
 │       │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop, batch ops, share links
