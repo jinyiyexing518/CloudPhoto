@@ -687,7 +687,7 @@ function AppContent() {
           </button>
         </div>
 
-        <div className="workspace-layout">
+        <div className={`workspace-layout${(activeTab === "timeline" || activeTab === "moments") && sidebarOpen ? " workspace-layout--with-sidebar" : ""}`}>
           <div className="workspace-main">
             {(activeTab === "timeline" || activeTab === "moments") && (
               <button

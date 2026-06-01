@@ -2043,6 +2043,11 @@ body {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.workspace-layout--with-sidebar {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+}
+
 .workspace-main {
   min-width: 0;
   display: flex;
@@ -2051,23 +2056,19 @@ body {
 }
 
 .workspace-sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.32);
-  z-index: 18;
+  display: none;
 }
 
 .workspace-sidebar {
-  position: fixed;
+  position: sticky;
   top: 88px;
-  right: 18px;
-  width: min(360px, calc(100vw - 24px));
+  width: 360px;
   max-height: calc(100vh - 112px);
-  z-index: 19;
   opacity: 0;
   pointer-events: none;
   transform: translateX(18px);
   transition: transform 0.24s ease, opacity 0.24s ease;
+  align-self: start;
 }
 
 .workspace-sidebar--open {
@@ -3342,12 +3343,27 @@ body {
   }
 
   .workspace-sidebar {
+    position: fixed;
     top: auto;
     right: 0;
     bottom: 0;
     width: min(100vw, 420px);
     max-height: 88vh;
     transform: translateX(100%);
+    z-index: 19;
+  }
+
+  .workspace-layout--with-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .workspace-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.32);
+    z-index: 18;
   }
 
   .workspace-sidebar-shell {
