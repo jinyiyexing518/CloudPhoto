@@ -15,6 +15,7 @@ import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 
 type SettingsTab = "profile" | "security" | "trash" | "diagnostics";
+type SettingsEntryTab = SettingsTab | "app";
 
 const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
 const MOMENTS_DIAGNOSTICS_KEY = "cloudphoto_moments_diagnostics_v1";
@@ -33,6 +34,7 @@ interface Props {
   onPhotosRestored?: () => void;
   canInstall?: boolean;
   isStandalone?: boolean;
+  initialTab?: SettingsEntryTab;
   onInstallApp?: () => void;
   onOpenInstallGuide?: () => void;
 }
@@ -42,6 +44,7 @@ export default function SettingsDialog({
   onPhotosRestored,
   canInstall = false,
   isStandalone = false,
+  initialTab = "profile",
   onInstallApp,
   onOpenInstallGuide,
 }: Props) {
@@ -53,7 +56,7 @@ export default function SettingsDialog({
   const { user, updateUser } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
-  const [tab, setTab] = useState<SettingsTab | "app">("profile");
+  const [tab, setTab] = useState<SettingsEntryTab>(initialTab);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot>({
     serviceWorkerCount: 0,
     localMomentsCount: 0,

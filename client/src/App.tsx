@@ -15,6 +15,13 @@ import AddAdminDialog from "./components/auth/AddAdminDialog";
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 type ViewTab = "timeline" | "folder" | "moments";
+type SettingsEntryTab = "profile" | "security" | "trash" | "diagnostics" | "app";
+
+interface HomeDiagnosticsSnapshot {
+  localMomentsCount: number;
+  persistenceStatus: "unknown" | "local-only" | "server-synced" | "server-unavailable";
+  persistenceUpdatedAt?: string;
+}
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -27,6 +34,7 @@ function AppContent() {
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsEntryTab>("profile");
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
@@ -119,6 +127,13 @@ function AppContent() {
   const [downloading, setDownloading] = useState(false);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
+  const [managedShareLinksCount, setManagedShareLinksCount] = useState(0);
+  const [managedShareViewsTotal, setManagedShareViewsTotal] = useState(0);
+  const [topSharedPhotoName, setTopSharedPhotoName] = useState<string | null>(null);
+  const [homeDiagnostics, setHomeDiagnostics] = useState<HomeDiagnosticsSnapshot>({
+    localMomentsCount: 0,
+    persistenceStatus: "unknown",
+  });
   const transferring = uploadProgress !== null || downloading;
 
   // Derived lists for filter dropdowns
@@ -181,6 +196,26 @@ function AppContent() {
     [filters],
   );
 
+  const recentUploads = useMemo(() => {
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    return photos.filter((photo) => {
+      const ts = new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime();
+      return Number.isFinite(ts) && now - ts <= sevenDaysMs;
+    });
+  }, [photos]);
+
+  const latestUploadText = useMemo(() => {
+    const latestPhoto = [...photos].sort((a, b) => {
+      const at = new Date(a.createdAt ?? a.lastModified ?? 0).getTime();
+      const bt = new Date(b.createdAt ?? b.lastModified ?? 0).getTime();
+      return bt - at;
+    })[0];
+    if (!latestPhoto) return "暂无上传记录";
+    const ts = latestPhoto.createdAt ?? latestPhoto.lastModified;
+    return ts ? new Date(ts).toLocaleString("zh-CN") : "暂无上传时间";
+  }, [photos]);
+
   const momentsStats = useMemo(() => {
     const now = Date.now();
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -214,6 +249,74 @@ function AppContent() {
   }, [currentGroupId, showToast]);
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
+
+  useEffect(() => {
+    let disposed = false;
+    const loadManagedShareSummary = async () => {
+      try {
+        const links = await listManagedShareLinks();
+        if (disposed) return;
+        const safeLinks = Array.isArray(links) ? links : [];
+        setManagedShareLinksCount(safeLinks.filter((item) => item.status === "active").length);
+        setManagedShareViewsTotal(safeLinks.reduce((sum, item) => sum + (item.viewCount ?? 0), 0));
+        const topLink = [...safeLinks].sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0))[0];
+        setTopSharedPhotoName(topLink?.displayName ?? null);
+      } catch {
+        if (!disposed) {
+          setManagedShareLinksCount(0);
+          setManagedShareViewsTotal(0);
+          setTopSharedPhotoName(null);
+        }
+      }
+    };
+    void loadManagedShareSummary();
+    return () => {
+      disposed = true;
+    };
+  }, [currentGroupId]);
+
+  useEffect(() => {
+    const loadHomeDiagnostics = () => {
+      let localMomentsCount = 0;
+      let persistenceStatus: HomeDiagnosticsSnapshot["persistenceStatus"] = "unknown";
+      let persistenceUpdatedAt: string | undefined;
+
+      try {
+        const rawMoments = localStorage.getItem("cloudphoto_moments_insights_v1");
+        if (rawMoments) {
+          const parsed = JSON.parse(rawMoments) as Record<string, unknown>;
+          localMomentsCount = Object.keys(parsed ?? {}).length;
+        }
+      } catch {
+        localMomentsCount = 0;
+      }
+
+      try {
+        const rawDiagnostics = localStorage.getItem("cloudphoto_moments_diagnostics_v1");
+        if (rawDiagnostics) {
+          const parsed = JSON.parse(rawDiagnostics) as { status?: HomeDiagnosticsSnapshot["persistenceStatus"]; updatedAt?: string };
+          persistenceStatus = parsed.status ?? "unknown";
+          persistenceUpdatedAt = parsed.updatedAt;
+        }
+      } catch {
+        persistenceStatus = "unknown";
+      }
+
+      setHomeDiagnostics({
+        localMomentsCount,
+        persistenceStatus,
+        persistenceUpdatedAt,
+      });
+    };
+
+    loadHomeDiagnostics();
+    window.addEventListener("storage", loadHomeDiagnostics);
+    window.addEventListener("focus", loadHomeDiagnostics);
+    return () => {
+      window.removeEventListener("storage", loadHomeDiagnostics);
+      window.removeEventListener("focus", loadHomeDiagnostics);
+    };
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "moments") return;
@@ -369,6 +472,22 @@ function AppContent() {
     localStorage.setItem(INSTALL_BANNER_DISMISSED_KEY, "1");
   };
 
+  const openSettingsTab = (tab: SettingsEntryTab) => {
+    setSettingsInitialTab(tab);
+    setShowSettings(true);
+  };
+
+  const jumpToRecentUploads = () => {
+    const today = new Date();
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    setFilters((prev) => ({
+      ...prev,
+      dateFrom: sevenDaysAgo.toISOString().slice(0, 10),
+      dateTo: today.toISOString().slice(0, 10),
+    }));
+    switchTab("timeline");
+  };
+
   const installGuideText = useMemo(() => {
     if (isIOS) {
       return [
@@ -431,6 +550,7 @@ function AppContent() {
           onPhotosRestored={fetchPhotos}
           canInstall={canInstall}
           isStandalone={isStandalone}
+          initialTab={settingsInitialTab}
           onInstallApp={() => void handleInstallApp()}
           onOpenInstallGuide={() => setShowInstallGuide(true)}
         />
@@ -548,6 +668,39 @@ function AppContent() {
               打开设置 / 诊断
             </button>
           </div>
+        </section>
+
+        <section className="insights-hub">
+          <article className="insights-hub-card insights-hub-card--recent">
+            <div className="insights-hub-kicker">最近上传</div>
+            <div className="insights-hub-value">近 7 天新增 {recentUploads.length} 张</div>
+            <div className="insights-hub-meta">最近一次上传：{latestUploadText}</div>
+            <button className="insights-hub-btn" onClick={jumpToRecentUploads}>查看最近上传</button>
+          </article>
+
+          <article className="insights-hub-card insights-hub-card--share">
+            <div className="insights-hub-kicker">分享表现</div>
+            <div className="insights-hub-value">有效链接 {managedShareLinksCount} 条</div>
+            <div className="insights-hub-meta">累计分享浏览 {managedShareViewsTotal} 次{topSharedPhotoName ? ` · 最热：${topSharedPhotoName}` : ""}</div>
+            <button className="insights-hub-btn" onClick={() => openSettingsTab("app")}>管理分享链接</button>
+          </article>
+
+          <article className="insights-hub-card insights-hub-card--health">
+            <div className="insights-hub-kicker">同步健康</div>
+            <div className="insights-hub-value">
+              {homeDiagnostics.persistenceStatus === "server-synced"
+                ? "服务端已同步"
+                : homeDiagnostics.persistenceStatus === "server-unavailable"
+                ? "服务端暂不可用"
+                : homeDiagnostics.persistenceStatus === "local-only"
+                ? "当前仅本地保存"
+                : "等待诊断数据"}
+            </div>
+            <div className="insights-hub-meta">
+              本地浏览记录 {homeDiagnostics.localMomentsCount} 条{homeDiagnostics.persistenceUpdatedAt ? ` · 更新于 ${new Date(homeDiagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}` : ""}
+            </div>
+            <button className="insights-hub-btn" onClick={() => openSettingsTab("diagnostics")}>打开诊断页</button>
+          </article>
         </section>
 
         {/* Timeline hint */}
