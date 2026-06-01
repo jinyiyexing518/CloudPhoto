@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "server/**"
+      - "packages/server/**"
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:
 
@@ -58,12 +58,12 @@ jobs:
 
       - name: Install server production dependencies
         run: |
-          cd server
+          cd packages/server
           npm install --production --no-package-lock
 
       - name: Create deployment zip
         run: |
-          cd server
+          cd packages/server
           zip -r ../deployment.zip . \
             --exclude ".git/*" \
             --exclude ".github/*" \

@@ -2,8 +2,8 @@
   "name": "cloudphoto",
   "private": true,
   "workspaces": [
-    "client",
-    "server"
+    "packages/client",
+    "packages/server"
   ],
   "scripts": {
     "build": "yarn build:client && yarn build:server",
