@@ -590,7 +590,9 @@ CloudPhoto/
 │       │   │   ├── AuthPage.tsx          # Login / Register tab UI
 │       │   │   └── AddAdminDialog.tsx    # Promote user to admin
 │       │   ├── home/
-│       │   │   └── WorkspaceSidebar.tsx  # Context-aware right sidebar for timeline / moments filters and insights
+│       │   │   ├── WorkspaceSidebar.tsx  # Context-aware right sidebar for timeline / moments filters and insights
+│       │   │   └── floating/
+│       │   │       └── WorkspaceFab.tsx  # Floating pill control group for opening sidebar tools
 │       │   ├── gallery/
 │       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection + focused photo targeting
 │       │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop, batch ops, share links

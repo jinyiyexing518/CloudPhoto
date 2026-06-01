@@ -4,6 +4,7 @@ import PhotoGallery from "./components/gallery/PhotoGallery";
 import FolderView from "./components/gallery/FolderView";
 import { FilterState, emptyFilter } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
+import WorkspaceFab from "./components/home/floating/WorkspaceFab";
 import WorkspaceSidebar from "./components/home/WorkspaceSidebar";
 import SettingsDialog from "./components/settings/SettingsDialog";
 import InviteAcceptPage from "./components/invites/InviteAcceptPage";
@@ -690,32 +691,13 @@ function AppContent() {
         <div className="workspace-layout">
           <div className="workspace-main">
             {(activeTab === "timeline" || activeTab === "moments") && (
-              <div className={`workspace-fab-rail${sidebarOpen ? " workspace-fab-rail--hidden" : ""}`}>
-                <button
-                  className="workspace-fab-pill"
-                  onClick={() => setSidebarOpen(true)}
-                >
-                  <span className="workspace-fab-icon">{activeTab === "timeline" ? "⚙" : "✦"}</span>
-                  <span className="workspace-fab-copy">
-                    <strong>{activeTab === "timeline" ? "筛选与整理" : "片段洞察"}</strong>
-                    <em>{activeTab === "timeline" ? "打开时间线侧栏" : "打开重要片段侧栏"}</em>
-                  </span>
-                </button>
-                <div className="workspace-fab-chip-group">
-                  <button
-                    className="workspace-fab-chip"
-                    onClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
-                  >
-                    {activeTab === "timeline" ? "最近上传" : "分享管理"}
-                  </button>
-                  <button
-                    className="workspace-fab-chip workspace-fab-chip--secondary"
-                    onClick={activeTab === "timeline" ? jumpToMissingSubjectPhotos : () => openSettingsTab("diagnostics", "diagnostics")}
-                  >
-                    {activeTab === "timeline" ? "去整理" : "看诊断"}
-                  </button>
-                </div>
-              </div>
+              <WorkspaceFab
+                activeTab={activeTab}
+                hidden={sidebarOpen}
+                onOpenSidebar={() => setSidebarOpen(true)}
+                onPrimaryChipClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
+                onSecondaryChipClick={activeTab === "timeline" ? jumpToMissingSubjectPhotos : () => openSettingsTab("diagnostics", "diagnostics")}
+              />
             )}
 
             {loading ? (
