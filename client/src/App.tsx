@@ -151,6 +151,18 @@ function AppContent() {
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [sidebarOpen]);
+
   // Derived lists for filter dropdowns
   const uploaders = useMemo(
     () => [...new Set(photos.map((p) => p.createdBy).filter(Boolean) as string[])].sort(),
