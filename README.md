@@ -578,7 +578,7 @@ CloudPhoto/
 │   │   └── maskable-icon.svg
 │   ├── staticwebapp.config.json  # SPA fallback routing for SWA
 │   └── src/
-│       ├── App.tsx              # Root component — layout, transfer guard, PWA install/update hints
+│       ├── App.tsx              # Root component — data loading, top-level routing, dialogs, transfer guard
 │       ├── index.css            # Global styles + responsive breakpoints + batch-select UI
 │       ├── contexts/
 │       │   ├── AuthContext.tsx  # JWT auth state: login / register / logout / token persistence
@@ -588,12 +588,14 @@ CloudPhoto/
 │       │   ├── auth/
 │       │   │   ├── AuthPage.tsx          # Login / Register tab UI
 │       │   │   └── AddAdminDialog.tsx    # Promote user to admin
+│       │   ├── home/
+│       │   │   └── HomeDashboard.tsx     # Home focus toolbar + collapsible dashboard drawer
 │       │   ├── gallery/
-│       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection + expiring share links
+│       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection + focused photo targeting
 │       │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop, batch ops, share links
 │       │   │   ├── TrashView.tsx         # Recycle bin — restore or permanently delete
 │       │   │   ├── PhotoCard.tsx         # Thumbnail + selection badge + delete confirmation
-│       │   │   └── FilterBar.tsx         # Filter by name / subject / uploader / date range
+│       │   │   └── FilterBar.tsx         # Filter by name / subject / uploader / date / missing-subject / uncategorised
 │       │   └── groups/
 │       │       ├── GroupSwitcher.tsx     # Header dropdown: personal / groups
 │       │       ├── CreateGroupDialog.tsx # Create group form
