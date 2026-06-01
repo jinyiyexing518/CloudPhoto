@@ -22,6 +22,8 @@ body {
 .app-header {
   background: #fff;
   padding: 16px 24px;
+  /* account for iOS notch / status bar in standalone PWA mode */
+  padding-top: calc(16px + env(safe-area-inset-top, 0px));
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   display: flex;
   align-items: center;
@@ -277,7 +279,7 @@ body {
 /* ===== View Tabs ===== */
 .view-tabs-shell {
   position: sticky;
-  top: 72px;
+  top: calc(72px + env(safe-area-inset-top, 0px));
   z-index: 9;
   display: flex;
   flex-direction: column;
@@ -3637,7 +3639,7 @@ body {
   /* ── Header ── */
   .app-header {
     flex-wrap: wrap;
-    padding: 10px 12px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
     gap: 6px 10px;
   }
 
@@ -3735,7 +3737,7 @@ body {
   }
 
   .view-tabs-shell {
-    top: 92px;
+    top: calc(92px + env(safe-area-inset-top, 0px));
     padding-top: 8px;
   }
 
