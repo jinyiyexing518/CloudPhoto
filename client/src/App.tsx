@@ -54,6 +54,10 @@ function AppContent() {
   // Location banner: shown briefly when entering a group or personal space
   const [locationBanner, setLocationBanner] = useState<string | null>(null);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewTabsRef = useRef<HTMLDivElement | null>(null);
+  const [viewTabsScrollable, setViewTabsScrollable] = useState(false);
+  const [viewTabsShowLeft, setViewTabsShowLeft] = useState(false);
+  const [viewTabsShowRight, setViewTabsShowRight] = useState(false);
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -204,6 +208,21 @@ function AppContent() {
     () => new Set(photos.map((photo) => (photo.folder ?? "").trim()).filter(Boolean)).size,
     [photos],
   );
+
+  useEffect(() => {
+    const updateViewTabAffordance = () => {
+      const node = viewTabsRef.current;
+      if (!node) return;
+      const canScroll = node.scrollWidth > node.clientWidth + 8;
+      setViewTabsScrollable(canScroll);
+      setViewTabsShowLeft(canScroll && node.scrollLeft > 8);
+      setViewTabsShowRight(canScroll && node.scrollLeft + node.clientWidth < node.scrollWidth - 8);
+    };
+
+    updateViewTabAffordance();
+    window.addEventListener("resize", updateViewTabAffordance);
+    return () => window.removeEventListener("resize", updateViewTabAffordance);
+  }, [activeTab, filteredPhotos.length, folderCount, importantPhotos.length]);
 
   const missingSubjectCount = useMemo(
     () => photos.filter((photo) => !photo.subject?.trim()).length,
@@ -676,7 +695,19 @@ function AppContent() {
         )}
 
         {/* Tab bar */}
-        <div className="view-tabs">
+        <div className={`view-tabs-shell${viewTabsScrollable ? " view-tabs-shell--scrollable" : ""}`}>
+          <div className="view-tabs-meta">
+            <span className="view-tabs-title">浏览视图</span>
+            {viewTabsScrollable && <span className="view-tabs-hint">左右滑动切换</span>}
+          </div>
+          <div className={`view-tabs-fade view-tabs-fade--left${viewTabsShowLeft ? " is-visible" : ""}`} />
+          <div className={`view-tabs-fade view-tabs-fade--right${viewTabsShowRight ? " is-visible" : ""}`} />
+          <div className="view-tabs" ref={viewTabsRef} onScroll={() => {
+            const node = viewTabsRef.current;
+            if (!node) return;
+            setViewTabsShowLeft(node.scrollLeft > 8);
+            setViewTabsShowRight(node.scrollLeft + node.clientWidth < node.scrollWidth - 8);
+          }}>
           <button
             className={`view-tab${activeTab === "timeline" ? " active" : ""}`}
             onClick={() => switchTab("timeline")}
@@ -698,6 +729,7 @@ function AppContent() {
             <span>⭐ 重要片段</span>
             <span className="view-tab-count">{importantPhotos.length}</span>
           </button>
+          </div>
         </div>
 
         <div className="workspace-layout">

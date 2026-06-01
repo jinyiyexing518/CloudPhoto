@@ -303,7 +303,9 @@ export default function SettingsDialog({
         {/* Tab content */}
         <div className="settings-body" style={{ textAlign: "left" }} ref={settingsBodyRef}>
           <section className="settings-hero">
-            <div className="settings-hero-icon">{settingsHero.icon}</div>
+            <div className={`settings-hero-icon settings-hero-icon--${tab === "app" ? "app" : tab === "security" ? "security" : tab === "diagnostics" ? "diagnostics" : tab === "trash" ? "trash" : "profile"}`}>
+              {settingsHero.icon}
+            </div>
             <div className="settings-hero-copy">
               <h2>{settingsHero.title}</h2>
               <p>{settingsHero.description}</p>

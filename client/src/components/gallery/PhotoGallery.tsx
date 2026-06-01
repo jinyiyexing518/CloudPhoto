@@ -118,6 +118,31 @@ function getPeakViewDay(insight?: MomentInsight): string | undefined {
   return Object.entries(insight.dailyViews).sort((a, b) => b[1] - a[1])[0]?.[0];
 }
 
+function mergeMomentInsight(current: MomentInsight | undefined, incoming: MomentInsight): MomentInsight {
+  const mergedViewers = { ...(current?.viewers ?? {}) };
+  for (const [viewer, count] of Object.entries(incoming.viewers ?? {})) {
+    mergedViewers[viewer] = Math.max(mergedViewers[viewer] ?? 0, count);
+  }
+
+  const mergedDailyViews = { ...(current?.dailyViews ?? {}) };
+  for (const [day, count] of Object.entries(incoming.dailyViews ?? {})) {
+    mergedDailyViews[day] = Math.max(mergedDailyViews[day] ?? 0, count);
+  }
+
+  const currentLastViewedAt = current?.lastViewedAt ? new Date(current.lastViewedAt).getTime() : 0;
+  const incomingLastViewedAt = incoming.lastViewedAt ? new Date(incoming.lastViewedAt).getTime() : 0;
+  const useIncomingTimestamp = incomingLastViewedAt >= currentLastViewedAt;
+
+  return {
+    ...incoming,
+    totalViews: Math.max(current?.totalViews ?? 0, incoming.totalViews ?? 0),
+    viewers: mergedViewers,
+    dailyViews: mergedDailyViews,
+    lastViewedAt: useIncomingTimestamp ? incoming.lastViewedAt : current?.lastViewedAt,
+    lastViewedBy: useIncomingTimestamp ? incoming.lastViewedBy : current?.lastViewedBy,
+  };
+}
+
 function readLocalMomentInsights(): Record<string, MomentInsight> {
   try {
     const raw = localStorage.getItem(MOMENTS_LOCAL_STORAGE_KEY);
@@ -507,7 +532,7 @@ export default function PhotoGallery({
       writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(momentsInsightsMap).length + 1 });
       setMomentsInsightsMap((prev) => ({
         ...prev,
-        [photoName]: serverItem,
+        [photoName]: mergeMomentInsight(prev[photoName], serverItem),
       }));
     }).catch((e) => {
       if (e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
