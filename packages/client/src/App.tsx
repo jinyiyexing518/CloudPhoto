@@ -1464,7 +1464,7 @@ function AppContent() {
                 momentsMode
                 momentsShareViews={momentsShareViews}
               />
-            ) : (
+            ) : activeTab === "folder" ? (
               <Suspense fallback={null}><FolderView
                 key={currentGroupId || "personal"}
                 photos={photos}
@@ -1483,10 +1483,16 @@ function AppContent() {
                 currentGroupId={currentGroupId || undefined}
                 contextKey={currentGroupId || "personal"}
               /></Suspense>
-            )}
+            ) : null}
             {activeTab === "map" && (
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
-                <MemoryMap photos={photos} onViewPhoto={jumpToTimelinePhoto} />
+                <MemoryMap
+                  photos={photos}
+                  onViewPhoto={jumpToTimelinePhoto}
+                  onGpsUpdate={(name, lat, lon) =>
+                    setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
+                  }
+                />
               </Suspense>
             )}
             {activeTab === "capsule" && user && (

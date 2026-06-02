@@ -57,6 +57,8 @@ app.http("updatePhotoMetadata", {
         favorite?: boolean;
         updatedBy?: string;
         voiceMemoName?: string;
+        gpsLat?: string;
+        gpsLon?: string;
       };
 
       const blobServiceClient = getBlobServiceClient();
@@ -104,6 +106,8 @@ app.http("updatePhotoMetadata", {
             existing.voiceMemoName = body.voiceMemoName;
           }
         }
+        if (body.gpsLat !== undefined) existing.gpsLat = body.gpsLat;
+        if (body.gpsLon !== undefined) existing.gpsLon = body.gpsLon;
         if (body.updatedBy) existing.lastModifiedBy = b64(body.updatedBy);
         existing.lastModifiedAt = now;
 

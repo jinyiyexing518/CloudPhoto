@@ -343,6 +343,24 @@ export async function setPhotoVoiceMemo(
   }
 }
 
+export async function updatePhotoGps(
+  name: string,
+  gpsLat: string,
+  gpsLon: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ gpsLat, gpsLon }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "更新位置失败"));
+  }
+}
+
 export async function movePhotoToFolder(
   name: string,
   toFolder: string,
