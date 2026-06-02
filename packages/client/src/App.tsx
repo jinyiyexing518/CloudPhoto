@@ -169,19 +169,31 @@ function AppContent() {
     }
   }, [activeTab]);
 
-  // Auto-hide header: hide on scroll-down, reveal on scroll-up
+  // Auto-hide header + tab bar: hide on scroll-down, reveal on scroll-up or idle
   useEffect(() => {
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
     function handleScrollHide() {
       if (sidebarOpen) return;
       const y = window.scrollY;
       const delta = y - scrollHideRef.current;
       scrollHideRef.current = y;
-      if (y < 80) { setHeaderHidden(false); return; }
-      if (delta > 6) setHeaderHidden(true);
-      else if (delta < -4) setHeaderHidden(false);
+      // Always show near top of page
+      if (y < 60) { setHeaderHidden(false); return; }
+      if (delta > 4) {
+        setHeaderHidden(true);
+        // Auto-reveal after 3s of no scrolling (in case user stops mid-page)
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => setHeaderHidden(false), 3000);
+      } else if (delta < -4) {
+        setHeaderHidden(false);
+        if (idleTimer) clearTimeout(idleTimer);
+      }
     }
     window.addEventListener("scroll", handleScrollHide, { passive: true });
-    return () => window.removeEventListener("scroll", handleScrollHide);
+    return () => {
+      window.removeEventListener("scroll", handleScrollHide);
+      if (idleTimer) clearTimeout(idleTimer);
+    };
   }, [sidebarOpen]);
   // Always show header when sidebar opens
   useEffect(() => { if (sidebarOpen) setHeaderHidden(false); }, [sidebarOpen]);
