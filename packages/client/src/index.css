@@ -2658,7 +2658,7 @@ body {
 .workspace-fab-rail {
   position: fixed;
   right: 22px;
-  bottom: 22px;
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   z-index: 23;
   display: flex;
   flex-direction: column;
@@ -3897,7 +3897,7 @@ body {
 
   .workspace-fab-rail {
     right: 12px;
-    bottom: 16px;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   }
 
   .workspace-fab-pill {
@@ -5469,7 +5469,7 @@ body {
 /* ── U4: Scroll-to-top button — gradient pill ──── */
 .scroll-top-btn {
   position: fixed;
-  bottom: 100px;
+  bottom: calc(108px + env(safe-area-inset-bottom, 0px));
   right: 20px;
   width: 44px;
   height: 44px;
