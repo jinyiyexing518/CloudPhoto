@@ -3365,7 +3365,8 @@ body {
   border: none;
   outline: none;
   padding: 10px 0;
-  font-size: 0.9rem;
+  /* 16px minimum prevents iOS Safari from auto-zooming the page on focus */
+  font-size: 1rem;
   background: transparent;
 }
 
@@ -3715,6 +3716,7 @@ body {
   position: fixed;
   right: calc(24px + env(safe-area-inset-right, 0px));
   bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  width: 240px;
   z-index: 23;
   display: flex;
   flex-direction: column;
@@ -5064,6 +5066,7 @@ body {
   }
 
   .workspace-fab-rail {
+    width: 200px;
     right: calc(20px + env(safe-area-inset-right, 0px));
     bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   }

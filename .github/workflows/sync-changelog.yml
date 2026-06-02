@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "data/changelog.json"
+      - "changes/**"
       - "scripts/sync-changelog.mjs"
   workflow_dispatch:
 

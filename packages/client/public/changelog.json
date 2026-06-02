@@ -56,12 +56,37 @@
     "details": "在「🗺️ 记忆地图」标签查看所有含位置信息的照片分布。上传时自动读取图片 EXIF GPS 数据并存储。点击地图上的照片图标可查看详情并跳转到时间线。"
   },
   {
+    "id": "fab-position-fix",
+    "date": "2026-06-02",
+    "icon": "📌",
+    "title": "FAB 位置抖动修复",
+    "description": "修复浮动操作栏在时间线/重要片段切换时芯片位置不一致，以及触摸滑动误触导致的抖动偏移问题。",
+    "details": [
+      "给 .workspace-fab-rail 设置固定宽度 (240px / 移动端 200px)，防止因两个 Tab 下胶囊文本长度不同导致 rail 宽度变化、左边缘偏移",
+      "onPointerMove 添加 8px 拖动阈值，避免在 FAB 上的滑动滚动手势被误判为拖拽并保存错误坐标",
+      "从 localStorage 恢复位置时校验是否在当前视口范围内，超出则丢弃，防止切换设备后出现位置偏移"
+    ]
+  },
+  {
     "id": "delete-progress",
     "date": "2026-06-02",
     "icon": "🗑️",
     "title": "删除与清空进度条",
     "desc": "批量删除照片和清空回收站时显示实时进度条",
     "details": "批量选中后执行删除，页面顶部会出现进度条（复用上传进度的样式），显示「删除中 X/总数」和百分比，逐张处理完成后自动消失。回收站「清空回收站」操作在对话框内显示内联进度块，清空过程中按钮禁用防止重复点击。"
+  },
+  {
+    "id": "changelog-pipeline",
+    "date": "2026-06-02",
+    "icon": "🔧",
+    "title": "Changelog Pipeline 精简",
+    "description": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
+    "details": [
+      "sync-changelog.mjs 改为直接读取 changes/*.json，不再依赖 data/changelog.json",
+      "collect-changes.mjs 只写 packages/client/public/changelog.json（客户端 fallback），data/ 目录删除",
+      "GitHub Actions sync-changelog.yml 触发路径从 data/changelog.json 改为 changes/**",
+      "fetchChangelogs API 失败时 fallback 到 /changelog.json 静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗"
+    ]
   },
   {
     "id": "auto-story",

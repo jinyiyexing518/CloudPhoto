@@ -2,7 +2,7 @@
 /**
  * sync-changelog.mjs
  *
- * Reads data/changelog.json and upserts all entries into the Cosmos DB
+ * Reads all files from changes/ and upserts them into the Cosmos DB
  * "changelogs" container.
  *
  * Prerequisites:
@@ -17,13 +17,14 @@
  *   node scripts/sync-changelog.mjs
  */
 
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { CosmosClient } from "@azure/cosmos";
 import { DefaultAzureCredential } from "@azure/identity";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "..");
 
 const endpoint = process.env.COSMOS_ENDPOINT;
 if (!endpoint) {
@@ -44,8 +45,17 @@ const client = new CosmosClient({
 
 const container = client.database(databaseId).container("changelogs");
 
-const changelogPath = join(__dirname, "..", "data", "changelog.json");
-const entries = JSON.parse(readFileSync(changelogPath, "utf8"));
+const changesDir = join(root, "changes");
+const entries = readdirSync(changesDir)
+  .filter((f) => f.endsWith(".json"))
+  .sort()
+  .reverse()
+  .map((f) => JSON.parse(readFileSync(join(changesDir, f), "utf8")));
+
+if (entries.length === 0) {
+  console.warn("No change files found in changes/. Nothing to sync.");
+  process.exit(0);
+}
 
 console.log(
   `Syncing ${entries.length} changelog entries → Cosmos DB "${databaseId}/changelogs" ...`

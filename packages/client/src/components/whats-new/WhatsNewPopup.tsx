@@ -27,19 +27,9 @@ export default function WhatsNewPopup() {
     });
   }, []);
 
-  // 锁定 body 滚动并补偿滚动条宽度，消除弹窗偏右问题
-  useEffect(() => {
-    if (!visible) return;
-    const sw = window.innerWidth - document.documentElement.clientWidth;
-    const prev = document.body.style.overflow;
-    const prevPad = document.body.style.paddingRight;
-    document.body.style.overflow = "hidden";
-    document.body.style.paddingRight = `${sw}px`;
-    return () => {
-      document.body.style.overflow = prev;
-      document.body.style.paddingRight = prevPad;
-    };
-  }, [visible]);
+  // WhatsNew 是自动淡出的轻量提示层，不需要锁定 body 滚动。
+  // 之前的 scroll-lock + paddingRight 补偿会在弹窗淡出时产生布局位移，
+  // 导致 position:fixed 的 FAB 看起来发生了偏移。
 
   // 启动自动淡出倒计时；pinned 后取消
   useEffect(() => {

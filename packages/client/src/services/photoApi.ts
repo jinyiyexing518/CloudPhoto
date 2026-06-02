@@ -371,15 +371,30 @@ export interface ChangelogEntry {
 }
 
 export async function fetchChangelogs(days = 7): Promise<ChangelogEntry[]> {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().split("T")[0];
+
+  const filterByDate = (list: ChangelogEntry[]) =>
+    list.filter((e) => e.date >= cutoffStr);
+
   try {
     const response = await fetchWithTimeout(
       `${API_BASE}/changelogs?days=${days}`,
       { method: "GET", headers: { "Content-Type": "application/json" } },
     );
-    if (!response.ok) return [];
+    if (!response.ok) throw new Error(response.statusText);
     return (await response.json()) as ChangelogEntry[];
   } catch {
-    return [];
+    // API unavailable (server not running in local dev) — fall back to the
+    // static changelog.json bundled in public/.
+    try {
+      const res = await fetch("/changelog.json");
+      if (!res.ok) return [];
+      return filterByDate((await res.json()) as ChangelogEntry[]);
+    } catch {
+      return [];
+    }
   }
 }
 

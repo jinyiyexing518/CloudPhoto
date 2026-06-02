@@ -62,12 +62,12 @@ async function main() {
   writeFileSync(filepath, JSON.stringify(entry, null, 2) + "\n", "utf8");
   console.log(`\n  ✅ Created: changes/${filename}`);
 
-  // Regenerate data/changelog.json
-  console.log("  ↺  Regenerating data/changelog.json...");
+  // Regenerate packages/client/public/changelog.json
+  console.log("  ↺  Regenerating public/changelog.json...");
   execSync("node scripts/collect-changes.mjs", { cwd: root, stdio: "inherit" });
 
   console.log("\n  Next steps:");
-  console.log(`    git add changes/${filename} data/changelog.json`);
+  console.log(`    git add changes/${filename} packages/client/public/changelog.json`);
   console.log("    git commit -m 'chore: add change file for <feature>'\n");
 }
 

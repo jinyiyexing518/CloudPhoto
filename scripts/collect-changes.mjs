@@ -2,11 +2,13 @@
 /**
  * collect-changes.mjs
  *
- * Reads every *.json file in changes/ (sorted newest-first by filename),
- * merges them into data/changelog.json, and prints a summary.
+ * Reads every *.json file in changes/ (sorted newest-first by filename) and
+ * writes packages/client/public/changelog.json so the WhatsNew popup can
+ * fall back to it when the API server is not running.
  *
- * This is the single source of truth pipeline:
- *   changes/<date>-<id>.json  →  data/changelog.json  →  Cosmos DB (via sync-changelog.mjs)
+ * Pipeline:
+ *   changes/<date>-<id>.json  →  public/changelog.json  (client fallback)
+ *                             →  Cosmos DB              (via sync-changelog.mjs / GitHub Actions)
  *
  * Usage:
  *   node scripts/collect-changes.mjs
@@ -18,7 +20,7 @@ import { fileURLToPath } from "url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const changesDir = join(root, "changes");
-const outputPath = join(root, "data", "changelog.json");
+const publicPath = join(root, "packages", "client", "public", "changelog.json");
 
 mkdirSync(changesDir, { recursive: true });
 
@@ -28,7 +30,7 @@ const files = readdirSync(changesDir)
   .reverse();  // newest first (matches existing changelog.json order)
 
 if (files.length === 0) {
-  console.warn("  ⚠  No change files found in changes/. data/changelog.json not updated.");
+  console.warn("  ⚠  No change files found in changes/. public/changelog.json not updated.");
   process.exit(0);
 }
 
@@ -41,7 +43,6 @@ const entries = files.map((f) => {
   }
 });
 
-mkdirSync(join(root, "data"), { recursive: true });
-writeFileSync(outputPath, JSON.stringify(entries, null, 2) + "\n", "utf8");
+writeFileSync(publicPath, JSON.stringify(entries, null, 2) + "\n", "utf8");
 
-console.log(`  ✅ Collected ${entries.length} change file(s) → data/changelog.json`);
+console.log(`  ✅ Collected ${entries.length} change file(s) → packages/client/public/changelog.json`);

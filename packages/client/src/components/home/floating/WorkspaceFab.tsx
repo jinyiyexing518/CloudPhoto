@@ -21,21 +21,31 @@ export default function WorkspaceFab({
   const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
     try {
       const saved = localStorage.getItem("fab-pos");
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const p = JSON.parse(saved) as { x: number; y: number };
+      // Discard positions that fall outside the current viewport (e.g. from a different screen size)
+      if (
+        typeof p.x !== "number" || typeof p.y !== "number" ||
+        p.x < 0 || p.x > window.innerWidth - 50 ||
+        p.y < 0 || p.y > window.innerHeight - 50
+      ) {
+        localStorage.removeItem("fab-pos");
+        return null;
+      }
+      return p;
     } catch {
       return null;
     }
   });
 
   const railRef = useRef<HTMLDivElement>(null);
-  const drag = useRef({ active: false, mx: 0, my: 0, ox: 0, oy: 0 });
+  const drag = useRef({ active: false, hasDragged: false, mx: 0, my: 0, ox: 0, oy: 0 });
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as Element).closest("button")) return;
     e.preventDefault();
     const rect = railRef.current!.getBoundingClientRect();
-    drag.current = { active: true, mx: e.clientX, my: e.clientY, ox: rect.left, oy: rect.top };
-    railRef.current!.style.cursor = "grabbing";
+    drag.current = { active: true, hasDragged: false, mx: e.clientX, my: e.clientY, ox: rect.left, oy: rect.top };
     railRef.current!.style.transition = "none";
     (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
   }, []);
@@ -43,16 +53,29 @@ export default function WorkspaceFab({
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current.active) return;
     const { mx, my, ox, oy } = drag.current;
-    setPos({ x: ox + e.clientX - mx, y: oy + e.clientY - my });
+    const dx = e.clientX - mx;
+    const dy = e.clientY - my;
+    // Require at least 8px movement before treating as a real drag — prevents
+    // accidental repositioning when the user scrolls or taps over the FAB.
+    if (!drag.current.hasDragged) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      drag.current.hasDragged = true;
+      railRef.current!.style.cursor = "grabbing";
+    }
+    setPos({ x: ox + dx, y: oy + dy });
   }, []);
 
   const onPointerUp = useCallback(() => {
     if (!drag.current.active) return;
+    const wasDragged = drag.current.hasDragged;
     drag.current.active = false;
+    drag.current.hasDragged = false;
     const el = railRef.current;
     if (!el) return;
     el.style.cursor = "";
     el.style.transition = "";
+    // Only persist position if the user actually dragged (not just tapped)
+    if (!wasDragged) return;
     const maxX = window.innerWidth - el.offsetWidth - 8;
     const maxY = window.innerHeight - el.offsetHeight - 8;
     setPos((prev) => {
