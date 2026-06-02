@@ -46,16 +46,19 @@ body {
   color: #0078d4;
 }
 
+/* Push everything after the title to the right */
+.app-header .group-switcher {
+  margin-left: auto;
+}
+
 .photo-count {
   font-size: 0.875rem;
   color: #666;
-  margin-left: auto;
 }
 
 /* User avatar button + dropdown menu */
 .user-avatar-wrap {
   position: relative;
-  margin-left: auto;
   flex-shrink: 0;
 }
 
@@ -3747,6 +3750,7 @@ body {
   .group-switcher {
     flex: 1;
     min-width: 0;
+    margin-left: 0;
   }
 
   .group-switcher-btn {
