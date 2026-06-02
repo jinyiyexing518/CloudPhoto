@@ -52,7 +52,6 @@ body {
 .app-header .group-switcher {
   margin-left: auto;
   min-width: 0;
-  max-width: 200px;
 }
 
 .group-switcher-label {
@@ -3785,7 +3784,6 @@ body {
   .app-header .group-switcher {
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 160px;
     margin-left: auto;
   }
 
