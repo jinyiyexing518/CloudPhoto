@@ -31,3 +31,4 @@ import "./functions/invites/getInvite";
 import "./functions/invites/respondInvite";
 import "./functions/invites/listGroupInvites";
 import "./functions/invites/cancelInvite";
+import "./functions/changelogs/getChangelogs";

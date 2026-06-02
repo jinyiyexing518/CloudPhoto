@@ -1,0 +1,69 @@
+name: Sync Changelog to Cosmos DB
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/changelog.json"
+      - "scripts/sync-changelog.mjs"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Required for OIDC Azure login
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Install Cosmos DB + Identity packages
+        # These are hoisted from packages/server — just install them at root
+        run: npm install --no-save @azure/cosmos @azure/identity
+
+      - name: Azure Login (attempt 1)
+        id: azure_login_first
+        uses: azure/login@v2
+        continue-on-error: true
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure Login (attempt 2)
+        id: azure_login_second
+        if: steps.azure_login_first.outcome == 'failure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sync changelog entries to Cosmos DB
+        run: node scripts/sync-changelog.mjs
+        env:
+          # Add COSMOS_ENDPOINT as a GitHub secret (same value as the Azure
+          # Functions App Setting): https://<account>.documents.azure.com:443/
+          #
+          # Also ensure the service principal (AZURE_CLIENT_ID) has the
+          # "Cosmos DB Built-in Data Contributor" role on your Cosmos account:
+          #
+          #   az cosmosdb sql role assignment create \
+          #     --account-name <account> \
+          #     --resource-group <rg> \
+          #     --role-definition-name "Cosmos DB Built-in Data Contributor" \
+          #     --principal-id <service-principal-object-id> \
+          #     --scope "/"
+          COSMOS_ENDPOINT: ${{ secrets.COSMOS_ENDPOINT }}
+          COSMOS_DATABASE: cloudphoto
+          # WorkloadIdentity env vars (set automatically by azure/login@v2):
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_FEDERATED_TOKEN_FILE: ${{ env.AZURE_FEDERATED_TOKEN_FILE }}

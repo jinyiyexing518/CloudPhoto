@@ -361,6 +361,28 @@ export async function updatePhotoGps(
   }
 }
 
+export interface ChangelogEntry {
+  id: string;
+  date: string;
+  icon: string;
+  title: string;
+  desc: string;
+  details?: string;
+}
+
+export async function fetchChangelogs(days = 7): Promise<ChangelogEntry[]> {
+  try {
+    const response = await fetchWithTimeout(
+      `${API_BASE}/changelogs?days=${days}`,
+      { method: "GET", headers: { "Content-Type": "application/json" } },
+    );
+    if (!response.ok) return [];
+    return (await response.json()) as ChangelogEntry[];
+  } catch {
+    return [];
+  }
+}
+
 export async function movePhotoToFolder(
   name: string,
   toFolder: string,

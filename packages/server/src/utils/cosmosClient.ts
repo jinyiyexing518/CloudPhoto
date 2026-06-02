@@ -48,6 +48,10 @@ export async function getAdminsContainer(): Promise<Container> {
   return getContainer("admins");
 }
 
+export async function getChangelogsContainer(): Promise<Container> {
+  return getContainer("changelogs");
+}
+
 export interface UserDoc {
   id: string;
   username: string;
