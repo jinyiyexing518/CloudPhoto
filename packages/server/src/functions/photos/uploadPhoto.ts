@@ -11,11 +11,17 @@ import {
 } from "../../utils/blobStorage";
 import { extractTokenFromHeader } from "../../utils/jwtUtils";
 
-const ALLOWED_UPLOAD_MIME = new Set([
+const ALLOWED_IMAGE_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif",
   "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff",
 ]);
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
+const ALLOWED_VIDEO_MIME = new Set([
+  "video/mp4", "video/quicktime", "video/webm",
+  "video/x-msvideo", "video/mpeg", "video/3gpp", "video/3gpp2",
+]);
+const ALLOWED_UPLOAD_MIME = new Set([...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME]);
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;   // 20 MB
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;  // 200 MB
 
 app.http("uploadPhoto", {
   methods: ["POST"],
@@ -32,8 +38,9 @@ app.http("uploadPhoto", {
         request.query.get("filename") ?? `photo-${Date.now()}.jpg`;
       const contentType =
         request.headers.get("content-type") ?? "image/jpeg";
-      if (!ALLOWED_UPLOAD_MIME.has(contentType.split(";")[0].trim())) {
-        return { status: 415, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "只支持图片文件 (JPEG, PNG, GIF, WebP, HEIC 等)" }) };
+      const mimeType = contentType.split(";")[0].trim();
+      if (!ALLOWED_UPLOAD_MIME.has(mimeType)) {
+        return { status: 415, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "只支持图片和视频文件 (JPEG, PNG, WebP, MP4, MOV 等)" }) };
       }
       const uploadedBy = request.query.get("uploadedBy") ?? "unknown";
       const subject = request.query.get("subject") ?? "";
@@ -61,8 +68,11 @@ app.http("uploadPhoto", {
 
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
       const arrayBuffer = await request.arrayBuffer();
-      if (arrayBuffer.byteLength > MAX_UPLOAD_BYTES) {
-        return { status: 413, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "文件过大，最大支持 20 MB" }) };
+      const isVideoUpload = ALLOWED_VIDEO_MIME.has(mimeType);
+      const maxBytes = isVideoUpload ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+      if (arrayBuffer.byteLength > maxBytes) {
+        const limit = isVideoUpload ? "200 MB" : "20 MB";
+        return { status: 413, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: `文件过大，${isVideoUpload ? "视频" : "图片"}最大支持 ${limit}` }) };
       }
 
       // Azure Blob metadata only allows ASCII — base64-encode all free-text fields

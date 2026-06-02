@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
-import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo, ManagedShareLink } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
 import { FilterState, emptyFilter } from "./components/gallery/FilterBar";
@@ -133,7 +133,7 @@ function AppContent() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; folder: string; currentFile?: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
@@ -699,39 +699,63 @@ function AppContent() {
   }, [tabKey, showToast]);
 
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
-    const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
-    const MAX_SIZE_BYTES = 20 * 1024 * 1024;
+    const IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
+    const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/mpeg", "video/3gpp", "video/3gpp2"]);
+    const ALLOWED_TYPES = new Set([...IMAGE_TYPES, ...VIDEO_TYPES]);
+    const IMAGE_MAX = 20 * 1024 * 1024;   // 20 MB
+    const VIDEO_MAX = 200 * 1024 * 1024;  // 200 MB
     const fileArray = Array.from(files);
     const invalidType = fileArray.filter((f) => !ALLOWED_TYPES.has(f.type));
-    const oversized = fileArray.filter((f) => ALLOWED_TYPES.has(f.type) && f.size > MAX_SIZE_BYTES);
+    const oversized = fileArray.filter((f) => {
+      if (!ALLOWED_TYPES.has(f.type)) return false;
+      return f.size > (VIDEO_TYPES.has(f.type) ? VIDEO_MAX : IMAGE_MAX);
+    });
     if (invalidType.length > 0 || oversized.length > 0) {
       const msgs: string[] = [];
-      if (invalidType.length) msgs.push(`非图片文件: ${invalidType.map((f) => f.name).join(", ")}`);
-      if (oversized.length) msgs.push(`文件过大(>20MB): ${oversized.map((f) => f.name).join(", ")}`);
+      if (invalidType.length) msgs.push(`不支持的文件类型: ${invalidType.map((f) => f.name).join(", ")}`);
+      if (oversized.length) msgs.push(`文件过大(图片>20MB,视频>200MB): ${oversized.map((f) => f.name).join(", ")}`);
       showToast(msgs.join("; "), "error");
     }
-    const valid = fileArray.filter((f) => ALLOWED_TYPES.has(f.type) && f.size <= MAX_SIZE_BYTES);
+    const valid = fileArray.filter((f) => {
+      if (!ALLOWED_TYPES.has(f.type)) return false;
+      return f.size <= (VIDEO_TYPES.has(f.type) ? VIDEO_MAX : IMAGE_MAX);
+    });
     if (valid.length === 0) return;
-    const totalMB = (valid.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)).toFixed(1);
-    setUploadTotalSize(`${valid.length} 张 · ${totalMB} MB`);
-    setUploadProgress({ done: 0, total: valid.length, folder, currentFile: valid[0]?.name });
+    const bytesTotal = valid.reduce((sum, f) => sum + f.size, 0);
+    const totalMB = (bytesTotal / (1024 * 1024)).toFixed(1);
+    setUploadTotalSize(`${valid.length} 个 · ${totalMB} MB`);
+    setUploadProgress({ bytesLoaded: 0, bytesTotal, filesDone: 0, filesTotal: valid.length, folder, currentFile: valid[0]?.name });
     const failed: string[] = [];
+    let completedBytes = 0;
     for (let i = 0; i < valid.length; i++) {
-      setUploadProgress({ done: i, total: valid.length, folder, currentFile: valid[i].name });
+      setUploadProgress({ bytesLoaded: completedBytes, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
+      const fileBase = completedBytes;
       try {
-        await uploadPhoto(valid[i], user?.displayName || undefined, subject || undefined, folder || undefined, currentGroupId || undefined);
+        await uploadPhotoWithProgress(
+          valid[i],
+          (loaded) => {
+            setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
+          },
+          user?.displayName || undefined,
+          subject || undefined,
+          folder || undefined,
+          currentGroupId || undefined,
+        );
+        completedBytes += valid[i].size;
       } catch {
         failed.push(valid[i].name);
+        completedBytes += valid[i].size;
       }
     }
-    setUploadProgress({ done: valid.length, total: valid.length, folder });
+    setUploadProgress({ bytesLoaded: bytesTotal, bytesTotal, filesDone: valid.length, filesTotal: valid.length, folder });
     await fetchPhotos();
     setUploadProgress(null);
     setUploadTotalSize(null);
     if (failed.length > 0) {
       showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
     } else {
-      showToast(`成功上传 ${valid.length} 张照片`, "success");
+      const hasVideo = valid.some((f) => VIDEO_TYPES.has(f.type));
+      showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
     }
   };
 
@@ -1067,21 +1091,23 @@ function AppContent() {
                   <div className="transfer-banner-body">
                     <span className="transfer-banner-text">
                       {uploadProgress.currentFile
-                        ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.done + 1}/${uploadProgress.total})`
-                        : `上传中… (${uploadProgress.done}/${uploadProgress.total})`}
+                        ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.filesDone + 1}/${uploadProgress.filesTotal})`
+                        : `上传完成 (${uploadProgress.filesTotal}/${uploadProgress.filesTotal})`}
                     </span>
                     {uploadTotalSize && (
-                      <span className="transfer-banner-size">{uploadTotalSize}</span>
+                      <span className="transfer-banner-size">
+                        {(uploadProgress.bytesLoaded / 1024 / 1024).toFixed(1)} / {(uploadProgress.bytesTotal / 1024 / 1024).toFixed(1)} MB
+                      </span>
                     )}
                   </div>
                   <span className="transfer-banner-pct">
-                    {Math.round((uploadProgress.done / uploadProgress.total) * 100)}%
+                    {Math.round((uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%
                   </span>
                 </div>
                 <div className="transfer-banner-track">
                   <div
                     className="transfer-banner-fill"
-                    style={{ width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%` }}
+                    style={{ width: `${Math.round((uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%` }}
                   />
                 </div>
               </>

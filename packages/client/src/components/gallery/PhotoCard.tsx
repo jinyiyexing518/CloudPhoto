@@ -29,6 +29,7 @@ function PhotoCard({
 }: Props) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const basename = photo.name.split("/").pop() ?? photo.name;
   const displayName = photo.originalName || basename.replace(/^\d+-/, "");
   const uploadTime = photo.createdAt
@@ -51,14 +52,26 @@ function PhotoCard({
         )}
         <div className="photo-thumbnail" onClick={onSelect ?? onClick}>
           {!imgLoaded && <div className="photo-skeleton" />}
-          <img
-            src={photo.url}
-            alt={displayName}
-            loading="lazy"
-            decoding="async"
-            className={imgLoaded ? "img-loaded" : "img-loading"}
-            onLoad={() => setImgLoaded(true)}
-          />
+          {isVideo ? (
+            <video
+              src={photo.url}
+              className={imgLoaded ? "img-loaded" : "img-loading"}
+              preload="metadata"
+              muted
+              playsInline
+              onLoadedMetadata={() => setImgLoaded(true)}
+            />
+          ) : (
+            <img
+              src={photo.url}
+              alt={displayName}
+              loading="lazy"
+              decoding="async"
+              className={imgLoaded ? "img-loaded" : "img-loading"}
+              onLoad={() => setImgLoaded(true)}
+            />
+          )}
+          {isVideo && <div className="photo-video-badge">▶</div>}
         </div>
         <div className="photo-info">
           <span className="photo-name" title={displayName}>

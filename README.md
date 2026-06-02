@@ -13,6 +13,20 @@ For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
 
 ## Changelog
 
+### v1.5.2 — Video, byte progress, privacy & detail redesign
+
+- **F2 Privacy notice** — collapsible share panel now shows a 🔒 privacy reminder before link creation (身份证/银行卡等敏感信息提示)
+- **F3 Video upload** — backend accepts `video/mp4`, `video/quicktime`, `video/webm`, `video/x-msvideo`, `video/mpeg`, `video/3gpp` (max 200 MB per video, images stay at 20 MB); `<video>` rendered in card thumbnails and detail modal with ▶ badge
+- **F4 Byte-based upload progress** — progress bar and label now reflect actual bytes transferred (`XHR.upload.onprogress`) rather than file count; transfer banner shows `X.X / Y.Y MB` in real time
+- **F5 Photo detail redesign** — desktop photo pane expanded to 68% width (was 58%); separate action buttons collapsed into a single compact pill-strip row (⬇ 下载 · ♡ 收藏 · 🔗 分享 · 📁 移动 · 🔍 预览 · 🗑 删除); share and move panels are collapsible
+
+### v1.5.1 — Layout & UX polish
+
+- FAB right-side margin uses `env(safe-area-inset-right)` to respect notched devices
+- FAB bottom position raised with `env(safe-area-inset-bottom)` safe area
+- Folder cards reverted to icon-only (removed photo-stack overlay)
+- Upload progress track width fix (flex-stretch + negative margins)
+
 ### v1.5.0 — Product upgrade (40 improvements)
 
 **Features (10)**

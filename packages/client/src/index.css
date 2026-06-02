@@ -3079,6 +3079,93 @@ body {
 }
 .modal-rename-btn:hover { background: #dbeafe; }
 
+/* ── Modal: compact action strip (F5) ─────────────────────────────── */
+.modal-action-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.modal-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s, border-color 0.14s, color 0.14s;
+}
+.modal-action-btn:hover { background: #e2e8f0; border-color: #cbd5e1; }
+.modal-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.modal-action-btn--active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+.modal-action-btn--danger {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fff5f5;
+}
+.modal-action-btn--danger:hover { background: #fee2e2; border-color: #fca5a5; }
+
+/* ── Modal: collapsible panel box ──────────────────────────────────── */
+.modal-panel-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Modal: privacy notice in share panel (F2) ─────────────────────── */
+.modal-privacy-notice {
+  font-size: 0.72rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 5px 9px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Modal: video element ──────────────────────────────────────────── */
+.modal-video {
+  max-width: 100%;
+  max-height: 68vh;
+  cursor: default;
+  background: #000;
+  outline: none;
+}
+
+@media (min-width: 681px) {
+  .modal-video { max-height: 90vh; }
+}
+
+/* ── Photo card: video badge ───────────────────────────────────────── */
+.photo-video-badge {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
 /* Confirm dialog */
 .confirm-overlay {
   position: fixed;
@@ -4309,6 +4396,18 @@ body {
     border-bottom: 1px solid #e5e7eb;
   }
 
+  .modal-action-strip {
+    order: -1;
+    position: sticky;
+    top: -12px;
+    z-index: 2;
+    margin: 0 -12px 10px;
+    padding: 10px 12px;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    gap: 6px;
+  }
+
   .modal-favorite-btn,
   .modal-move-btn,
   .modal-delete-btn,
@@ -4323,23 +4422,23 @@ body {
 @media (min-width: 681px) {
   .modal-content {
     flex-direction: row;
-    max-width: min(90vw, 1080px);
-    max-height: 88vh;
+    max-width: min(92vw, 1160px);
+    max-height: 90vh;
   }
   .modal-image-pane {
-    flex: 0 0 58%;
+    flex: 0 0 68%;
     align-self: stretch;
     min-height: 0;
   }
   .modal-image {
     max-width: 100%;
-    max-height: 88vh;
+    max-height: 90vh;
     min-height: 0;
   }
   .modal-info {
     flex: 1;
     min-width: 0;
-    max-height: 88vh;
+    max-height: 90vh;
     border-top: none;
     border-left: 1px solid #f1f5f9;
   }

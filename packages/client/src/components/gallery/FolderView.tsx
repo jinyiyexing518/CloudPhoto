@@ -177,7 +177,7 @@ interface Props {
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploadProgress: { done: number; total: number; folder: string } | null;
+  uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
@@ -594,7 +594,7 @@ interface ContentProps {
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploadProgress: { done: number; total: number; folder: string } | null;
+  uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
   onDownloadStateChange?: (downloading: boolean) => void;
@@ -643,6 +643,7 @@ function FolderContent({
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
+  const [showSharePanel, setShowSharePanel] = useState(false);
   const [showMovePanel, setShowMovePanel] = useState(false);
   const [movingTo, setMovingTo] = useState(MOVE_UNSELECTED);
   const [quickMovePhoto, setQuickMovePhoto] = useState<Photo | null>(null);
@@ -713,6 +714,7 @@ function FolderContent({
     setMovingTo(MOVE_UNSELECTED);
     setShowOriginalPreview(false);
     setDownloading(false);
+    setShowSharePanel(false);
   }, [trackPhotoView]);
 
   // Keyboard navigation when modal is open
@@ -780,6 +782,7 @@ function FolderContent({
     setMovingTo(MOVE_UNSELECTED);
     setShowOriginalPreview(false);
     setDownloading(false);
+    setShowSharePanel(false);
   };
 
   const saveSubject = async () => {
@@ -964,7 +967,7 @@ function FolderContent({
             title="上传原图到当前文件夹"
           >
             {isMyUpload && uploadProgress
-              ? `⏳ ${uploadProgress.done}/${uploadProgress.total}`
+              ? `⏳ ${uploadProgress.filesDone}/${uploadProgress.filesTotal}`
               : "+ 添加原图"}
           </button>
         </div>
@@ -1029,7 +1032,7 @@ function FolderContent({
             {isMyUpload && uploadProgress ? (
               <>
                 <span className="folder-upload-icon">⏳</span>
-                <span className="folder-upload-label">{uploadProgress.done}/{uploadProgress.total}</span>
+                <span className="folder-upload-label">{uploadProgress.filesDone}/{uploadProgress.filesTotal}</span>
               </>
             ) : (
               <>
@@ -1072,13 +1075,19 @@ function FolderContent({
                   ›
                 </button>
               )}
-              <img
-                src={selectedPhoto.url}
-                alt={displayName(selectedPhoto)}
-                className="modal-image"
-                onClick={() => setShowOriginalPreview(true)}
-                title="点击预览原图"
-              />
+              {selectedPhoto.contentType?.startsWith("video/") ? (
+                <video className="modal-image modal-video" controls playsInline>
+                  <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
+                </video>
+              ) : (
+                <img
+                  src={selectedPhoto.url}
+                  alt={displayName(selectedPhoto)}
+                  className="modal-image"
+                  onClick={() => setShowOriginalPreview(true)}
+                  title="点击预览原图"
+                />
+              )}
               {directPhotos.length > 1 && (
                 <div className="modal-nav-hint">← → 切换 · Esc 关闭</div>
               )}
@@ -1120,44 +1129,59 @@ function FolderContent({
                 <span className="modal-size">{formatSize(selectedPhoto.size)}</span>
               </div>
 
-              <div className="modal-primary-actions">
+              <div className="modal-action-strip">
                 <button
-                  className="modal-download-btn"
+                  className="modal-action-btn"
                   onClick={() => void handleDownload()}
                   disabled={downloading}
                 >
-                  {downloading ? "⏳ 下载中…" : "⬇ 下载"}
+                  {downloading ? "⏳" : "⬇"} 下载
                 </button>
                 <button
-                  className="modal-preview-btn"
-                  onClick={() => setShowOriginalPreview(true)}
-                >
-                  🔍 预览原图
-                </button>
-              </div>
-
-              <div className="modal-actions-row">
-                <button
-                  className={`modal-favorite-btn${selectedPhoto.favorite ? " modal-favorite-btn--on" : ""}`}
+                  className={`modal-action-btn${selectedPhoto.favorite ? " modal-action-btn--active" : ""}`}
                   onClick={() => void handleModalFavoriteToggle()}
                 >
-                  {selectedPhoto.favorite ? "★ 取消收藏" : "☆ 收藏"}
+                  {selectedPhoto.favorite ? "❤" : "♡"} 收藏
                 </button>
-                <button className="modal-move-btn" onClick={() => setShowMovePanel((v) => !v)}>📁 移动</button>
-                <button className="modal-delete-btn" onClick={handleModalDelete}>🗑 删除</button>
+                <button
+                  className={`modal-action-btn${showSharePanel ? " modal-action-btn--active" : ""}`}
+                  onClick={() => setShowSharePanel((v) => !v)}
+                >
+                  🔗 分享
+                </button>
+                <button
+                  className={`modal-action-btn${showMovePanel ? " modal-action-btn--active" : ""}`}
+                  onClick={() => setShowMovePanel((v) => !v)}
+                >
+                  📁 移动
+                </button>
+                {!selectedPhoto.contentType?.startsWith("video/") && (
+                  <button
+                    className="modal-action-btn"
+                    onClick={() => setShowOriginalPreview(true)}
+                  >
+                    🔍 预览
+                  </button>
+                )}
+                <button className="modal-action-btn modal-action-btn--danger" onClick={handleModalDelete}>🗑 删除</button>
               </div>
 
-              <div className="modal-share-row">
-                <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
-                  <option value="1">1 小时</option>
-                  <option value="24">24 小时</option>
-                  <option value="72">3 天</option>
-                  <option value="168">7 天</option>
-                </select>
-                <button className="modal-share-btn" onClick={() => void handleShare()} disabled={sharing}>
-                  {sharing ? "创建中…" : "🔗 复制分享链接"}
-                </button>
-              </div>
+              {showSharePanel && (
+                <div className="modal-panel-box">
+                  <div className="modal-share-row">
+                    <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
+                      <option value="1">1 小时</option>
+                      <option value="24">24 小时</option>
+                      <option value="72">3 天</option>
+                      <option value="168">7 天</option>
+                    </select>
+                    <button className="modal-share-btn" onClick={() => void handleShare()} disabled={sharing}>
+                      {sharing ? "创建中…" : "复制链接"}
+                    </button>
+                  </div>
+                  <p className="modal-privacy-notice">🔒 请确认内容不含敏感信息（身份证、银行卡等）</p>
+                </div>
+              )}
 
               <div className="modal-detail-grid">
                 {/* Subject */}

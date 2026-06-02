@@ -236,6 +236,51 @@ export async function uploadPhoto(
   return response.json() as Promise<Photo>;
 }
 
+export function uploadPhotoWithProgress(
+  file: File,
+  onProgress: (loaded: number, total: number) => void,
+  uploadedBy?: string,
+  subject?: string,
+  folder?: string,
+  groupId?: string,
+): Promise<Photo> {
+  return new Promise((resolve, reject) => {
+    const params = new URLSearchParams({ filename: file.name });
+    if (uploadedBy) params.set("uploadedBy", uploadedBy);
+    if (subject) params.set("subject", subject);
+    if (folder) params.set("folder", folder);
+    if (groupId) params.set("groupId", groupId);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/photos/upload?${params.toString()}`);
+
+    const headers = authHeaders({ "Content-Type": file.type || "application/octet-stream" });
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) onProgress(e.loaded, e.total);
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText) as Photo); }
+        catch { reject(new Error(`上传失败: ${file.name}`)); }
+      } else {
+        try {
+          const msg = JSON.parse(xhr.responseText) as { error?: string };
+          reject(new Error(msg.error ?? `上传失败: ${file.name}`));
+        } catch {
+          reject(new Error(`上传失败: ${file.name}`));
+        }
+      }
+    });
+    xhr.addEventListener("error", () => reject(new Error("网络错误")));
+    xhr.addEventListener("timeout", () => reject(new Error(`上传超时: ${file.name}`)));
+    xhr.timeout = 600000; // 10 min for large videos
+    xhr.send(file);
+  });
+}
+
 export async function updatePhotoSubject(
   name: string,
   subject: string,

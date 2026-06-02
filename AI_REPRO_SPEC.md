@@ -3,6 +3,10 @@
 21. 键盘快捷键 1/2/3/S/Backspace 在非输入框状态均可正确触发
 22. 周报卡片显示存储用量（非硬编码，基于实际 blob size 聚合）
 23. 切换群组时时间线筛选自动清空
+24. 视频上传：server 端接受 video/mp4、video/quicktime、video/webm、video/x-msvideo、video/mpeg、video/3gpp（最大 200 MB）；图片仍限 20 MB
+25. 字节级上传进度：XHR.upload.onprogress 驱动进度条，显示 X.X / Y.Y MB 而非文件个数
+26. 隐私分享提醒：分享面板内含 🔒 静态提示文本，提醒确认不含敏感信息
+27. 详情页重设计：桌面端照片占 68% 宽；操作按钮收敛为单行胶囊条（下载/收藏/分享/移动/预览/删除）；分享区与移动区可折叠
 2.18 时间线应提供排序切换 chip（最新/最早），通过前端状态控制，不需要额外 API
 2.19 键盘快捷键应覆盖：R=刷新，1/2/3=切换 Tab，S=开关侧边栏，?=帮助面板，Esc=关闭弹层，Backspace=清筛选（均需跳过输入框焦点）
 2.20 本周概况卡片应展示存储用量，计算方式为聚合所有照片的 blob size metadata 字段
@@ -10,6 +14,10 @@
 2.22 顶部标题栏在群组空间内应展示当前群组名称标识（pill badge）
 2.23 Toast 通知必须提供手动关闭按鈕（✕），不应仅依赖自动超时
 2.24 浮动胶囊入口在有激活筛选时应展示筛选数量 badge
+2.25 视频 MIME 类型列表：video/mp4, video/quicktime, video/webm, video/x-msvideo, video/mpeg, video/3gpp, video/3gpp2；图片限 20 MB，视频限 200 MB
+2.26 uploadPhotoWithProgress 使用 XMLHttpRequest + upload.addEventListener('progress') 实现字节级回调；uploadProgress state 字段为 bytesLoaded/bytesTotal/filesDone/filesTotal
+2.27 分享面板使用 showSharePanel 布尔状态切换，默认收起；面板内含 modal-privacy-notice 元素
+2.28 PhotoCard.tsx 中视频使用 <video preload="metadata" muted playsInline> 渲染缩略图，右下角显示 photo-video-badge (.▶)
 
 ## 1. 目标
 

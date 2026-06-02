@@ -262,6 +262,8 @@ function PhotoGallery({
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
+  const [showSharePanel, setShowSharePanel] = useState(false);
+  const [showMoveInput, setShowMoveInput] = useState(false);
   const [moveFolderInput, setMoveFolderInput] = useState("");
   const [moving, setMoving] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -599,6 +601,8 @@ function PhotoGallery({
     setMoveFolderInput(photo.folder ?? "");
     setShowOriginalPreview(false);
     setDownloading(false);
+    setShowSharePanel(false);
+    setShowMoveInput(false);
   };
 
   const saveSubject = async () => {
@@ -959,13 +963,24 @@ function PhotoGallery({
             {selectedIdx !== null && selectedIdx < modalPhotos.length - 1 && (
               <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title="下一张 (→)">›</button>
             )}
-            <img
-              src={selectedPhoto.url}
-              alt={selectedPhoto.name}
-              className="modal-image"
-              onClick={() => setShowOriginalPreview(true)}
-              title="点击预览原图"
-            />
+            <div className="modal-image-pane">
+              {selectedPhoto.contentType?.startsWith("video/") ? (
+                <video className="modal-image modal-video" controls playsInline>
+                  <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
+                </video>
+              ) : (
+                <img
+                  src={selectedPhoto.url}
+                  alt={selectedPhoto.name}
+                  className="modal-image"
+                  onClick={() => setShowOriginalPreview(true)}
+                  title="点击预览原图"
+                />
+              )}
+              {modalPhotos.length > 1 && (
+                <div className="modal-nav-hint">← → 切换 · Esc 关闭</div>
+              )}
+            </div>
             <div className="modal-info">
               <div className="modal-info-row">
                 {editingName ? (
@@ -1003,58 +1018,75 @@ function PhotoGallery({
                 <span className="modal-size">{formatSize(selectedPhoto.size)}</span>
               </div>
 
-              <div className="modal-primary-actions">
+              <div className="modal-action-strip">
                 <button
-                  className="modal-download-btn"
+                  className="modal-action-btn"
                   onClick={() => void handleDownload()}
                   disabled={downloading}
                 >
-                  {downloading ? "⏳ 下载中…" : "⬇ 下载"}
+                  {downloading ? "⏳" : "⬇"} 下载
                 </button>
                 <button
-                  className="modal-preview-btn"
-                  onClick={() => setShowOriginalPreview(true)}
-                >
-                  🔍 预览原图
-                </button>
-              </div>
-              <div className="modal-actions-row">
-                <button
-                  className={`modal-favorite-btn${selectedPhoto.favorite ? " modal-favorite-btn--on" : ""}`}
+                  className={`modal-action-btn${selectedPhoto.favorite ? " modal-action-btn--active" : ""}`}
                   onClick={() => void handleModalFavoriteToggle()}
                 >
-                  {selectedPhoto.favorite ? "★ 取消收藏" : "☆ 收藏"}
+                  {selectedPhoto.favorite ? "❤" : "♡"} 收藏
+                </button>
+                <button
+                  className={`modal-action-btn${showSharePanel ? " modal-action-btn--active" : ""}`}
+                  onClick={() => setShowSharePanel((v) => !v)}
+                >
+                  🔗 分享
                 </button>
                 {onMovePhoto && (
-                  <>
-                    <input
-                      className="modal-folder-input"
-                      value={moveFolderInput}
-                      onChange={(e) => setMoveFolderInput(e.target.value)}
-                      placeholder="移动到文件夹（留空=根目录）"
-                    />
-                    <button className="modal-move-btn" onClick={() => void handleModalMove()} disabled={moving}>
-                      {moving ? "移动中…" : "📁 移动"}
-                    </button>
-                  </>
+                  <button
+                    className={`modal-action-btn${showMoveInput ? " modal-action-btn--active" : ""}`}
+                    onClick={() => setShowMoveInput((v) => !v)}
+                  >
+                    📁 移动
+                  </button>
                 )}
-                <button className="modal-delete-btn" onClick={handleModalDelete}>🗑 删除</button>
+                {!selectedPhoto.contentType?.startsWith("video/") && (
+                  <button
+                    className="modal-action-btn"
+                    onClick={() => setShowOriginalPreview(true)}
+                  >
+                    🔍 预览
+                  </button>
+                )}
+                <button className="modal-action-btn modal-action-btn--danger" onClick={handleModalDelete}>🗑 删除</button>
               </div>
 
-              <div className="modal-share-section">
-                <span className="modal-section-label">生成分享链接</span>
-                <div className="modal-share-row">
-                  <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
-                    <option value="1">1 小时</option>
-                    <option value="24">24 小时</option>
-                    <option value="72">3 天</option>
-                    <option value="168">7 天</option>
-                  </select>
-                  <button className="modal-share-btn" onClick={() => void handleShare()} disabled={sharing}>
-                    {sharing ? "创建中…" : "🔗 复制链接"}
+              {showSharePanel && (
+                <div className="modal-panel-box">
+                  <div className="modal-share-row">
+                    <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
+                      <option value="1">1 小时</option>
+                      <option value="24">24 小时</option>
+                      <option value="72">3 天</option>
+                      <option value="168">7 天</option>
+                    </select>
+                    <button className="modal-share-btn" onClick={() => void handleShare()} disabled={sharing}>
+                      {sharing ? "创建中…" : "复制链接"}
+                    </button>
+                  </div>
+                  <p className="modal-privacy-notice">🔒 请确认内容不含敏感信息（身份证、银行卡等）</p>
+                </div>
+              )}
+
+              {showMoveInput && onMovePhoto && (
+                <div className="modal-panel-box">
+                  <input
+                    className="modal-folder-input"
+                    value={moveFolderInput}
+                    onChange={(e) => setMoveFolderInput(e.target.value)}
+                    placeholder="目标文件夹（留空=根目录）"
+                  />
+                  <button className="modal-move-btn" onClick={() => void handleModalMove()} disabled={moving}>
+                    {moving ? "移动中…" : "移动"}
                   </button>
                 </div>
-              </div>
+              )}
               <div className="modal-detail-grid">
                 <span className="modal-detail-label">备注</span>
                 <span className="modal-detail-value modal-subject-cell">
