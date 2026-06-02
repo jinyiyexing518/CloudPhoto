@@ -91,24 +91,6 @@ function countPhotosUnder(photos: Photo[], folderPath: string): number {
   }).length;
 }
 
-/** Get up to `max` photo URLs from a folder (direct first, then nested). */
-function getPreviewUrls(photos: Photo[], folderPath: string, max = 4): string[] {
-  const result: string[] = [];
-  for (const p of photos) {
-    if (result.length >= max) break;
-    if ((p.folder?.trim() ?? "") === folderPath) result.push(p.url);
-  }
-  if (result.length < max && folderPath !== "") {
-    const prefix = folderPath + "/";
-    for (const p of photos) {
-      if (result.length >= max) break;
-      const f = p.folder?.trim() ?? "";
-      if (f.startsWith(prefix)) result.push(p.url);
-    }
-  }
-  return result;
-}
-
 // ─── FolderCard ───────────────────────────────────────────────────────────────
 
 function FolderCard({
@@ -117,7 +99,6 @@ function FolderCard({
   onClick,
   onDrop,
   onRename,
-  previewUrls = [],
   hasSubFolders = false,
 }: {
   name: string;
@@ -125,7 +106,6 @@ function FolderCard({
   onClick: () => void;
   onDrop?: (photoName: string, fromFolder: string) => void;
   onRename?: (newName: string) => void;
-  previewUrls?: string[];
   hasSubFolders?: boolean;
 }) {
   const [dragOver, setDragOver] = useState(false);
@@ -139,11 +119,9 @@ function FolderCard({
     setEditing(false);
   };
 
-  const hasThumb = previewUrls.length > 0;
-
   return (
     <div
-      className={`folder-card${dragOver ? " folder-card--dragover" : ""}${hasThumb ? " folder-card--has-thumb" : ""}`}
+      className={`folder-card${dragOver ? " folder-card--dragover" : ""}`}
       onClick={() => { if (!editing) onClick(); }}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
       onDragEnter={(e) => { e.preventDefault(); dragCount.current++; setDragOver(true); }}
@@ -158,72 +136,25 @@ function FolderCard({
         if (photoName && onDrop) onDrop(photoName, fromFolder);
       }}
     >
-      {hasThumb ? (
-        <>
-          {/* Second backing layer (furthest behind) */}
-          <div
-            className="folder-stack-layer folder-stack-layer--b"
-            style={previewUrls[2] ? { backgroundImage: `url(${previewUrls[2]})` } : undefined}
-          />
-          {/* First backing layer (closest behind front) */}
-          <div
-            className="folder-stack-layer folder-stack-layer--a"
-            style={previewUrls[1] ? { backgroundImage: `url(${previewUrls[1]})` } : undefined}
-          />
-          {/* Front face — clipped card with main photo + overlay */}
-          <div className="folder-card-front">
-            <img src={previewUrls[0]} alt="" className="folder-thumb-img" draggable={false} />
-            {hasSubFolders && (
-              <span className="folder-thumb-subfolder-badge" title="含子文件夹">📁</span>
-            )}
-            <div className="folder-card-footer">
-              {editing ? (
-                <input
-                  autoFocus
-                  className="folder-card-rename-input"
-                  value={editVal}
-                  onChange={(e) => setEditVal(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
-                    if (e.key === "Escape") { setEditVal(name); setEditing(false); }
-                  }}
-                  onBlur={confirmRename}
-                  onClick={(e) => e.stopPropagation()}
-                  maxLength={60}
-                />
-              ) : (
-                <>
-                  <div className="folder-card-name">{name || UNCATEGORIZED}</div>
-                  <div className="folder-card-count">{count} 张</div>
-                </>
-              )}
-            </div>
-          </div>
-        </>
+      <div className="folder-card-icon">{hasSubFolders ? "📂" : "📁"}</div>
+      {editing ? (
+        <input
+          autoFocus
+          className="folder-card-rename-input"
+          value={editVal}
+          onChange={(e) => setEditVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
+            if (e.key === "Escape") { setEditVal(name); setEditing(false); }
+          }}
+          onBlur={confirmRename}
+          onClick={(e) => e.stopPropagation()}
+          maxLength={60}
+        />
       ) : (
-        <>
-          {/* Empty folder — icon only */}
-          <div className="folder-card-icon">{hasSubFolders ? "📂" : "📁"}</div>
-          {editing ? (
-            <input
-              autoFocus
-              className="folder-card-rename-input"
-              value={editVal}
-              onChange={(e) => setEditVal(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
-                if (e.key === "Escape") { setEditVal(name); setEditing(false); }
-              }}
-              onBlur={confirmRename}
-              onClick={(e) => e.stopPropagation()}
-              maxLength={60}
-            />
-          ) : (
-            <div className="folder-card-name">{name || UNCATEGORIZED}</div>
-          )}
-          <div className="folder-card-count">{count} 张</div>
-        </>
+        <div className="folder-card-name">{name || UNCATEGORIZED}</div>
       )}
+      <div className="folder-card-count">{count} 张</div>
       {onRename && !editing && (
         <button
           className="folder-card-rename-btn"
@@ -592,7 +523,6 @@ export default function FolderView({
               onDrop={(photoName, fromFolder) => {
                 void moveByDragWithToast(photoName, fromFolder, "");
               }}
-              previewUrls={getPreviewUrls(photos, "")}
               hasSubFolders={false}
             />
           )}
@@ -606,7 +536,6 @@ export default function FolderView({
                 void moveByDragWithToast(photoName, fromFolder, name);
               }}
               onRename={onRenameFolder ? (newName) => void handleRenameFolder(name, newName) : undefined}
-              previewUrls={getPreviewUrls(photos, name)}
               hasSubFolders={getImmediateSubFolders(photos, extraFolders, name).length > 0}
             />
           ))}
@@ -1053,7 +982,6 @@ function FolderContent({
               onClick={() => onNavigate(sub)}
               onDrop={(photoName, fromFolder) => onDropToSubFolder(photoName, fromFolder, sub)}
               onRename={onRenameSubFolder ? (newSub) => onRenameSubFolder(sub, newSub) : undefined}
-              previewUrls={getPreviewUrls(allPhotos, subFullPath)}
               hasSubFolders={getImmediateSubFolders(allPhotos, allExtraFolders, subFullPath).length > 0}
             />
           );
