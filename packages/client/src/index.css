@@ -369,7 +369,7 @@ body {
   gap: 10px;
   background: transparent;
   padding: 10px 0 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* ::before removed — no longer needed (no rounded corners on sticky card) */
@@ -3747,7 +3747,7 @@ body {
   }
 
   /* GroupSwitcher fills the rest of the first row */
-  .group-switcher {
+  .app-header .group-switcher {
     flex: 1;
     min-width: 0;
     margin-left: 0;
@@ -4144,9 +4144,6 @@ body {
     margin-left: -12px;
     margin-right: -12px;
   }
-
-  /* ── Auth card ── */
-  .auth-card { padding: 28px 20px 24px; }
 
   /* ── Modal image ── */
   .modal-overlay {
@@ -5220,7 +5217,7 @@ body {
 
 /* ── 9. Weekly summary card ─────────────────────── */
 .weekly-summary-card {
-  margin: 6px -24px 2px;
+  margin: 0 -24px;
   background: #fff;
   border-top: 1px solid #e2e8f0;
   border-bottom: 1px solid #e2e8f0;

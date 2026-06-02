@@ -1180,7 +1180,8 @@ function AppContent() {
               >{photoSortAsc ? "↑ 最早" : "↓ 最新"}</button>
             </div>
           )}
-          {activeTab === "timeline" && photos.length > 0 && (
+        </div>{/* /view-tabs-shell */}
+        {activeTab === "timeline" && photos.length > 0 && (
             <div className="weekly-summary-card">
               <button
                 className="weekly-summary-toggle"
@@ -1219,7 +1220,6 @@ function AppContent() {
               )}
             </div>
           )}
-        </div>{/* /view-tabs-shell */}
         </div>{/* /view-tabs-shell-wrap */}
 
         <div className="workspace-layout">
