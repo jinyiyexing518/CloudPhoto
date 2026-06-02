@@ -19,7 +19,10 @@ const ALLOWED_VIDEO_MIME = new Set([
   "video/mp4", "video/quicktime", "video/webm",
   "video/x-msvideo", "video/mpeg", "video/3gpp", "video/3gpp2",
 ]);
-const ALLOWED_UPLOAD_MIME = new Set([...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME]);
+const ALLOWED_AUDIO_MIME = new Set([
+  "audio/webm", "audio/ogg", "audio/mp4", "audio/wav", "audio/mpeg", "audio/aac",
+]);
+const ALLOWED_UPLOAD_MIME = new Set([...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME, ...ALLOWED_AUDIO_MIME]);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;   // 20 MB
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;  // 200 MB
 
@@ -69,10 +72,11 @@ app.http("uploadPhoto", {
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
       const arrayBuffer = await request.arrayBuffer();
       const isVideoUpload = ALLOWED_VIDEO_MIME.has(mimeType);
+      const isAudioUpload = ALLOWED_AUDIO_MIME.has(mimeType);
       const maxBytes = isVideoUpload ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
       if (arrayBuffer.byteLength > maxBytes) {
         const limit = isVideoUpload ? "200 MB" : "20 MB";
-        return { status: 413, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: `文件过大，${isVideoUpload ? "视频" : "图片"}最大支持 ${limit}` }) };
+        return { status: 413, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: `文件过大，${isVideoUpload ? "视频" : isAudioUpload ? "音频" : "图片"}最大支持 ${limit}` }) };
       }
 
       // Azure Blob metadata only allows ASCII — base64-encode all free-text fields

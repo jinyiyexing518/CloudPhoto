@@ -13,6 +13,11 @@ For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
 
 ## Changelog
 
+### v1.5.3 — Voice memo (F1) & video picker fix
+
+- **F1 Voice memo** — record, upload, play, and delete a voice note attached to any photo or video; recorded audio is stored as a blob in the internal `_voice` folder (filtered from gallery), linked to the photo via blob metadata (`voiceMemoName`); a 🎤 button in the detail modal action strip opens the voice panel; an `<audio>` player renders existing memos; deleting clears the metadata link; supports `audio/webm` (Chrome/Android) and `audio/mp4` (Safari/iOS) via `MediaRecorder`
+- **Fix: video file picker** — `accept` attribute on file inputs in `UploadArea` and `FolderView` now includes `video/*` so video files can actually be selected for upload (previously only `image/*` was accepted)
+
 ### v1.5.2 — Video, byte progress, privacy & detail redesign
 
 - **F2 Privacy notice** — collapsible share panel now shows a 🔒 privacy reminder before link creation (身份证/银行卡等敏感信息提示)

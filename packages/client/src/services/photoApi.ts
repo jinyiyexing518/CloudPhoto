@@ -197,6 +197,8 @@ export interface Photo {
   deletedAt?: string;
   deletedBy?: string;
   deletedByName?: string;
+  voiceMemoName?: string;
+  voiceMemoUrl?: string;
 }
 
 export async function listPhotos(groupId = ""): Promise<Photo[]> {
@@ -314,6 +316,24 @@ export async function setPhotoFavorite(
   );
   if (!response.ok) {
     throw new Error(await parseApiError(response, "更新收藏状态失败"));
+  }
+}
+
+export async function setPhotoVoiceMemo(
+  name: string,
+  voiceMemoName: string,
+  updatedBy?: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ voiceMemoName, updatedBy }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "更新语音备注失败"));
   }
 }
 

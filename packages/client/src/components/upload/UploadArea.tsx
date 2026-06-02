@@ -38,7 +38,7 @@ export default function UploadArea({ onUpload, uploading }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         multiple
         style={{ display: "none" }}
         onChange={handleChange}

@@ -56,6 +56,7 @@ app.http("updatePhotoMetadata", {
         originalName?: string;
         favorite?: boolean;
         updatedBy?: string;
+        voiceMemoName?: string;
       };
 
       const blobServiceClient = getBlobServiceClient();
@@ -96,6 +97,13 @@ app.http("updatePhotoMetadata", {
           existing.originalName = b64(nextOriginalName);
         }
         if (body.favorite !== undefined) existing.favorite = body.favorite ? "1" : "0";
+        if (body.voiceMemoName !== undefined) {
+          if (body.voiceMemoName === "") {
+            delete existing.voiceMemoName;
+          } else {
+            existing.voiceMemoName = body.voiceMemoName;
+          }
+        }
         if (body.updatedBy) existing.lastModifiedBy = b64(body.updatedBy);
         existing.lastModifiedAt = now;
 

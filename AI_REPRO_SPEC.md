@@ -153,6 +153,22 @@
 2. 上传/下载进行中刷新或关闭页面触发浏览器离开确认
 3. 下载与上传默认保持原图，不做压缩
 
+### 3.9 视频上传文件选择器
+
+1. 文件输入 `accept` 属性必须包含 `video/*`（及 `image/*`），确保用户可以从文件选择器中选择视频文件
+2. 服务端 `ALLOWED_UPLOAD_MIME` 已包含视频格式，仅前端文件选择器限制需修正
+
+### 3.10 语音备注（F1）
+
+1. 用户可在任意照片/视频详情弹窗中录制语音备注（按 🎤 语音按钮展开面板）
+2. 录音使用浏览器原生 `MediaRecorder` API；Chrome/Android 使用 `audio/webm`，Safari/iOS 使用 `audio/mp4`
+3. 录音文件通过现有 `/photos/upload` 接口上传，上传目标文件夹为 `_voice`（与照片所在 groupId 关联）
+4. 上传完成后通过 `/photos/metadata` PATCH 将语音文件名（`voiceMemoName`）写入照片 blob 元数据
+5. `listPhotos` 接口：`_voice` 文件夹内的 blob 必须过滤不返回；照片对象中附带 `voiceMemoName` 和 `voiceMemoUrl`（SAS URL）字段
+6. 详情弹窗语音面板：有备注时显示 `<audio>` 播放器；无备注时显示"开始录音"按钮；录音中显示红色停止按钮
+7. 可删除语音备注（PATCH `voiceMemoName = ""`，清除元数据）
+8. 操作栏按钮：有备注时显示 **🎤 备注✓**，录音中显示 **🔴 录音中**（配红色闪烁动画）
+
 ---
 
 ## 4. 代码结构要求

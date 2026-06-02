@@ -75,6 +75,8 @@ app.http("listPhotos", {
         favorite: boolean;
         lastModifiedAt: string | undefined;
         lastModifiedBy: string | undefined;
+        voiceMemoName: string | undefined;
+        voiceMemoUrl: string | undefined;
       }> = [];
 
       // Fetch one delegation key for the whole listing — avoids a round-trip per blob
@@ -90,8 +92,11 @@ app.http("listPhotos", {
         // supports arbitrarily nested sub-folders; backwards-compat with 4-segment paths
         const folderSegs = segs.slice(2, segs.length - 1);
         const folderRaw = folderSegs.join("/");
+        // Skip voice memo storage folder — these are internal blobs, not gallery items
+        if (folderRaw === "_voice") continue;
         const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
         const folder = folderRaw === "_" ? "" : folderRaw;
+        const voiceMemoName = getMeta(blob.metadata, "voiceMemoName");
 
         photos.push({
           name: blob.name,
@@ -108,6 +113,8 @@ app.http("listPhotos", {
           favorite: getMeta(blob.metadata, "favorite") === "1" || getMeta(blob.metadata, "favorite") === "true",
           lastModifiedAt: getMeta(blob.metadata, "lastModifiedAt"),
           lastModifiedBy: decodeMeta(getMeta(blob.metadata, "lastModifiedBy")),
+          voiceMemoName,
+          voiceMemoUrl: voiceMemoName ? generateSasUrlWithKey(voiceMemoName, delegationKey) : undefined,
         });
       }
 

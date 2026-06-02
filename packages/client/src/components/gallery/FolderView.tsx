@@ -8,6 +8,8 @@ import {
   createFolderShareLink,
   recordMomentViewApi,
   ManagedMomentsUnavailableError,
+  uploadPhotoWithProgress,
+  setPhotoVoiceMemo as apiSetVoiceMemo,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -648,6 +650,11 @@ function FolderContent({
   const [movingTo, setMovingTo] = useState(MOVE_UNSELECTED);
   const [quickMovePhoto, setQuickMovePhoto] = useState<Photo | null>(null);
   const [quickMoveTo, setQuickMoveTo] = useState(MOVE_UNSELECTED);
+  const [showVoicePanel, setShowVoicePanel] = useState(false);
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "uploading">("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const momentsUnavailableNoticeShown = useRef(false);
 
   const isMyUpload = uploadProgress?.folder === currentPath;
@@ -715,6 +722,9 @@ function FolderContent({
     setShowOriginalPreview(false);
     setDownloading(false);
     setShowSharePanel(false);
+    setShowVoicePanel(false);
+    setVoiceState("idle");
+    setVoiceError(null);
   }, [trackPhotoView]);
 
   // Keyboard navigation when modal is open
@@ -857,6 +867,57 @@ function FolderContent({
     const ok = await onToggleFavorite(selectedPhoto.name, next);
     if (ok) {
       setSelectedPhoto({ ...selectedPhoto, favorite: next });
+    }
+  };
+
+  const startRecording = async () => {
+    setVoiceError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      recorder.addEventListener("dataavailable", (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); });
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setVoiceState("recording");
+    } catch {
+      setVoiceError("无法访问麦克风，请检查权限");
+    }
+  };
+
+  const stopAndUploadRecording = async () => {
+    if (!selectedPhoto || !mediaRecorderRef.current) return;
+    const recorder = mediaRecorderRef.current;
+    setVoiceState("uploading");
+    await new Promise<void>((resolve) => {
+      recorder.addEventListener("stop", () => resolve(), { once: true });
+      recorder.stop();
+    });
+    recorder.stream?.getTracks().forEach((t) => t.stop());
+    const mimeType = recorder.mimeType || "audio/webm";
+    const ext = mimeType.includes("mp4") ? ".mp4" : ".webm";
+    const blob = new Blob(audioChunksRef.current, { type: mimeType });
+    const file = new File([blob], `voice${ext}`, { type: mimeType });
+    const photoRef = selectedPhoto;
+    try {
+      const result = await uploadPhotoWithProgress(file, () => {}, userName, undefined, "_voice", photoRef.groupId);
+      await apiSetVoiceMemo(photoRef.name, result.name, userName);
+      setSelectedPhoto((prev) => prev ? { ...prev, voiceMemoName: result.name, voiceMemoUrl: result.url } : null);
+    } catch {
+      setVoiceError("语音备注上传失败，请重试");
+    } finally {
+      setVoiceState("idle");
+    }
+  };
+
+  const deleteVoiceMemo = async () => {
+    if (!selectedPhoto) return;
+    try {
+      await apiSetVoiceMemo(selectedPhoto.name, "", userName);
+      setSelectedPhoto((prev) => prev ? { ...prev, voiceMemoName: undefined, voiceMemoUrl: undefined } : null);
+    } catch {
+      setVoiceError("删除语音备注失败");
     }
   };
 
@@ -1040,7 +1101,7 @@ function FolderContent({
                 <span className="folder-upload-label">添加原图</span>
               </>
             )}
-            <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
+            <input ref={inputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" }} onChange={handleFiles} />
           </div>
         </div>
 
@@ -1163,6 +1224,13 @@ function FolderContent({
                     🔍 预览
                   </button>
                 )}
+                <button
+                  className={`modal-action-btn${showVoicePanel ? " modal-action-btn--active" : ""}${voiceState === "recording" ? " modal-action-btn--recording" : ""}`}
+                  onClick={() => setShowVoicePanel((v) => !v)}
+                  disabled={voiceState === "uploading"}
+                >
+                  {voiceState === "recording" ? "🔴 录音中" : selectedPhoto.voiceMemoUrl ? "🎤 备注✓" : "🎤 语音"}
+                </button>
                 <button className="modal-action-btn modal-action-btn--danger" onClick={handleModalDelete}>🗑 删除</button>
               </div>
 
@@ -1180,6 +1248,41 @@ function FolderContent({
                     </button>
                   </div>
                   <p className="modal-privacy-notice">🔒 请确认内容不含敏感信息（身份证、银行卡等）</p>
+                </div>
+              )}
+
+              {showVoicePanel && (
+                <div className="modal-panel-box">
+                  {selectedPhoto.voiceMemoUrl ? (
+                    <div className="modal-voice-section">
+                      <audio controls src={selectedPhoto.voiceMemoUrl} className="modal-voice-player" />
+                      <button className="modal-action-btn modal-action-btn--danger" onClick={() => void deleteVoiceMemo()}>
+                        🗑 删除备注
+                      </button>
+                    </div>
+                  ) : voiceState === "idle" ? (
+                    <button className="modal-action-btn" style={{ width: "100%", justifyContent: "center" }} onClick={() => void startRecording()}>
+                      🎤 开始录音
+                    </button>
+                  ) : voiceState === "recording" ? (
+                    <div className="modal-voice-section">
+                      <span className="modal-privacy-notice" style={{ background: "#fff1f2", borderColor: "#fecdd3", color: "#be123c", flex: 1, marginBottom: 0 }}>
+                        🔴 录音中... 点击停止上传
+                      </span>
+                      <button className="modal-action-btn modal-action-btn--danger" onClick={() => void stopAndUploadRecording()}>
+                        ⏹ 停止
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="modal-privacy-notice" style={{ background: "#f0f9ff", borderColor: "#bae6fd", color: "#0369a1" }}>
+                      ⏳ 正在上传语音备注...
+                    </p>
+                  )}
+                  {voiceError && (
+                    <p className="modal-privacy-notice" style={{ borderColor: "#fca5a5", color: "#dc2626", background: "#fff5f5", marginTop: 4 }}>
+                      {voiceError}
+                    </p>
+                  )}
                 </div>
               )}
 
