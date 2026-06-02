@@ -1245,7 +1245,8 @@ function AppContent() {
                     onClick={handleToggleUploadPause}
                     title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
                   >
-                    {uploadPaused ? "▶" : "⏸"}
+                    {/* \uFE0E = variation-selector-15: force text (not emoji) rendering */}
+                    {uploadPaused ? "▶︎" : "⏸︎"}
                   </button>
                   <span className="transfer-banner-pct">
                     {Math.round((uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%

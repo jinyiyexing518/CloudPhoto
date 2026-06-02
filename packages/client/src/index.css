@@ -6693,18 +6693,25 @@ body {
   font-size: 0.78rem;
 }
 .transfer-banner-pause {
-  background: none;
-  border: 1.5px solid #d97706;
-  border-radius: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(217, 119, 6, 0.12);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #92400e;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   line-height: 1;
-  padding: 2px 7px;
+  padding: 0;
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.15s;
 }
-.transfer-banner-pause:hover { background: rgba(217,119,6,0.12); }
+.transfer-banner-pause:hover { background: rgba(217, 119, 6, 0.25); }
 
 /* ── U2: Photo card hover date overlay ─────────── */
 .photo-thumbnail {
