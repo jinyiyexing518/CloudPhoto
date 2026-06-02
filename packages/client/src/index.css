@@ -24,7 +24,9 @@ body {
   padding: 16px 24px;
   /* account for iOS notch / status bar in standalone PWA mode */
   padding-top: calc(16px + env(safe-area-inset-top, 0px));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  /* min-height must match view-tabs-shell-wrap sticky top so there is no gap */
+  min-height: calc(72px + env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -364,8 +366,8 @@ body {
   margin: 0 -24px;
   padding: 0 24px 10px;
   margin-bottom: 0;
-  border-radius: 0 0 16px 16px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.10);
+  border-radius: 0;
+  border-bottom: 1px solid #e2e8f0;
   overflow: hidden;
   transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3765,6 +3767,7 @@ body {
   .app-header {
     flex-wrap: wrap;
     padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+    min-height: calc(82px + env(safe-area-inset-top, 0px));
     gap: 6px 10px;
   }
 
@@ -4179,7 +4182,7 @@ body {
   .weekly-summary-card {
     margin-left: -12px;
     margin-right: -12px;
-    margin-bottom: 10px;
+    margin-bottom: -10px;
   }
 
   /* ── Modal image ── */
@@ -5254,15 +5257,12 @@ body {
 
 /* ── 9. Weekly summary card ─────────────────────── */
 .weekly-summary-card {
-  /* Tuck behind the nav bar's 16px rounded corners so it looks connected */
-  margin: -16px -24px 12px;
-  padding-top: 16px;
+  /* Extend full-width inside wrap; negative bottom cancels the wrap's 10px bottom padding */
+  margin: 0 -24px -10px;
   background: #fff;
-  border-radius: 0 0 16px 16px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  border-top: 1px solid #e2e8f0;
+  border-radius: 0;
   overflow: hidden;
-  position: relative;
-  z-index: 0;
 }
 .weekly-summary-toggle {
   display: flex;
