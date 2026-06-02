@@ -342,7 +342,7 @@ function AppContent() {
   );
 
   const timelineHasActiveFilters = useMemo(
-    () => Boolean(filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly),
+    () => Boolean(filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly || filters.missingSubjectOnly || filters.uncategorizedOnly),
     [filters],
   );
 
@@ -867,6 +867,16 @@ function AppContent() {
     });
   };
 
+  const jumpToOrganize = () => {
+    if (missingSubjectCount > 0) {
+      jumpToMissingSubjectPhotos();
+    } else if (uncategorizedCount > 0) {
+      jumpToUncategorizedPhotos();
+    } else {
+      switchTab("timeline");
+    }
+  };
+
   const jumpToUncategorizedPhotos = () => {
     const targetPhoto = [...photos]
       .filter((photo) => !(photo.folder ?? "").trim())
@@ -1169,6 +1179,18 @@ function AppContent() {
                   title={folder}
                 >📁 {folder.split("/").filter(Boolean).pop() ?? folder}</button>
               ))}
+              {missingSubjectCount > 0 && (
+                <button
+                  className={`quick-chip quick-chip--organize${filters.missingSubjectOnly ? " active" : ""}`}
+                  onClick={() => setFilters((f) => ({ ...f, missingSubjectOnly: !f.missingSubjectOnly, uncategorizedOnly: false }))}
+                >🏷 无主题 {missingSubjectCount}</button>
+              )}
+              {uncategorizedCount > 0 && (
+                <button
+                  className={`quick-chip quick-chip--organize${filters.uncategorizedOnly ? " active" : ""}`}
+                  onClick={() => setFilters((f) => ({ ...f, uncategorizedOnly: !f.uncategorizedOnly, missingSubjectOnly: false }))}
+                >📂 未分类 {uncategorizedCount}</button>
+              )}
               {activeFiltersCount > 0 && (
                 <button className="quick-chip quick-chip--clear" onClick={() => setFilters(emptyFilter)}>✕ 清空</button>
               )}
@@ -1231,7 +1253,7 @@ function AppContent() {
                 filterCount={activeTab === "timeline" ? activeFiltersCount : 0}
                 onOpenSidebar={() => setSidebarOpen(true)}
                 onPrimaryChipClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
-                onSecondaryChipClick={activeTab === "timeline" ? jumpToMissingSubjectPhotos : () => openSettingsTab("diagnostics", "diagnostics")}
+                onSecondaryChipClick={activeTab === "timeline" ? jumpToOrganize : () => openSettingsTab("diagnostics", "diagnostics")}
               />
             )}
 

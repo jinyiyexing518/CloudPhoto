@@ -550,6 +550,24 @@ body {
   border-color: #dc2626;
 }
 
+.quick-chip--organize {
+  border-color: #fdba74;
+  color: #c2410c;
+  background: #fff7ed;
+}
+
+.quick-chip--organize:hover {
+  border-color: #f97316;
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.quick-chip--organize.active {
+  background: #f97316;
+  border-color: #f97316;
+  color: #fff;
+}
+
 /* Transfer progress banner */
 .transfer-banner {
   display: flex;
