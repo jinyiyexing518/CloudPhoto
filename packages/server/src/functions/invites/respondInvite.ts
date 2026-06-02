@@ -1,9 +1,9 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import {
   getInvitesContainer, getGroupsContainer, getUsersContainer,
   InviteDoc, GroupDoc, GroupMember,
-} from "../../utils/cosmosClient";
+} from "../../utils/cosmos/cosmosClient";
 
 /** POST /api/invites/{token}/respond  body: { action: "accept" | "decline" } */
 app.http("respondInvite", {

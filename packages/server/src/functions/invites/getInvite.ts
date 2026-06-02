@@ -1,5 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { getInvitesContainer, InviteDoc } from "../../utils/cosmosClient";
+import { getInvitesContainer, InviteDoc } from "../../utils/cosmos/cosmosClient";
 
 /** Public endpoint — returns invite summary for the accept/decline page. */
 app.http("getInvite", {

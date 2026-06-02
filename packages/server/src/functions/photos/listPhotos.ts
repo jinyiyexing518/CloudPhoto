@@ -9,9 +9,9 @@ import {
   containerName,
   getUserDelegationKey,
   generateSasUrlWithKey,
-} from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { isGroupMember } from "../../utils/cosmosClient";
+} from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 
 // Azure Blob metadata is ASCII-only; free-text fields are stored as base64
 function decodeMeta(raw: string | undefined): string | undefined {

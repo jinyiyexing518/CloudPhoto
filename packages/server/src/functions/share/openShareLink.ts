@@ -9,8 +9,8 @@ import {
   containerName,
   getUserDelegationKey,
   generateSasUrlWithKey,
-} from "../../utils/blobStorage";
-import { getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmosClient";
+} from "../../utils/blob/blobStorage";
+import { getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmos/cosmosClient";
 
 function decodeMeta(raw: string | undefined): string | undefined {
   if (!raw) return undefined;

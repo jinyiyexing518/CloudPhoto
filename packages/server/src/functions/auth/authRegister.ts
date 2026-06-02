@@ -1,8 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { hash } from "bcryptjs";
-import { getUsersContainer, UserDoc, isAdminCandidate } from "../../utils/cosmosClient";
-import { signToken, signRefreshToken } from "../../utils/jwtUtils";
-import { checkRateLimit, getClientIp } from "../../utils/rateLimit";
+import { getUsersContainer, UserDoc, isAdminCandidate } from "../../utils/cosmos/cosmosClient";
+import { signToken, signRefreshToken } from "../../utils/auth/jwtUtils";
+import { checkRateLimit, getClientIp } from "../../utils/auth/rateLimit";
 
 app.http("authRegister", {
   methods: ["POST"],

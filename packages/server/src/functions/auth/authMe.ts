@@ -1,6 +1,6 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { getUsersContainer } from "../../utils/cosmosClient";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
+import { getUsersContainer } from "../../utils/cosmos/cosmosClient";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 
 app.http("authMe", {
   methods: ["GET"],

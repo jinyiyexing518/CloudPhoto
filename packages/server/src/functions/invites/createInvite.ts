@@ -1,10 +1,10 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { randomUUID } from "crypto";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import {
   getGroupsContainer, getInvitesContainer, isGroupAdmin, GroupDoc, InviteDoc,
-} from "../../utils/cosmosClient";
-import { sendInviteEmail } from "../../utils/emailUtils";
+} from "../../utils/cosmos/cosmosClient";
+import { sendInviteEmail } from "../../utils/email/emailUtils";
 
 app.http("createInvite", {
   methods: ["POST"],

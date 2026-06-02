@@ -13,6 +13,19 @@ For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
 
 ## Changelog
 
+### v1.6.1 — UI Polish · Video Covers · Server Refactor
+
+**UI fixes**
+- **⬆️ 返回顶部按钮位置稳定** — 按钮移至左下角，与右侧 WorkspaceFab 永不冲突；`bottom` 改用 `env(safe-area-inset-bottom)` 计算，不再依赖硬编码像素值，后续调整 UI 不会再偏移
+- **🎞️ 重要片段视频封面** — Moments / TrashView / TimeCapsule 的缩略图统一使用新 `MediaThumb` 组件，视频自动定位代表帧，右下角显示 ▶ 标识
+- **WorkspaceFab chip 高度一致** — timeline 和 moments 模式下两个 chip 按钮均采用 2 行布局，避免视觉高度差
+- **WhatsNew 自动淡出修复** — 改用 keyframe 动画替代原来失效的 transition，4 s 淡出逻辑正常工作
+- **Tab bar 垂直居中** — shell-wrap 上下 padding 对称，tab 上下 padding 对称，文字不再偏低
+- **照片详情弹窗水平居中** — 打开弹窗时锁定 body scroll 并补偿滚动条宽度（`paddingRight`），避免视口中心右移
+
+**Server 重构**
+- **`utils/` 按领域拆分为子目录** — `blob/blobStorage.ts`、`cosmos/cosmosClient.ts`、`email/emailUtils.ts`、`auth/jwtUtils.ts`、`auth/rateLimit.ts`；全部 35 个 function 文件的 import 路径同步更新
+
 ### v1.6.0 — On This Day · Memory Map · Time Capsule · Auto Story
 
 - **📅 历史上的今天** — 时间线顶部自动检测往年同月同日的照片，按年份分组显示缩略图卡片，点击跳转到对应照片
@@ -776,8 +789,13 @@ CloudPhoto/
         │       ├── listGroupInvites.ts  # GET    /api/groups/{groupId}/invites
         │       └── cancelInvite.ts      # DELETE /api/invites/{token}
         └── utils/
-            ├── blobStorage.ts   # DefaultAzureCredential + User Delegation SAS (2h)
-            ├── cosmosClient.ts  # DefaultAzureCredential + Cosmos DB client
-            ├── jwtUtils.ts      # signToken (2h) / signRefreshToken (30d) / verify
-            └── rateLimit.ts     # In-memory sliding-window rate limiter (per IP)
+            ├── blob/
+            │   └── blobStorage.ts   # DefaultAzureCredential + User Delegation SAS (2h)
+            ├── cosmos/
+            │   └── cosmosClient.ts  # DefaultAzureCredential + Cosmos DB client
+            ├── email/
+            │   └── emailUtils.ts    # ACS email (invite emails)
+            └── auth/
+                ├── jwtUtils.ts      # signToken (2h) / signRefreshToken (30d) / verify
+                └── rateLimit.ts     # In-memory sliding-window rate limiter (per IP)
 ```

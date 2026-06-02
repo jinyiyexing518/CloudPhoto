@@ -1,8 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { compare, hash } from "bcryptjs";
-import { getUsersContainer } from "../../utils/cosmosClient";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { checkRateLimit, getClientIp } from "../../utils/rateLimit";
+import { getUsersContainer } from "../../utils/cosmos/cosmosClient";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { checkRateLimit, getClientIp } from "../../utils/auth/rateLimit";
 
 /**
  * POST /api/auth/change-password

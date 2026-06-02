@@ -9,9 +9,9 @@ import {
   containerName,
   getUserDelegationKey,
   generateSasUrlWithKey,
-} from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { isGroupMember } from "../../utils/cosmosClient";
+} from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 
 function decodeMeta(raw: string | undefined): string | undefined {
   if (!raw) return undefined;

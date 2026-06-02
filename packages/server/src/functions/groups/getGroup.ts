@@ -1,6 +1,6 @@
-﻿import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { getGroupsContainer, isGroupMember, GroupDoc } from "../../utils/cosmosClient";
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getGroupsContainer, isGroupMember, GroupDoc } from "../../utils/cosmos/cosmosClient";
 
 app.http("getGroup", {
   methods: ["GET"],

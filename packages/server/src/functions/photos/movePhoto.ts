@@ -8,8 +8,8 @@ import {
   getBlobServiceClient,
   containerName,
   generateSasUrl,
-} from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
+} from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;

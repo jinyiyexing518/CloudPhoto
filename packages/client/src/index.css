@@ -370,7 +370,7 @@ body {
   background: #fff;
   /* Break out of app-main's 24px padding to fill full page width */
   margin: 0 -24px;
-  padding: 6px 24px 0;
+  padding: 6px 24px 6px;
   margin-bottom: 0;
   border-radius: 0;
   border-bottom: 1px solid #e2e8f0;
@@ -456,7 +456,7 @@ body {
   background: transparent;
   border: none;
   border-bottom: 3px solid transparent;
-  padding: 6px 18px 8px;
+  padding: 8px 18px 8px;
   font-size: 0.93rem;
   font-weight: 500;
   color: #94a3b8;
@@ -634,33 +634,37 @@ body {
   transition: width 0.3s ease;
 }
 
-/* Scroll-to-top floating button */
+/* Scroll-to-top floating button
+   Anchored to LEFT side so it never conflicts with WorkspaceFab (always on right).
+   env(safe-area-inset-bottom) handles iOS home indicator automatically.
+   Only this block controls its position — no other .scroll-top-btn rules below. */
 .scroll-top-btn {
   position: fixed;
-  bottom: 88px;
-  left: 20px;
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  left: calc(20px + env(safe-area-inset-left, 0px));
   right: auto;
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
   color: #fff;
   border: none;
-  font-size: 1.25rem;
+  font-size: 0.75rem;
   font-weight: 700;
+  letter-spacing: 0.03em;
   line-height: 1;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
-  z-index: 100;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
+  z-index: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.18s, transform 0.18s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .scroll-top-btn:hover {
-  background: #2563eb;
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.07);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.45);
 }
 
 /* ─── On This Day card ───────────────────────────────────────────────────── */
@@ -1553,9 +1557,12 @@ body {
   animation: whats-new-overlay-out 0.3s ease forwards;
 }
 .whats-new-overlay--fading {
-  opacity: 0;
-  transition: opacity 4s ease;
-  animation: none !important;
+  animation: whats-new-overlay-fade 4s ease forwards !important;
+  pointer-events: none;
+}
+@keyframes whats-new-overlay-fade {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 @keyframes whats-new-overlay-in {
   from { opacity: 0; }
@@ -2748,6 +2755,13 @@ body {
   height: 182px;
   object-fit: cover;
   display: block;
+}
+
+/* wrapper that gives position:relative for MediaThumb's video badge */
+.media-thumb-wrap {
+  position: relative;
+  display: block;
+  overflow: hidden;
 }
 
 .moments-card-body {
@@ -6665,32 +6679,7 @@ body {
 }
 .toast-dismiss:hover { color: #374151; }
 
-/* ── U4: Scroll-to-top button — gradient pill ──── */
-.scroll-top-btn {
-  position: fixed;
-  bottom: calc(108px + env(safe-area-inset-bottom, 0px));
-  right: 20px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  color: #fff;
-  border: none;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  cursor: pointer;
-  z-index: 800;
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
-  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.scroll-top-btn:hover {
-  transform: translateY(-3px) scale(1.07);
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.45);
-}
+/* ── U4: Scroll-to-top button — see canonical definition near top of file ── */
 
 /* ── U5: Reading progress bar — glow effect ─────── */
 .scroll-progress-bar {

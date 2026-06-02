@@ -1,7 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { signToken, signRefreshToken, verifyRefreshToken } from "../../utils/jwtUtils";
-import { getUsersContainer } from "../../utils/cosmosClient";
-import { checkRateLimit, getClientIp } from "../../utils/rateLimit";
+import { signToken, signRefreshToken, verifyRefreshToken } from "../../utils/auth/jwtUtils";
+import { getUsersContainer } from "../../utils/cosmos/cosmosClient";
+import { checkRateLimit, getClientIp } from "../../utils/auth/rateLimit";
 
 /**
  * POST /api/auth/refresh

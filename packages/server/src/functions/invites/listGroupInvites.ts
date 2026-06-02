@@ -1,6 +1,6 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { getInvitesContainer, isGroupAdmin, InviteDoc } from "../../utils/cosmosClient";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getInvitesContainer, isGroupAdmin, InviteDoc } from "../../utils/cosmos/cosmosClient";
 
 /** GET /api/groups/{groupId}/invites — list pending invites (admin only) */
 app.http("listGroupInvites", {

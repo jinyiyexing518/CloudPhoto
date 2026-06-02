@@ -87,10 +87,10 @@ export default function WorkspaceFab({
       </button>
       <div className="workspace-fab-chip-group">
         <button className="workspace-fab-chip" onClick={onPrimaryChipClick}>
-          {activeTab === "timeline" ? <span style={{ wordBreak: "keep-all" }}>最近<wbr />上传</span> : <span style={{ lineHeight: 1.2 }}>分享<br />管理</span>}
+          {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>最近<br />上传</span> : <span style={{ lineHeight: 1.2 }}>分享<br />管理</span>}
         </button>
         <button className="workspace-fab-chip workspace-fab-chip--secondary" onClick={onSecondaryChipClick}>
-          {activeTab === "timeline" ? "去整理" : "看诊断"}
+          {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>去<br />整理</span> : <span style={{ lineHeight: 1.2 }}>看<br />诊断</span>}
         </button>
       </div>
     </div>

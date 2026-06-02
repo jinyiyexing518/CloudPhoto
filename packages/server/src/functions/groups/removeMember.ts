@@ -1,6 +1,6 @@
-﻿import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { getGroupsContainer, isGroupAdmin, GroupDoc } from "../../utils/cosmosClient";
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getGroupsContainer, isGroupAdmin, GroupDoc } from "../../utils/cosmos/cosmosClient";
 
 app.http("removeMember", {
   methods: ["DELETE"],

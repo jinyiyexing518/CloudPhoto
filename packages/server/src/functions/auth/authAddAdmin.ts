@@ -1,6 +1,6 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { getAdminsContainer } from "../../utils/cosmosClient";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getAdminsContainer } from "../../utils/cosmos/cosmosClient";
 
 // Only this account can manage the admins list (override via SUPER_ADMIN_USERNAME env var)
 const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME ?? "zhangchi";

@@ -4,8 +4,8 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
+import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 
 app.http("downloadPhoto", {
   methods: ["GET"],

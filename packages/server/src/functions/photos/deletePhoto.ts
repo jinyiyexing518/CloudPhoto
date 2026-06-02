@@ -4,9 +4,9 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName } from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { isGroupMember } from "../../utils/cosmosClient";
+import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 

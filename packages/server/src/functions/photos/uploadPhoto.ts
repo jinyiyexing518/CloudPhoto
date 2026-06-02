@@ -8,8 +8,8 @@ import {
   getBlobServiceClient,
   containerName,
   generateSasUrl,
-} from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
+} from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 
 const ALLOWED_IMAGE_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif",

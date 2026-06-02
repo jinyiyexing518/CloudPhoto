@@ -8,8 +8,8 @@ import {
   getMomentsContainer,
   isGroupMember,
   MomentInsightDoc,
-} from "../../utils/cosmosClient";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
+} from "../../utils/cosmos/cosmosClient";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 
 type MomentInsightDocWithEtag = MomentInsightDoc & { _etag?: string };
 

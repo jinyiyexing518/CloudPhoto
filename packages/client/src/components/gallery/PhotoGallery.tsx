@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
+import MediaThumb from "../shared/MediaThumb";
 import {
   Photo,
   updatePhotoSubject,
@@ -289,6 +290,20 @@ function PhotoGallery({
     onDownloadStateChange?.(downloading);
     return () => onDownloadStateChange?.(false);
   }, [downloading, onDownloadStateChange]);
+
+  // Lock body scroll + compensate scrollbar width when modal is open
+  useEffect(() => {
+    if (!selectedPhoto) return;
+    const sw = window.innerWidth - document.documentElement.clientWidth;
+    const prevOverflow = document.body.style.overflow;
+    const prevPadding = document.body.style.paddingRight;
+    document.body.style.overflow = "hidden";
+    document.body.style.paddingRight = `${sw}px`;
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPadding;
+    };
+  }, [selectedPhoto]);
   const allSelected = selected.size > 0 && selected.size === photos.length;
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
   const togglePhoto = (name: string) => {
@@ -948,7 +963,9 @@ function PhotoGallery({
               return (
                 <article key={photo.name} className="moments-card" onClick={() => openModal(photo)}>
                   <div className="moments-rank">{rankBadge} #{rank}</div>
-                  <img src={photo.url} alt={display} loading="lazy" className="moments-thumb" />
+                  <div className="media-thumb-wrap">
+                    <MediaThumb url={photo.url} alt={display} contentType={photo.contentType} className="moments-thumb" />
+                  </div>
                   <div className="moments-card-body">
                     <div className="moments-title-row">
                       <div className="moments-title" title={display}>{display}</div>

@@ -10,9 +10,9 @@ import {
   containerName,
   getUserDelegationKey,
   generateSasUrlWithKey,
-} from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { isGroupMember, getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmosClient";
+} from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isGroupMember, getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmos/cosmosClient";
 
 function decodeMeta(raw: string | undefined): string | undefined {
   if (!raw) return undefined;

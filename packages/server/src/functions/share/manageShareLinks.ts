@@ -4,8 +4,8 @@ import {
   HttpResponseInit,
 } from "@azure/functions";
 import { Container } from "@azure/cosmos";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmosClient";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmos/cosmosClient";
 
 type ShareLinkDocWithEtag = ShareLinkDoc & { _etag?: string };
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Photo, listTrashPhotos, restorePhoto, permanentlyDeletePhoto } from "../../services/photoApi";
+import MediaThumb from "../shared/MediaThumb";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -167,23 +168,7 @@ export default function TrashView({ groupId, onRestored }: Props) {
           return (
             <div key={p.name} className={`trash-card${busy ? " trash-card--busy" : ""}`}>
               <div className="trash-card-thumb">
-                {p.contentType?.startsWith("video/") ? (
-                  <>
-                    <video
-                      src={p.url}
-                      preload="metadata"
-                      muted
-                      playsInline
-                      onLoadedMetadata={(e) => {
-                        const v = e.currentTarget;
-                        v.currentTime = Math.min(2, v.duration * 0.1);
-                      }}
-                    />
-                    <div className="photo-video-badge">▶</div>
-                  </>
-                ) : (
-                  <img src={p.url} alt={displayName} loading="lazy" draggable={false} />
-                )}
+                <MediaThumb url={p.url} alt={displayName} contentType={p.contentType} loading="lazy" />
               </div>
               <div className="trash-card-body">
                 <div className="trash-card-name" title={displayName}>{displayName}</div>

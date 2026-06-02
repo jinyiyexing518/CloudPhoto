@@ -4,9 +4,9 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName, generateSasUrl } from "../../utils/blobStorage";
-import { extractTokenFromHeader } from "../../utils/jwtUtils";
-import { isGroupMember } from "../../utils/cosmosClient";
+import { getBlobServiceClient, containerName, generateSasUrl } from "../../utils/blob/blobStorage";
+import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 
 app.http("renameFolder", {
   methods: ["PATCH"],

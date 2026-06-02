@@ -4,7 +4,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getChangelogsContainer } from "../../utils/cosmosClient";
+import { getChangelogsContainer } from "../../utils/cosmos/cosmosClient";
 
 interface ChangelogEntry {
   id: string;

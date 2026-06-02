@@ -1,8 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { compare } from "bcryptjs";
-import { getUsersContainer, UserDoc } from "../../utils/cosmosClient";
-import { signToken, signRefreshToken } from "../../utils/jwtUtils";
-import { checkRateLimit, getClientIp } from "../../utils/rateLimit";
+import { getUsersContainer, UserDoc } from "../../utils/cosmos/cosmosClient";
+import { signToken, signRefreshToken } from "../../utils/auth/jwtUtils";
+import { checkRateLimit, getClientIp } from "../../utils/auth/rateLimit";
 
 app.http("authLogin", {
   methods: ["POST"],
