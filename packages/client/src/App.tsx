@@ -161,6 +161,11 @@ function AppContent() {
   const [isDragOver, setIsDragOver] = useState(false);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
+  const [uploadPaused, setUploadPaused] = useState(false);
+  const [uploadSpeed, setUploadSpeed] = useState("");
+  const pausedRef = useRef(false);
+  const resumeCallbackRef = useRef<(() => void) | null>(null);
+  const speedRef = useRef<{ ts: number; bytes: number; ema: number }>({ ts: 0, bytes: 0, ema: 0 });
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
   const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
@@ -718,6 +723,12 @@ function AppContent() {
     const ALLOWED_TYPES = new Set([...IMAGE_TYPES, ...VIDEO_TYPES]);
     const IMAGE_MAX = 20 * 1024 * 1024;   // 20 MB
     const VIDEO_MAX = 200 * 1024 * 1024;  // 200 MB
+
+    const formatSpeed = (bps: number) => {
+      if (bps >= 1024 * 1024) return `${(bps / 1024 / 1024).toFixed(1)} MB/s`;
+      if (bps >= 1024) return `${(bps / 1024).toFixed(0)} KB/s`;
+      return `${Math.round(bps)} B/s`;
+    };
     const fileArray = Array.from(files);
     const invalidType = fileArray.filter((f) => !ALLOWED_TYPES.has(f.type));
     const oversized = fileArray.filter((f) => {
@@ -739,9 +750,21 @@ function AppContent() {
     const totalMB = (bytesTotal / (1024 * 1024)).toFixed(1);
     setUploadTotalSize(`${valid.length} 个 · ${totalMB} MB`);
     setUploadProgress({ bytesLoaded: 0, bytesTotal, filesDone: 0, filesTotal: valid.length, folder, currentFile: valid[0]?.name });
+
+    // Reset speed tracking and pause state for this batch
+    speedRef.current = { ts: Date.now(), bytes: 0, ema: 0 };
+    pausedRef.current = false;
+    setUploadPaused(false);
+    setUploadSpeed("");
+
     const failed: string[] = [];
     let completedBytes = 0;
     for (let i = 0; i < valid.length; i++) {
+      // ── Pause gate: wait here until resumed ──────────────────────────────
+      if (pausedRef.current) {
+        await new Promise<void>(resolve => { resumeCallbackRef.current = resolve; });
+      }
+
       setUploadProgress({ bytesLoaded: completedBytes, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
       const fileBase = completedBytes;
       try {
@@ -758,18 +781,58 @@ function AppContent() {
             }
           } catch { /* EXIF extraction is best-effort */ }
         }
-        await uploadPhotoWithProgress(
-          valid[i],
-          (loaded) => {
-            setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
-          },
-          user?.displayName || undefined,
-          subject || undefined,
-          folder || undefined,
-          currentGroupId || undefined,
-          gpsLat,
-          gpsLon,
-        );
+
+        // ── Upload with retry (up to 3 attempts, auto-waits for network) ──
+        let lastErr: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const controller = new AbortController();
+            await uploadPhotoWithProgress(
+              valid[i],
+              (loaded) => {
+                // Speed tracking (EMA, update every 500 ms)
+                const now = Date.now();
+                const elapsed = (now - speedRef.current.ts) / 1000;
+                if (elapsed >= 0.5) {
+                  const totalLoaded = fileBase + loaded;
+                  const rawBps = (totalLoaded - speedRef.current.bytes) / elapsed;
+                  speedRef.current.ema = speedRef.current.ema === 0 ? rawBps : speedRef.current.ema * 0.7 + rawBps * 0.3;
+                  speedRef.current.ts = now;
+                  speedRef.current.bytes = totalLoaded;
+                  setUploadSpeed(formatSpeed(speedRef.current.ema));
+                }
+                setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
+              },
+              user?.displayName || undefined,
+              subject || undefined,
+              folder || undefined,
+              currentGroupId || undefined,
+              gpsLat,
+              gpsLon,
+              controller.signal,
+            );
+            lastErr = undefined;
+            break; // success — exit retry loop
+          } catch (e) {
+            lastErr = e;
+            if (attempt < 2) {
+              if (!navigator.onLine) {
+                // Wait until network comes back before retrying
+                setUploadSpeed("等待网络…");
+                await new Promise<void>(resolve => {
+                  const h = () => { window.removeEventListener("online", h); resolve(); };
+                  window.addEventListener("online", h);
+                });
+                setUploadSpeed("");
+              } else {
+                // Brief back-off between retries
+                await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+              }
+            }
+          }
+        }
+        if (lastErr) throw lastErr;
+
         completedBytes += valid[i].size;
       } catch {
         failed.push(valid[i].name);
@@ -780,11 +843,25 @@ function AppContent() {
     await fetchPhotos();
     setUploadProgress(null);
     setUploadTotalSize(null);
+    setUploadSpeed("");
+    setUploadPaused(false);
+    pausedRef.current = false;
     if (failed.length > 0) {
       showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
     } else {
       const hasVideo = valid.some((f) => VIDEO_TYPES.has(f.type));
       showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
+    }
+  };
+
+  const handleToggleUploadPause = () => {
+    const next = !pausedRef.current;
+    pausedRef.current = next;
+    setUploadPaused(next);
+    if (!next && resumeCallbackRef.current) {
+      // Unblock the pause gate in the upload loop
+      resumeCallbackRef.current();
+      resumeCallbackRef.current = null;
     }
   };
 
@@ -1154,16 +1231,26 @@ function AppContent() {
                   <span className="transfer-banner-icon">⬆️</span>
                   <div className="transfer-banner-body">
                     <span className="transfer-banner-text">
-                      {uploadProgress.currentFile
-                        ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.filesDone + 1}/${uploadProgress.filesTotal})`
-                        : `上传完成 (${uploadProgress.filesTotal}/${uploadProgress.filesTotal})`}
+                      {uploadPaused
+                        ? `已暂停 (${uploadProgress.filesDone + 1}/${uploadProgress.filesTotal})`
+                        : uploadProgress.currentFile
+                          ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.filesDone + 1}/${uploadProgress.filesTotal})`
+                          : `上传完成 (${uploadProgress.filesTotal}/${uploadProgress.filesTotal})`}
                     </span>
                     {uploadTotalSize && (
                       <span className="transfer-banner-size">
                         {(uploadProgress.bytesLoaded / 1024 / 1024).toFixed(1)} / {(uploadProgress.bytesTotal / 1024 / 1024).toFixed(1)} MB
+                        {uploadSpeed ? <span className="transfer-banner-speed"> · {uploadSpeed}</span> : null}
                       </span>
                     )}
                   </div>
+                  <button
+                    className="transfer-banner-pause"
+                    onClick={handleToggleUploadPause}
+                    title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
+                  >
+                    {uploadPaused ? "▶" : "⏸"}
+                  </button>
                   <span className="transfer-banner-pct">
                     {Math.round((uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%
                   </span>

@@ -1,0 +1,11 @@
+{
+  "name": "cloudphoto-sync-changelog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI script — syncs changes/*.json to Cosmos DB",
+  "dependencies": {
+    "@azure/cosmos": "^4.9.3",
+    "@azure/identity": "^4.13.1"
+  }
+}

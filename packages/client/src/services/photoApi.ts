@@ -249,6 +249,7 @@ export function uploadPhotoWithProgress(
   groupId?: string,
   gpsLat?: string,
   gpsLon?: string,
+  signal?: AbortSignal,
 ): Promise<Photo> {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams({ filename: file.name });
@@ -285,6 +286,10 @@ export function uploadPhotoWithProgress(
     xhr.addEventListener("error", () => reject(new Error("网络错误")));
     xhr.addEventListener("timeout", () => reject(new Error(`上传超时: ${file.name}`)));
     xhr.timeout = 600000; // 10 min for large videos
+
+    // Honour external abort (e.g. user cancels)
+    signal?.addEventListener("abort", () => { xhr.abort(); reject(new DOMException("上传已取消", "AbortError")); });
+
     xhr.send(file);
   });
 }

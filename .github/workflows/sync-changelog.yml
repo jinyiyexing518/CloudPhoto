@@ -23,10 +23,11 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "20"
+          cache: "yarn"
+          cache-dependency-path: scripts/yarn.lock
 
       - name: Install Cosmos DB + Identity packages
-        # These are hoisted from packages/server — just install them at root
-        run: npm install --no-save @azure/cosmos @azure/identity
+        run: yarn install --frozen-lockfile --cwd scripts
 
       - name: Azure Login (attempt 1)
         id: azure_login_first
