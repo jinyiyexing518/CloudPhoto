@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { Photo } from "../../services/photoApi";
 
 interface Props {
@@ -30,6 +30,15 @@ function PhotoCard({
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handleVideoMetadata = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    // Seek to 10% of duration (max 2 s) to get a representative thumbnail frame
+    v.currentTime = Math.min(2, v.duration * 0.1);
+  };
+  const handleVideoSeeked = () => setImgLoaded(true);
   const basename = photo.name.split("/").pop() ?? photo.name;
   const displayName = photo.originalName || basename.replace(/^\d+-/, "");
   const uploadTime = photo.createdAt
@@ -54,12 +63,14 @@ function PhotoCard({
           {!imgLoaded && <div className="photo-skeleton" />}
           {isVideo ? (
             <video
+              ref={videoRef}
               src={photo.url}
               className={imgLoaded ? "img-loaded" : "img-loading"}
               preload="metadata"
               muted
               playsInline
-              onLoadedMetadata={() => setImgLoaded(true)}
+              onLoadedMetadata={handleVideoMetadata}
+              onSeeked={handleVideoSeeked}
             />
           ) : (
             <img
