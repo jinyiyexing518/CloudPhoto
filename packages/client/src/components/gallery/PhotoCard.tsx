@@ -1,4 +1,5 @@
 import { memo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 
 interface Props {
@@ -136,7 +137,7 @@ function PhotoCard({
         )}
       </div>
 
-      {showConfirm && (
+      {showConfirm && createPortal(
         <div className="confirm-overlay" onClick={() => setShowConfirm(false)}>
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
             <p className="confirm-title">删除照片？</p>
@@ -156,7 +157,8 @@ function PhotoCard({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
