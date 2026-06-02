@@ -9,6 +9,44 @@ function formatDate(dateStr: string): string {
 const IDLE_DELAY_MS = 5000;    // 5s 无操作后开始淡出
 const FADE_DURATION_MS = 4000; // 4s CSS 过渡时长
 
+/** Entries without a type are treated as features (backward-compatible) */
+function entryType(e: ChangelogEntry): "feature" | "fix" | "improvement" {
+  return e.type ?? "feature";
+}
+
+function EntryItem({ entry, expandedId, setExpandedId }: {
+  entry: ChangelogEntry;
+  expandedId: string | null;
+  setExpandedId: (id: string | null) => void;
+}) {
+  const open = expandedId === entry.id;
+  return (
+    <li key={entry.id} className={`whats-new-item whats-new-item--${entryType(entry)}`}>
+      <div
+        className="whats-new-item-summary"
+        onClick={() => setExpandedId(open ? null : entry.id)}
+        role="button"
+        aria-expanded={open}
+      >
+        <span className="whats-new-icon">{entry.icon}</span>
+        <div className="whats-new-body">
+          <div className="whats-new-item-top">
+            <span className="whats-new-item-title">{entry.title}</span>
+            <span className="whats-new-item-date">{formatDate(entry.date)}</span>
+          </div>
+          <span className="whats-new-item-desc">{entry.desc}</span>
+        </div>
+        {entry.details && (
+          <span className={`whats-new-expand-icon${open ? " whats-new-expand-icon--open" : ""}`}>▼</span>
+        )}
+      </div>
+      {open && entry.details && (
+        <div className="whats-new-item-details">{entry.details}</div>
+      )}
+    </li>
+  );
+}
+
 export default function WhatsNewPopup() {
   const [entries, setEntries] = useState<ChangelogEntry[] | null>(null);
   const [visible, setVisible] = useState(false);
@@ -16,6 +54,7 @@ export default function WhatsNewPopup() {
   const [fading, setFading] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [fixesOpen, setFixesOpen] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -28,8 +67,6 @@ export default function WhatsNewPopup() {
   }, []);
 
   // WhatsNew 是自动淡出的轻量提示层，不需要锁定 body 滚动。
-  // 之前的 scroll-lock + paddingRight 补偿会在弹窗淡出时产生布局位移，
-  // 导致 position:fixed 的 FAB 看起来发生了偏移。
 
   // 启动自动淡出倒计时；pinned 后取消
   useEffect(() => {
@@ -62,6 +99,9 @@ export default function WhatsNewPopup() {
 
   if (!visible || !entries) return null;
 
+  const mainEntries = entries.filter((e) => entryType(e) !== "fix");
+  const fixEntries  = entries.filter((e) => entryType(e) === "fix");
+
   return createPortal(
     <div
       className={`whats-new-overlay${closing ? " whats-new-overlay--out" : ""}${fading ? " whats-new-overlay--fading" : ""}`}
@@ -78,36 +118,36 @@ export default function WhatsNewPopup() {
           </div>
           <button className="whats-new-close" onClick={dismiss} aria-label="关闭">✕</button>
         </div>
-        <ul className="whats-new-list">
-          {entries.map((entry) => {
-            const open = expandedId === entry.id;
-            return (
-              <li key={entry.id} className="whats-new-item">
-                <div
-                  className="whats-new-item-summary"
-                  onClick={() => setExpandedId(open ? null : entry.id)}
-                  role="button"
-                  aria-expanded={open}
-                >
-                  <span className="whats-new-icon">{entry.icon}</span>
-                  <div className="whats-new-body">
-                    <div className="whats-new-item-top">
-                      <span className="whats-new-item-title">{entry.title}</span>
-                      <span className="whats-new-item-date">{formatDate(entry.date)}</span>
-                    </div>
-                    <span className="whats-new-item-desc">{entry.desc}</span>
-                  </div>
-                  {entry.details && (
-                    <span className={`whats-new-expand-icon${open ? " whats-new-expand-icon--open" : ""}`}>▼</span>
-                  )}
-                </div>
-                {open && entry.details && (
-                  <div className="whats-new-item-details">{entry.details}</div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+
+        {/* ── Feature / improvement entries (prominent) ─────────────────── */}
+        {mainEntries.length > 0 && (
+          <ul className="whats-new-list">
+            {mainEntries.map((entry) => (
+              <EntryItem key={entry.id} entry={entry} expandedId={expandedId} setExpandedId={setExpandedId} />
+            ))}
+          </ul>
+        )}
+
+        {/* ── Fix entries — collapsed by default ────────────────────────── */}
+        {fixEntries.length > 0 && (
+          <div className="whats-new-fixes">
+            <button
+              className="whats-new-fixes-toggle"
+              onClick={() => setFixesOpen((v) => !v)}
+              aria-expanded={fixesOpen}
+            >
+              <span className="whats-new-fixes-label">🔧 另有 {fixEntries.length} 项修复</span>
+              <span className={`whats-new-expand-icon${fixesOpen ? " whats-new-expand-icon--open" : ""}`}>▼</span>
+            </button>
+            {fixesOpen && (
+              <ul className="whats-new-list whats-new-list--fixes">
+                {fixEntries.map((entry) => (
+                  <EntryItem key={entry.id} entry={entry} expandedId={expandedId} setExpandedId={setExpandedId} />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

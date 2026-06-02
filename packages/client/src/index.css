@@ -1710,6 +1710,32 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Fix/improvement item — slightly muted vs feature */
+.whats-new-item--fix .whats-new-item-title,
+.whats-new-item--improvement .whats-new-item-title { color: #374151; }
+.whats-new-item--fix .whats-new-item-desc,
+.whats-new-item--improvement .whats-new-item-desc { color: #6b7280; }
+.whats-new-list--fixes .whats-new-item { background: transparent; }
+
+/* Fix group toggle button */
+.whats-new-fixes {
+  border-top: 1px solid #f3f4f6;
+  margin-top: 4px;
+}
+.whats-new-fixes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 16px;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 0.82rem;
+}
+.whats-new-fixes-toggle:hover { color: #374151; }
+.whats-new-fixes-label { flex: 1; text-align: left; }
 
 
 /* Photo count recent badge */

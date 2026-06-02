@@ -373,6 +373,8 @@ export interface ChangelogEntry {
   title: string;
   desc: string;
   details?: string;
+  /** "feature" | "fix" | "improvement" — defaults to "feature" when absent */
+  type?: "feature" | "fix" | "improvement";
 }
 
 export async function fetchChangelogs(days = 7): Promise<ChangelogEntry[]> {

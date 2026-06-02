@@ -41,12 +41,15 @@ async function main() {
   const title = (await ask("  Title (short, Chinese OK): ")).trim();
   if (!title) { console.error("  ❌ Title is required."); process.exit(1); }
 
+  const typeRaw = (await ask("  Type [feature/fix/improvement, default: feature]: ")).trim().toLowerCase();
+  const type = ["fix", "improvement"].includes(typeRaw) ? typeRaw : "feature";
+
   const desc = (await ask("  Short description (one line): ")).trim();
   const details = (await ask("  Details (full explanation, optional): ")).trim();
 
   rl.close();
 
-  const entry = { id, date, icon, title, ...(desc && { desc }), ...(details && { details }) };
+  const entry = { id, date, icon, title, type, ...(desc && { desc }), ...(details && { details }) };
 
   const changesDir = join(root, "changes");
   mkdirSync(changesDir, { recursive: true });

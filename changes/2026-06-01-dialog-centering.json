@@ -4,5 +4,6 @@
   "icon": "📐",
   "title": "删除确认弹窗居中",
   "desc": "删除确认弹窗现在始终显示在屏幕正中央",
-  "details": "之前删除确认弹窗在部分场景（尤其是有 CSS transform 的父元素内）会出现在视口底部或偏移位置。现在改用 React createPortal 直接渲染到 document.body，始终固定居中。"
+  "details": "之前删除确认弹窗在部分场景（尤其是有 CSS transform 的父元素内）会出现在视口底部或偏移位置。现在改用 React createPortal 直接渲染到 document.body，始终固定居中。",
+  "type": "fix"
 }

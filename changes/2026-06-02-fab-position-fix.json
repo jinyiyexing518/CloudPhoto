@@ -4,5 +4,6 @@
   "icon": "📌",
   "title": "FAB 位置抖动修复",
   "desc": "修复浮动操作栏在时间线/重要片段切换时芯片位置不一致，以及触摸滑动误触导致的抖动偏移问题。",
-  "details": "给 .workspace-fab-rail 设置固定宽度锁定左边缘；onPointerMove 添加 8px 拖动阈值防止滚动手势误触；从 localStorage 恢复位置时校验视口范围，超出则丢弃。"
+  "details": "给 .workspace-fab-rail 设置固定宽度锁定左边缘；onPointerMove 添加 8px 拖动阈值防止滚动手势误触；从 localStorage 恢复位置时校验视口范围，超出则丢弃。",
+  "type": "fix"
 }
