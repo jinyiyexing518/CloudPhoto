@@ -340,15 +340,16 @@ body {
 .add-admin-submit:disabled { opacity: 0.65; cursor: not-allowed; }
 
 /* ===== View Tabs ===== */
-/* Wrap: provides sticky positioning + page-bg coverage that masks content
-   showing through the rounded corners of the inner card when it is sticky. */
+/* Wrap + shell share the same white surface as app-header, forming one unified
+   navigation bar. The wrap holds the sticky/shadow; the shell is transparent. */
 .view-tabs-shell-wrap {
   position: sticky;
   top: calc(72px + env(safe-area-inset-top, 0px));
   z-index: 9;
-  background: #f0f2f5; /* matches body — hides content bleeding through card corners */
-  padding: 8px 0 10px;
+  background: #fff;
+  padding: 0 0 10px;
   margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
   transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .header-hidden .view-tabs-shell-wrap {
@@ -359,25 +360,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: #f8fafc;
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.92);
-  border-radius: 18px;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
-  padding: 12px 14px 10px;
+  background: transparent;
+  padding: 10px 14px 0;
   overflow: hidden;
 }
 
-/* Fills gap above + covers top rounded-corner transparent areas with page bg,
-   preventing scroll content from showing through when sticky. */
+/* Fills above the wrap to prevent page content bleeding through the top
+   when the wrap is sticky. Must match wrap background. */
 .view-tabs-shell::before {
   content: "";
   position: absolute;
   left: -1px;
   right: -1px;
   top: -300px;
-  height: 322px; /* 300px above + 22px past border-radius:18px corner area */
-  background: #f0f2f5;
+  height: 322px;
+  background: #fff;
   pointer-events: none;
   z-index: -1;
 }
