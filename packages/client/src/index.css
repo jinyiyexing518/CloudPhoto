@@ -365,23 +365,11 @@ body {
   flex-direction: column;
   gap: 10px;
   background: transparent;
-  padding: 10px 14px 0;
+  padding: 10px 0 0;
   overflow: hidden;
 }
 
-/* Fills above the wrap to prevent page content bleeding through the top
-   when the wrap is sticky. Must match wrap background. */
-.view-tabs-shell::before {
-  content: "";
-  position: absolute;
-  left: -1px;
-  right: -1px;
-  top: -300px;
-  height: 322px;
-  background: #fff;
-  pointer-events: none;
-  z-index: -1;
-}
+/* ::before removed — no longer needed (no rounded corners on sticky card) */
 
 .view-tabs-meta {
   display: flex;
@@ -2369,7 +2357,7 @@ body {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: 24px;
+  padding: 0 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -3791,7 +3779,7 @@ body {
 
   /* ── Main content ── */
   .app-main {
-    padding: 12px;
+    padding: 0 12px 12px;
     gap: 14px;
   }
 
