@@ -1003,22 +1003,21 @@ function PhotoGallery({
                 <span className="modal-size">{formatSize(selectedPhoto.size)}</span>
               </div>
 
-              {/* Download button */}
-              <button
-                className="modal-download-btn"
-                onClick={() => void handleDownload()}
-                disabled={downloading}
-              >
-                {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
-              </button>
-
-              <button
-                className="modal-preview-btn"
-                onClick={() => setShowOriginalPreview(true)}
-              >
-                🔍 预览原图
-              </button>
-
+              <div className="modal-primary-actions">
+                <button
+                  className="modal-download-btn"
+                  onClick={() => void handleDownload()}
+                  disabled={downloading}
+                >
+                  {downloading ? "⏳ 下载中…" : "⬇ 下载"}
+                </button>
+                <button
+                  className="modal-preview-btn"
+                  onClick={() => setShowOriginalPreview(true)}
+                >
+                  🔍 预览原图
+                </button>
+              </div>
               <div className="modal-actions-row">
                 <button
                   className={`modal-favorite-btn${selectedPhoto.favorite ? " modal-favorite-btn--on" : ""}`}
@@ -1042,19 +1041,22 @@ function PhotoGallery({
                 <button className="modal-delete-btn" onClick={handleModalDelete}>🗑 删除</button>
               </div>
 
-              <div className="modal-share-row">
-                <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
-                  <option value="1">1 小时</option>
-                  <option value="24">24 小时</option>
-                  <option value="72">3 天</option>
-                  <option value="168">7 天</option>
-                </select>
-                <button className="modal-share-btn" onClick={() => void handleShare()} disabled={sharing}>
-                  {sharing ? "创建中…" : "🔗 复制分享链接"}
-                </button>
+              <div className="modal-share-section">
+                <span className="modal-section-label">生成分享链接</span>
+                <div className="modal-share-row">
+                  <select className="modal-move-select" value={shareHours} onChange={(e) => setShareHours(e.target.value)}>
+                    <option value="1">1 小时</option>
+                    <option value="24">24 小时</option>
+                    <option value="72">3 天</option>
+                    <option value="168">7 天</option>
+                  </select>
+                  <button className="modal-share-btn" onClick={() => void handleShare()} disabled={sharing}>
+                    {sharing ? "创建中…" : "🔗 复制链接"}
+                  </button>
+                </div>
               </div>
               <div className="modal-detail-grid">
-                <span className="modal-detail-label">Subject</span>
+                <span className="modal-detail-label">备注</span>
                 <span className="modal-detail-value modal-subject-cell">
                   {editingSubject ? (
                     <>
@@ -1113,16 +1115,16 @@ function PhotoGallery({
                   </>
                 ) : (
                   <>
-                    <span className="modal-detail-label">Created by</span>
+                    <span className="modal-detail-label">上传者</span>
                     <span className="modal-detail-value">{selectedPhoto.createdBy ?? "—"}</span>
 
-                    <span className="modal-detail-label">Uploaded at</span>
+                    <span className="modal-detail-label">上传时间</span>
                     <span className="modal-detail-value">{selectedPhoto.createdAt ? formatDate(selectedPhoto.createdAt) : "—"}</span>
 
-                    <span className="modal-detail-label">Last modified by</span>
+                    <span className="modal-detail-label">修改者</span>
                     <span className="modal-detail-value">{selectedPhoto.lastModifiedBy ?? "—"}</span>
 
-                    <span className="modal-detail-label">Last modified at</span>
+                    <span className="modal-detail-label">修改时间</span>
                     <span className="modal-detail-value">
                       {selectedPhoto.lastModifiedAt
                         ? formatDate(selectedPhoto.lastModifiedAt)
@@ -1131,15 +1133,12 @@ function PhotoGallery({
                         : "—"}
                     </span>
 
-                    <span className="modal-detail-label">Type</span>
+                    <span className="modal-detail-label">文件类型</span>
                     <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
                   </>
                 )}
               </div>
             </div>
-            {modalPhotos.length > 1 && (
-              <div className="modal-nav-hint">← → 键切换 · Esc 关闭</div>
-            )}
           </div>
         </div>
       )}

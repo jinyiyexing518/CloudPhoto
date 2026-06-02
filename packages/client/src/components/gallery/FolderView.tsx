@@ -1038,33 +1038,38 @@ function FolderContent({
       {selectedPhoto && (
         <div className="modal-overlay" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}>✕</button>
-            {/* Prev / Next navigation */}
-            {selectedIdx !== null && selectedIdx > 0 && (
-              <button
-                className="modal-nav modal-nav--prev"
-                onClick={() => navigateToPhoto(selectedIdx - 1, directPhotos)}
-                title="上一张 (←)"
-              >
-                ‹
-              </button>
-            )}
-            {selectedIdx !== null && selectedIdx < directPhotos.length - 1 && (
-              <button
-                className="modal-nav modal-nav--next"
-                onClick={() => navigateToPhoto(selectedIdx + 1, directPhotos)}
-                title="下一张 (→)"
-              >
-                ›
-              </button>
-            )}
-            <img
-              src={selectedPhoto.url}
-              alt={displayName(selectedPhoto)}
-              className="modal-image"
-              onClick={() => setShowOriginalPreview(true)}
-              title="点击预览原图"
-            />
+          <div className="modal-image-pane">
+              {/* Prev / Next navigation */}
+              {selectedIdx !== null && selectedIdx > 0 && (
+                <button
+                  className="modal-nav modal-nav--prev"
+                  onClick={() => navigateToPhoto(selectedIdx - 1, directPhotos)}
+                  title="上一张 (←)"
+                >
+                  ‹
+                </button>
+              )}
+              {selectedIdx !== null && selectedIdx < directPhotos.length - 1 && (
+                <button
+                  className="modal-nav modal-nav--next"
+                  onClick={() => navigateToPhoto(selectedIdx + 1, directPhotos)}
+                  title="下一张 (→)"
+                >
+                  ›
+                </button>
+              )}
+              <img
+                src={selectedPhoto.url}
+                alt={displayName(selectedPhoto)}
+                className="modal-image"
+                onClick={() => setShowOriginalPreview(true)}
+                title="点击预览原图"
+              />
+              {directPhotos.length > 1 && (
+                <div className="modal-nav-hint">← → 切换 · Esc 关闭</div>
+              )}
+            </div>
+            <button className="modal-close" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }} title="关闭 (Esc)">✕</button>
             <div className="modal-info">
 
               {/* Filename row with rename */}
@@ -1101,21 +1106,21 @@ function FolderContent({
                 <span className="modal-size">{formatSize(selectedPhoto.size)}</span>
               </div>
 
-              {/* Download button */}
-              <button
-                className="modal-download-btn"
-                onClick={() => void handleDownload()}
-                disabled={downloading}
-              >
-                {downloading ? "⏳ 下载中…" : "⬇ 下载原图"}
-              </button>
-
-              <button
-                className="modal-preview-btn"
-                onClick={() => setShowOriginalPreview(true)}
-              >
-                🔍 预览原图
-              </button>
+              <div className="modal-primary-actions">
+                <button
+                  className="modal-download-btn"
+                  onClick={() => void handleDownload()}
+                  disabled={downloading}
+                >
+                  {downloading ? "⏳ 下载中…" : "⬇ 下载"}
+                </button>
+                <button
+                  className="modal-preview-btn"
+                  onClick={() => setShowOriginalPreview(true)}
+                >
+                  🔍 预览原图
+                </button>
+              </div>
 
               <div className="modal-actions-row">
                 <button
@@ -1223,10 +1228,7 @@ function FolderContent({
                 <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
               </div>
             </div>
-            {directPhotos.length > 1 && (
-              <div className="modal-nav-hint">\u2190 \u2192 \u952e\u5207\u6362 \u00b7 Esc \u5173\u95ed</div>
-            )}
-          </div>
+            </div>
         </div>
       )}
 
