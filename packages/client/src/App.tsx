@@ -60,6 +60,8 @@ function AppContent() {
   const [viewTabsShowRight, setViewTabsShowRight] = useState(false);
   const [headerHidden, setHeaderHidden] = useState(false);
   const scrollHideRef = useRef(0);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -183,6 +185,15 @@ function AppContent() {
   }, [sidebarOpen]);
   // Always show header when sidebar opens
   useEffect(() => { if (sidebarOpen) setHeaderHidden(false); }, [sidebarOpen]);
+  useEffect(() => {
+    function handleOutsideClick(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    if (userMenuOpen) document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [userMenuOpen]);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -880,19 +891,47 @@ function AppContent() {
             <span className="photo-count-recent">+{recentUploads.length} 近7天</span>
           )}
         </span>
-        <div className="user-badge">
-          <span className="user-name-btn">
-            👤 {user?.displayName}
-            {user?.role === "admin" && <span className="role-badge">Admin</span>}
-          </span>
-          {user?.username === SUPER_ADMIN && (
-            <button className="add-admin-btn" onClick={() => setShowAddAdmin(true)} title="添加 Admin">
-              + Admin
-            </button>
+        {/* ── Avatar user-menu ── */}
+        <div className="user-avatar-wrap" ref={userMenuRef}>
+          <button
+            className={`user-avatar-btn${user?.role === "admin" ? " user-avatar-btn--admin" : ""}`}
+            onClick={() => setUserMenuOpen((v) => !v)}
+            aria-haspopup="true"
+            aria-expanded={userMenuOpen}
+            title={user?.displayName}
+          >
+            {user?.displayName?.[0]?.toUpperCase() ?? "U"}
+          </button>
+          {userMenuOpen && (
+            <div className="user-menu-dropdown">
+              <div className="user-menu-header">
+                <div className="user-menu-name">{user?.displayName}</div>
+                <div className="user-menu-sub">
+                  <span>@{user?.username}</span>
+                  {user?.role === "admin" && <span className="role-badge">Admin</span>}
+                </div>
+              </div>
+              <div className="user-menu-divider" />
+              <button className="user-menu-item" onClick={() => { setShowSettings(true); setUserMenuOpen(false); }}>
+                <span className="user-menu-item-icon">⚙️</span> 设置
+              </button>
+              <button className="user-menu-item" onClick={() => { setShowShortcutsHelp(true); setUserMenuOpen(false); }}>
+                <span className="user-menu-item-icon">⌨️</span> 快捷键
+              </button>
+              {user?.username === SUPER_ADMIN && (
+                <>
+                  <div className="user-menu-divider" />
+                  <button className="user-menu-item" onClick={() => { setShowAddAdmin(true); setUserMenuOpen(false); }}>
+                    <span className="user-menu-item-icon">➕</span> 添加管理员
+                  </button>
+                </>
+              )}
+              <div className="user-menu-divider" />
+              <button className="user-menu-item user-menu-item--danger" onClick={() => { logout(); setUserMenuOpen(false); }}>
+                <span className="user-menu-item-icon">🚪</span> 退出登录
+              </button>
+            </div>
           )}
-          <button className="logout-btn" onClick={logout} title="退出登录">退出</button>
-          <button className="settings-btn" onClick={() => setShowSettings(true)} title="设置">⚙️</button>
-          <button className="shortcuts-help-btn" onClick={() => setShowShortcutsHelp(true)} title="键盘快捷键 (?)">⌨️</button>
         </div>
       </header>
 
