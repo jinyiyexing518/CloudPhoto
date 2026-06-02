@@ -8,7 +8,8 @@
     "watch": "tsc -w",
     "prestart": "npm run build",
     "start": "func start",
-    "dev": "npm run build && func start"
+    "dev": "npm run build && func start",
+    "change": "yarn --cwd ../.. change"
   },
   "dependencies": {
     "@azure/communication-email": "^1.1.0",

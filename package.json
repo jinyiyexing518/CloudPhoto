@@ -10,6 +10,9 @@
     "build:client": "yarn workspace cloudphoto-client build",
     "build:server": "yarn workspace cloudphoto-server build",
     "dev:client": "yarn workspace cloudphoto-client dev",
-    "dev:server": "yarn workspace cloudphoto-server start"
+    "dev:server": "yarn workspace cloudphoto-server start",
+    "change": "node scripts/create-change.mjs",
+    "changes:collect": "node scripts/collect-changes.mjs",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   }
 }

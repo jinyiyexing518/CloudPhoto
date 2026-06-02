@@ -1,0 +1,5 @@
+#!/bin/sh
+# Git pre-push hook — delegates to the Node.js check script.
+# Installed via: git config core.hooksPath .githooks
+# Bypass with:   git push --no-verify
+exec node "$(cd "$(dirname "$0")/.." && pwd)/scripts/check-changes.mjs"
