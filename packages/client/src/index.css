@@ -1293,6 +1293,11 @@ body {
 .whats-new-overlay--out {
   animation: whats-new-overlay-out 0.3s ease forwards;
 }
+.whats-new-overlay--fading {
+  opacity: 0;
+  transition: opacity 4s ease;
+  animation: none !important;
+}
 @keyframes whats-new-overlay-in {
   from { opacity: 0; }
   to   { opacity: 1; }

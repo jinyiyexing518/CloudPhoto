@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 export interface ChangelogEntry {
@@ -124,30 +124,61 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
 }
 
+const IDLE_DELAY_MS = 5000;   // 5s 无操作后开始淡出
+const FADE_DURATION_MS = 4000; // 4s CSS 过渡时长
+
 export default function WhatsNewPopup() {
   const recent = getRecentEntries();
   const shouldShow = recent.length > 0;
 
   const [visible, setVisible] = useState(shouldShow);
   const [closing, setClosing] = useState(false);
+  const [fading, setFading] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 启动自动淡出倒计时；pinned 后取消
+  useEffect(() => {
+    if (!visible || pinned) return;
+    idleTimer.current = setTimeout(() => {
+      setFading(true);
+      fadeTimer.current = setTimeout(() => setVisible(false), FADE_DURATION_MS);
+    }, IDLE_DELAY_MS);
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    };
+  }, [visible, pinned]);
 
   const dismiss = () => {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
     setClosing(true);
     setTimeout(() => setVisible(false), 300);
+  };
+
+  // 用户点击弹窗内容 → 立刻恢复、等待手动关闭
+  const handlePopupClick = () => {
+    if (pinned) return;
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    setFading(false);
+    setPinned(true);
   };
 
   if (!visible) return null;
 
   return createPortal(
     <div
-      className={`whats-new-overlay${closing ? " whats-new-overlay--out" : ""}`}
+      className={`whats-new-overlay${closing ? " whats-new-overlay--out" : ""}${fading ? " whats-new-overlay--fading" : ""}`}
       onClick={(e) => { if (e.target === e.currentTarget) dismiss(); }}
       role="dialog"
       aria-modal="true"
       aria-label="最近更新"
     >
-      <div className="whats-new-popup">
+      <div className="whats-new-popup" onClick={handlePopupClick}>
         <div className="whats-new-header">
           <div className="whats-new-header-text">
             <span className="whats-new-title">🎉 最近更新</span>
