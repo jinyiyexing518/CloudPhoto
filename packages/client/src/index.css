@@ -584,13 +584,22 @@ body {
 /* Transfer progress banner */
 .transfer-banner {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 24px 0;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+  margin: 0 -24px 4px;
+}
+
+.transfer-banner-row {
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 12px;
-  margin-bottom: 4px;
 }
 
 .transfer-banner-icon {
@@ -610,18 +619,16 @@ body {
 }
 
 .transfer-banner-track {
-  flex-shrink: 0;
-  width: 96px;
-  height: 6px;
+  width: 100%;
+  height: 4px;
   background: #fde68a;
-  border-radius: 999px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .transfer-banner-fill {
   height: 100%;
-  background: #f59e0b;
-  border-radius: 999px;
+  background: linear-gradient(90deg, #f59e0b, #fb923c);
   transition: width 0.3s ease;
 }
 
@@ -5694,10 +5701,12 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 
-/* ── Extra: transfer banner layout fix for pct ──── */
-.transfer-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: nowrap;
+/* ── Extra: transfer banner mobile override ────── */
+@media (max-width: 680px) {
+  .transfer-banner {
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
 }

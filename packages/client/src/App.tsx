@@ -1062,16 +1062,21 @@ function AppContent() {
           <div className="transfer-banner">
             {uploadProgress ? (
               <>
-                <span className="transfer-banner-icon">⬆️</span>
-                <div className="transfer-banner-body">
-                  <span className="transfer-banner-text">
-                    {uploadProgress.currentFile
-                      ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.done + 1}/${uploadProgress.total})`
-                      : `上传中… (${uploadProgress.done}/${uploadProgress.total})`}
+                <div className="transfer-banner-row">
+                  <span className="transfer-banner-icon">⬆️</span>
+                  <div className="transfer-banner-body">
+                    <span className="transfer-banner-text">
+                      {uploadProgress.currentFile
+                        ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.done + 1}/${uploadProgress.total})`
+                        : `上传中… (${uploadProgress.done}/${uploadProgress.total})`}
+                    </span>
+                    {uploadTotalSize && (
+                      <span className="transfer-banner-size">{uploadTotalSize}</span>
+                    )}
+                  </div>
+                  <span className="transfer-banner-pct">
+                    {Math.round((uploadProgress.done / uploadProgress.total) * 100)}%
                   </span>
-                  {uploadTotalSize && (
-                    <span className="transfer-banner-size">{uploadTotalSize}</span>
-                  )}
                 </div>
                 <div className="transfer-banner-track">
                   <div
@@ -1079,15 +1084,12 @@ function AppContent() {
                     style={{ width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%` }}
                   />
                 </div>
-                <span className="transfer-banner-pct">
-                  {Math.round((uploadProgress.done / uploadProgress.total) * 100)}%
-                </span>
               </>
             ) : (
-              <>
+              <div className="transfer-banner-row">
                 <span className="transfer-banner-icon">⬇️</span>
                 <span className="transfer-banner-text">下载中，请勿关闭页面</span>
-              </>
+              </div>
             )}
           </div>
         )}
