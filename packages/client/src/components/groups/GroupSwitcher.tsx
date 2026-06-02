@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useGroup } from "../../contexts/GroupContext";
 import CreateGroupDialog from "./CreateGroupDialog";
 import GroupSettings from "./GroupSettings";
@@ -78,20 +79,22 @@ export default function GroupSwitcher() {
         )}
       </div>
 
-      {showCreate && (
+      {showCreate && createPortal(
         <CreateGroupDialog
           onClose={() => setShowCreate(false)}
           onCreated={handleCreated}
-        />
+        />,
+        document.body,
       )}
 
-      {settingsGroupId && (
+      {settingsGroupId && createPortal(
         <GroupSettings
           groupId={settingsGroupId}
           onClose={() => setSettingsGroupId(null)}
           onDeleted={() => { setSettingsGroupId(null); void refreshGroups(); }}
           onUpdated={() => void refreshGroups()}
-        />
+        />,
+        document.body,
       )}
     </>
   );
