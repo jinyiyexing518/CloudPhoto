@@ -132,6 +132,16 @@ build time (defaults to `/api`).
 - **Transfer safety guard** — while upload/download is in progress, tab switching is blocked and browser refresh/close shows unload confirmation
 - **Keyless security** — no storage account keys or Cosmos DB keys anywhere; `DefaultAzureCredential` (Managed Identity on Azure, Azure CLI locally)
 - **CI/CD** — GitHub Actions with OIDC authentication (no stored passwords); separate workflows for frontend and backend, triggered only on relevant path changes
+- **Auto-hide header** — the top navigation bar slides up when scrolling down and reappears instantly on scroll-up or scroll-to-top; smooth 300 ms cubic-bezier animation maximises photo canvas on mobile without losing navigation
+- **Nav corner masking** — a full-width page-background overlay wraps the sticky tab shell, masking the transparent rounded-corner areas so photo content never bleeds through the card edges during scroll
+- **Pinch-to-zoom in modal** — photo detail modal supports two-finger pinch-to-zoom and double-tap to zoom for natural mobile inspection; smooth CSS transform with momentum release
+- **Swipe between photos** — horizontal swipe gesture in the detail modal navigates to the next / previous photo; replaces keyboard-only navigation for touch devices
+- **Batch tag editing** — select multiple photos in batch mode and apply or replace the subject tag for all at once; useful for tagging a shoot after bulk upload
+- **Photo search bar** — a persistent search input that fuzzy-matches filename and subject simultaneously; debounced 300 ms; clear button appears when active; result count shown inline
+- **Upload drag preview** — when files are dragged over the browser window a full-screen overlay shows a drop target with file count from the drag payload, giving immediate feedback before release
+- **Per-folder quota indicator** — the folder view shows a small progress bar per folder representing photo count relative to a configurable soft cap, surfacing folders that are growing too large
+- **Smart date grouping labels** — timeline date group headers use relative labels ("今天", "昨天", "本周", "上个月") for recent dates and ISO yyyy-mm-dd for older ones, reducing cognitive load for recent activity
+- **Contextual empty-state actions** — empty folder view now shows two CTAs ("上传照片" and "新建子文件夹") so users have a clear next step instead of a blank grid
 
 ---
 

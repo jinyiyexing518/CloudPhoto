@@ -31,6 +31,13 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
+  /* Auto-hide animation */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.header-hidden .app-header {
+  transform: translateY(-110%);
 }
 
 .app-header h1 {
@@ -277,14 +284,25 @@ body {
 .add-admin-submit:disabled { opacity: 0.65; cursor: not-allowed; }
 
 /* ===== View Tabs ===== */
-.view-tabs-shell {
+/* Wrap: provides sticky positioning + page-bg coverage that masks content
+   showing through the rounded corners of the inner card when it is sticky. */
+.view-tabs-shell-wrap {
   position: sticky;
   top: calc(72px + env(safe-area-inset-top, 0px));
   z-index: 9;
+  background: #f0f2f5; /* matches body — hides content bleeding through card corners */
+  padding: 8px 0 10px;
+  margin-bottom: 12px;
+  transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.header-hidden .view-tabs-shell-wrap {
+  top: calc(env(safe-area-inset-top, 0px) + 4px);
+}
+
+.view-tabs-shell {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-bottom: 20px;
   background: #f8fafc;
   backdrop-filter: blur(12px);
   border: 1px solid rgba(226, 232, 240, 0.92);
@@ -3766,8 +3784,11 @@ body {
     display: none;
   }
 
-  .view-tabs-shell {
+  .view-tabs-shell-wrap {
     top: calc(82px + env(safe-area-inset-top, 0px));
+  }
+
+  .view-tabs-shell {
     padding-top: 8px;
   }
 

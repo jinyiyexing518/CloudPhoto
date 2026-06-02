@@ -58,6 +58,8 @@ function AppContent() {
   const [viewTabsScrollable, setViewTabsScrollable] = useState(false);
   const [viewTabsShowLeft, setViewTabsShowLeft] = useState(false);
   const [viewTabsShowRight, setViewTabsShowRight] = useState(false);
+  const [headerHidden, setHeaderHidden] = useState(false);
+  const scrollHideRef = useRef(0);
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -164,6 +166,23 @@ function AppContent() {
       setSidebarOpen(true);
     }
   }, [activeTab]);
+
+  // Auto-hide header: hide on scroll-down, reveal on scroll-up
+  useEffect(() => {
+    function handleScrollHide() {
+      if (sidebarOpen) return;
+      const y = window.scrollY;
+      const delta = y - scrollHideRef.current;
+      scrollHideRef.current = y;
+      if (y < 80) { setHeaderHidden(false); return; }
+      if (delta > 6) setHeaderHidden(true);
+      else if (delta < -4) setHeaderHidden(false);
+    }
+    window.addEventListener("scroll", handleScrollHide, { passive: true });
+    return () => window.removeEventListener("scroll", handleScrollHide);
+  }, [sidebarOpen]);
+  // Always show header when sidebar opens
+  useEffect(() => { if (sidebarOpen) setHeaderHidden(false); }, [sidebarOpen]);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -812,7 +831,7 @@ function AppContent() {
   }, [canInstall, isIOS]);
 
   return (
-    <div className="app">
+    <div className={`app${headerHidden ? " header-hidden" : ""}`}>
       {/* Reading progress bar */}
       {scrollProgress > 0 && (
         <div className="scroll-progress-bar" style={{ width: `${scrollProgress}%` }} />
@@ -965,6 +984,7 @@ function AppContent() {
         )}
 
         {/* Tab bar */}
+        <div className="view-tabs-shell-wrap">
         <div className={`view-tabs-shell${viewTabsScrollable ? " view-tabs-shell--scrollable" : ""}`}>
           {viewTabsScrollable && (
             <div className="view-tabs-meta">
@@ -1071,7 +1091,8 @@ function AppContent() {
               )}
             </div>
           )}
-        </div>
+        </div>{/* /view-tabs-shell */}
+        </div>{/* /view-tabs-shell-wrap */}
 
         <div className="workspace-layout">
           <div className="workspace-main">
