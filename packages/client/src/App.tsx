@@ -13,6 +13,7 @@ import { ToastProvider, useToast } from "./contexts/ToastContext";
 import AuthPage from "./components/auth/AuthPage";
 import WhatsNewPopup from "./components/whats-new/WhatsNewPopup";
 import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
+import ErrorBoundary from "./components/shared/ErrorBoundary";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -1461,6 +1462,7 @@ function AppContent() {
               />
             )}
 
+            <ErrorBoundary key={activeTab} label={activeTab}>
             {loading ? (
           <div className="loading">
             <div className="loading-spinner" />
@@ -1583,6 +1585,7 @@ function AppContent() {
                 <AutoStory photos={photos} />
               </Suspense>
             )}
+            </ErrorBoundary>
           </div>
 
           <WorkspaceSidebar

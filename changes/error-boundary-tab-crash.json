@@ -1,0 +1,9 @@
+{
+  "id": "error-boundary-tab-crash",
+  "summary": "添加 ErrorBoundary 防止切换 tab 白屏",
+  "date": "2026-06-02",
+  "changes": [
+    "新增 ErrorBoundary 类组件，捕获 render 期间抛出的异常",
+    "App.tsx 主内容区用 ErrorBoundary key={activeTab} 包裹，切换 tab 自动重置错误状态，不再白屏"
+  ]
+}

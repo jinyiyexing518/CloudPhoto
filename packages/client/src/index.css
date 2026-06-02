@@ -5888,6 +5888,14 @@ body {
 .retry-btn { padding: 8px 20px; background: #0078d4; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
 .retry-btn:hover { background: #005a9e; }
 
+/* ── ErrorBoundary fallback card ─────────────────────────────── */
+.error-boundary-card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 24px; text-align: center; }
+.error-boundary-icon { font-size: 36px; line-height: 1; }
+.error-boundary-title { font-size: 16px; font-weight: 600; color: #374151; margin: 0; }
+.error-boundary-detail { font-size: 12px; color: #9ca3af; margin: 0; max-width: 320px; word-break: break-word; }
+.error-boundary-retry { padding: 7px 18px; background: #0078d4; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; margin-top: 4px; }
+.error-boundary-retry:hover { background: #005a9e; }
+
 /* ── Active filter chips ─────────────────────────────────────── */
 .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
 .filter-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 999px; font-size: 12px; color: #1d4ed8; }
