@@ -1,18 +1,18 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { listPhotos, uploadPhoto, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo, ManagedShareLink } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
-import FolderView from "./components/gallery/FolderView";
+const FolderView = lazy(() => import("./components/gallery/FolderView"));
 import { FilterState, emptyFilter } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
 import WorkspaceFab from "./components/home/floating/WorkspaceFab";
 import WorkspaceSidebar from "./components/home/WorkspaceSidebar";
-import SettingsDialog from "./components/settings/SettingsDialog";
-import InviteAcceptPage from "./components/invites/InviteAcceptPage";
+const SettingsDialog = lazy(() => import("./components/settings/SettingsDialog"));
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import AuthPage from "./components/auth/AuthPage";
-import AddAdminDialog from "./components/auth/AddAdminDialog";
+const AddAdminDialog = lazy(() => import("./components/auth/AddAdminDialog"));
+const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPage"));
 
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
@@ -1012,9 +1012,9 @@ function AppContent() {
         </div>
       </header>
 
-      {showAddAdmin && <AddAdminDialog onClose={() => setShowAddAdmin(false)} />}
+      {showAddAdmin && <Suspense fallback={null}><AddAdminDialog onClose={() => setShowAddAdmin(false)} /></Suspense>}
       {showSettings && (
-        <SettingsDialog
+        <Suspense fallback={null}><SettingsDialog
           onClose={() => setShowSettings(false)}
           onPhotosRestored={fetchPhotos}
           canInstall={canInstall}
@@ -1024,9 +1024,9 @@ function AppContent() {
           initialFocusItemId={settingsFocusItemId}
           onInstallApp={() => void handleInstallApp()}
           onOpenInstallGuide={() => setShowInstallGuide(true)}
-        />
+        /></Suspense>
       )}
-      {inviteToken && <InviteAcceptPage token={inviteToken} onDone={dismissInvite} />}
+      {inviteToken && <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>}
       {showInstallGuide && (
         <div className="dialog-overlay" onClick={() => setShowInstallGuide(false)}>
           <div className="add-admin-dialog install-guide-dialog" onClick={(e) => e.stopPropagation()}>
@@ -1314,7 +1314,7 @@ function AppContent() {
                 momentsShareViews={momentsShareViews}
               />
             ) : (
-              <FolderView
+              <Suspense fallback={null}><FolderView
                 key={currentGroupId || "personal"}
                 photos={photos}
                 onDelete={handleDelete}
@@ -1330,7 +1330,7 @@ function AppContent() {
                 userName={user?.displayName}
                 currentGroupId={currentGroupId || undefined}
                 contextKey={currentGroupId || "personal"}
-              />
+              /></Suspense>
             )}
           </div>
 

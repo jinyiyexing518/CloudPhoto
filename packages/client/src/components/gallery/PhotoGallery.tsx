@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import {
   Photo,
   updatePhotoSubject,
@@ -230,7 +230,7 @@ function createDefaultMomentsFilters(): MomentsFilterState {
   };
 }
 
-export default function PhotoGallery({
+function PhotoGallery({
   photos,
   onDelete,
   onSubjectUpdate,
@@ -1185,3 +1185,5 @@ function formatDate(value: string | Date): string {
     hour: "2-digit", minute: "2-digit",
   });
 }
+
+export default memo(PhotoGallery);

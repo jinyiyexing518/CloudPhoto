@@ -83,6 +83,15 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    target: "esnext",
+    modulePreload: { polyfill: false },
+    rollupOptions: {
+      output: {
+        manualChunks: { "react-vendor": ["react", "react-dom"] },
+      },
+    },
+  },
   server: {
     port: 3000,
     proxy: {
