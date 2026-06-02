@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Map, Marker } from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { Photo } from "../../services/photoApi";
 import { updatePhotoGps } from "../../services/photoApi";
+import MediaThumb from "../shared/MediaThumb";
 
 interface Props {
   photos: Photo[];
@@ -50,7 +52,9 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
     if (!mapRef.current) return;
     let stale = false;
 
-    import("leaflet").then((L) => {
+    import("leaflet").then((mod) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const L = ((mod as any).default ?? mod) as typeof import("leaflet");
       if (stale || !mapRef.current) return;
 
       // ── Initialize map on first run ─────────────────────────────────────
@@ -164,8 +168,6 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
 
   return (
     <div className="memory-map-wrap">
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
       <div className="memory-map-header">
         <span className="memory-map-title">🗺️ 记忆地图</span>
         <span className="memory-map-subtitle">
@@ -205,7 +207,7 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
                   onClick={() => openEditFor(p)}
                   title={displayName(p)}
                 >
-                  <img src={p.url} alt="" className="memory-map-nogps-thumb" />
+                  <MediaThumb url={p.url} contentType={p.contentType} alt="" className="memory-map-nogps-thumb" />
                   <span className="memory-map-nogps-name">{displayName(p)}</span>
                   <span className="memory-map-nogps-badge">📍</span>
                 </button>
@@ -258,7 +260,7 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
 
             {/* Photo preview */}
             <div className="map-gps-photo-row">
-              <img src={editTarget.url} alt="" className="map-gps-photo-thumb" />
+              <MediaThumb url={editTarget.url} contentType={editTarget.contentType} alt="" className="map-gps-photo-thumb" />
               <span className="map-gps-photo-name">{displayName(editTarget)}</span>
             </div>
 
