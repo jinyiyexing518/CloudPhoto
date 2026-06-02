@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-02-timeline-tremble-fix",
+  "date": "2026-06-02",
+  "icon": "🛠️",
+  "title": "修复时间线颤抖问题",
+  "desc": "消除滚动时界面莫名颤抖、组件偏移的现象",
+  "details": "三处根因修复：① 去掉 header 3秒空闲自动弹出的 idle timer，header 现在只在向上滚动或靠近顶部时才重新显示；② 进度条改为直接操作 DOM ref，不再每帧触发 React setState 重渲整棵组件树；③ content-visibility 的 contain-intrinsic-size 加上 auto 关键字，浏览器复用已测量的真实高度，避免日期分组高度估算出错造成滚动偏移。同步清理 index.css 中重复的 .scroll-progress-bar 定义。"
+}

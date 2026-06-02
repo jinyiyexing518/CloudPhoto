@@ -6392,20 +6392,7 @@ body {
    PM v1.3 — New feature styles
    ══════════════════════════════════════════════════ */
 
-/* ── 1. Reading progress bar ────────────────────── */
-.scroll-progress-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-  border-radius: 0 2px 2px 0;
-  z-index: 9999;
-  transition: width 0.1s linear;
-  pointer-events: none;
-}
-
-/* ── 2. Global drag-drop overlay ────────────────── */
+/* ── 1. Global drag-drop overlay ────────────────── */
 .drag-overlay {
   position: fixed;
   inset: 0;
@@ -6693,7 +6680,7 @@ body {
   background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
   border-radius: 0 3px 3px 0;
   z-index: 9999;
-  transition: width 0.1s linear;
+  transition: width 0.1s linear, opacity 0.2s ease;
   pointer-events: none;
   box-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
 }
@@ -6792,7 +6779,7 @@ body {
 /* ── P5: content-visibility on date groups ──────── */
 .date-group {
   content-visibility: auto;
-  contain-intrinsic-size: 0 400px;
+  contain-intrinsic-size: auto 400px;
 }
 
 /* ── P9: Remove box-shadow transition from non-interactive count badges ── */

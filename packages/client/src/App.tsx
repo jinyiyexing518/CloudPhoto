@@ -159,7 +159,7 @@ function AppContent() {
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [scrollProgress, setScrollProgress] = useState(0);
+  const progressBarRef = useRef<HTMLDivElement>(null);
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
@@ -191,9 +191,8 @@ function AppContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-hide header + tab bar: hide on scroll-down, reveal on scroll-up or idle
+  // Auto-hide header + tab bar: hide on scroll-down, reveal on scroll-up
   useEffect(() => {
-    let idleTimer: ReturnType<typeof setTimeout> | null = null;
     function handleScrollHide() {
       if (sidebarOpen) return;
       const y = window.scrollY;
@@ -203,19 +202,12 @@ function AppContent() {
       if (y < 60) { setHeaderHidden(false); return; }
       if (delta > 4) {
         setHeaderHidden(true);
-        // Auto-reveal after 3s of no scrolling (in case user stops mid-page)
-        if (idleTimer) clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => setHeaderHidden(false), 3000);
       } else if (delta < -4) {
         setHeaderHidden(false);
-        if (idleTimer) clearTimeout(idleTimer);
       }
     }
     window.addEventListener("scroll", handleScrollHide, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", handleScrollHide);
-      if (idleTimer) clearTimeout(idleTimer);
-    };
+    return () => window.removeEventListener("scroll", handleScrollHide);
   }, [sidebarOpen]);
   // Always show header when sidebar opens
   useEffect(() => { if (sidebarOpen) setHeaderHidden(false); }, [sidebarOpen]);
@@ -593,13 +585,17 @@ function AppContent() {
     };
   }, [timelineFocusPhotoName]);
 
-  // Scroll-to-top button visibility + reading progress
+  // Scroll-to-top button visibility + reading progress (direct DOM, no setState)
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY;
       setShowScrollTop(y > 500);
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-      setScrollProgress(docHeight > 0 ? Math.min(100, (y / docHeight) * 100) : 0);
+      if (progressBarRef.current) {
+        const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const progress = docHeight > 0 ? Math.min(100, (y / docHeight) * 100) : 0;
+        progressBarRef.current.style.width = `${progress}%`;
+        progressBarRef.current.style.opacity = progress > 0 ? "1" : "0";
+      }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -1000,10 +996,8 @@ function AppContent() {
 
   return (
     <div className={`app${headerHidden ? " header-hidden" : ""}`}>
-      {/* Reading progress bar */}
-      {scrollProgress > 0 && (
-        <div className="scroll-progress-bar" style={{ width: `${scrollProgress}%` }} />
-      )}
+      {/* Reading progress bar – width/opacity driven by direct DOM ref, no setState */}
+      <div ref={progressBarRef} className="scroll-progress-bar" style={{ width: "0%", opacity: 0 }} />
 
       {/* Global drag-drop overlay */}
       {isDragOver && (
