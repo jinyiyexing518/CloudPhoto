@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Photo } from "../services/photoApi";
+import { Photo } from "../../services/photoApi";
 
 interface Capsule {
   id: string;

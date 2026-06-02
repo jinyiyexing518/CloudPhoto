@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Photo } from "../services/photoApi";
+import { Photo } from "../../services/photoApi";
 
 interface Props {
   photos: Photo[];

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Map, Marker } from "leaflet";
-import { Photo } from "../services/photoApi";
-import { updatePhotoGps } from "../services/photoApi";
+import { Photo } from "../../services/photoApi";
+import { updatePhotoGps } from "../../services/photoApi";
 
 interface Props {
   photos: Photo[];

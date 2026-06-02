@@ -11,11 +11,11 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import AuthPage from "./components/auth/AuthPage";
-import WhatsNewPopup from "./components/WhatsNewPopup";
-import OnThisDayCard from "./components/OnThisDayCard";
-const MemoryMap = lazy(() => import("./components/MemoryMap"));
-const TimeCapsule = lazy(() => import("./components/TimeCapsule"));
-const AutoStory = lazy(() => import("./components/AutoStory"));
+import WhatsNewPopup from "./components/whats-new/WhatsNewPopup";
+import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
+const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
+const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
+const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
 const AddAdminDialog = lazy(() => import("./components/auth/AddAdminDialog"));
 const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPage"));
 

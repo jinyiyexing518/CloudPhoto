@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { fetchChangelogs, type ChangelogEntry } from "../services/photoApi";
+import { fetchChangelogs, type ChangelogEntry } from "../../services/photoApi";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });

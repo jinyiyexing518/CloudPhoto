@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Photo } from "../services/photoApi";
+import { Photo } from "../../services/photoApi";
 
 interface Props {
   photos: Photo[];
