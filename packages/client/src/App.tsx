@@ -965,11 +965,6 @@ function AppContent() {
       <header className="app-header">
         <h1>
           Cloud Photo
-          {currentGroupId && groups.find(g => g.id === currentGroupId) && (
-            <span className="header-group-badge">
-              👥 {groups.find(g => g.id === currentGroupId)!.name}
-            </span>
-          )}
           <span className="header-greeting">{greetingText} 👋</span>
         </h1>
         <GroupSwitcher />

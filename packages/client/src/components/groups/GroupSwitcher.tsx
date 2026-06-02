@@ -35,7 +35,7 @@ export default function GroupSwitcher() {
     <>
       <div className="group-switcher" ref={ref}>
         <button className="group-switcher-btn" onClick={() => setOpen((v) => !v)}>
-          {currentGroupId ? "👥" : "🏠"} {currentLabel}
+          {currentGroupId ? "👥" : "🏠"} <span className="group-switcher-label">{currentLabel}</span>
           <span className="group-switcher-chevron">▾</span>
         </button>
 

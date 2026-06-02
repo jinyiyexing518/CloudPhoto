@@ -49,6 +49,16 @@ body {
 /* Push everything after the title to the right */
 .app-header .group-switcher {
   margin-left: auto;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.group-switcher-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .photo-count {
