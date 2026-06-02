@@ -1305,6 +1305,100 @@ body {
 }
 .folder-card-count { font-size: 0.75rem; color: #888; }
 
+/* ── Folder card with photo thumbnail ── */
+.folder-card--has-thumb {
+  padding: 0;
+  overflow: hidden;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+.folder-card-thumb {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #e8ecf0;
+}
+/* Single image — fills the entire thumbnail */
+.folder-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* 2-photo: side-by-side halves */
+.folder-thumb-grid--2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+}
+/* 3-photo: large left + stacked right */
+.folder-thumb-grid--3 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+}
+/* 4-photo: 2×2 grid */
+.folder-thumb-grid--4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+}
+.folder-thumb-grid--2 img,
+.folder-thumb-grid--3 img,
+.folder-thumb-grid--4 img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* Subfolder badge (📁 overlay) */
+.folder-thumb-subfolder-badge {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: rgba(255,255,255,0.82);
+  border-radius: 6px;
+  padding: 2px 4px;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+/* Footer overlay on thumbnail cards */
+.folder-card-footer {
+  position: relative;
+  z-index: 2;
+  padding: 22px 8px 7px;
+  background: linear-gradient(to top, rgba(0,0,0,0.72) 0%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.folder-card--has-thumb .folder-card-name {
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  max-height: 2.4em;
+}
+.folder-card--has-thumb .folder-card-count {
+  color: rgba(255,255,255,0.78);
+  font-size: 0.72rem;
+}
+.folder-card--has-thumb .folder-card-rename-input {
+  background: rgba(0,0,0,0.45);
+  border-color: rgba(255,255,255,0.4);
+  color: #fff;
+  width: 94%;
+}
+
 .folder-card { position: relative; }
 .folder-card-rename-btn {
   position: absolute;
@@ -4229,7 +4323,7 @@ body {
   .weekly-summary-card {
     margin-left: -12px;
     margin-right: -12px;
-    margin-bottom: -10px;
+    margin-bottom: 0;
   }
 
   /* ── Modal image ── */
@@ -5333,8 +5427,8 @@ body {
 
 /* ── 9. Weekly summary card ─────────────────────── */
 .weekly-summary-card {
-  /* Extend full-width inside wrap; negative bottom cancels the wrap's 10px bottom padding */
-  margin: 0 -24px -10px;
+  /* Extend full-width inside wrap */
+  margin: 0 -24px 0;
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
   overflow: hidden;
