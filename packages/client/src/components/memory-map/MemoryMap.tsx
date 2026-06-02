@@ -48,47 +48,25 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
 
   useEffect(() => {
     if (!mapRef.current) return;
-    import("leaflet").then((L) => {
-      if (leafletMap.current) {
-        leafletMap.current.remove();
-        leafletMap.current = null;
-      }
-      const map = L.map(mapRef.current!, {
-        center: geoPhotos.length > 0 ? [geoPhotos[0].lat, geoPhotos[0].lon] : [20, 0],
-        zoom: geoPhotos.length > 0 ? 5 : 2,
-      });
-      leafletMap.current = map;
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
-        maxZoom: 19,
-      }).addTo(map);
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-      geoPhotos.forEach((p) => {
-        const icon = L.divIcon({
-          className: "map-photo-marker",
-          html: `<img src="${p.url}" alt="" />`,
-          iconSize: [48, 48],
-          iconAnchor: [24, 24],
-        });
-        const marker = L.marker([p.lat, p.lon], { icon }).addTo(map);
-        marker.on("click", () => setSelected(p));
-        markersRef.current.push(marker);
-      });
-      if (geoPhotos.length > 1) {
-        const bounds = L.latLngBounds(geoPhotos.map((p) => [p.lat, p.lon]));
-        map.fitBounds(bounds, { padding: [40, 40] });
-      }
-    });
-    return () => {
-      if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let stale = false;
 
-  useEffect(() => {
-    if (!leafletMap.current) return;
     import("leaflet").then((L) => {
+      if (stale || !mapRef.current) return;
+
+      // ── Initialize map on first run ─────────────────────────────────────
+      if (!leafletMap.current) {
+        const map = L.map(mapRef.current, {
+          center: [20, 0],
+          zoom: 2,
+        });
+        leafletMap.current = map;
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors",
+          maxZoom: 19,
+        }).addTo(map);
+      }
+
+      // ── Always rebuild markers so they're up-to-date ───────────────────
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       geoPhotos.forEach((p) => {
@@ -102,7 +80,8 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
         marker.on("click", () => setSelected(p));
         markersRef.current.push(marker);
       });
-      // Re-center/zoom whenever the GPS photo set changes
+
+      // ── Fit view ────────────────────────────────────────────────────────
       if (geoPhotos.length === 1) {
         leafletMap.current!.setView([geoPhotos[0].lat, geoPhotos[0].lon], 5);
       } else if (geoPhotos.length > 1) {
@@ -110,8 +89,22 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
         leafletMap.current!.fitBounds(bounds, { padding: [40, 40] });
       }
     });
+
+    return () => { stale = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geoPhotos.length]);
+
+  // Destroy map only on component unmount
+  useEffect(() => {
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      if (leafletMap.current) {
+        leafletMap.current.remove();
+        leafletMap.current = null;
+      }
+    };
+  }, []);
 
   // ── Geocoding via Nominatim (free, no key required) ───────────────────────
   const doGeocode = async () => {
