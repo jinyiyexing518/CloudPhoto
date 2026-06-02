@@ -1,0 +1,11 @@
+{
+  "id": "memory-map-video-thumb-fix",
+  "summary": "修复记忆地图不显示、GPS无封面视频、重要片段清零问题",
+  "date": "2026-06-02",
+  "changes": [
+    "记忆地图: 改用静态 import leaflet CSS，地图现在正确渲染",
+    "记忆地图: 修复 Vite CJS 互操作问题，地图图层和标记正常显示",
+    "GPS编辑对话框及无位置照片网格: 改用 MediaThumb，视频显示封面",
+    "重要片段: 服务端返回空数据时不再触发 localStorage 写入，防止清空本地浏览记录"
+  ]
+}
