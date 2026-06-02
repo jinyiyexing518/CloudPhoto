@@ -2657,7 +2657,7 @@ body {
 
 .workspace-fab-rail {
   position: fixed;
-  right: 22px;
+  right: calc(24px + env(safe-area-inset-right, 0px));
   bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   z-index: 23;
   display: flex;
@@ -3896,7 +3896,7 @@ body {
   }
 
   .workspace-fab-rail {
-    right: 12px;
+    right: calc(20px + env(safe-area-inset-right, 0px));
     bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   }
 
