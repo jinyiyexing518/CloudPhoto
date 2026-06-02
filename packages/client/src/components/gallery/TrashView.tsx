@@ -14,6 +14,7 @@ export default function TrashView({ groupId, onRestored }: Props) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyNames, setBusyNames] = useState<Set<string>>(new Set());
+  const [emptyProgress, setEmptyProgress] = useState<{ done: number; total: number } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,11 +67,15 @@ export default function TrashView({ groupId, onRestored }: Props) {
 
   const handleEmptyTrash = async () => {
     if (!confirm(`回收站中 ${photos.length} 张照片将被彻底删除，无法恢复。确认清空？`)) return;
+    const total = photos.length;
+    setEmptyProgress({ done: 0, total });
     let failed = 0;
-    for (const p of photos) {
-      try { await permanentlyDeletePhoto(p.name); }
+    for (let i = 0; i < photos.length; i++) {
+      try { await permanentlyDeletePhoto(photos[i].name); }
       catch { failed++; }
+      setEmptyProgress({ done: i + 1, total });
     }
+    setEmptyProgress(null);
     await load();
     if (failed > 0) showToast(`${failed} 张删除失败`, "error");
     else showToast("回收站已清空", "success");
@@ -113,14 +118,35 @@ export default function TrashView({ groupId, onRestored }: Props) {
       <div className="trash-toolbar">
         <span className="trash-toolbar-count">{photos.length} 张照片</span>
         <div className="trash-toolbar-actions">
-          <button className="trash-restore-all-btn" onClick={handleRestoreAll}>
+          <button className="trash-restore-all-btn" onClick={handleRestoreAll} disabled={!!emptyProgress}>
             全部恢复
           </button>
-          <button className="trash-empty-all-btn" onClick={handleEmptyTrash}>
+          <button className="trash-empty-all-btn" onClick={handleEmptyTrash} disabled={!!emptyProgress}>
             清空回收站
           </button>
         </div>
       </div>
+      {emptyProgress && (
+        <div className="trash-empty-progress">
+          <div className="transfer-banner-row">
+            <span className="transfer-banner-icon">🗑️</span>
+            <div className="transfer-banner-body">
+              <span className="transfer-banner-text">
+                清空回收站 ({emptyProgress.done}/{emptyProgress.total})
+              </span>
+            </div>
+            <span className="transfer-banner-pct">
+              {Math.round((emptyProgress.done / emptyProgress.total) * 100)}%
+            </span>
+          </div>
+          <div className="transfer-banner-track">
+            <div
+              className="transfer-banner-fill"
+              style={{ width: `${Math.round((emptyProgress.done / emptyProgress.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
       <div className="trash-grid">
         {photos.map((p) => {
           const displayName = p.originalName || p.name.split("/").pop() || p.name;

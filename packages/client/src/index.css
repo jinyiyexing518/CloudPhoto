@@ -4857,6 +4857,37 @@ body {
   cursor: pointer;
 }
 .trash-empty-all-btn:hover { background: #fef2f2; }
+.trash-empty-all-btn:disabled,
+.trash-restore-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.trash-empty-progress {
+  margin: 0 0 14px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 10px 14px 8px;
+}
+.trash-empty-progress .transfer-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.trash-empty-progress .transfer-banner-body { flex: 1; }
+.trash-empty-progress .transfer-banner-text { font-size: 0.85rem; color: #374151; }
+.trash-empty-progress .transfer-banner-pct { font-size: 0.8rem; color: #6b7280; font-weight: 600; }
+.trash-empty-progress .transfer-banner-track {
+  height: 4px;
+  background: #fde8cc;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.trash-empty-progress .transfer-banner-fill {
+  height: 100%;
+  background: #f97316;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
 
 .trash-grid {
   display: grid;

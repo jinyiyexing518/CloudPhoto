@@ -135,6 +135,7 @@ function AppContent() {
   const [loadError, setLoadError] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const [managedShareLinks, setManagedShareLinks] = useState<ManagedShareLink[]>([]);
@@ -157,7 +158,7 @@ function AppContent() {
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
-  const transferring = uploadProgress !== null || downloading;
+  const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
 
   const switchTab = (tab: ViewTab) => {
     if (transferring) {
@@ -769,6 +770,22 @@ function AppContent() {
     }
   };
 
+  const handleBatchDeleteWithProgress = async (names: string[]) => {
+    if (names.length === 0) return;
+    setDeleteProgress({ done: 0, total: names.length, label: "删除中" });
+    let failed = 0;
+    for (let i = 0; i < names.length; i++) {
+      try {
+        await deletePhoto(names[i]);
+        setPhotos((prev) => prev.filter((p) => p.name !== names[i]));
+      } catch { failed++; }
+      setDeleteProgress({ done: i + 1, total: names.length, label: "删除中" });
+    }
+    setDeleteProgress(null);
+    if (failed > 0) showToast(`${failed} 张删除失败`, "error");
+    else showToast(`已删除 ${names.length} 张照片`, "success");
+  };
+
   const handleSubjectUpdate = (name: string, subject: string) => {
     setPhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, subject } : p))
@@ -1084,7 +1101,27 @@ function AppContent() {
       <main className="app-main">
         {transferring && (
           <div className="transfer-banner">
-            {uploadProgress ? (
+            {deleteProgress ? (
+              <>
+                <div className="transfer-banner-row">
+                  <span className="transfer-banner-icon">🗑️</span>
+                  <div className="transfer-banner-body">
+                    <span className="transfer-banner-text">
+                      {deleteProgress.label} ({deleteProgress.done}/{deleteProgress.total})
+                    </span>
+                  </div>
+                  <span className="transfer-banner-pct">
+                    {Math.round((deleteProgress.done / deleteProgress.total) * 100)}%
+                  </span>
+                </div>
+                <div className="transfer-banner-track">
+                  <div
+                    className="transfer-banner-fill"
+                    style={{ width: `${Math.round((deleteProgress.done / deleteProgress.total) * 100)}%` }}
+                  />
+                </div>
+              </>
+            ) : uploadProgress ? (
               <>
                 <div className="transfer-banner-row">
                   <span className="transfer-banner-icon">⬆️</span>
@@ -1343,6 +1380,7 @@ function AppContent() {
               <PhotoGallery
                 photos={filteredPhotos}
                 onDelete={handleDelete}
+                onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}
@@ -1360,6 +1398,7 @@ function AppContent() {
               <PhotoGallery
                 photos={importantPhotos}
                 onDelete={handleDelete}
+                onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}
@@ -1377,6 +1416,7 @@ function AppContent() {
                 key={currentGroupId || "personal"}
                 photos={photos}
                 onDelete={handleDelete}
+                onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}

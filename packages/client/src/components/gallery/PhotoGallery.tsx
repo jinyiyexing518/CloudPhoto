@@ -24,6 +24,7 @@ interface Props {
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onMovePhoto?: (name: string, toFolder: string) => Promise<boolean>;
+  onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onShareCreated?: (photoName: string) => void;
   userName?: string;
@@ -239,6 +240,7 @@ function PhotoGallery({
   onRenamePhoto,
   onToggleFavorite,
   onMovePhoto,
+  onBatchDelete,
   onDownloadStateChange,
   onShareCreated,
   userName,
@@ -300,10 +302,15 @@ function PhotoGallery({
     }
   };
   const handleBatchDelete = () => {
-    for (const name of selected) onDelete(name);
-    showToast(`已删除 ${selected.size} 张照片`, "success");
+    const names = Array.from(selected);
     exitSelectMode();
     setShowBatchConfirm(false);
+    if (onBatchDelete) {
+      void onBatchDelete(names);
+    } else {
+      for (const name of names) onDelete(name);
+      showToast(`已删除 ${names.length} 张照片`, "success");
+    }
   };
 
   const handleBatchRename = async () => {

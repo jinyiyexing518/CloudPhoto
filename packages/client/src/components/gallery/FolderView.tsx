@@ -181,6 +181,7 @@ interface Props {
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
+  onBatchDelete?: (names: string[]) => Promise<void>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onShareCreated?: (photoName: string) => void;
@@ -201,6 +202,7 @@ export default function FolderView({
   onUploadToFolder,
   uploadProgress,
   onMovePhoto,
+  onBatchDelete,
   onRenameFolder,
   onDownloadStateChange,
   onShareCreated,
@@ -579,6 +581,7 @@ export default function FolderView({
           uploadProgress={uploadProgress}
           onMovePhoto={onMovePhoto}
           onRenameSubFolder={onRenameFolder ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
+          onBatchDelete={onBatchDelete}
           onDownloadStateChange={onDownloadStateChange}
           onShareCreated={onShareCreated}
           userName={userName}
@@ -608,6 +611,7 @@ interface ContentProps {
   uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
+  onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onShareCreated?: (photoName: string) => void;
   userName?: string;
@@ -631,6 +635,7 @@ function FolderContent({
   uploadProgress,
   onMovePhoto,
   onRenameSubFolder,
+  onBatchDelete,
   onDownloadStateChange,
   onShareCreated,
   userName,
@@ -750,7 +755,17 @@ function FolderContent({
   const toggleSelect = (name: string) => {
     setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
   };
-  const handleBatchDelete = () => { for (const name of selected) onDelete(name); showToast(`已删除 ${selected.size} 张照片`, "success"); exitSelectMode(); setShowBatchConfirm(false); };
+  const handleBatchDelete = () => {
+    const names = Array.from(selected);
+    exitSelectMode();
+    setShowBatchConfirm(false);
+    if (onBatchDelete) {
+      void onBatchDelete(names);
+    } else {
+      for (const name of names) onDelete(name);
+      showToast(`已删除 ${names.length} 张照片`, "success");
+    }
+  };
   const handleBatchMove = async () => {
     const target = resolveMoveTarget(batchMoveTo);
     if (!target) return;
