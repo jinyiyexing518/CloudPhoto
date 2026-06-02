@@ -1400,7 +1400,7 @@ function AppContent() {
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           title="返回顶部"
           aria-label="返回顶部"
-        >↑</button>
+        >顶部</button>
       )}
     </div>
   );

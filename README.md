@@ -135,10 +135,16 @@ build time (defaults to `/api`).
 - **Quick date filter chips** — "今日 / 本周 / 本月 / ⭐ 收藏" one-tap chip row in the timeline tab bar for instant date-scoped browsing without opening the sidebar; active chip is highlighted and "✕ 清空" appears when any filter is on
 - **Active filter indicator dot** — a small amber dot appears on the Timeline tab label whenever any filter is active so users never lose track of a hidden search
 - **Empty-album first-run state** — when a space has no photos yet, the gallery shows a friendly "还没有照片" prompt with a direct CTA to the upload view instead of a blank grid
-- **Transfer progress banner** — while uploading, a sticky amber banner at the top of the content area displays the current filename and a live progress bar (e.g. "上传中 IMG_001.jpg (3/10)"); during download it shows a "下载中" notice
+- **Transfer progress banner** — while uploading, a sticky banner displays the current filename, a live `n/total` counter, a progress bar, and a percentage figure (e.g. "67%"); during download it shows a "下载中，请勿关闭页面" notice
 - **Scroll-to-top button** — a floating circular button appears after scrolling 500 px and smoothly returns the viewport to the top with one tap; hidden during sidebar scroll-lock
 - **Window-focus auto-refresh** — switching back to the app from another tab or app silently re-fetches the photo list (throttled to at most once per 60 s) so multi-device edits appear without manual reload
-- **Keyboard shortcuts** — press **R** to instantly refresh photos from anywhere on the page; press **Escape** to dismiss the workspace sidebar (both shortcuts skip input/textarea focus)
+- **Keyboard shortcuts** — press **R** to refresh; **1 / 2 / 3** to switch Timeline / Folder / Moments tabs; **S** to toggle the workspace sidebar; **Backspace / Delete** to clear all active filters with scroll-to-top; **?** to open the shortcuts cheatsheet; **Esc** to dismiss any overlay; all shortcuts skip input/textarea focus
+- **Timeline sort toggle** — a "↓ 最新 / ↑ 最早" chip in the quick-filter row instantly reverses the date-group order so users can browse from the oldest photo upward without touching any filter
+- **Group context header badge** — when browsing a group space, a "👥 GroupName" pill badge appears next to the app title for at-a-glance space confirmation
+- **Toast dismiss button** — every toast notification includes a ✕ button for immediate manual dismissal before the 3.5 s auto-dismiss timer fires
+- **FAB filter count badge** — the floating workspace pill shows an orange/red badge with the active filter count when any timeline filter is on, visible without opening the sidebar
+- **Install banner auto-dismiss** — the PWA install suggestion banner automatically hides after 10 seconds if the user takes no action, reducing persistent visual noise
+- **Group-switch filter reset** — switching between personal space and any group automatically clears all active timeline filters to prevent stale searches carrying over into unrelated contexts
 - **Upload filename in progress** — upload progress now tracks the current file being sent so in-flight status shows exactly which photo is uploading rather than a generic count
 - **Photo count header badge** — the header count now uses locale-formatted numerals (e.g. "1,234 张") and shows a green "+N 近7天" pill when photos were uploaded in the last 7 days
 - **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
@@ -180,7 +186,7 @@ build time (defaults to `/api`).
 - **Today uploads notice** — when photos were uploaded today, a green notice bar appears above the timeline grid with a one-tap button to toggle "今日" filter; removed when no uploads for today
 - **Time-of-day greeting** — the header title shows a contextual greeting ("早上好", "下午好", "晚上好") so the UI feels alive even before photos load
 - **Upload file size summary** — the upload progress banner now shows total file count and MB (e.g. "5 张 · 12.3 MB") alongside the per-file name so users can judge remaining time at a glance
-- **Weekly summary card** — a collapsible "📊 本周概况" card below the filter chips surfaces this-week uploads, total favorites, folder count, and today count in a compact table; includes a "📋 复制周报" button that places a text summary on the clipboard for easy sharing
+- **Weekly summary card** — a collapsible "📊 本周概况" card surfaces this-week uploads, total favorites, folder count, storage used (aggregated from blob size metadata), and today count; includes a "📋 复制周报" button that copies the summary (including storage size) to the clipboard
 - **Dev refresh stability** — local Vite dev mode disables SW registration by default to avoid development-time refresh loops
 - **Dev refresh stability** — PWA service worker registration is disabled in Vite dev mode to avoid local development refresh loops
 - **Transfer safety guard** — while upload/download is in progress, tab switching is blocked and browser refresh/close shows unload confirmation
