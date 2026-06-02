@@ -1203,7 +1203,6 @@ function AppContent() {
             </div>
           )}
         </div>{/* /view-tabs-shell */}
-        </div>{/* /view-tabs-shell-wrap */}
         {activeTab === "timeline" && photos.length > 0 && (
             <div className="weekly-summary-card">
               <button
@@ -1243,6 +1242,7 @@ function AppContent() {
               )}
             </div>
           )}
+        </div>{/* /view-tabs-shell-wrap */}
 
         <div className="workspace-layout">
           <div className="workspace-main">
