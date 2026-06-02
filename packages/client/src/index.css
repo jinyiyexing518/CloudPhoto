@@ -620,7 +620,8 @@ body {
 }
 
 .transfer-banner-track {
-  width: 100%;
+  /* No width:100% — flex stretch + negative margins fills the full banner */
+  margin: 0 -24px;
   height: 4px;
   background: #fde68a;
   overflow: hidden;
@@ -5751,5 +5752,9 @@ body {
     margin-right: -12px;
     padding-left: 12px;
     padding-right: 12px;
+  }
+  .transfer-banner-track {
+    margin-left: -12px;
+    margin-right: -12px;
   }
 }
