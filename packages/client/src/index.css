@@ -587,14 +587,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 24px 0;
+  padding: 8px 24px 8px;
   background: #fffbeb;
   border-bottom: 1px solid #fde68a;
   border-top: none;
   border-left: none;
   border-right: none;
   border-radius: 0;
-  margin: 0 -24px 4px;
+  margin: 0 -24px -20px;
 }
 
 .transfer-banner-row {
@@ -4273,6 +4273,41 @@ body {
   border-radius: 4px;
   pointer-events: none;
   backdrop-filter: blur(4px);
+}
+
+.photo-gif-badge {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(16, 124, 16, 0.78);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+/* GIF badge inside the review modal */
+.modal-gif-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(16, 124, 16, 0.82);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* GIF in modal — ensure pointer is default (no zoom cursor) */
+.modal-image--gif {
+  cursor: default;
 }
 
 /* Confirm dialog */

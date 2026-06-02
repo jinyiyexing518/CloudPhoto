@@ -1053,6 +1053,16 @@ function PhotoGallery({
                 <video className="modal-image modal-video" controls playsInline>
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
                 </video>
+              ) : selectedPhoto.contentType === "image/gif" ? (
+                <>
+                  <img
+                    key={selectedPhoto.url}
+                    src={selectedPhoto.url}
+                    alt={selectedPhoto.name}
+                    className="modal-image modal-image--gif"
+                  />
+                  <span className="modal-gif-badge">GIF</span>
+                </>
               ) : (
                 <img
                   src={selectedPhoto.url}
@@ -1131,7 +1141,7 @@ function PhotoGallery({
                     📁 移动
                   </button>
                 )}
-                {!selectedPhoto.contentType?.startsWith("video/") && (
+                {!selectedPhoto.contentType?.startsWith("video/") && selectedPhoto.contentType !== "image/gif" && (
                   <button
                     className="modal-action-btn"
                     onClick={() => setShowOriginalPreview(true)}

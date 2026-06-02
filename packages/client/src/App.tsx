@@ -171,10 +171,6 @@ function AppContent() {
   const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
 
   const switchTab = (tab: ViewTab) => {
-    if (transferring) {
-      showToast("传输进行中，请等待上传/下载完成后再切换页面", "error");
-      return;
-    }
     setActiveTab(tab);
     localStorage.setItem(tabKey, tab);
     window.scrollTo({ top: 0, behavior: "smooth" });

@@ -1164,6 +1164,16 @@ function FolderContent({
                 <video className="modal-image modal-video" controls playsInline>
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
                 </video>
+              ) : selectedPhoto.contentType === "image/gif" ? (
+                <>
+                  <img
+                    key={selectedPhoto.url}
+                    src={selectedPhoto.url}
+                    alt={displayName(selectedPhoto)}
+                    className="modal-image modal-image--gif"
+                  />
+                  <span className="modal-gif-badge">GIF</span>
+                </>
               ) : (
                 <img
                   src={selectedPhoto.url}
@@ -1240,7 +1250,7 @@ function FolderContent({
                 >
                   📁 移动
                 </button>
-                {!selectedPhoto.contentType?.startsWith("video/") && (
+                {!selectedPhoto.contentType?.startsWith("video/") && selectedPhoto.contentType !== "image/gif" && (
                   <button
                     className="modal-action-btn"
                     onClick={() => setShowOriginalPreview(true)}

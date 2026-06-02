@@ -31,6 +31,7 @@ function PhotoCard({
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
+  const isGif = photo.contentType === "image/gif";
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const handleVideoMetadata = () => {
@@ -78,12 +79,13 @@ function PhotoCard({
               src={photo.url}
               alt={displayName}
               loading="lazy"
-              decoding="async"
+              decoding={isGif ? "sync" : "async"}
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
             />
           )}
           {isVideo && <div className="photo-video-badge">▶</div>}
+          {isGif && <div className="photo-gif-badge">GIF</div>}
         </div>
         <div className="photo-info">
           <span className="photo-name" title={displayName}>
