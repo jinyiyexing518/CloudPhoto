@@ -215,25 +215,34 @@ export default function FolderView({
   };
 
   const showToast = useToast();
-  const [currentPath, setCurrentPath] = useState<string | null>(null); // null = root
-  const [extraFolders, setExtraFolders] = useState<string[]>([]);
+  // Initialize directly from localStorage so the persist effect never sees a stale null on mount.
+  // FolderView is always rendered with key={contextKey}, so contextKey is constant per instance.
+  const [currentPath, setCurrentPath] = useState<string | null>(() => {
+    const stored = localStorage.getItem(`cf_path_${contextKey}`);
+    return stored !== null ? stored : null;
+  });
+  const [extraFolders, setExtraFolders] = useState<string[]>(() => {
+    const stored = localStorage.getItem(`cf_xf_${contextKey}`);
+    try { return stored ? (JSON.parse(stored) as string[]) : []; } catch { return []; }
+  });
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [folderShareHours, setFolderShareHours] = useState("24");
   const [sharingFolder, setSharingFolder] = useState(false);
   const [showShareFolderDialog, setShowShareFolderDialog] = useState(false);
-  const hydratedContextRef = useRef<string | null>(null);
+  // Mark as hydrated immediately — state is already initialized from localStorage above.
+  const hydratedContextRef = useRef<string | null>(contextKey);
   const historyHydratedRef = useRef(false);
   const applyingPopstateRef = useRef(false);
 
-  // Restore extra (empty) folders and last-visited path from localStorage when context changes
+  // No-op on first mount (state is already hydrated), but handles any future contextKey change
+  // (which in practice never happens because the parent renders FolderView with key={contextKey}).
   useEffect(() => {
     hydratedContextRef.current = null;
     historyHydratedRef.current = false;
     applyingPopstateRef.current = false;
-    const stored = localStorage.getItem(`cf_xf_${contextKey}`);
-    try { setExtraFolders(stored ? (JSON.parse(stored) as string[]) : []); } catch { setExtraFolders([]); }
-    // null = root (key absent), "" = uncategorised, "folderName" = folder
+    const storedXF = localStorage.getItem(`cf_xf_${contextKey}`);
+    try { setExtraFolders(storedXF ? (JSON.parse(storedXF) as string[]) : []); } catch { setExtraFolders([]); }
     const storedPath = localStorage.getItem(`cf_path_${contextKey}`);
     setCurrentPath(storedPath !== null ? storedPath : null);
     hydratedContextRef.current = contextKey;
