@@ -969,6 +969,9 @@ function AppContent() {
         </div>
       )}
       <header className="app-header">
+        <svg className="app-logo-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 15.2c1.77 0 3.2-1.43 3.2-3.2s-1.43-3.2-3.2-3.2S8.8 10.23 8.8 12s1.43 3.2 3.2 3.2zM9 3L7.17 5H4C2.9 5 2 5.9 2 7v13c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 8.5 12 8.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5z"/>
+        </svg>
         <h1>
           Cloud Photo
           <span className="header-greeting">{greetingText} 👋</span>

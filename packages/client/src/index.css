@@ -21,15 +21,15 @@ body {
 
 .app-header {
   background: #fff;
-  padding: 16px 24px;
+  padding: 10px 24px;
   /* account for iOS notch / status bar in standalone PWA mode */
-  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
   /* min-height must match view-tabs-shell-wrap sticky top so there is no gap */
-  min-height: calc(72px + env(safe-area-inset-top, 0px));
+  min-height: calc(52px + env(safe-area-inset-top, 0px));
   border-bottom: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -43,8 +43,15 @@ body {
 }
 
 .app-header h1 {
-  font-size: 1.4rem;
+  font-size: 1.2rem;
   font-weight: 700;
+  color: #0078d4;
+}
+
+.app-logo-icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
   color: #0078d4;
 }
 
@@ -358,7 +365,7 @@ body {
    navigation bar. The wrap holds the sticky/shadow; the shell is transparent. */
 .view-tabs-shell-wrap {
   position: sticky;
-  top: calc(72px + env(safe-area-inset-top, 0px));
+  top: calc(52px + env(safe-area-inset-top, 0px));
   z-index: 9;
   background: #fff;
   /* Break out of app-main's 24px padding to fill full page width */
@@ -2650,6 +2657,8 @@ body {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
+  cursor: grab;
+  user-select: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
@@ -3764,10 +3773,13 @@ body {
 
   /* ── Header ── */
   .app-header {
-    flex-wrap: wrap;
-    padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
-    min-height: calc(82px + env(safe-area-inset-top, 0px));
-    gap: 6px 10px;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+    min-height: calc(52px + env(safe-area-inset-top, 0px));
+    gap: 8px;
+  }
+
+  .photo-count {
+    display: none;
   }
 
   .app-header h1 {
@@ -3869,7 +3881,7 @@ body {
   }
 
   .view-tabs-shell-wrap {
-    top: calc(82px + env(safe-area-inset-top, 0px));
+    top: calc(52px + env(safe-area-inset-top, 0px));
     margin-left: -12px;
     margin-right: -12px;
     padding-left: 12px;
@@ -4360,7 +4372,7 @@ body {
 /* ── Location banner ──────────────────────────────────────────── */
 .location-banner {
   position: fixed;
-  top: 72px;
+  top: 52px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.62);
