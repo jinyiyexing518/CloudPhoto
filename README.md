@@ -11,6 +11,60 @@ For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
 
 ---
 
+## Changelog
+
+### v1.5.0 — Product upgrade (40 improvements)
+
+**Features (10)**
+- F1 Storage usage display: weekly summary card now shows total space occupied (`💾 占用存储`)
+- F2 Tab switch scrolls to top: switching tabs now auto-scrolls to page top
+- F3 Keyboard shortcuts 1/2/3: press 1=时间线, 2=文件夹, 3=重要片段 from anywhere
+- F4 Keyboard shortcut S: press S to open/close the sidebar
+- F5 Sort toggle: "↓ 最新" / "↑ 最早" pill chip in timeline to reverse date group order
+- F6 Install banner auto-dismisses after 10 seconds if not acted on
+- F7 Group name badge: current group name shown as a pill badge inside the header h1
+- F8 Shortcuts dialog updated with the new 1/2/3 and S shortcuts
+- F9 Filters auto-reset on group switch — no more stale filters when switching spaces
+- F10 Upload progress percentage: transfer banner now shows e.g. "67%" alongside the progress bar
+
+**Bug fixes / optimizations (10)**
+- B1 FilterBar: all UI strings localized to Chinese (搜索名称, 清空全部, 主题, 上传者, 开始日期, 截止日期)
+- B2 PhotoCard delete dialog: localized to Chinese (删除照片?, 取消, 删除)
+- B3 UploadArea: localized to Chinese (拖拽或点击上传照片, 上传中...)
+- B4 Backspace/Delete to clear filters now also scrolls to top
+- B5 Sidebar no longer auto-opens on every tab mount — only when explicitly activated
+- B6 Switching to folder tab now closes the sidebar
+- B7 Toast notifications: `ua`/`isIOS`/`isAndroid` moved to module level (computed once, not per render)
+- B8 `fetchPhotos` uses AbortController — stale in-flight requests are cancelled on re-fetch
+- B9 Storage estimate uses actual `photo.size` bytes, not a rough guess
+- B10 Weekly summary clipboard report now includes storage size
+
+**UI upgrades (10)**
+- U1 Upload % label beside progress bar (e.g. "67%")
+- U2 Photo thumbnail hover shows a gradient date overlay at the bottom of the image (CSS-only)
+- U3 Toast redesign: click-to-dismiss ✕ button on every notification
+- U4 Scroll-to-top button: gradient blue→purple pill with glow shadow
+- U5 Reading progress bar: 4px height + purple glow effect
+- U6 Header shows current group name as a styled badge pill
+- U7 Sort order chip: purple-toned pill consistent with the chip row
+- U8 FAB filter count badge: orange→red gradient badge showing active filter count
+- U9 Empty gallery icon: wrapped in gradient rounded square container
+- U10 App loading splash: bouncing dots animation added
+
+**Performance (10)**
+- P1 `PhotoCard` wrapped with `React.memo` — prevents unnecessary re-renders in large galleries
+- P2 `img` elements get `decoding="async"` — non-blocking image decoding on the main thread
+- P3 CSS `contain: layout style` on `.photo-grid` — scopes repaint to the grid
+- P4 `index.html` adds `<link rel="preconnect">` and `dns-prefetch` for the API endpoint
+- P5 CSS `content-visibility: auto` on `.date-group` sections — skips off-screen rendering
+- P6 `fetchPhotos` uses `AbortController` to cancel stale requests
+- P7 `ua`/`isIOS`/`isAndroid` moved outside component — avoids recalculation on every render
+- P8 `view-tab-count` transition reduced to color-only (removes box-shadow recalculation)
+- P9 PWA Workbox: `StaleWhileRevalidate` cache strategy added for Azure Blob image URLs
+- P10 Version bumped to `1.5.0`
+
+
+
 ## Architecture
 
 ```text

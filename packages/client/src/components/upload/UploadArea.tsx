@@ -44,9 +44,9 @@ export default function UploadArea({ onUpload, uploading }: Props) {
         onChange={handleChange}
       />
       {uploading ? (
-        <p>Uploading...</p>
+        <p>上传中...</p>
       ) : (
-        <p>Drop photos here or click to upload</p>
+        <p>拖拽或点击上传照片</p>
       )}
     </div>
   );

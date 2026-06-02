@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Photo } from "../../services/photoApi";
 
 interface Props {
@@ -15,7 +15,7 @@ interface Props {
   onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
 }
 
-export default function PhotoCard({
+function PhotoCard({
   photo,
   onClick,
   onDelete,
@@ -55,6 +55,7 @@ export default function PhotoCard({
             src={photo.url}
             alt={displayName}
             loading="lazy"
+            decoding="async"
             className={imgLoaded ? "img-loaded" : "img-loading"}
             onLoad={() => setImgLoaded(true)}
           />
@@ -91,7 +92,7 @@ export default function PhotoCard({
               )}
               <button
                 className="delete-btn"
-                title="Delete photo"
+                title="删除照片"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowConfirm(true);
@@ -114,11 +115,11 @@ export default function PhotoCard({
       {showConfirm && (
         <div className="confirm-overlay" onClick={() => setShowConfirm(false)}>
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <p className="confirm-title">Delete photo?</p>
+            <p className="confirm-title">删除照片？</p>
             <p className="confirm-filename">{displayName}</p>
             <div className="confirm-actions">
               <button className="confirm-cancel-btn" onClick={() => setShowConfirm(false)}>
-                Cancel
+                取消
               </button>
               <button
                 className="confirm-delete-btn"
@@ -127,7 +128,7 @@ export default function PhotoCard({
                   onDelete();
                 }}
               >
-                Delete
+                删除
               </button>
             </div>
           </div>
@@ -136,3 +137,5 @@ export default function PhotoCard({
     </>
   );
 }
+
+export default memo(PhotoCard);

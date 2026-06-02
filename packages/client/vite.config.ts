@@ -56,6 +56,26 @@ export default defineConfig({
             urlPattern: /\/api\/.*$/i,
             handler: "NetworkOnly",
           },
+          {
+            // Cache Azure Blob image URLs with stale-while-revalidate strategy
+            urlPattern: /\.blob\.core\.windows\.net\/.*$/i,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "cf-blob-images",
+              expiration: { maxEntries: 300, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Cache local /api/photos thumbnail URLs
+            urlPattern: /\/api\/photos\?.*$/i,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "cf-api-photos",
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 },
+              networkTimeoutSeconds: 5,
+            },
+          },
         ],
       },
       devOptions: {

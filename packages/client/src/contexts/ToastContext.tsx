@@ -22,6 +22,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
   }, []);
 
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   return (
     <ToastContext.Provider value={showToast}>
       {children}
@@ -31,7 +35,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <span className="toast-icon">
               {t.type === "success" ? "✓" : t.type === "error" ? "✕" : "ℹ"}
             </span>
-            {t.message}
+            <span className="toast-message">{t.message}</span>
+            <button className="toast-dismiss" onClick={() => dismissToast(t.id)} aria-label="关闭">✕</button>
           </div>
         ))}
       </div>

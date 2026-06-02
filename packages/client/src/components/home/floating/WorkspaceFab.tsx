@@ -1,6 +1,8 @@
 interface Props {
   activeTab: "timeline" | "moments";
   hidden: boolean;
+  /** Count of currently active filters — displayed as a badge on the pill */
+  filterCount?: number;
   onOpenSidebar: () => void;
   onPrimaryChipClick: () => void;
   onSecondaryChipClick: () => void;
@@ -9,6 +11,7 @@ interface Props {
 export default function WorkspaceFab({
   activeTab,
   hidden,
+  filterCount = 0,
   onOpenSidebar,
   onPrimaryChipClick,
   onSecondaryChipClick,
@@ -21,6 +24,11 @@ export default function WorkspaceFab({
           <strong>{activeTab === "timeline" ? "筛选与整理" : "片段洞察"}</strong>
           <em>{activeTab === "timeline" ? "打开时间线侧栏" : "打开重要片段侧栏"}</em>
         </span>
+        {filterCount > 0 && (
+          <span className="workspace-fab-filter-badge" title={`${filterCount}个筛选条件已激活`}>
+            {filterCount}
+          </span>
+        )}
       </button>
       <div className="workspace-fab-chip-group">
         <button className="workspace-fab-chip" onClick={onPrimaryChipClick}>

@@ -16,6 +16,11 @@ import AddAdminDialog from "./components/auth/AddAdminDialog";
 
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
+
+// Computed once at module load — avoids recalculating on every render
+const _ua = navigator.userAgent.toLowerCase();
+const IS_IOS = /iphone|ipad|ipod/.test(_ua);
+const IS_ANDROID = /android/.test(_ua);
 type ViewTab = "timeline" | "folder" | "moments";
 type SettingsEntryTab = "profile" | "security" | "trash" | "diagnostics" | "app";
 type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
@@ -47,9 +52,8 @@ function AppContent() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [installBannerDismissed, setInstallBannerDismissed] = useState<boolean>(() => localStorage.getItem(INSTALL_BANNER_DISMISSED_KEY) === "1");
   const deferredInstallPrompt = useRef<BeforeInstallPromptEvent | null>(null);
-  const ua = navigator.userAgent.toLowerCase();
-  const isIOS = /iphone|ipad|ipod/.test(ua);
-  const isAndroid = /android/.test(ua);
+  const isIOS = IS_IOS;
+  const isAndroid = IS_ANDROID;
 
   // Location banner: shown briefly when entering a group or personal space
   const [locationBanner, setLocationBanner] = useState<string | null>(null);
@@ -152,6 +156,7 @@ function AppContent() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
+  const [photoSortAsc, setPhotoSortAsc] = useState(false);
   const transferring = uploadProgress !== null || downloading;
 
   const switchTab = (tab: ViewTab) => {
@@ -161,13 +166,18 @@ function AppContent() {
     }
     setActiveTab(tab);
     localStorage.setItem(tabKey, tab);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Close sidebar when switching to folder view
+    if (tab === "folder") setSidebarOpen(false);
   };
 
   useEffect(() => {
     if (activeTab === "timeline" || activeTab === "moments") {
-      setSidebarOpen(true);
+      // Only auto-open on explicit switch (not from persisted localStorage restore)
     }
-  }, [activeTab]);
+  // intentionally empty — auto-open was removed to avoid jarring on load
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-hide header + tab bar: hide on scroll-down, reveal on scroll-up or idle
   useEffect(() => {
@@ -277,6 +287,13 @@ function AppContent() {
     }).length;
     const favorites = photos.filter((p) => p.favorite).length;
     return { thisWeek, favorites };
+  }, [photos]);
+
+  const storageUsed = useMemo(() => {
+    const totalBytes = photos.reduce((sum, p) => sum + (p.size ?? 0), 0);
+    if (totalBytes < 1024 * 1024) return `${(totalBytes / 1024).toFixed(0)} KB`;
+    if (totalBytes < 1024 * 1024 * 1024) return `${(totalBytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }, [photos]);
 
   const availableFolders = useMemo(
@@ -413,13 +430,18 @@ function AppContent() {
     };
   }, [importantPhotos, filteredPhotos.length]);
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
   const fetchPhotos = useCallback(async () => {
+    // Cancel any in-flight previous request
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = new AbortController();
     try {
       setLoading(true);
       setLoadError(false);
       const data = await listPhotos(currentGroupId);
       setPhotos(data);
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
       showToast("加载照片失败，请检查网络或服务器状态", "error");
       setLoadError(true);
     } finally {
@@ -428,6 +450,22 @@ function AppContent() {
   }, [currentGroupId, showToast]);
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
+
+  // Reset all active filters when the user switches groups (B5 / F9)
+  useEffect(() => { setFilters(emptyFilter); }, [currentGroupId]);
+
+  // Auto-dismiss install banner after 10 s if the user hasn’t acted (F6)
+  const bannerAutoDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (isStandalone || installBannerDismissed) return;
+    bannerAutoDismissRef.current = setTimeout(() => {
+      setInstallBannerDismissed(true);
+    }, 10_000);
+    return () => {
+      if (bannerAutoDismissRef.current) clearTimeout(bannerAutoDismissRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -568,7 +606,7 @@ function AppContent() {
     return () => window.removeEventListener("focus", onFocus);
   }, [fetchPhotos]);
 
-  // Keyboard shortcuts: R = refresh, ? = shortcuts help, Backspace = clear filters, Escape = close
+  // Keyboard shortcuts: R=refresh, ?=help, 1/2/3=tabs, S=sidebar, Backspace=clear, Esc=close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as Element)?.tagName;
@@ -581,10 +619,27 @@ function AppContent() {
         e.preventDefault();
         setShowShortcutsHelp((v) => !v);
       }
+      if (e.key === "1" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        switchTab("timeline");
+      }
+      if (e.key === "2" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        switchTab("folder");
+      }
+      if (e.key === "3" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        switchTab("moments");
+      }
+      if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setSidebarOpen((v) => !v);
+      }
       if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (activeFiltersCount > 0) {
           e.preventDefault();
           setFilters(emptyFilter);
+          window.scrollTo({ top: 0, behavior: "smooth" });
           showToast("已清空所有筛选", "success");
         }
       }
@@ -595,7 +650,8 @@ function AppContent() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fetchPhotos, activeFiltersCount, showToast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchPhotos, activeFiltersCount, showToast, transferring]);
 
   // Global drag-over: desktop-only (only attach on non-touch devices)
   useEffect(() => {
@@ -882,6 +938,8 @@ function AppContent() {
             <ul className="shortcuts-list">
               <li><kbd>R</kbd><span>刷新照片列表</span></li>
               <li><kbd>?</kbd><span>显示 / 关闭本面板</span></li>
+              <li><kbd>1 / 2 / 3</kbd><span>切换时间线 / 文件夹 / 重要片段</span></li>
+              <li><kbd>S</kbd><span>开启 / 关闭侧边栏</span></li>
               <li><kbd>⌫ Backspace</kbd><span>清空所有筛选条件</span></li>
               <li><kbd>Esc</kbd><span>关闭侧边栏 / 弹框</span></li>
               <li><kbd>← →</kbd><span>照片详情上一张 / 下一张</span></li>
@@ -895,7 +953,15 @@ function AppContent() {
         </div>
       )}
       <header className="app-header">
-        <h1>Cloud Photo <span className="header-greeting">{greetingText} 👋</span></h1>
+        <h1>
+          Cloud Photo
+          {currentGroupId && groups.find(g => g.id === currentGroupId) && (
+            <span className="header-group-badge">
+              👥 {groups.find(g => g.id === currentGroupId)!.name}
+            </span>
+          )}
+          <span className="header-greeting">{greetingText} 👋</span>
+        </h1>
         <GroupSwitcher />
         <span className="photo-count">
           {photos.length.toLocaleString()} 张
@@ -999,6 +1065,9 @@ function AppContent() {
                     style={{ width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%` }}
                   />
                 </div>
+                <span className="transfer-banner-pct">
+                  {Math.round((uploadProgress.done / uploadProgress.total) * 100)}%
+                </span>
               </>
             ) : (
               <>
@@ -1074,7 +1143,7 @@ function AppContent() {
           </button>
           </div>
           </div>
-          {activeTab === "timeline" && (
+          {activeTab === "timeline" && (  
             <div className="quick-date-chips">
               <button
                 className={`quick-chip${activeDateChip === "today" ? " active" : ""}`}
@@ -1103,6 +1172,12 @@ function AppContent() {
               {activeFiltersCount > 0 && (
                 <button className="quick-chip quick-chip--clear" onClick={() => setFilters(emptyFilter)}>✕ 清空</button>
               )}
+              {/* Sort order toggle */}
+              <button
+                className={`quick-chip quick-chip--sort${photoSortAsc ? " active" : ""}`}
+                onClick={() => setPhotoSortAsc((v) => !v)}
+                title={photoSortAsc ? "当前：时间正序" : "当前：时间倒序"}
+              >{photoSortAsc ? "↑ 最早" : "↓ 最新"}</button>
             </div>
           )}
           {activeTab === "timeline" && photos.length > 0 && (
@@ -1125,6 +1200,9 @@ function AppContent() {
                   <div className="weekly-summary-row">
                     <span>📁 文件夹</span><strong>{availableFolders.length} 个</strong>
                   </div>
+                  <div className="weekly-summary-row">
+                    <span>💾 占用存储</span><strong>{storageUsed}</strong>
+                  </div>
                   {todayUploads.length > 0 && (
                     <div className="weekly-summary-row weekly-summary-row--highlight">
                       <span>🌟 今日上传</span><strong>{todayUploads.length} 张</strong>
@@ -1133,7 +1211,7 @@ function AppContent() {
                   <button
                     className="share-summary-btn"
                     onClick={() => {
-                      const text = `📷 Cloud Photo 周报\n本周上传：${weeklyStats.thisWeek} 张\n总收藏：${weeklyStats.favorites} 张\n文件夹：${availableFolders.length} 个\n总照片：${photos.length} 张`;
+                      const text = `📷 Cloud Photo 周报\n本周上传：${weeklyStats.thisWeek} 张\n总收藏：${weeklyStats.favorites} 张\n文件夹：${availableFolders.length} 个\n总照片：${photos.length} 张\n占用存储：${storageUsed}`;
                       void navigator.clipboard.writeText(text).then(() => showToast("周报已复制到剪贴板 📋", "success"));
                     }}
                   >📋 复制周报</button>
@@ -1150,6 +1228,7 @@ function AppContent() {
               <WorkspaceFab
                 activeTab={activeTab}
                 hidden={sidebarOpen}
+                filterCount={activeTab === "timeline" ? activeFiltersCount : 0}
                 onOpenSidebar={() => setSidebarOpen(true)}
                 onPrimaryChipClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
                 onSecondaryChipClick={activeTab === "timeline" ? jumpToMissingSubjectPhotos : () => openSettingsTab("diagnostics", "diagnostics")}
@@ -1213,6 +1292,7 @@ function AppContent() {
                 onShareCreated={handleMomentShareCreated}
                 userName={user?.displayName}
                 showImportantMoments={false}
+                reverseOrder={photoSortAsc}
                 focusPhotoName={timelineFocusPhotoName ?? undefined}
                 focusRequestKey={timelineFocusRequestKey}
               />

@@ -82,7 +82,7 @@ export default function FilterBar({
           <input
             type="search"
             className="search-input"
-            placeholder="Search by name..."
+            placeholder="搜索名称..."
             value={localName}
             onChange={(e) => handleNameChange(e.target.value)}
           />
@@ -93,7 +93,7 @@ export default function FilterBar({
 
         {hasAny && (
           <button className="filter-clear-btn" onClick={() => { onChange(emptyFilter); setLocalName(""); }}>
-            Clear all
+            清空全部
           </button>
         )}
 
@@ -140,11 +140,11 @@ export default function FilterBar({
 
       <div className="filter-panel">
         <label className="filter-field">
-          <span>Subject</span>
+          <span>主题</span>
           <input
             type="text"
             list="subjects-list"
-            placeholder="Any subject"
+            placeholder="任意主题"
             value={filters.subject}
             onChange={(e) => set("subject", e.target.value)}
           />
@@ -154,19 +154,19 @@ export default function FilterBar({
         </label>
 
         <label className="filter-field">
-          <span>Uploader</span>
+          <span>上传者</span>
           <select
             style={{ color: filters.uploader ? "#374151" : "#9ca3af" }}
             value={filters.uploader}
             onChange={(e) => set("uploader", e.target.value)}
           >
-            <option value="">Anyone</option>
+            <option value="">任何人</option>
             {uploaders.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
         </label>
 
         <label className="filter-field">
-          <span>From</span>
+          <span>开始日期</span>
           <input
             type="date"
             style={{ color: filters.dateFrom ? "#374151" : "#9ca3af" }}
@@ -176,7 +176,7 @@ export default function FilterBar({
         </label>
 
         <label className="filter-field">
-          <span>To</span>
+          <span>截止日期</span>
           <input
             type="date"
             style={{ color: filters.dateTo ? "#374151" : "#9ca3af" }}

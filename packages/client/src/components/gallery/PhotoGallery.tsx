@@ -31,6 +31,8 @@ interface Props {
   momentsShareViews?: Record<string, number>;
   focusPhotoName?: string;
   focusRequestKey?: number;
+  /** When true, oldest date groups appear first instead of newest */
+  reverseOrder?: boolean;
 }
 
 interface DateGroup {
@@ -244,6 +246,7 @@ export default function PhotoGallery({
   momentsShareViews = {},
   focusPhotoName,
   focusRequestKey,
+  reverseOrder = false,
 }: Props) {
   const showToast = useToast();
   const focusCardRef = useRef<HTMLDivElement | null>(null);
@@ -322,14 +325,14 @@ export default function PhotoGallery({
     else showToast(`已重命名 ${selectedList.length} 张照片`, "success");
   };
 
-  // Flat photo list for keyboard navigation (ordered as displayed: by date desc)
+  // Flat photo list for keyboard navigation (ordered as displayed: by date desc or asc)
   const flatPhotos = useMemo(() => {
     return [...photos].sort((a, b) => {
       const da = (a.createdAt ?? a.lastModified) ?? "";
       const db = (b.createdAt ?? b.lastModified) ?? "";
-      return db.localeCompare(da);
+      return reverseOrder ? da.localeCompare(db) : db.localeCompare(da);
     });
-  }, [photos]);
+  }, [photos, reverseOrder]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -710,6 +713,7 @@ export default function PhotoGallery({
   }
 
   const groups = groupByDate(visiblePhotos);
+  if (reverseOrder) groups.reverse();
   const hasMore = visibleCount < flatPhotos.length;
 
   return (
