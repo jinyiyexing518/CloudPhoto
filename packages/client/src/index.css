@@ -3026,7 +3026,8 @@ body {
 .group-dropdown {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
+  right: 0;
+  left: auto;
   min-width: 220px;
   width: max-content;
   max-width: 300px;
@@ -5085,8 +5086,8 @@ body {
   /* Dropdown must not overflow screen */
   .group-dropdown {
     max-width: calc(100vw - 24px);
-    left: 0;
     right: 0;
+    left: auto;
   }
 
   /* photo-count is redundant on mobile */
