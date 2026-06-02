@@ -77,16 +77,11 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ];
 
-const STORAGE_KEY = "cf_whats_new_seen";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 function getRecentEntries(): ChangelogEntry[] {
   const now = Date.now();
   return CHANGELOG.filter((e) => now - new Date(e.date).getTime() <= SEVEN_DAYS_MS);
-}
-
-function mostRecentDate(entries: ChangelogEntry[]): string {
-  return entries.reduce((max, e) => (e.date > max ? e.date : max), "");
 }
 
 function formatDate(dateStr: string): string {
@@ -95,16 +90,13 @@ function formatDate(dateStr: string): string {
 
 export default function WhatsNewPopup() {
   const recent = getRecentEntries();
-  const latestDate = mostRecentDate(recent);
-  const lastSeen = localStorage.getItem(STORAGE_KEY) ?? "";
-  const shouldShow = recent.length > 0 && latestDate > lastSeen;
+  const shouldShow = recent.length > 0;
 
   const [visible, setVisible] = useState(shouldShow);
   const [closing, setClosing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const dismiss = () => {
-    localStorage.setItem(STORAGE_KEY, latestDate);
     setClosing(true);
     setTimeout(() => setVisible(false), 300);
   };
