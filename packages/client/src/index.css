@@ -6606,8 +6606,8 @@ body {
 
 /* ── 9. Weekly summary card ─────────────────────── */
 .weekly-summary-card {
-  /* Extend full-width inside wrap */
-  margin: 0 -24px 0;
+  /* Extend full-width inside wrap and cancel the wrap's 6px bottom padding */
+  margin: 0 -24px -6px;
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
   overflow: hidden;
