@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import AuthPage from "./components/auth/AuthPage";
+import WhatsNewPopup from "./components/WhatsNewPopup";
 const AddAdminDialog = lazy(() => import("./components/auth/AddAdminDialog"));
 const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPage"));
 
@@ -1470,6 +1471,7 @@ function AppContent() {
           aria-label="返回顶部"
         >顶部</button>
       )}
+      <WhatsNewPopup />
     </div>
   );
 }
