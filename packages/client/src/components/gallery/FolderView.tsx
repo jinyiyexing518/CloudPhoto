@@ -160,58 +160,44 @@ function FolderCard({
     >
       {hasThumb ? (
         <>
-          {/* Photo collage thumbnail */}
-          <div className="folder-card-thumb">
-            {previewUrls.length === 1 && (
-              <img src={previewUrls[0]} alt="" className="folder-thumb-img" draggable={false} />
-            )}
-            {previewUrls.length === 2 && (
-              <div className="folder-thumb-grid folder-thumb-grid--2">
-                <img src={previewUrls[0]} alt="" draggable={false} />
-                <img src={previewUrls[1]} alt="" draggable={false} />
-              </div>
-            )}
-            {previewUrls.length === 3 && (
-              <div className="folder-thumb-grid folder-thumb-grid--3">
-                <img src={previewUrls[0]} alt="" draggable={false} />
-                <img src={previewUrls[1]} alt="" draggable={false} />
-                <img src={previewUrls[2]} alt="" draggable={false} />
-              </div>
-            )}
-            {previewUrls.length >= 4 && (
-              <div className="folder-thumb-grid folder-thumb-grid--4">
-                {previewUrls.slice(0, 4).map((url, i) => (
-                  <img key={i} src={url} alt="" draggable={false} />
-                ))}
-              </div>
-            )}
-            {/* Subfolder badge */}
+          {/* Second backing layer (furthest behind) */}
+          <div
+            className="folder-stack-layer folder-stack-layer--b"
+            style={previewUrls[2] ? { backgroundImage: `url(${previewUrls[2]})` } : undefined}
+          />
+          {/* First backing layer (closest behind front) */}
+          <div
+            className="folder-stack-layer folder-stack-layer--a"
+            style={previewUrls[1] ? { backgroundImage: `url(${previewUrls[1]})` } : undefined}
+          />
+          {/* Front face — clipped card with main photo + overlay */}
+          <div className="folder-card-front">
+            <img src={previewUrls[0]} alt="" className="folder-thumb-img" draggable={false} />
             {hasSubFolders && (
               <span className="folder-thumb-subfolder-badge" title="含子文件夹">📁</span>
             )}
-          </div>
-          {/* Info footer — overlaid on the thumbnail */}
-          <div className="folder-card-footer">
-            {editing ? (
-              <input
-                autoFocus
-                className="folder-card-rename-input"
-                value={editVal}
-                onChange={(e) => setEditVal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
-                  if (e.key === "Escape") { setEditVal(name); setEditing(false); }
-                }}
-                onBlur={confirmRename}
-                onClick={(e) => e.stopPropagation()}
-                maxLength={60}
-              />
-            ) : (
-              <>
-                <div className="folder-card-name">{name || UNCATEGORIZED}</div>
-                <div className="folder-card-count">{count} 张</div>
-              </>
-            )}
+            <div className="folder-card-footer">
+              {editing ? (
+                <input
+                  autoFocus
+                  className="folder-card-rename-input"
+                  value={editVal}
+                  onChange={(e) => setEditVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
+                    if (e.key === "Escape") { setEditVal(name); setEditing(false); }
+                  }}
+                  onBlur={confirmRename}
+                  onClick={(e) => e.stopPropagation()}
+                  maxLength={60}
+                />
+              ) : (
+                <>
+                  <div className="folder-card-name">{name || UNCATEGORIZED}</div>
+                  <div className="folder-card-count">{count} 张</div>
+                </>
+              )}
+            </div>
           </div>
         </>
       ) : (
