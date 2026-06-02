@@ -64,6 +64,14 @@
     "details": "在「🗺️ 记忆地图」标签查看所有含位置信息的照片分布。上传时自动读取图片 EXIF GPS 数据并存储。点击地图上的照片图标可查看详情并跳转到时间线。"
   },
   {
+    "id": "2026-06-02-memory-map-gps-fix",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "修复记忆地图 GPS 照片不显示",
+    "desc": "上传有位置照片后地图能自动对焦到拍摄地点",
+    "details": "两处修复：① 第二个 useEffect 在更新 marker 后新增 setView/fitBounds 调用，保证第一张 GPS 照片出现时地图从世界视图（zoom=2）自动缩放定位到拍摄地（zoom=5），而不是让 marker 缩在大地图里看不到；② 移除冗余的 geoCount state（初始值为 0 会导致第一帧短暂闪烁空状态提示），改为直接读取 geoPhotos.length 渲染 UI。"
+  },
+  {
     "id": "fab-position-fix",
     "date": "2026-06-02",
     "icon": "📌",

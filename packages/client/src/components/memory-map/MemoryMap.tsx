@@ -25,7 +25,6 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<Map | null>(null);
   const markersRef = useRef<Marker[]>([]);
-  const [geoCount, setGeoCount] = useState(0);
   const [selected, setSelected] = useState<GeoPhoto | null>(null);
 
   // ── Manual GPS editing ─────────────────────────────────────────────────────
@@ -46,10 +45,6 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
   const noGpsPhotos = photos.filter(
     (p) => !p.gpsLat || !p.gpsLon,
   );
-
-  useEffect(() => {
-    setGeoCount(geoPhotos.length);
-  }, [geoPhotos.length]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -107,6 +102,13 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
         marker.on("click", () => setSelected(p));
         markersRef.current.push(marker);
       });
+      // Re-center/zoom whenever the GPS photo set changes
+      if (geoPhotos.length === 1) {
+        leafletMap.current!.setView([geoPhotos[0].lat, geoPhotos[0].lon], 5);
+      } else if (geoPhotos.length > 1) {
+        const bounds = L.latLngBounds(geoPhotos.map((p) => [p.lat, p.lon]));
+        leafletMap.current!.fitBounds(bounds, { padding: [40, 40] });
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geoPhotos.length]);
@@ -174,15 +176,15 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
       <div className="memory-map-header">
         <span className="memory-map-title">🗺️ 记忆地图</span>
         <span className="memory-map-subtitle">
-          {geoCount > 0
-            ? `${geoCount} 张照片有位置信息`
+          {geoPhotos.length > 0
+            ? `${geoPhotos.length} 张照片有位置信息`
             : "暂无位置信息——开启相机位置权限后上传的照片将在此显示"}
         </span>
       </div>
 
       <div ref={mapRef} className="memory-map-container" />
 
-      {geoCount === 0 && (
+      {geoPhotos.length === 0 && (
         <div className="memory-map-empty">
           <div className="memory-map-empty-icon">📍</div>
           <p>上传含有 GPS 信息的照片后，拍摄地点将显示在地图上</p>
