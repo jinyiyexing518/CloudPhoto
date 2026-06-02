@@ -350,9 +350,13 @@ body {
   top: calc(72px + env(safe-area-inset-top, 0px));
   z-index: 9;
   background: #fff;
-  padding: 0 0 10px;
+  /* Break out of app-main's 24px padding to fill full page width */
+  margin: 0 -24px;
+  padding: 0 24px 10px;
   margin-bottom: 12px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.10);
+  overflow: hidden;
   transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
@@ -3836,6 +3840,10 @@ body {
 
   .view-tabs-shell-wrap {
     top: calc(82px + env(safe-area-inset-top, 0px));
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .view-tabs-shell {
@@ -4139,7 +4147,7 @@ body {
     gap: 10px;
   }
 
-  /* ── Weekly summary card: adjust negative margin for mobile 12px padding ── */
+  /* ── Weekly summary card: adjust for mobile 12px padding ── */
   .weekly-summary-card {
     margin-left: -12px;
     margin-right: -12px;
@@ -5217,7 +5225,7 @@ body {
 
 /* ── 9. Weekly summary card ─────────────────────── */
 .weekly-summary-card {
-  margin: 0 -24px;
+  margin: -12px -24px 0;
   background: #fff;
   border-top: 1px solid #e2e8f0;
   border-bottom: 1px solid #e2e8f0;
