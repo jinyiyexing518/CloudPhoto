@@ -63,9 +63,16 @@ export default function SettingsDialog({
   const showToast = useToast();
   const [tab, setTab] = useState<SettingsEntryTab>(initialTab);
   const settingsBodyRef = useRef<HTMLDivElement | null>(null);
+  const settingsTabsRef = useRef<HTMLDivElement | null>(null);
   const managedSharesRef = useRef<HTMLDivElement | null>(null);
   const diagnosticsRef = useRef<HTMLDivElement | null>(null);
   const managedShareItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const scrollTabToCenter = (el: HTMLElement) => {
+    const container = settingsTabsRef.current;
+    if (!container) return;
+    container.scrollTo({ left: el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2, behavior: "smooth" });
+  };
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot>({
     serviceWorkerCount: 0,
     localMomentsCount: 0,
@@ -282,12 +289,12 @@ export default function SettingsDialog({
         </div>
 
         {/* Tab bar */}
-        <div className="settings-tabs">
-          <button className={`settings-tab${tab === "profile" ? " active" : ""}`} onClick={() => setTab("profile")}>👤 个人信息</button>
-          <button className={`settings-tab${tab === "security" ? " active" : ""}`} onClick={() => setTab("security")}>🔒 安全</button>
-          <button className={`settings-tab${tab === "app" ? " active" : ""}`} onClick={() => setTab("app")}>📱 应用</button>
-          <button className={`settings-tab${tab === "diagnostics" ? " active" : ""}`} onClick={() => setTab("diagnostics")}>🩺 诊断</button>
-          <button className={`settings-tab${tab === "trash" ? " active" : ""}`} onClick={() => setTab("trash")}>🗑️ 回收站</button>
+        <div className="settings-tabs" ref={settingsTabsRef}>
+          <button className={`settings-tab${tab === "profile" ? " active" : ""}`} onClick={(e) => { setTab("profile"); scrollTabToCenter(e.currentTarget); }}>👤 个人信息</button>
+          <button className={`settings-tab${tab === "security" ? " active" : ""}`} onClick={(e) => { setTab("security"); scrollTabToCenter(e.currentTarget); }}>🔒 安全</button>
+          <button className={`settings-tab${tab === "app" ? " active" : ""}`} onClick={(e) => { setTab("app"); scrollTabToCenter(e.currentTarget); }}>📱 应用</button>
+          <button className={`settings-tab${tab === "diagnostics" ? " active" : ""}`} onClick={(e) => { setTab("diagnostics"); scrollTabToCenter(e.currentTarget); }}>🩺 诊断</button>
+          <button className={`settings-tab${tab === "trash" ? " active" : ""}`} onClick={(e) => { setTab("trash"); scrollTabToCenter(e.currentTarget); }}>🗑️ 回收站</button>
         </div>
 
         {/* Tab content */}

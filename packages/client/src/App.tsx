@@ -171,6 +171,12 @@ function AppContent() {
     if (tab === "folder") setSidebarOpen(false);
   };
 
+  // Scroll a clicked tab button to the horizontal center of its scroll container
+  const scrollTabToCenter = (el: HTMLElement, container: HTMLElement) => {
+    const targetLeft = el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2;
+    container.scrollTo({ left: targetLeft, behavior: "smooth" });
+  };
+
   useEffect(() => {
     if (activeTab === "timeline" || activeTab === "moments") {
       // Only auto-open on explicit switch (not from persisted localStorage restore)
@@ -1126,7 +1132,7 @@ function AppContent() {
           }}>
           <button
             className={`view-tab${activeTab === "timeline" ? " active" : ""}`}
-            onClick={() => switchTab("timeline")}
+            onClick={(e) => { switchTab("timeline"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
           >
             <span>🕐 时间线</span>
             <span className="view-tab-count">{filteredPhotos.length}</span>
@@ -1134,14 +1140,14 @@ function AppContent() {
           </button>
           <button
             className={`view-tab${activeTab === "folder" ? " active" : ""}`}
-            onClick={() => switchTab("folder")}
+            onClick={(e) => { switchTab("folder"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
           >
             <span>📁 文件夹</span>
             <span className="view-tab-count">{folderCount}</span>
           </button>
           <button
             className={`view-tab${activeTab === "moments" ? " active" : ""}`}
-            onClick={() => switchTab("moments")}
+            onClick={(e) => { switchTab("moments"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
           >
             <span>⭐ 重要片段</span>
             <span className="view-tab-count">{importantPhotos.length}</span>
