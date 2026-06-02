@@ -1,5 +1,5 @@
 {
-  "id": "2026-06-02-upload-pause-speed-retry",
+  "id": "upload-pause-speed-retry",
   "date": "2026-06-02",
   "icon": "⬆️",
   "title": "上传增强：速度显示、暂停/继续、断网重试",

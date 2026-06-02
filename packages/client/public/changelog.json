@@ -9,7 +9,7 @@
     "type": "improvement"
   },
   {
-    "id": "2026-06-02-upload-pause-speed-retry",
+    "id": "upload-pause-speed-retry",
     "date": "2026-06-02",
     "icon": "⬆️",
     "title": "上传增强：速度显示、暂停/继续、断网重试",
@@ -18,7 +18,7 @@
     "type": "feature"
   },
   {
-    "id": "2026-06-02-timeline-tremble-fix",
+    "id": "timeline-tremble-fix",
     "date": "2026-06-02",
     "icon": "🛠️",
     "title": "修复时间线颤抖问题",
@@ -81,7 +81,7 @@
     "type": "feature"
   },
   {
-    "id": "2026-06-02-memory-map-gps-fix",
+    "id": "memory-map-gps-fix",
     "date": "2026-06-02",
     "icon": "🗺️",
     "title": "修复记忆地图 GPS 照片不显示",
