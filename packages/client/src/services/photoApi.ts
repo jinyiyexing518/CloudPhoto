@@ -199,6 +199,8 @@ export interface Photo {
   deletedByName?: string;
   voiceMemoName?: string;
   voiceMemoUrl?: string;
+  gpsLat?: string;
+  gpsLon?: string;
 }
 
 export async function listPhotos(groupId = ""): Promise<Photo[]> {
@@ -245,6 +247,8 @@ export function uploadPhotoWithProgress(
   subject?: string,
   folder?: string,
   groupId?: string,
+  gpsLat?: string,
+  gpsLon?: string,
 ): Promise<Photo> {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams({ filename: file.name });
@@ -252,6 +256,8 @@ export function uploadPhotoWithProgress(
     if (subject) params.set("subject", subject);
     if (folder) params.set("folder", folder);
     if (groupId) params.set("groupId", groupId);
+    if (gpsLat) params.set("gpsLat", gpsLat);
+    if (gpsLon) params.set("gpsLon", gpsLon);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/photos/upload?${params.toString()}`);

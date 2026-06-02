@@ -1,0 +1,211 @@
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { Photo } from "../services/photoApi";
+
+interface Props {
+  photos: Photo[];
+}
+
+type TransitionStyle = "fade" | "slide" | "zoom";
+
+export default function AutoStory({ photos }: Props) {
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [transition, setTransition] = useState<TransitionStyle>("fade");
+  const [intervalSec, setIntervalSec] = useState(4);
+  const [animClass, setAnimClass] = useState("story-enter");
+
+  const folders = useMemo(
+    () => [...new Set(photos.map((p) => (p.folder ?? "").trim()).filter(Boolean))].sort(),
+    [photos],
+  );
+
+  const storyPhotos = useMemo(() => {
+    if (selectedFolder === null) return photos.slice().reverse();
+    if (selectedFolder === "") return photos.filter((p) => !(p.folder ?? "").trim()).slice().reverse();
+    return photos.filter((p) => (p.folder ?? "").trim() === selectedFolder).slice().reverse();
+  }, [photos, selectedFolder]);
+
+  const prev = useCallback(() => {
+    setAnimClass("story-exit-right");
+    setTimeout(() => {
+      setCurrentIndex((i) => (i - 1 + storyPhotos.length) % storyPhotos.length);
+      setAnimClass("story-enter");
+    }, 200);
+  }, [storyPhotos.length]);
+
+  const next = useCallback(() => {
+    setAnimClass("story-exit-left");
+    setTimeout(() => {
+      setCurrentIndex((i) => (i + 1) % storyPhotos.length);
+      setAnimClass("story-enter");
+    }, 200);
+  }, [storyPhotos.length]);
+
+  // Auto-advance
+  useEffect(() => {
+    if (!playing || storyPhotos.length < 2) return;
+    const id = setInterval(next, intervalSec * 1000);
+    return () => clearInterval(id);
+  }, [playing, next, intervalSec, storyPhotos.length]);
+
+  // Keyboard controls
+  useEffect(() => {
+    if (!playing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+      if (e.key === "ArrowRight") { e.preventDefault(); next(); }
+      if (e.key === "Escape") { e.preventDefault(); setPlaying(false); }
+      if (e.key === " ") { e.preventDefault(); /* toggle handled by button */ }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [playing, prev, next]);
+
+  const currentPhoto = storyPhotos[currentIndex];
+
+  return (
+    <div className="story-wrap">
+      <div className="story-header">
+        <span className="story-title">🎬 自动故事</span>
+        <span className="story-subtitle">选择文件夹，一键生成幻灯片</span>
+      </div>
+
+      <div className="story-controls">
+        <div className="story-control-group">
+          <label className="story-control-label">内容来源</label>
+          <select
+            className="story-select"
+            value={selectedFolder ?? "__all__"}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSelectedFolder(v === "__all__" ? null : v);
+              setCurrentIndex(0);
+            }}
+          >
+            <option value="__all__">全部照片（{photos.length} 张）</option>
+            {folders.map((f) => {
+              const count = photos.filter((p) => (p.folder ?? "").trim() === f).length;
+              return (
+                <option key={f} value={f}>{f}（{count} 张）</option>
+              );
+            })}
+            <option value="">未分类文件夹</option>
+          </select>
+        </div>
+
+        <div className="story-control-group">
+          <label className="story-control-label">切换效果</label>
+          <select
+            className="story-select"
+            value={transition}
+            onChange={(e) => setTransition(e.target.value as TransitionStyle)}
+          >
+            <option value="fade">淡入淡出</option>
+            <option value="slide">左右滑动</option>
+            <option value="zoom">缩放</option>
+          </select>
+        </div>
+
+        <div className="story-control-group">
+          <label className="story-control-label">间隔（秒）</label>
+          <select
+            className="story-select"
+            value={intervalSec}
+            onChange={(e) => setIntervalSec(Number(e.target.value))}
+          >
+            {[2, 3, 4, 5, 8, 10].map((s) => (
+              <option key={s} value={s}>{s} 秒</option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          className="story-play-btn"
+          onClick={() => { setCurrentIndex(0); setPlaying(true); }}
+          disabled={storyPhotos.length === 0}
+        >
+          ▶ 开始播放（{storyPhotos.length} 张）
+        </button>
+      </div>
+
+      {/* Preview grid */}
+      <div className="story-preview-grid">
+        {storyPhotos.slice(0, 12).map((p, i) => (
+          <div key={p.name} className="story-preview-thumb">
+            <img src={p.url} alt={p.originalName ?? ""} loading="lazy" />
+            <span className="story-preview-num">{i + 1}</span>
+          </div>
+        ))}
+        {storyPhotos.length > 12 && (
+          <div className="story-preview-more">+{storyPhotos.length - 12}</div>
+        )}
+      </div>
+
+      {/* Full-screen player */}
+      {playing && currentPhoto && createPortal(
+        <div className={`story-player story-player--${transition}`}>
+          {/* Background blur layer */}
+          <div
+            className="story-player-bg"
+            style={{ backgroundImage: `url(${currentPhoto.url})` }}
+          />
+
+          {/* Main photo */}
+          <div className={`story-player-img-wrap ${animClass}`} key={currentIndex}>
+            <img
+              src={currentPhoto.url}
+              alt={currentPhoto.originalName ?? ""}
+              className="story-player-img"
+            />
+          </div>
+
+          {/* Caption */}
+          <div className="story-player-caption">
+            {currentPhoto.subject && <div className="story-player-subject">{currentPhoto.subject}</div>}
+            <div className="story-player-name">
+              {currentPhoto.originalName ?? currentPhoto.name.split("/").pop()}
+            </div>
+            <div className="story-player-date">
+              {new Date(currentPhoto.createdAt ?? currentPhoto.lastModified ?? "").toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="story-player-progress">
+            {storyPhotos.map((_, i) => (
+              <div
+                key={i}
+                className={`story-progress-seg${i === currentIndex ? " active" : i < currentIndex ? " done" : ""}`}
+                onClick={() => { setCurrentIndex(i); setAnimClass("story-enter"); }}
+              />
+            ))}
+          </div>
+
+          {/* Controls */}
+          <div className="story-player-controls">
+            <button className="story-ctrl-btn" onClick={prev} title="上一张">‹</button>
+            <button
+              className="story-ctrl-btn story-ctrl-pause"
+              onClick={() => setPlaying((v) => !v)}
+              title="暂停/继续"
+            >{playing ? "⏸" : "▶"}</button>
+            <button className="story-ctrl-btn" onClick={next} title="下一张">›</button>
+            <button
+              className="story-ctrl-btn story-ctrl-close"
+              onClick={() => setPlaying(false)}
+              title="关闭 (Esc)"
+            >✕</button>
+          </div>
+
+          {/* Counter */}
+          <div className="story-player-counter">
+            {currentIndex + 1} / {storyPhotos.length}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}

@@ -115,6 +115,8 @@ app.http("listPhotos", {
           lastModifiedBy: decodeMeta(getMeta(blob.metadata, "lastModifiedBy")),
           voiceMemoName,
           voiceMemoUrl: voiceMemoName ? generateSasUrlWithKey(voiceMemoName, delegationKey) : undefined,
+          gpsLat: getMeta(blob.metadata, "gpsLat"),
+          gpsLon: getMeta(blob.metadata, "gpsLon"),
         });
       }
 

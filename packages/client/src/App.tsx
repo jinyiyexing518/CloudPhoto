@@ -12,6 +12,10 @@ import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import AuthPage from "./components/auth/AuthPage";
 import WhatsNewPopup from "./components/WhatsNewPopup";
+import OnThisDayCard from "./components/OnThisDayCard";
+const MemoryMap = lazy(() => import("./components/MemoryMap"));
+const TimeCapsule = lazy(() => import("./components/TimeCapsule"));
+const AutoStory = lazy(() => import("./components/AutoStory"));
 const AddAdminDialog = lazy(() => import("./components/auth/AddAdminDialog"));
 const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPage"));
 
@@ -22,7 +26,7 @@ const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 const _ua = navigator.userAgent.toLowerCase();
 const IS_IOS = /iphone|ipad|ipod/.test(_ua);
 const IS_ANDROID = /android/.test(_ua);
-type ViewTab = "timeline" | "folder" | "moments";
+type ViewTab = "timeline" | "folder" | "moments" | "map" | "capsule" | "story";
 type SettingsEntryTab = "profile" | "security" | "trash" | "diagnostics" | "app";
 type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
 
@@ -639,6 +643,18 @@ function AppContent() {
         e.preventDefault();
         switchTab("moments");
       }
+      if (e.key === "4" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        switchTab("map");
+      }
+      if (e.key === "5" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        switchTab("capsule");
+      }
+      if (e.key === "6" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        switchTab("story");
+      }
       if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         setSidebarOpen((v) => !v);
@@ -733,6 +749,19 @@ function AppContent() {
       setUploadProgress({ bytesLoaded: completedBytes, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
       const fileBase = completedBytes;
       try {
+        // Extract GPS from EXIF if available (images only)
+        let gpsLat: string | undefined;
+        let gpsLon: string | undefined;
+        if (valid[i].type.startsWith("image/")) {
+          try {
+            const exifrLib = await import("exifr");
+            const gps = await exifrLib.gps(valid[i]);
+            if (gps?.latitude != null && gps?.longitude != null) {
+              gpsLat = String(gps.latitude);
+              gpsLon = String(gps.longitude);
+            }
+          } catch { /* EXIF extraction is best-effort */ }
+        }
         await uploadPhotoWithProgress(
           valid[i],
           (loaded) => {
@@ -742,6 +771,8 @@ function AppContent() {
           subject || undefined,
           folder || undefined,
           currentGroupId || undefined,
+          gpsLat,
+          gpsLon,
         );
         completedBytes += valid[i].size;
       } catch {
@@ -997,6 +1028,7 @@ function AppContent() {
               <li><kbd>R</kbd><span>刷新照片列表</span></li>
               <li><kbd>?</kbd><span>显示 / 关闭本面板</span></li>
               <li><kbd>1 / 2 / 3</kbd><span>切换时间线 / 文件夹 / 重要片段</span></li>
+              <li><kbd>4 / 5 / 6</kbd><span>记忆地图 / 时光胶囊 / 自动故事</span></li>
               <li><kbd>S</kbd><span>开启 / 关闭侧边栏</span></li>
               <li><kbd>⌫ Backspace</kbd><span>清空所有筛选条件</span></li>
               <li><kbd>Esc</kbd><span>关闭侧边栏 / 弹框</span></li>
@@ -1221,6 +1253,25 @@ function AppContent() {
             <span>⭐ 重要片段</span>
             <span className="view-tab-count">{importantPhotos.length}</span>
           </button>
+          <button
+            className={`view-tab${activeTab === "map" ? " active" : ""}`}
+            onClick={(e) => { switchTab("map"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
+          >
+            <span>🗺️ 记忆地图</span>
+            <span className="view-tab-count">{photos.filter((p) => p.gpsLat).length || ""}</span>
+          </button>
+          <button
+            className={`view-tab${activeTab === "capsule" ? " active" : ""}`}
+            onClick={(e) => { switchTab("capsule"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
+          >
+            <span>💌 时光胶囊</span>
+          </button>
+          <button
+            className={`view-tab${activeTab === "story" ? " active" : ""}`}
+            onClick={(e) => { switchTab("story"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
+          >
+            <span>🎬 自动故事</span>
+          </button>
           </div>
           </div>
           {activeTab === "timeline" && (  
@@ -1323,7 +1374,7 @@ function AppContent() {
           <div className="workspace-main">
             {(activeTab === "timeline" || activeTab === "moments") && (
               <WorkspaceFab
-                activeTab={activeTab}
+                activeTab={activeTab as "timeline" | "moments"}
                 hidden={sidebarOpen}
                 filterCount={activeTab === "timeline" ? activeFiltersCount : 0}
                 onOpenSidebar={() => setSidebarOpen(true)}
@@ -1378,6 +1429,7 @@ function AppContent() {
                     >{activeDateChip === "today" ? "取消筛选" : "仅查看今日"}</button>
                   </div>
                 )}
+                <OnThisDayCard photos={photos} onJumpToPhoto={jumpToTimelinePhoto} />
               <PhotoGallery
                 photos={filteredPhotos}
                 onDelete={handleDelete}
@@ -1432,10 +1484,25 @@ function AppContent() {
                 contextKey={currentGroupId || "personal"}
               /></Suspense>
             )}
+            {activeTab === "map" && (
+              <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
+                <MemoryMap photos={photos} onViewPhoto={jumpToTimelinePhoto} />
+              </Suspense>
+            )}
+            {activeTab === "capsule" && user && (
+              <Suspense fallback={null}>
+                <TimeCapsule photos={photos} userId={user.id} onViewPhoto={jumpToTimelinePhoto} />
+              </Suspense>
+            )}
+            {activeTab === "story" && (
+              <Suspense fallback={null}>
+                <AutoStory photos={photos} />
+              </Suspense>
+            )}
           </div>
 
           <WorkspaceSidebar
-            activeTab={activeTab}
+            activeTab={(activeTab === "map" || activeTab === "capsule" || activeTab === "story" ? "timeline" : activeTab) as "timeline" | "folder" | "moments"}
             isOpen={sidebarOpen}
             filters={filters}
             onFiltersChange={setFilters}

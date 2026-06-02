@@ -24,6 +24,11 @@
 2.32 WhatsNewPopup：src/components/WhatsNewPopup.tsx；CHANGELOG 数组含 id/date/icon/title/desc 字段；getRecentEntries() 过滤 3 天内条目；localStorage key cf_whats_new_seen 存储最近已见日期；仅当有比已见日期更新的条目时展示；createPortal 渲染到 document.body；requestAnimationFrame 驱动倒计时进度条（100→0），AUTO_DISMISS_MS=10000；关闭后写入 latestDate 到 localStorage；新功能只需向 CHANGELOG 头部追加条目
 2.33 详情弹窗移动端垂直居中：media query 内 .modal-content 使用 margin: auto（替代 margin: 0）；max-height 改为 none；overlay 保持 align-items: flex-start + overflow-y: auto，实现"有空间时居中、超高时从顶部滚动"的标准 flex 模式
 2.34 视频缩略图居中裁剪：.photo-thumbnail video 与 img 共用同一规则块，均设置 width:100%; height:100%; object-fit:cover; object-position:center；hover 缩放同步适用于 video 元素
+2.35 历史上的今天（OnThisDayCard）：src/components/OnThisDayCard.tsx；Props: photos: Photo[], onJumpToPhoto?: (name: string) => void；过滤 photos 中月日与今天一致且年份小于当年的照片；按年分组，显示缩略图 + 「X年前」标签；默认展示前 6 张，「+N」按钮展开；整体渲染在 App.tsx 时间线分支的 PhotoGallery 上方；CSS 前缀 .otd-*
+2.36 记忆地图（MemoryMap）：src/components/MemoryMap.tsx；lazy 加载（dynamic import）；使用 leaflet 直接操作（非 react-leaflet）；在 useEffect 中 import("leaflet").then(L => ...) 初始化地图；OpenStreetMap tiles；markers 为 L.divIcon（含照片缩略图，class map-photo-marker）；点击 marker 底部弹出详情面板（.memory-map-detail）；Props: photos: Photo[], onViewPhoto?: (name: string) => void；仅展示 p.gpsLat && p.gpsLon 的照片；Tab 按钮显示含 GPS 照片数量；新增 ViewTab: "map"；CSS 前缀 .memory-map-* .map-photo-marker
+2.37 时光胶囊（TimeCapsule）：src/components/TimeCapsule.tsx；lazy 加载；localStorage key cf_capsules_{userId}；capsule 结构: { id, title, photoNames, unlockDate, createdAt }；锁定/解锁分区；创建弹窗使用 createPortal；新增 ViewTab: "capsule"；CSS 前缀 .capsule-*
+2.38 自动故事（AutoStory）：src/components/AutoStory.tsx；lazy 加载；选择文件夹/全部 + 过渡效果(fade/slide/zoom) + 播放间隔(2-10s)；全屏播放器通过 createPortal；键盘 ←→/Esc 支持；顶部进度段可点击；背景为当前图片的 blur 大图；新增 ViewTab: "story"；CSS 前缀 .story-*；@keyframes story-fade-in/story-slide-in/story-zoom-in
+2.39 GPS 数据管道：客户端上传时用 exifr.gps(file) 提取 latitude/longitude，作为 gpsLat/gpsLon 查询参数传给 uploadPhoto；服务端 uploadPhoto.ts 从 request.query 读取并写入 blob metadata；listPhotos.ts 在返回的照片对象中携带 gpsLat/gpsLon 字段；Photo interface 新增 gpsLat?: string; gpsLon?: string;
 
 ## 1. 目标
 

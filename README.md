@@ -13,6 +13,15 @@ For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
 
 ## Changelog
 
+### v1.6.0 — On This Day · Memory Map · Time Capsule · Auto Story
+
+- **📅 历史上的今天** — 时间线顶部自动检测往年同月同日的照片，按年份分组显示缩略图卡片，点击跳转到对应照片
+- **🗺️ 记忆地图** — 新增「记忆地图」标签，上传含 GPS EXIF 的照片时自动提取坐标存入元数据；地图（OpenStreetMap + Leaflet）以圆形照片图标标注拍摄地点，点击弹出详情面板并可跳转时间线
+- **💌 时光胶囊** — 新增「时光胶囊」标签，可将任意照片封存并设置解锁日期；到期前显示倒计时，到期后自动解锁可点击浏览；数据本地持久化（`localStorage`）
+- **🎬 自动故事** — 新增「自动故事」标签，选择文件夹或全部照片生成全屏幻灯片；支持淡入淡出/滑动/缩放三种过渡效果及 2–10 秒播放间隔；键盘 ←→ 切换、Esc 退出，顶部进度段可点击跳转
+- **快捷键扩展** — `4`=记忆地图，`5`=时光胶囊，`6`=自动故事
+- **GPS 数据管道** — `uploadPhoto` 服务端接受 `gpsLat`/`gpsLon` 查询参数写入 blob 元数据；`listPhotos` 在返回的照片对象中携带这两个字段；客户端上传时用 `exifr` 库自动解析 EXIF
+
 ### v1.5.4 — UX polish & What's New popup
 
 - **What's New popup** — on page load, a slide-in card (bottom-right) lists all changelog entries from the past 3 days; auto-dismisses after 10 s with a countdown bar; close button marks entries as seen in `localStorage` so it doesn't re-appear; new entries only need to be added to `CHANGELOG` in `WhatsNewPopup.tsx`

@@ -49,6 +49,8 @@ app.http("uploadPhoto", {
       const subject = request.query.get("subject") ?? "";
       const folder = request.query.get("folder") ?? "";
       const groupId = request.query.get("groupId") ?? "";
+      const gpsLat = request.query.get("gpsLat") ?? "";
+      const gpsLon = request.query.get("gpsLon") ?? "";
 
       const safeName = filename.replace(/[\/\\\0]/g, "_");
       // Path-based with sub-folder support: personal/{userId}/{folderPath}/{ts}-{name}
@@ -91,6 +93,8 @@ app.http("uploadPhoto", {
           createdAt: now,
           lastModifiedBy: b64(uploadedBy),
           lastModifiedAt: now,
+          ...(gpsLat && { gpsLat }),
+          ...(gpsLon && { gpsLon }),
         },
       });
 
