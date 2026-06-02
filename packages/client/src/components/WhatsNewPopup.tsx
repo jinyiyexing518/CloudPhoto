@@ -139,6 +139,19 @@ export default function WhatsNewPopup() {
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 锁定 body 滚动并补偿滚动条宽度，消除弹窗偏右问题
+  useEffect(() => {
+    const sw = window.innerWidth - document.documentElement.clientWidth;
+    const prev = document.body.style.overflow;
+    const prevPad = document.body.style.paddingRight;
+    document.body.style.overflow = "hidden";
+    document.body.style.paddingRight = `${sw}px`;
+    return () => {
+      document.body.style.overflow = prev;
+      document.body.style.paddingRight = prevPad;
+    };
+  }, []);
+
   // 启动自动淡出倒计时；pinned 后取消
   useEffect(() => {
     if (!visible || pinned) return;
