@@ -3,11 +3,6 @@
   "date": "2026-06-02",
   "icon": "🔧",
   "title": "Changelog Pipeline 精简",
-  "description": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
-  "details": [
-    "sync-changelog.mjs 改为直接读取 changes/*.json，不再依赖 data/changelog.json",
-    "collect-changes.mjs 只写 packages/client/public/changelog.json（客户端 fallback），data/ 目录删除",
-    "GitHub Actions sync-changelog.yml 触发路径从 data/changelog.json 改为 changes/**",
-    "fetchChangelogs API 失败时 fallback 到 /changelog.json 静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗"
-  ]
+  "desc": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
+  "details": "sync-changelog.mjs 直接读取 changes/*.json；collect-changes.mjs 只写 public/changelog.json；fetchChangelogs API 失败时 fallback 到静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗。"
 }
