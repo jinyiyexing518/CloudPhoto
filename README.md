@@ -13,6 +13,16 @@ For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
 
 ## Changelog
 
+### v1.5.4 — UX polish & What's New popup
+
+- **What's New popup** — on page load, a slide-in card (bottom-right) lists all changelog entries from the past 3 days; auto-dismisses after 10 s with a countdown bar; close button marks entries as seen in `localStorage` so it doesn't re-appear; new entries only need to be added to `CHANGELOG` in `WhatsNewPopup.tsx`
+- **Batch delete / empty-trash progress** — batch delete in PhotoGallery and FolderView, plus "清空回收站" in TrashView, now show a live progress bar (reusing the transfer-banner `🗑️` pattern); buttons disabled while running
+- **Delete confirm dialog centering** — delete confirm overlay rendered via `createPortal(…, document.body)` so it is always viewport-centered regardless of any transformed ancestor
+- **Folder path persists across refresh** — `FolderView` initialises `currentPath` directly from `localStorage` (lazy `useState`), so refreshing the page no longer resets navigation to the root folder
+- **Video thumbnail center-crop** — `.photo-thumbnail video` now gets `object-fit: cover; object-position: center`, matching `img` behaviour; video content is cropped to the centre of the frame, not a corner
+- **Video thumbnail seek** — on `loadedMetadata`, video element seeks to `Math.min(2, duration × 0.1)` for a representative frame instead of frame 0
+- **Modal detail vertical centering** — on mobile, `.modal-content` uses `margin: auto` inside the flex overlay so the dialog is vertically centered when it fits; content taller than the screen still scrolls from the top
+
 ### v1.5.3 — Voice memo (F1) & video picker fix
 
 - **F1 Voice memo** — record, upload, play, and delete a voice note attached to any photo or video; recorded audio is stored as a blob in the internal `_voice` folder (filtered from gallery), linked to the photo via blob metadata (`voiceMemoName`); a 🎤 button in the detail modal action strip opens the voice panel; an `<audio>` player renders existing memos; deleting clears the metadata link; supports `audio/webm` (Chrome/Android) and `audio/mp4` (Safari/iOS) via `MediaRecorder`

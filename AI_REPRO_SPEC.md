@@ -18,6 +18,12 @@
 2.26 uploadPhotoWithProgress 使用 XMLHttpRequest + upload.addEventListener('progress') 实现字节级回调；uploadProgress state 字段为 bytesLoaded/bytesTotal/filesDone/filesTotal
 2.27 分享面板使用 showSharePanel 布尔状态切换，默认收起；面板内含 modal-privacy-notice 元素
 2.28 PhotoCard.tsx 中视频使用 <video preload="metadata" muted playsInline> 渲染缩略图，右下角显示 photo-video-badge (.▶)
+2.29 文件夹路径刷新持久化：FolderView 使用惰性 useState 初始器从 localStorage 直接读取 currentPath 和 extraFolders，确保刷新页面后立即回到上次所在文件夹，而不是重置到根目录；persist effect 使用 hydratedContextRef 防止首次渲染覆盖
+2.30 删除确认弹窗必须通过 createPortal(…, document.body) 渲染，避免受父元素 transform/overflow 影响导致 position:fixed 偏移出视口
+2.31 批量删除与清空回收站进度：App.tsx 中新增 deleteProgress state（done/total/label）；handleBatchDeleteWithProgress 顺序调用 deletePhoto 并逐步更新进度；transferring 条件包含 deleteProgress !== null；transfer-banner 新增 deleteProgress 分支（🗑️ 图标 + 百分比 + 进度轨道）；TrashView 内部有独立 emptyProgress state，渲染 .trash-empty-progress 内联进度块（复用 transfer-banner-* CSS 类）；清空过程中"清空回收站"和"全部恢复"按钮 disabled
+2.32 WhatsNewPopup：src/components/WhatsNewPopup.tsx；CHANGELOG 数组含 id/date/icon/title/desc 字段；getRecentEntries() 过滤 3 天内条目；localStorage key cf_whats_new_seen 存储最近已见日期；仅当有比已见日期更新的条目时展示；createPortal 渲染到 document.body；requestAnimationFrame 驱动倒计时进度条（100→0），AUTO_DISMISS_MS=10000；关闭后写入 latestDate 到 localStorage；新功能只需向 CHANGELOG 头部追加条目
+2.33 详情弹窗移动端垂直居中：media query 内 .modal-content 使用 margin: auto（替代 margin: 0）；max-height 改为 none；overlay 保持 align-items: flex-start + overflow-y: auto，实现"有空间时居中、超高时从顶部滚动"的标准 flex 模式
+2.34 视频缩略图居中裁剪：.photo-thumbnail video 与 img 共用同一规则块，均设置 width:100%; height:100%; object-fit:cover; object-position:center；hover 缩放同步适用于 video 元素
 
 ## 1. 目标
 
@@ -91,8 +97,7 @@
 2. 回收站列表、恢复、彻底删除
 3. 支持“全部恢复”和“清空回收站”
 4. 恢复后相册自动刷新
-5. 恢复后显示上传日期（createdAt），不是恢复时间
-
+5. 恢复后显示上传日期（createdAt），不是恢复时间6. 批量删除（PhotoGallery/FolderView）和清空回收站（TrashView）必须显示逐步进度：批量删除复用顶部 transfer-banner；清空回收站在 TrashView 内渲染内联进度块；操作期间相关按钮禁用
 ### 3.4 群组与邀请
 
 1. 创建/编辑/删除群组
