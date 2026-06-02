@@ -77,6 +77,8 @@ app.http("listPhotos", {
         lastModifiedBy: string | undefined;
         voiceMemoName: string | undefined;
         voiceMemoUrl: string | undefined;
+        gpsLat: string | undefined;
+        gpsLon: string | undefined;
       }> = [];
 
       // Fetch one delegation key for the whole listing — avoids a round-trip per blob
