@@ -443,7 +443,15 @@ function PhotoGallery({
         const map = await listMomentInsights(flatPhotos.map((photo) => photo.name));
         if (!cancelled) {
           writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(map).length });
-          setMomentsInsightsMap(map);
+          // Merge server data into local state — never discard locally-tracked views
+          // that haven't been synced to the server yet (take max per photo).
+          setMomentsInsightsMap((prev) => {
+            const merged: Record<string, MomentInsight> = { ...prev };
+            for (const [photoName, serverItem] of Object.entries(map)) {
+              merged[photoName] = mergeMomentInsight(prev[photoName], serverItem);
+            }
+            return merged;
+          });
         }
       } catch (e) {
         if (!cancelled && e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
