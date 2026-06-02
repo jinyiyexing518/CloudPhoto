@@ -3781,11 +3781,12 @@ body {
     display: none;
   }
 
-  /* GroupSwitcher fills the rest of the first row */
+  /* GroupSwitcher + avatar stay right-aligned as a pair */
   .app-header .group-switcher {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
-    margin-left: 0;
+    max-width: 160px;
+    margin-left: auto;
   }
 
   .group-switcher-btn {
