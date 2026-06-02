@@ -923,7 +923,6 @@ function AppContent() {
                   {user?.role === "admin" && <span className="role-badge">Admin</span>}
                 </div>
               </div>
-              <div className="user-menu-divider" />
               <button className="user-menu-item" onClick={() => { setShowSettings(true); setUserMenuOpen(false); }}>
                 <span className="user-menu-item-icon">⚙️</span> 设置
               </button>

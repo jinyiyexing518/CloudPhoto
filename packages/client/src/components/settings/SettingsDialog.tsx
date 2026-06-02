@@ -272,16 +272,6 @@ export default function SettingsDialog({
     ? shareLinks.filter((item) => !!item && typeof item.id === "string" && typeof item.url === "string")
     : [];
 
-  const settingsHero = tab === "profile"
-    ? { icon: "👤", title: "个人信息", description: "查看账号身份信息，并维护昵称等基础资料。" }
-    : tab === "security"
-    ? { icon: "🔒", title: "安全中心", description: "统一管理密码和账号安全相关操作。" }
-    : tab === "app"
-    ? { icon: "📱", title: "应用与分享", description: "查看应用状态、安装能力，以及分享链接的维护情况。" }
-    : tab === "diagnostics"
-    ? { icon: "🩺", title: "诊断中心", description: "快速判断当前版本、缓存、同步和持久化状态。" }
-    : { icon: "🗑️", title: "回收站", description: "恢复误删内容，或彻底清理不再需要的照片。" };
-
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
@@ -301,20 +291,11 @@ export default function SettingsDialog({
         </div>
 
         {/* Tab content */}
-        <div className="settings-body" style={{ textAlign: "left" }} ref={settingsBodyRef}>
-          <section className="settings-hero">
-            <div className={`settings-hero-icon settings-hero-icon--${tab === "app" ? "app" : tab === "security" ? "security" : tab === "diagnostics" ? "diagnostics" : tab === "trash" ? "trash" : "profile"}`}>
-              {settingsHero.icon}
-            </div>
-            <div className="settings-hero-copy">
-              <h2>{settingsHero.title}</h2>
-              <p>{settingsHero.description}</p>
-            </div>
-          </section>
+        <div className="settings-body" ref={settingsBodyRef}>
 
           {/* ── 个人信息 ── */}
           {tab === "profile" && (
-            <div className="settings-section settings-section--stacked" style={{ textAlign: "left", alignItems: "stretch" }}>
+            <div className="settings-section settings-section--stacked">
               {/* Read-only info */}
               <div className="settings-card settings-card--soft">
                 <div className="settings-card-head">
@@ -366,7 +347,7 @@ export default function SettingsDialog({
 
           {/* ── 安全 ── */}
           {tab === "security" && (
-            <div className="settings-section" style={{ textAlign: "left", alignItems: "stretch" }}>
+            <div className="settings-section">
               <form onSubmit={handleChangePassword} className="settings-form settings-card">
                 <div className="settings-card-head">
                   <h3>密码管理</h3>
