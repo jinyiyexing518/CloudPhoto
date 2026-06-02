@@ -1129,6 +1129,22 @@ body {
   border-radius: 8px;
   object-fit: cover;
 }
+/* wrapper for video card-thumb (needs position:relative for badge) */
+.capsule-card-thumb-wrap {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.capsule-card-thumb-wrap .capsule-card-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .capsule-card-more {
   width: 48px;
   height: 48px;
@@ -1232,7 +1248,8 @@ body {
   background: #e2e8f0;
 }
 .capsule-photo-thumb.selected { border-color: #0078d4; }
-.capsule-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.capsule-photo-thumb img,
+.capsule-photo-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .capsule-photo-check {
   position: absolute;
   top: 4px;
@@ -1320,8 +1337,10 @@ body {
   padding: 0;
   border: none;
   background: #e2e8f0;
+  position: relative;
 }
-.capsule-view-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.capsule-view-thumb img,
+.capsule-view-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ─── Auto Story ──────────────────────────────────────────────────────────── */
 .story-wrap { padding: 0 0 32px; }
@@ -5937,8 +5956,10 @@ body {
   aspect-ratio: 1;
   overflow: hidden;
   background: #f3f4f6;
+  position: relative;
 }
-.trash-card-thumb img {
+.trash-card-thumb img,
+.trash-card-thumb video {
   width: 100%;
   height: 100%;
   object-fit: cover;

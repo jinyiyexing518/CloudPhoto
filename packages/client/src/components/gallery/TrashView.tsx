@@ -167,7 +167,23 @@ export default function TrashView({ groupId, onRestored }: Props) {
           return (
             <div key={p.name} className={`trash-card${busy ? " trash-card--busy" : ""}`}>
               <div className="trash-card-thumb">
-                <img src={p.url} alt={displayName} loading="lazy" draggable={false} />
+                {p.contentType?.startsWith("video/") ? (
+                  <>
+                    <video
+                      src={p.url}
+                      preload="metadata"
+                      muted
+                      playsInline
+                      onLoadedMetadata={(e) => {
+                        const v = e.currentTarget;
+                        v.currentTime = Math.min(2, v.duration * 0.1);
+                      }}
+                    />
+                    <div className="photo-video-badge">▶</div>
+                  </>
+                ) : (
+                  <img src={p.url} alt={displayName} loading="lazy" draggable={false} />
+                )}
               </div>
               <div className="trash-card-body">
                 <div className="trash-card-name" title={displayName}>{displayName}</div>

@@ -122,9 +122,27 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
               return (
                 <div key={c.id} className="capsule-card capsule-card--unlocked">
                   <div className="capsule-card-thumbs">
-                    {thumbs.map((p) => (
-                      <img key={p.name} src={p.url} alt="" className="capsule-card-thumb" />
-                    ))}
+                    {thumbs.map((p) => {
+                      const isVid = p.contentType?.startsWith("video/");
+                      return isVid ? (
+                        <span key={p.name} className="capsule-card-thumb-wrap">
+                          <video
+                            src={p.url}
+                            className="capsule-card-thumb"
+                            preload="metadata"
+                            muted
+                            playsInline
+                            onLoadedMetadata={(e) => {
+                              const v = e.currentTarget;
+                              v.currentTime = Math.min(2, v.duration * 0.1);
+                            }}
+                          />
+                          <span className="photo-video-badge">▶</span>
+                        </span>
+                      ) : (
+                        <img key={p.name} src={p.url} alt="" className="capsule-card-thumb" />
+                      );
+                    })}
                     {c.photoNames.length > 3 && (
                       <div className="capsule-card-more">+{c.photoNames.length - 3}</div>
                     )}
@@ -230,7 +248,21 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                         setSelectedNames(next);
                       }}
                     >
-                      <img src={p.url} alt="" loading="lazy" />
+                      {p.contentType?.startsWith("video/") ? (
+                        <video
+                          src={p.url}
+                          preload="metadata"
+                          muted
+                          playsInline
+                          onLoadedMetadata={(e) => {
+                            const v = e.currentTarget;
+                            v.currentTime = Math.min(2, v.duration * 0.1);
+                          }}
+                        />
+                      ) : (
+                        <img src={p.url} alt="" loading="lazy" />
+                      )}
+                      {p.contentType?.startsWith("video/") && <span className="photo-video-badge">▶</span>}
                       {sel && <span className="capsule-photo-check">✓</span>}
                     </button>
                   );
@@ -269,7 +301,21 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   onClick={() => { setOpenedCapsuleId(null); onViewPhoto?.(p.name); }}
                   title={p.originalName ?? p.name}
                 >
-                  <img src={p.url} alt={p.originalName ?? ""} loading="lazy" />
+                  {p.contentType?.startsWith("video/") ? (
+                    <video
+                      src={p.url}
+                      preload="metadata"
+                      muted
+                      playsInline
+                      onLoadedMetadata={(e) => {
+                        const v = e.currentTarget;
+                        v.currentTime = Math.min(2, v.duration * 0.1);
+                      }}
+                    />
+                  ) : (
+                    <img src={p.url} alt={p.originalName ?? ""} loading="lazy" />
+                  )}
+                  {p.contentType?.startsWith("video/") && <span className="photo-video-badge">▶</span>}
                 </button>
               ))}
             </div>
