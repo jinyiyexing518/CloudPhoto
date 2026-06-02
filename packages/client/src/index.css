@@ -4463,9 +4463,9 @@ body {
   .modal-content {
     width: calc(100vw - 12px);
     max-width: calc(100vw - 12px);
-    max-height: calc(100vh - 12px);
+    max-height: none;
     overflow-y: auto;
-    margin: 0;
+    margin: auto;
   }
 
   .modal-image-pane {
