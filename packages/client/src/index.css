@@ -366,7 +366,7 @@ body {
   gap: 10px;
   background: transparent;
   padding: 10px 0 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* ::before removed — no longer needed (no rounded corners on sticky card) */
@@ -4135,6 +4135,12 @@ body {
     gap: 10px;
   }
 
+  /* ── Weekly summary card: adjust negative margin for mobile 12px padding ── */
+  .weekly-summary-card {
+    margin-left: -12px;
+    margin-right: -12px;
+  }
+
   /* ── Auth card ── */
   .auth-card { padding: 28px 20px 24px; }
 
@@ -5210,10 +5216,11 @@ body {
 
 /* ── 9. Weekly summary card ─────────────────────── */
 .weekly-summary-card {
-  margin: 6px 2px 2px;
+  margin: 6px -24px 2px;
   background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 0;
   overflow: hidden;
 }
 .weekly-summary-toggle {
