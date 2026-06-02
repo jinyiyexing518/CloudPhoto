@@ -374,7 +374,8 @@ body {
   margin-bottom: 0;
   border-radius: 0;
   border-bottom: 1px solid #e2e8f0;
-  overflow: hidden;
+  /* Do NOT use overflow:hidden here — it clips the expanded weekly summary body.
+     The inner .view-tabs-shell handles tab-row overflow on its own. */
   transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
