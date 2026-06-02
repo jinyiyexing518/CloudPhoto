@@ -1214,7 +1214,10 @@ function AppContent() {
                 className="weekly-summary-toggle"
                 onClick={() => setWeeklyCardExpanded((v) => !v)}
               >
-                <span>📊 本周概况</span>
+                <span className="weekly-summary-title">📊 本周概况</span>
+                {!weeklyCardExpanded && (
+                  <span className="weekly-summary-peek">{weeklyStats.thisWeek} 张上传 · ⭐ {weeklyStats.favorites} 收藏 · 💾 {storageUsed}</span>
+                )}
                 <span className="weekly-summary-chevron">{weeklyCardExpanded ? "▲" : "▼"}</span>
               </button>
               {weeklyCardExpanded && (
