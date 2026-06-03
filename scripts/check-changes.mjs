@@ -66,45 +66,60 @@ function filesForNewBranch(localSha) {
   }
 }
 
+function checkFiles(files) {
+  const hasCode   = files.some((f) => CODE_RE.test(f));
+  const hasChange = files.some((f) => CHANGE_RE.test(f));
+  if (hasCode && !hasChange) {
+    process.stderr.write([
+      "",
+      "  ❌  Push blocked — no change file found.",
+      "",
+      "  Your commits contain code changes but no entry in changes/.",
+      "  Document what changed by running:",
+      "",
+      "      yarn change",
+      "",
+      "  Then commit the generated file and push again.",
+      "  To skip this check: git push --no-verify",
+      "",
+    ].join("\n"));
+    process.exit(1);
+  }
+}
+
 async function main() {
+  // Read refs from stdin (git pre-push protocol).
+  // On Windows, stdin may close immediately with no data — detect that below.
   const rl = createInterface({ input: process.stdin });
   const lines = [];
   for await (const line of rl) {
     if (line.trim()) lines.push(line.trim());
   }
 
-  for (const line of lines) {
-    const parts = line.split(" ");
-    if (parts.length < 4) continue;
+  if (lines.length > 0) {
+    // Normal path: git provided ref info via stdin.
+    for (const line of lines) {
+      const parts = line.split(" ");
+      if (parts.length < 4) continue;
 
-    const [, localSha, , remoteSha] = parts;
+      const [, localSha, , remoteSha] = parts;
 
-    // Skip deletions (local SHA = zeros)
-    if (localSha === ZEROS) continue;
+      // Skip deletions (local SHA = zeros)
+      if (localSha === ZEROS) continue;
 
-    const files =
-      remoteSha === ZEROS
-        ? filesForNewBranch(localSha)
-        : changedFiles(`${remoteSha}..${localSha}`);
+      const files =
+        remoteSha === ZEROS
+          ? filesForNewBranch(localSha)
+          : changedFiles(`${remoteSha}..${localSha}`);
 
-    const hasCode   = files.some((f) => CODE_RE.test(f));
-    const hasChange = files.some((f) => CHANGE_RE.test(f));
-
-    if (hasCode && !hasChange) {
-      process.stderr.write([
-        "",
-        "  ❌  Push blocked — no change file found.",
-        "",
-        "  Your commits contain code changes but no entry in changes/.",
-        "  Document what changed by running:",
-        "",
-        "      yarn change",
-        "",
-        "  Then commit the generated file and push again.",
-        "  To skip this check: git push --no-verify",
-        "",
-      ].join("\n"));
-      process.exit(1);
+      checkFiles(files);
+    }
+  } else {
+    // Fallback for Windows: stdin was empty (piping issue).
+    // Check everything unpushed: origin/main..HEAD.
+    const files = changedFiles("origin/main..HEAD");
+    if (files.length > 0) {
+      checkFiles(files);
     }
   }
 
