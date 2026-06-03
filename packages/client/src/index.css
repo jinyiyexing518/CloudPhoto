@@ -4237,6 +4237,25 @@ body {
   -webkit-backdrop-filter: blur(6px);
 }
 
+/* Photo index counter: "3 / 47" */
+.modal-nav-counter {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 12px;
+  z-index: 20;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+
 .modal-close:hover {
   background: rgba(0, 0, 0, 0.88);
   transform: scale(1.1);

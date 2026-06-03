@@ -1233,6 +1233,9 @@ function PhotoGallery({
             >
               ✕
             </button>
+            {selectedIdx !== null && (
+              <span className="modal-nav-counter">{selectedIdx + 1} / {modalPhotos.length}</span>
+            )}
             {selectedIdx !== null && selectedIdx > 0 && (
               <button className="modal-nav modal-nav--prev" onClick={() => navigateToPhoto(selectedIdx - 1)} title="上一张 (←)">‹</button>
             )}

@@ -126,6 +126,15 @@
     "seq": 1780479680053
   },
   {
+    "id": "2026-06-03-modal-photo-counter",
+    "date": "2026-06-03",
+    "title": "模态框照片序号显示",
+    "description": "在照片预览模态框顶部中央显示「N / Total」序号，例如「5 / 120」，方便了解当前浏览位置。时间线和文件夹视图同步支持。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780480064793
+  },
+  {
     "id": "2026-06-03-moments-top20",
     "date": "2026-06-03",
     "type": "improvement",

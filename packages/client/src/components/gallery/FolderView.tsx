@@ -1465,6 +1465,9 @@ function FolderContent({
               )}
             </div>
             <button className="modal-close" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }} title="关闭 (Esc)">✕</button>
+            {selectedIdx !== null && (
+              <span className="modal-nav-counter">{selectedIdx + 1} / {directPhotos.length}</span>
+            )}
             <div className="modal-info">
 
               {/* Filename row with rename */}
