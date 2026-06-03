@@ -1204,7 +1204,7 @@ function AppContent() {
         <div className="drag-overlay">
           <div className="drag-overlay-content">
             <div className="drag-overlay-icon">📂</div>
-            <p className="drag-overlay-title">{dragFileCount > 0 ? `拖入 ${dragFileCount} 个文件` : "松开后跳转到文件夹视图上传"}</p>
+            <p className="drag-overlay-title">{dragFileCount > 0 ? `拖入 ${dragFileCount} 个文件` : "松开后跳转到文件夹视图上传"}t > 0 ? `拖入 ${dragFileCount} 个文件` : "松开后跳转到文件夹视图上传"}</p>
             <p className="drag-overlay-sub">支持 JPG、PNG、WebP、HEIC 等格式</p>
           </div>
         </div>

@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-preload-adjacent-photos",
+  "date": "2026-06-03",
+  "title": "预加载相邻照片提升翻页速度",
+  "description": "在照片预览模态框打开时，自动在后台预加载上一张和下一张照片图片，使切换时几乎无加载延迟，显著提升翻页流畅度。",
+  "impact": "performance",
+  "breaking": false,
+  "seq": 1780481738387
+}

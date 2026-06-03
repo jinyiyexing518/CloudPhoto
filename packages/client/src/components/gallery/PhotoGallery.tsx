@@ -727,6 +727,19 @@ function PhotoGallery({
     });
   }, [selectedPhoto?.gpsLat, selectedPhoto?.gpsLon]);
 
+  // Preload adjacent photos for faster navigation
+  useEffect(() => {
+    if (selectedIdx === null) return;
+    const toPreload = [selectedIdx - 1, selectedIdx + 1]
+      .filter((i) => i >= 0 && i < modalPhotos.length)
+      .map((i) => modalPhotos[i])
+      .filter((p) => p && !p.contentType?.startsWith("video/"));
+    toPreload.forEach((p) => {
+      const img = new Image();
+      img.src = p.url;
+    });
+  }, [selectedIdx, modalPhotos]);
+
   const openModal = (photo: Photo) => {
     const idx = modalPhotos.findIndex((p) => p.name === photo.name);
     trackMomentView(photo.name);
