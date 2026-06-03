@@ -67,6 +67,13 @@
     "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   },
   {
+    "id": "2026-06-03-folder-pin-on-create",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "新建文件夹临时置顶",
+    "summary": "新创建的文件夹在当前会话中自动置顶显示，导航离开或刷新后恢复正常字母排序"
+  },
+  {
     "id": "2026-06-03-gps-cosmos-sync-fix",
     "date": "2026-06-03",
     "icon": "🔧",

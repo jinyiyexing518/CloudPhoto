@@ -234,6 +234,9 @@ export default function FolderView({
   });
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  // Names of folders created in the current session at the current path level.
+  // These are pinned to the top of the list until the user navigates away or refreshes.
+  const [newlyCreatedFolders, setNewlyCreatedFolders] = useState<string[]>([]);
   const [folderShareHours, setFolderShareHours] = useState("24");
   const [sharingFolder, setSharingFolder] = useState(false);
   const [showShareFolderDialog, setShowShareFolderDialog] = useState(false);
@@ -309,6 +312,11 @@ export default function FolderView({
     }
   }, [currentPath, contextKey]);
 
+  // Clear pinned-to-top list whenever the user navigates to a different folder
+  useEffect(() => {
+    setNewlyCreatedFolders([]);
+  }, [currentPath]);
+
   // Remove extra folders that now have real photos (they’re no longer "empty")
   useEffect(() => {
     const photoFolderSet = new Set(photos.map((p) => p.folder?.trim() ?? ""));
@@ -319,6 +327,11 @@ export default function FolderView({
   }, [photos]);
 
   const subFolders = getImmediateSubFolders(photos, extraFolders, currentPath);
+  // Newly-created folders bubble to the top; the rest remain alphabetical
+  const displaySubFolders = [
+    ...newlyCreatedFolders.filter((n) => subFolders.includes(n)),
+    ...subFolders.filter((n) => !newlyCreatedFolders.includes(n)),
+  ];
   const hasUncategorized =
     currentPath === null && photos.some((p) => (p.folder?.trim() ?? "") === "");
 
@@ -342,6 +355,8 @@ export default function FolderView({
     if (name.includes("/")) { showToast("文件夹名不能包含 /", "error"); return; }
     const fullPath = currentPath === null ? name : (currentPath === "" ? name : `${currentPath}/${name}`);
     setExtraFolders((prev) => (prev.includes(fullPath) ? prev : [...prev, fullPath]));
+    // Pin the new folder to the top of the list for this session
+    setNewlyCreatedFolders((prev) => prev.includes(name) ? prev : [...prev, name]);
     setNewFolderName("");
     setCreatingFolder(false);
   };
@@ -544,7 +559,7 @@ export default function FolderView({
               hasSubFolders={false}
             />
           )}
-          {subFolders.map((name) => (
+          {displaySubFolders.map((name) => (
             <FolderCard
               key={name}
               name={name}
@@ -557,7 +572,7 @@ export default function FolderView({
               hasSubFolders={getImmediateSubFolders(photos, extraFolders, name).length > 0}
             />
           ))}
-          {!hasUncategorized && subFolders.length === 0 && (
+          {!hasUncategorized && displaySubFolders.length === 0 && (
             <div className="empty-gallery" style={{ gridColumn: "1 / -1" }}>
               还没有文件夹，点击「+ 新建文件夹」开始吧
             </div>
@@ -567,7 +582,7 @@ export default function FolderView({
         /* Inside a folder */
         <FolderContent
           currentPath={currentPath}
-          subFolders={subFolders}
+          subFolders={displaySubFolders}
           directPhotos={photos.filter((p) => (p.folder?.trim() ?? "") === currentPath)}
           allPhotos={photos}
           allExtraFolders={extraFolders}
