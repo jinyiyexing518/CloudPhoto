@@ -13,6 +13,7 @@ interface ChangelogEntry {
   title: string;
   desc: string;
   details?: string;
+  _ts?: number;
 }
 
 app.http("getChangelogs", {
@@ -35,13 +36,17 @@ app.http("getChangelogs", {
       const { resources } = await container.items
         .query<ChangelogEntry>({
           query:
-            "SELECT c.id, c.date, c.icon, c.title, c.desc, c.details, c.type FROM c WHERE c.date >= @cutoff",
+            "SELECT c.id, c.date, c.icon, c.title, c.desc, c.details, c.type, c._ts FROM c WHERE c.date >= @cutoff",
           parameters: [{ name: "@cutoff", value: cutoffStr }],
         })
         .fetchAll();
 
-      // Sort newest-first in application code (avoids needing a composite index)
-      resources.sort((a, b) => b.date.localeCompare(a.date));
+      // Sort newest-first by date, then by _ts (Cosmos modification time) within the same date
+      resources.sort((a, b) => {
+        const dateCmp = b.date.localeCompare(a.date);
+        if (dateCmp !== 0) return dateCmp;
+        return (b._ts ?? 0) - (a._ts ?? 0);
+      });
 
       return {
         status: 200,

@@ -118,6 +118,13 @@
     "summary": "修复 Container:Item 正则表达式中 [^/]* 错误排除 video/mp4 的斜杠导致 Android 12+ 动态照片无法解析，同时将 XMP 扫描范围从 64KB 扩大到 128KB，并添加播放失败提示"
   },
   {
+    "id": "2026-06-03-motion-video-binary-fallback-changelog-sort",
+    "date": "2026-06-03",
+    "type": "fix",
+    "title": "动态视频提取增强 & 最近更新排序修正",
+    "summary": "motionVideo: 修复Samsung Container:Length，支持MicroVideoOffset元素形式，新增二进制fallback（Huawei HwMotionPhoto等）。changelog排序：同一天按_ts倒序"
+  },
+  {
     "id": "2026-06-03-perf-new-features",
     "date": "2026-06-03",
     "icon": "⚡",

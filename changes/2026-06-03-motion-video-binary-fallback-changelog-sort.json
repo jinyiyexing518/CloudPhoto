@@ -1,0 +1,7 @@
+{
+  "id": "2026-06-03-motion-video-binary-fallback-changelog-sort",
+  "date": "2026-06-03",
+  "type": "fix",
+  "title": "动态视频提取增强 & 最近更新排序修正",
+  "summary": "motionVideo: 修复Samsung Container:Length，支持MicroVideoOffset元素形式，新增二进制fallback（Huawei HwMotionPhoto等）。changelog排序：同一天按_ts倒序"
+}
