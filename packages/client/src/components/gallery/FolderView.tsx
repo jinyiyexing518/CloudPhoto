@@ -739,6 +739,11 @@ function FolderContent({
   const [savingTakenAt, setSavingTakenAt] = useState(false);
   const [editingGps, setEditingGps] = useState(false);
   const [savingGps, setSavingGps] = useState(false);
+  const [showBatchTimeEdit, setShowBatchTimeEdit] = useState(false);
+  const [batchTimeInput, setBatchTimeInput] = useState("");
+  const [showBatchGpsEdit, setShowBatchGpsEdit] = useState(false);
+  const [batchGpsLat, setBatchGpsLat] = useState("");
+  const [batchGpsLon, setBatchGpsLon] = useState("");
   const [geoAddress, setGeoAddress] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -906,6 +911,51 @@ function FolderContent({
     }
     if (failed > 0) showToast(`批量重命名完成，失败 ${failed} 张`, "error");
     else showToast(`已重命名 ${selectedList.length} 张照片`, "success");
+  };
+
+  const handleBatchSetTakenAt = async () => {
+    if (!batchTimeInput || selected.size === 0) return;
+    const d = new Date(batchTimeInput);
+    if (isNaN(d.getTime())) { showToast("无效的日期时间", "error"); return; }
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const naive = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const selectedList = directPhotos.filter((p) => selected.has(p.name));
+    let failed = 0;
+    for (const p of selectedList) {
+      try {
+        await updatePhotoTakenAt(p.name, naive, userName);
+        onTakenAtUpdate?.(p.name, naive);
+      } catch { failed++; }
+    }
+    setShowBatchTimeEdit(false);
+    setBatchTimeInput("");
+    if (failed > 0) showToast(`批量修改时间完成，失败 ${failed} 张`, "error");
+    else showToast(`已修改 ${selectedList.length} 张照片的拍摄时间`, "success");
+  };
+
+  const handleBatchSetGps = async (overrideLat?: string, overrideLon?: string) => {
+    const effectiveLat = overrideLat ?? batchGpsLat;
+    const effectiveLon = overrideLon ?? batchGpsLon;
+    if (!effectiveLat || !effectiveLon || selected.size === 0) return;
+    const lat = parseFloat(effectiveLat);
+    const lon = parseFloat(effectiveLon);
+    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      showToast("坐标无效：纬度 ±90°，经度 ±180°", "error");
+      return;
+    }
+    const selectedList = directPhotos.filter((p) => selected.has(p.name));
+    let failed = 0;
+    for (const p of selectedList) {
+      try {
+        await updatePhotoGps(p.name, effectiveLat, effectiveLon);
+        onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
+      } catch { failed++; }
+    }
+    setShowBatchGpsEdit(false);
+    setBatchGpsLat("");
+    setBatchGpsLon("");
+    if (failed > 0) showToast(`批量修改位置完成，失败 ${failed} 张`, "error");
+    else showToast(`已修改 ${selectedList.length} 张照片的位置`, "success");
   };
 
   const openModal = (photo: Photo) => {
@@ -1169,6 +1219,18 @@ function FolderContent({
           {selectMode && selected.size > 0 && (
             <>
               <button className="batch-select-btn" onClick={() => void handleBatchRename()}>重命名 ({selected.size})</button>
+              <button
+                className={`batch-select-btn${showBatchTimeEdit ? " active" : ""}`}
+                onClick={() => { setShowBatchTimeEdit((v) => !v); setShowBatchGpsEdit(false); }}
+              >
+                修改时间 ({selected.size})
+              </button>
+              <button
+                className={`batch-select-btn${showBatchGpsEdit ? " active" : ""}`}
+                onClick={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
+              >
+                修改位置 ({selected.size})
+              </button>
               <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>删除 ({selected.size})</button>
               <select
                 className="modal-move-select"
@@ -1196,6 +1258,33 @@ function FolderContent({
               ? `⏳ ${uploadProgress.filesDone}/${uploadProgress.filesTotal}`
               : "+ 添加原图"}
           </button>
+        </div>
+      )}
+      {selectMode && showBatchTimeEdit && (
+        <div className="batch-edit-form">
+          <span className="batch-edit-label">统一拍摄时间</span>
+          <input
+            type="datetime-local"
+            className="batch-edit-input"
+            value={batchTimeInput}
+            onChange={(e) => setBatchTimeInput(e.target.value)}
+          />
+          <button className="batch-select-btn" onClick={() => void handleBatchSetTakenAt()} disabled={!batchTimeInput}>
+            应用
+          </button>
+          <button className="batch-select-btn" onClick={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}>
+            取消
+          </button>
+        </div>
+      )}
+      {selectMode && showBatchGpsEdit && (
+        <div className="batch-edit-form batch-edit-form--gps">
+          <span className="batch-edit-label">统一位置（搜索地名）</span>
+          <LocationSearchPanel
+            saving={false}
+            onSelect={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
+            onClose={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
+          />
         </div>
       )}
 

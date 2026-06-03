@@ -18,7 +18,7 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!query.trim()) {
+    if (!query.trim() || query.trim().length < 2) {
       setResults([]);
       setSearching(false);
       return;
@@ -30,7 +30,7 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
         setResults(res);
         setSearching(false);
       });
-    }, 500);
+    }, 200);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };

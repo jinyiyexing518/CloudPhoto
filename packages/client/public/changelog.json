@@ -67,6 +67,13 @@
     "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   },
   {
+    "id": "2026-06-03-folder-batch-time-gps",
+    "date": "2026-06-03",
+    "type": "feature",
+    "title": "文件夹视图支持批量修改时间和位置",
+    "summary": "文件夹tab批量选择后新增「修改时间」和「修改位置」操作，与时间线保持一致；地点搜索增加本地缓存并将防抖时间由500ms降至200ms"
+  },
+  {
     "id": "2026-06-03-folder-delete-restore",
     "date": "2026-06-03",
     "type": "feature",

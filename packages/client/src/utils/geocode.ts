@@ -48,25 +48,32 @@ export interface LocationSearchResult {
   lon: number;
 }
 
+/** Session-level cache so repeated queries don't re-hit Nominatim */
+const searchCache = new Map<string, LocationSearchResult[]>();
+
 /**
  * Search for places by name using Nominatim (OpenStreetMap).
- * Returns up to 6 results ordered by relevance.
+ * Results are cached per session. Requires at least 2 characters.
  */
 export async function searchLocation(query: string): Promise<LocationSearchResult[]> {
-  if (!query.trim()) return [];
+  const q = query.trim();
+  if (q.length < 2) return [];
+  if (searchCache.has(q)) return searchCache.get(q)!;
   try {
     const resp = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=6&accept-language=zh-CN,zh`,
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&accept-language=zh-CN,zh`,
     );
     if (!resp.ok) return [];
     const data = await resp.json() as Array<{ display_name?: string; lat?: string; lon?: string }>;
-    return data
+    const results = data
       .filter((r) => r.display_name && r.lat && r.lon)
       .map((r) => ({
         displayName: r.display_name!,
         lat: parseFloat(r.lat!),
         lon: parseFloat(r.lon!),
       }));
+    searchCache.set(q, results);
+    return results;
   } catch {
     return [];
   }
