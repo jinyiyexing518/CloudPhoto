@@ -123,6 +123,7 @@ function PhotoCard({
             />
           )}
           {isVideo && <div className="photo-video-badge">▶{videoDuration ? ` ${videoDuration}` : ""}</div>}
+          {photo.favorite && <div className="photo-favorite-badge" title="已收藏">★</div>}
           {isAnimated && isMotionPhoto && (
             <div className="photo-video-badge">动态照片 📱</div>
           )}

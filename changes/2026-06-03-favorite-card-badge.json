@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-favorite-card-badge",
+  "date": "2026-06-03",
+  "title": "已收藏照片缩略图显示金色角标",
+  "description": "已收藏的照片在缩略图左上角显示一个金色「★」圆形角标，让用户在浏览网格时一眼辨识出收藏内容，无需逐一打开预览。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780481488222
+}

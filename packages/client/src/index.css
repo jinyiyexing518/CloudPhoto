@@ -4472,6 +4472,23 @@ body {
   pointer-events: none;
   backdrop-filter: blur(4px);
 }
+.photo-favorite-badge {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  background: rgba(251, 191, 36, 0.92);
+  color: #fff;
+  font-size: 0.72rem;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  line-height: 1;
+}
 
 .photo-gif-badge {
   position: absolute;
