@@ -681,12 +681,17 @@ function PhotoGallery({
       if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1);
       if (e.key === "ArrowRight" && selectedIdx < modalPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
       if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !(e.target as HTMLElement).matches("input,textarea")) {
-        void handleModalFavoriteToggle();
+        if (selectedPhoto) {
+          const next = !selectedPhoto.favorite;
+          void onToggleFavorite(selectedPhoto.name, next).then((ok) => {
+            if (ok) setSelectedPhoto((prev) => prev ? { ...prev, favorite: next } : prev);
+          });
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedIdx, modalPhotos.length, navigateToPhoto, handleModalFavoriteToggle]);
+  }, [selectedIdx, modalPhotos.length, navigateToPhoto, selectedPhoto, onToggleFavorite]);
 
   // Reverse geocode GPS coordinates to human-readable address
   useEffect(() => {
@@ -1412,7 +1417,7 @@ function PhotoGallery({
                   onClick={() => void handleDownload()}
                   disabled={downloading}
                 >
-                  {downloading ? "⏳" : "⬇"} 下载
+                  {downloading ? "⏳" : "⬇"} 下载{selectedPhoto.size ? ` (${formatSize(selectedPhoto.size)})` : ""}
                 </button>
                 {!selectedPhoto.contentType?.startsWith("video/") && (
                   <button

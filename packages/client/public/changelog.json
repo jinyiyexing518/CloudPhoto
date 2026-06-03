@@ -65,6 +65,15 @@
     "seq": 1780473780049
   },
   {
+    "id": "2026-06-03-download-size-label",
+    "date": "2026-06-03",
+    "title": "下载按钮显示文件大小",
+    "description": "照片模态框「下载」按钮旁显示文件大小（如「⬇ 下载 (2.4 MB)」），让用户在点击前了解下载体积。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780480780595
+  },
+  {
     "id": "2026-06-03-exif-timezone-fix",
     "date": "2026-06-03",
     "icon": "🕐",
