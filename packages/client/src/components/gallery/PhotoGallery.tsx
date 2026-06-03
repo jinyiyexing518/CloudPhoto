@@ -289,6 +289,7 @@ function PhotoGallery({
   const [geoAddress, setGeoAddress] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [copyingImage, setCopyingImage] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
@@ -829,6 +830,24 @@ function PhotoGallery({
     }
   };
 
+  const handleCopyImage = async () => {
+    if (!selectedPhoto || selectedPhoto.contentType?.startsWith("video/")) return;
+    if (!navigator.clipboard?.write) { showToast("当前浏览器不支持复制图片", "error"); return; }
+    setCopyingImage(true);
+    try {
+      const resp = await fetch(selectedPhoto.url);
+      const blob = await resp.blob();
+      // Chrome requires image/png for ClipboardItem; convert if needed
+      const type = blob.type.startsWith("image/") ? blob.type : "image/png";
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      showToast("图片已复制到剪贴板 📋", "success");
+    } catch {
+      showToast("复制失败，请重试", "error");
+    } finally {
+      setCopyingImage(false);
+    }
+  };
+
   const handleShare = async () => {
     if (!selectedPhoto) return;
     const hours = Math.max(1, Math.min(168, Number.parseInt(shareHours, 10) || 24));
@@ -1361,6 +1380,16 @@ function PhotoGallery({
                 >
                   {downloading ? "⏳" : "⬇"} 下载
                 </button>
+                {!selectedPhoto.contentType?.startsWith("video/") && (
+                  <button
+                    className="modal-action-btn"
+                    onClick={() => void handleCopyImage()}
+                    disabled={copyingImage}
+                    title="复制图片到剪贴板"
+                  >
+                    {copyingImage ? "⏳" : "📋"} 复制
+                  </button>
+                )}
                 <button
                   className={`modal-action-btn${selectedPhoto.favorite ? " modal-action-btn--active" : ""}`}
                   onClick={() => void handleModalFavoriteToggle()}
