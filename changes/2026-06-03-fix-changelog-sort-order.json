@@ -1,0 +1,8 @@
+{
+  "id": "fix-changelog-sort-order",
+  "date": "2026-06-03",
+  "icon": "🐛",
+  "title": "最近更新按日期倒序排列",
+  "type": "fix",
+  "desc": "collect-changes.mjs was sorting by filename alphabetically instead of by the date field inside each JSON. Old change files lack date prefixes in their names, causing scrambled order. Now sorts by entry.date descending."
+}
