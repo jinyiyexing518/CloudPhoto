@@ -144,6 +144,15 @@
     "seq": 1780479680053
   },
   {
+    "id": "2026-06-03-keyboard-favorite",
+    "date": "2026-06-03",
+    "title": "快捷键 F 收藏/取消收藏照片",
+    "description": "在照片预览模态框打开时，按 F 键可快速切换当前照片的收藏状态，无需鼠标点击收藏按钮，提升键盘操作效率。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780480707984
+  },
+  {
     "id": "2026-06-03-modal-copy-image",
     "date": "2026-06-03",
     "title": "模态框复制图片到剪贴板",

@@ -680,10 +680,13 @@ function PhotoGallery({
       if (e.key === "Escape") { setSelectedIdx(null); setSelectedPhoto(null); }
       if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1);
       if (e.key === "ArrowRight" && selectedIdx < modalPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
+      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !(e.target as HTMLElement).matches("input,textarea")) {
+        void handleModalFavoriteToggle();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedIdx, modalPhotos.length, navigateToPhoto]);
+  }, [selectedIdx, modalPhotos.length, navigateToPhoto, handleModalFavoriteToggle]);
 
   // Reverse geocode GPS coordinates to human-readable address
   useEffect(() => {
