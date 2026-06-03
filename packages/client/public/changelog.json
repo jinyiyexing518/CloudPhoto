@@ -35,6 +35,13 @@
     "details": "批量选中照片后工具栏出现两个新按钮：「修改时间」展开 datetime-local 时间选择器，「修改位置」展开纬度/经度输入框；点击「应用」后逐张调用 PATCH /api/photos/metadata，完成后显示 Toast 统计结果。新增 onGpsUpdate 回调确保 App 内存状态同步更新。"
   },
   {
+    "id": "2026-06-03-docs-chinese-readme",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "README 全中文改写 + 文档更新",
+    "summary": "README 完整改写为中文；USER_GUIDE 新增排序切换、回填、批量时间/位置章节；AI_REPRO_SPEC 新增规范；create-change.mjs 支持 --pipe 模式"
+  },
+  {
     "id": "2026-06-03-exif-timezone-fix",
     "date": "2026-06-03",
     "icon": "🕐",
@@ -74,6 +81,13 @@
     "title": "修复GPS NaN + 位置显示改为可读地址",
     "type": "fix",
     "desc": "EXIF 返回 NaN 坐标时不再写入；照片弹窗位置改为 Nominatim 反向地理编码的可读地址（省+市+区）"
+  },
+  {
+    "id": "2026-06-03-moments-top20",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "重要片段限制展示 Top 20",
+    "summary": "重要片段视图固定只展示评分最高的前 20 张照片，提升加载速度与准确性，并隐藏「加载更多」按钮。"
   },
   {
     "id": "2026-06-03-perf-new-features",

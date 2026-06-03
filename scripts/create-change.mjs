@@ -3,13 +3,20 @@
  * create-change.mjs
  *
  * Interactive CLI to create a new change file in changes/.
- * After writing the file it automatically regenerates data/changelog.json.
+ * After writing the file it automatically regenerates public/changelog.json.
  *
- * Usage (from any location in the monorepo):
- *   yarn change
+ * Usage:
+ *   yarn change                              # interactive
+ *   node scripts/create-change.mjs --pipe   # read JSON object from stdin
+ *
+ * Pipe usage (PowerShell, avoids escaping issues):
+ *   $obj = [PSCustomObject]@{ id="my-feature"; date="2026-06-03"; type="feature"; title="标题"; summary="摘要" }
+ *   $obj | ConvertTo-Json -Compress | node scripts/create-change.mjs --pipe
+ *
+ * The 'id' in the JSON file always matches the filename (YYYY-MM-DD-slug).
+ * You may pass id with or without the date prefix — it will be normalised.
  */
 
-import { createInterface } from "readline";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { execSync } from "child_process";
 import { dirname, join } from "path";
@@ -17,20 +24,25 @@ import { fileURLToPath } from "url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
-/**
- * Write an entry object to changes/<date>-<id>.json and regenerate changelog.json.
- * All string values have already been parsed by JSON.parse, so no escaping issues.
- */
+/** Ensure entry.id matches the filename stem (date-slug) and write the file. */
 function writeEntry(entry) {
-  const { id, date } = entry;
+  const { date } = entry;
+  let { id } = entry;
   if (!id || !date) {
     console.error("❌ Entry must have 'id' and 'date' fields.");
     process.exit(1);
   }
+
+  // Normalise: id must include date prefix so it matches the filename
+  if (!id.startsWith(date + "-")) {
+    id = `${date}-${id}`;
+  }
+  const normalised = { ...entry, id };
+
   const changesDir = join(root, "changes");
   mkdirSync(changesDir, { recursive: true });
 
-  const filename = `${date}-${id}.json`;
+  const filename = `${id}.json`;
   const filepath = join(changesDir, filename);
 
   if (existsSync(filepath)) {
@@ -38,7 +50,7 @@ function writeEntry(entry) {
     process.exit(1);
   }
 
-  writeFileSync(filepath, JSON.stringify(entry, null, 2) + "\n", "utf8");
+  writeFileSync(filepath, JSON.stringify(normalised, null, 2) + "\n", "utf8");
   console.log(`\n  ✅ Created: changes/${filename}`);
 
   console.log("  ↺  Regenerating public/changelog.json...");
@@ -49,11 +61,10 @@ function writeEntry(entry) {
   console.log("    git commit -m 'chore: add change file for <feature>'\n");
 }
 
-// Non-interactive (piped) mode:
-//   $obj | ConvertTo-Json -Compress | node scripts/create-change.mjs
-// This avoids all string-interpolation / quote-escaping issues on Windows.
-if (!process.stdin.isTTY) {
+if (process.argv.includes("--pipe")) {
+  // Read JSON from stdin (pipe mode — no TTY check needed)
   let input = "";
+  process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk) => (input += chunk));
   process.stdin.on("end", () => {
     try {
@@ -68,15 +79,17 @@ if (!process.stdin.isTTY) {
   main().catch((e) => { console.error(e.message ?? e); process.exit(1); });
 }
 
-const rl = createInterface({ input: process.stdin, output: process.stdout });
-const ask = (prompt) => new Promise((resolve) => rl.question(prompt, resolve));
-
 async function main() {
+  const { createInterface } = await import("readline");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (prompt) => new Promise((resolve) => rl.question(prompt, resolve));
+
   console.log("\n📝  New Change File\n");
 
   const id = (await ask("  ID (kebab-case, e.g. my-feature): ")).trim();
   if (!id || !/^[a-z0-9-]+$/.test(id)) {
     console.error("  ❌ ID must be kebab-case (lowercase letters, digits, hyphens).");
+    rl.close();
     process.exit(1);
   }
 
@@ -85,12 +98,17 @@ async function main() {
   const date = dateInput || today;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     console.error("  ❌ Date must be YYYY-MM-DD.");
+    rl.close();
     process.exit(1);
   }
 
   const icon = (await ask("  Icon emoji [✨]: ")).trim() || "✨";
   const title = (await ask("  Title (short, Chinese OK): ")).trim();
-  if (!title) { console.error("  ❌ Title is required."); process.exit(1); }
+  if (!title) {
+    console.error("  ❌ Title is required.");
+    rl.close();
+    process.exit(1);
+  }
 
   const typeRaw = (await ask("  Type [feature/fix/improvement, default: feature]: ")).trim().toLowerCase();
   const type = ["fix", "improvement"].includes(typeRaw) ? typeRaw : "feature";
@@ -101,12 +119,5 @@ async function main() {
   rl.close();
 
   const entry = { id, date, icon, title, type, ...(desc && { desc }), ...(details && { details }) };
-
-  rl.close();
   writeEntry(entry);
 }
-
-main().catch((e) => {
-  console.error(e.message ?? e);
-  process.exit(1);
-});
