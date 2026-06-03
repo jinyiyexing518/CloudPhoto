@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-paste-to-upload",
+  "date": "2026-06-03",
+  "title": "粘贴上传（Ctrl+V）",
+  "description": "在任意界面按 Ctrl+V 粘贴图片即可上传，支持截图、从其他应用复制的图片。上传时跳过输入框内的粘贴操作。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780479932879
+}

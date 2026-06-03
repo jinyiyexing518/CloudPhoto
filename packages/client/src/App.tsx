@@ -239,6 +239,7 @@ function AppContent() {
   const [photoSortKey, setPhotoSortKey] = useState<"taken" | "uploaded">("taken");
   const [gridSize, setGridSize] = useState<GridSize>(() => (localStorage.getItem("cf_grid_size") as GridSize | null) ?? "md");
   const handleGridSizeChange = (size: GridSize) => { setGridSize(size); localStorage.setItem("cf_grid_size", size); };
+  const uploadToFolderRef = useRef<((files: FileList, folder: string, subject?: string) => Promise<void>) | null>(null);
   const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
 
   const switchTab = (tab: ViewTab) => {
@@ -786,6 +787,31 @@ function AppContent() {
     };
   }, [tabKey, showToast]);
 
+  // Global paste: Ctrl+V image upload (screenshots, etc.)
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      // Skip if user is typing in an input/textarea
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable)) return;
+      if (!e.clipboardData) return;
+      const items = Array.from(e.clipboardData.items);
+      const imageItem = items.find((item) => item.type.startsWith("image/"));
+      if (!imageItem) return;
+      e.preventDefault();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const ext = imageItem.type.split("/")[1] ?? "png";
+      const file = new File([blob], `paste-${ts}.${ext}`, { type: imageItem.type });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      void uploadToFolderRef.current?.(dt.files, "");
+      showToast(`📋 粘贴上传: ${file.name}`, "success");
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [showToast]);
+
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
     const IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
     const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/mpeg", "video/3gpp", "video/3gpp2"]);
@@ -934,6 +960,8 @@ function AppContent() {
       showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
     }
   };
+  // Keep ref up to date so paste handler always calls latest version
+  uploadToFolderRef.current = handleUploadToFolder;
 
   const handleToggleUploadPause = () => {
     const next = !pausedRef.current;
