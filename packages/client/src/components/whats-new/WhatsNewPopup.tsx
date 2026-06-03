@@ -119,35 +119,38 @@ export default function WhatsNewPopup() {
           <button className="whats-new-close" onClick={dismiss} aria-label="关闭">✕</button>
         </div>
 
-        {/* ── Feature / improvement entries (prominent) ─────────────────── */}
-        {mainEntries.length > 0 && (
-          <ul className="whats-new-list">
-            {mainEntries.map((entry) => (
-              <EntryItem key={entry.id} entry={entry} expandedId={expandedId} setExpandedId={setExpandedId} />
-            ))}
-          </ul>
-        )}
+        {/* ── Scrollable content area ────────────────────────────────── */}
+        <div className="whats-new-scroll-area">
+          {/* Feature / improvement entries (prominent) */}
+          {mainEntries.length > 0 && (
+            <ul className="whats-new-list">
+              {mainEntries.map((entry) => (
+                <EntryItem key={entry.id} entry={entry} expandedId={expandedId} setExpandedId={setExpandedId} />
+              ))}
+            </ul>
+          )}
 
-        {/* ── Fix entries — collapsed by default ────────────────────────── */}
-        {fixEntries.length > 0 && (
-          <div className="whats-new-fixes">
-            <button
-              className="whats-new-fixes-toggle"
-              onClick={() => setFixesOpen((v) => !v)}
-              aria-expanded={fixesOpen}
-            >
-              <span className="whats-new-fixes-label">🔧 另有 {fixEntries.length} 项修复</span>
-              <span className={`whats-new-expand-icon${fixesOpen ? " whats-new-expand-icon--open" : ""}`}>▼</span>
-            </button>
-            {fixesOpen && (
-              <ul className="whats-new-list whats-new-list--fixes">
-                {fixEntries.map((entry) => (
-                  <EntryItem key={entry.id} entry={entry} expandedId={expandedId} setExpandedId={setExpandedId} />
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+          {/* Fix entries — collapsed by default */}
+          {fixEntries.length > 0 && (
+            <div className="whats-new-fixes">
+              <button
+                className="whats-new-fixes-toggle"
+                onClick={() => setFixesOpen((v) => !v)}
+                aria-expanded={fixesOpen}
+              >
+                <span className="whats-new-fixes-label">🔧 另有 {fixEntries.length} 项修复</span>
+                <span className={`whats-new-expand-icon${fixesOpen ? " whats-new-expand-icon--open" : ""}`}>▼</span>
+              </button>
+              {fixesOpen && (
+                <ul className="whats-new-list whats-new-list--fixes">
+                  {fixEntries.map((entry) => (
+                    <EntryItem key={entry.id} entry={entry} expandedId={expandedId} setExpandedId={setExpandedId} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>,
     document.body,

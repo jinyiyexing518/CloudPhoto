@@ -1690,8 +1690,6 @@ body {
   list-style: none;
   margin: 0;
   padding: 6px 0 8px;
-  overflow-y: auto;
-  flex: 1;
 }
 .whats-new-item {
   padding: 0;
@@ -1773,6 +1771,13 @@ body {
 .whats-new-list--fixes .whats-new-item { background: transparent; }
 
 /* Fix group toggle button */
+.whats-new-scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .whats-new-fixes {
   border-top: 1px solid #f3f4f6;
   margin-top: 4px;
