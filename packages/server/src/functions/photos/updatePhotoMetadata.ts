@@ -149,7 +149,7 @@ app.http("updatePhotoMetadata", {
           const lonStr = body.gpsLon ?? "";
           if (latStr && lonStr) {
             const doc: PhotoLocationDoc = {
-              id: blobName,
+              id: encodeURIComponent(blobName),
               scope,
               name: blobName,
               lat: parseFloat(latStr),
@@ -159,7 +159,7 @@ app.http("updatePhotoMetadata", {
             await locsContainer.items.upsert(doc);
           } else {
             // GPS cleared — remove from locations cache
-            await locsContainer.item(blobName, scope).delete();
+            await locsContainer.item(encodeURIComponent(blobName), scope).delete();
           }
         } catch (e) {
           context.warn("photoLocations GPS sync failed (non-fatal):", e);

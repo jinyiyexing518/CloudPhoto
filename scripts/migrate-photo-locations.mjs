@@ -92,7 +92,7 @@ async function main() {
       if (!isNaN(lat) && !isNaN(lon)) {
         const scope = segs.slice(0, 2).join("/");
         const doc = {
-          id: blob.name, scope, name: blob.name, lat, lon,
+          id: encodeURIComponent(blob.name), scope, name: blob.name, lat, lon,
           originalName: decodeMeta(getMeta(meta, "originalName")),
           contentType: blob.properties.contentType,
           uploadedAt: getMeta(meta, "createdAt") ?? blob.properties.lastModified?.toISOString() ?? new Date().toISOString(),
@@ -133,7 +133,7 @@ async function main() {
       // Upsert to Cosmos
       const scope = segs.slice(0, 2).join("/");
       await locsContainer.items.upsert({
-        id: blob.name, scope, name: blob.name, lat, lon,
+        id: encodeURIComponent(blob.name), scope, name: blob.name, lat, lon,
         originalName: decodeMeta(getMeta(meta, "originalName")),
         contentType: blob.properties.contentType,
         uploadedAt: getMeta(meta, "createdAt") ?? blob.properties.lastModified?.toISOString() ?? new Date().toISOString(),

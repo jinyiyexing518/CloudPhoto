@@ -104,7 +104,7 @@ app.http("uploadPhoto", {
         try {
           const locsContainer = await getPhotoLocationsContainer();
           const doc: PhotoLocationDoc = {
-            id: blobName,
+            id: encodeURIComponent(blobName),
             scope,
             name: blobName,
             lat: parseFloat(gpsLat),

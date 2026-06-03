@@ -105,7 +105,7 @@ app.http("deleteTrashItem", {
       try {
         const scope = blobName.split("/").slice(0, 2).join("/");
         const locsContainer = await getPhotoLocationsContainer();
-        await locsContainer.item(blobName, scope).delete();
+        await locsContainer.item(encodeURIComponent(blobName), scope).delete();
       } catch { /* not all photos have GPS — ignore 404 */ }
 
       return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Permanently deleted" }) };
