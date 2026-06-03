@@ -205,5 +205,13 @@
     "desc": "选择文件夹一键生成幻灯片，支持淡入淡出/滑动/缩放效果",
     "details": "在「🎬 自动故事」标签选择照片来源和切换效果，点击「开始播放」进入全屏幻灯片。支持键盘操作（←→切换，Esc退出），顶部进度条可点击跳转。",
     "type": "feature"
+  },
+  {
+    "id": "fix-pre-push-hook-windows",
+    "date": "2026-06-03",
+    "icon": "🐛",
+    "title": "修复 pre-push hook 在 Windows 下 stdin 为空时不拦截的问题",
+    "type": "fix",
+    "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   }
 ]
