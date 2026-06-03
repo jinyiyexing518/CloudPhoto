@@ -31,6 +31,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Collect changelog
+        run: node scripts/collect-changes.mjs
+
       - name: Build
         run: yarn workspace cloudphoto-client build
         env:
