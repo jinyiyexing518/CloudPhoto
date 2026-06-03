@@ -5447,6 +5447,39 @@ body {
   margin-left: 6px;
   vertical-align: middle;
 }
+.photo-ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+.photo-ctx-menu {
+  position: fixed;
+  z-index: 2001;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  padding: 4px 0;
+  list-style: none;
+  margin: 0;
+  min-width: 150px;
+}
+.photo-ctx-item {
+  padding: 8px 16px;
+  font-size: 0.86rem;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.photo-ctx-item:hover {
+  background: #f3f4f6;
+}
+.photo-ctx-item--danger {
+  color: #ef4444;
+}
+.photo-ctx-item--danger:hover {
+  background: #fef2f2;
+}
 .date-group-select-all {
   margin-left: 10px;
   background: none;

@@ -35,6 +35,7 @@ function PhotoCard({
   const [imgLoaded, setImgLoaded] = useState(false);
   const [gifPaused, setGifPaused] = useState(false);
   const [videoDuration, setVideoDuration] = useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
@@ -86,6 +87,10 @@ function PhotoCard({
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         title={displayName}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setCtxMenu({ x: e.clientX, y: e.clientY });
+        }}
       >
         {onSelect !== undefined && (
           <div className={`photo-select-badge${selected ? " photo-select-badge--on" : ""}`}>
@@ -227,6 +232,25 @@ function PhotoCard({
               </button>
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+
+      {ctxMenu && createPortal(
+        <div className="photo-ctx-backdrop" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }}>
+          <ul className="photo-ctx-menu" style={{ top: ctxMenu.y, left: ctxMenu.x }} onClick={(e) => e.stopPropagation()}>
+            <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onClick(); }}>🔍 预览</li>
+            {onToggleFavorite && (
+              <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onToggleFavorite(!photo.favorite); }}>
+                {photo.favorite ? "☆ 取消收藏" : "★ 收藏"}
+              </li>
+            )}
+            <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); window.open(photo.url, "_blank"); }}>⬇ 打开原图</li>
+            {onMoveRequest && (
+              <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onMoveRequest(); }}>→ 移动到…</li>
+            )}
+            <li className="photo-ctx-item photo-ctx-item--danger" onClick={() => { setCtxMenu(null); setShowConfirm(true); }}>🗑 删除</li>
+          </ul>
         </div>,
         document.body
       )}

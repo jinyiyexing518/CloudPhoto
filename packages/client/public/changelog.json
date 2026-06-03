@@ -384,6 +384,15 @@
     "seq": 1780472229388
   },
   {
+    "id": "2026-06-03-photo-card-context-menu",
+    "date": "2026-06-03",
+    "title": "照片卡片右键快捷菜单",
+    "description": "在照片卡片上右键单击弹出快捷操作菜单，支持「预览」「收藏/取消收藏」「打开原图」「移动到…」「删除」等操作，无需点击进入模态框即可快速操作。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780482425438
+  },
+  {
     "id": "2026-06-03-preload-adjacent-photos",
     "date": "2026-06-03",
     "title": "预加载相邻照片提升翻页速度",
