@@ -17,6 +17,57 @@ import { fileURLToPath } from "url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
+/**
+ * Write an entry object to changes/<date>-<id>.json and regenerate changelog.json.
+ * All string values have already been parsed by JSON.parse, so no escaping issues.
+ */
+function writeEntry(entry) {
+  const { id, date } = entry;
+  if (!id || !date) {
+    console.error("❌ Entry must have 'id' and 'date' fields.");
+    process.exit(1);
+  }
+  const changesDir = join(root, "changes");
+  mkdirSync(changesDir, { recursive: true });
+
+  const filename = `${date}-${id}.json`;
+  const filepath = join(changesDir, filename);
+
+  if (existsSync(filepath)) {
+    console.error(`\n  ❌ Already exists: changes/${filename}`);
+    process.exit(1);
+  }
+
+  writeFileSync(filepath, JSON.stringify(entry, null, 2) + "\n", "utf8");
+  console.log(`\n  ✅ Created: changes/${filename}`);
+
+  console.log("  ↺  Regenerating public/changelog.json...");
+  execSync("node scripts/collect-changes.mjs", { cwd: root, stdio: "inherit" });
+
+  console.log("\n  Next steps:");
+  console.log(`    git add changes/${filename} packages/client/public/changelog.json`);
+  console.log("    git commit -m 'chore: add change file for <feature>'\n");
+}
+
+// Non-interactive (piped) mode:
+//   $obj | ConvertTo-Json -Compress | node scripts/create-change.mjs
+// This avoids all string-interpolation / quote-escaping issues on Windows.
+if (!process.stdin.isTTY) {
+  let input = "";
+  process.stdin.on("data", (chunk) => (input += chunk));
+  process.stdin.on("end", () => {
+    try {
+      const entry = JSON.parse(input.trim());
+      writeEntry(entry);
+    } catch (e) {
+      console.error("❌ Invalid JSON from stdin:", e.message);
+      process.exit(1);
+    }
+  });
+} else {
+  main().catch((e) => { console.error(e.message ?? e); process.exit(1); });
+}
+
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const ask = (prompt) => new Promise((resolve) => rl.question(prompt, resolve));
 
@@ -51,27 +102,8 @@ async function main() {
 
   const entry = { id, date, icon, title, type, ...(desc && { desc }), ...(details && { details }) };
 
-  const changesDir = join(root, "changes");
-  mkdirSync(changesDir, { recursive: true });
-
-  const filename = `${date}-${id}.json`;
-  const filepath = join(changesDir, filename);
-
-  if (existsSync(filepath)) {
-    console.error(`\n  ❌ Already exists: changes/${filename}`);
-    process.exit(1);
-  }
-
-  writeFileSync(filepath, JSON.stringify(entry, null, 2) + "\n", "utf8");
-  console.log(`\n  ✅ Created: changes/${filename}`);
-
-  // Regenerate packages/client/public/changelog.json
-  console.log("  ↺  Regenerating public/changelog.json...");
-  execSync("node scripts/collect-changes.mjs", { cwd: root, stdio: "inherit" });
-
-  console.log("\n  Next steps:");
-  console.log(`    git add changes/${filename} packages/client/public/changelog.json`);
-  console.log("    git commit -m 'chore: add change file for <feature>'\n");
+  rl.close();
+  writeEntry(entry);
 }
 
 main().catch((e) => {

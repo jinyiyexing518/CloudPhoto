@@ -1,295 +1,231 @@
 # CloudPhoto
 
-A full-stack personal cloud photo storage app with user authentication, JWT refresh tokens, group sharing, folder organisation, and zero-key security via Azure Managed Identity.
+私有化云相册，支持用户认证、JWT 自动刷新、群组共享、文件夹管理，以及全程无密钥的 Azure 托管身份鉴权。
 
-For end users, see: [USER_GUIDE.md](USER_GUIDE.md)
+用户手册：[USER_GUIDE.md](USER_GUIDE.md)
 
-**Frontend:** React 18 + Vite 5 → deployed to **Azure Static Web Apps**  
-**Backend:** Azure Functions v4 (Node.js 24, TypeScript) → deployed to **Azure Functions** (`cloudphoto-api`)  
-**Storage:** Azure Blob Storage (`photostorage` / `photos`) — accessed via **User Delegation SAS** (no account key)  
-**Database:** Azure Cosmos DB NoSQL (`cloudphoto`) — accessed via **Managed Identity** (no connection string key)
+**前端：** React 18 + Vite 5 → 部署到 **Azure Static Web Apps**
+**后端：** Azure Functions v4（Node.js 24、TypeScript）→ 部署到 **Azure Functions**（`cloudphoto-api`）
+**存储：** Azure Blob Storage（`photostorage` / `photos`）— 通过**用户委托 SAS**（无账户密钥）访问
+**数据库：** Azure Cosmos DB NoSQL（`cloudphoto`）— 通过**托管身份**（无连接字符串密钥）访问
 
 ---
 
-## Changelog
+## 更新日志
+
+### v1.7.1 — 重要片段 Top 20 限制
+
+- **⭐ 重要片段最多展示 Top 20** — 重要片段视图按评分排序后固定只展示前 20 张，提升加载速度与准确性；「加载更多」按钮在此模式下隐藏
 
 ### v1.7.0 — EXIF 时区修复 · 排序方式切换 · 历史回填 · 批量编辑
 
-**Bug fixes**
+**Bug 修复**
 - **🕐 拍摄时间时区修复** — exifr 将 EXIF 日期时间内部视为 UTC，导致 UTC+8 用户显示偏差 8 小时；`uploadPhoto.ts` 和照片弹窗的「修改拍摄时间」均改为不带 Z 后缀的 naive datetime 存储，客户端按本地时间正确解析
 - **🎞️ 动图暂停/恢复跨域修复** — 原实现用 `<canvas>` 截帧检测，Azure SAS 跨域时抛出 SecurityError；改为 BLANK_GIF（1×1 透明 GIF Data URL）src 替换方案，暂停时显示半透明遮罩，恢复时 GIF 从第 0 帧重播
 - **🖼️ 动图弹窗可点击预览** — 照片弹窗中动态图 `<img>` 缺少 `onClick` 且 `cursor` 为 `default`；现已加上点击回调并改为 `cursor: zoom-in`
 
-**Features**
+**新功能**
 - **📷 / ☁ 排序方式切换** — 时间线工具栏新增「📷 拍摄时间」与「☁ 上传时间」切换按钮；`PhotoGallery` 新增 `sortKey` prop，`groupByDate` 和 `flatPhotos` 均尊重该字段，无拍摄时间时自动回退到上传时间
-- **📦 历史照片元数据回填** — 设置 → 应用 新增「历史照片回填」：新增 `POST /api/photos/backfill` 端点，逐一下载缺少 `takenAt` 或 `gpsLat` 的图片 blob，用 exifr 提取 EXIF 并写回元数据 + Cosmos；设置页显示扫描/更新/失败统计
+- **📦 历史照片元数据回填** — 设置 → 应用 新增「历史照片回填」：新增 `POST /api/photos/backfill` 端点，逐一下载缺少 `takenAt` 或 `gpsLat` 的 blob，用 exifr 提取 EXIF 并写回元数据 + Cosmos；设置页显示扫描/更新/失败统计
 - **⏱️ 批量修改拍摄时间** — 批量选择模式新增「修改时间」按钮，展开 `datetime-local` 选择器，一键为选中照片统一设置拍摄时间
 - **📍 批量修改位置** — 批量选择模式新增「修改位置」按钮，展开纬度/经度输入框，一键为选中照片统一更新 GPS 坐标；新增 `onGpsUpdate` 回调同步 App 内存状态
 
-### v1.6.1 — UI Polish · Video Covers · Server Refactor
+### v1.6.1 — 界面优化 · 视频封面 · 服务端重构
 
-**UI fixes**
-- **⬆️ 返回顶部按钮位置稳定** — 按钮移至左下角，与右侧 WorkspaceFab 永不冲突；`bottom` 改用 `env(safe-area-inset-bottom)` 计算，不再依赖硬编码像素值，后续调整 UI 不会再偏移
-- **🎞️ 重要片段视频封面** — Moments / TrashView / TimeCapsule 的缩略图统一使用新 `MediaThumb` 组件，视频自动定位代表帧，右下角显示 ▶ 标识
-- **WorkspaceFab chip 高度一致** — timeline 和 moments 模式下两个 chip 按钮均采用 2 行布局，避免视觉高度差
-- **WhatsNew 自动淡出修复** — 改用 keyframe 动画替代原来失效的 transition，4 s 淡出逻辑正常工作
-- **Tab bar 垂直居中** — shell-wrap 上下 padding 对称，tab 上下 padding 对称，文字不再偏低
-- **照片详情弹窗水平居中** — 打开弹窗时锁定 body scroll 并补偿滚动条宽度（`paddingRight`），避免视口中心右移
+**界面修复**
+- **⬆️ 返回顶部按钮位置稳定** — 按钮移至左下角，与右侧 WorkspaceFab 永不冲突；`bottom` 改用 `env(safe-area-inset-bottom)` 计算
+- **🎞️ 重要片段视频封面** — Moments / TrashView / TimeCapsule 统一使用 `MediaThumb` 组件，视频自动定位代表帧，右下角显示 ▶ 标识
+- **WhatsNew 自动淡出修复** — 改用 keyframe 动画替代失效的 transition，4s 淡出正常工作
+- **Tab bar 垂直居中** — shell-wrap 上下 padding 对称
+- **照片详情弹窗水平居中** — 打开弹窗时锁定 body scroll 并补偿滚动条宽度
 
-**Server 重构**
-- **`utils/` 按领域拆分为子目录** — `blob/blobStorage.ts`、`cosmos/cosmosClient.ts`、`email/emailUtils.ts`、`auth/jwtUtils.ts`、`auth/rateLimit.ts`；全部 35 个 function 文件的 import 路径同步更新
+**服务端重构**
+- **`utils/` 按领域拆分** — `blob/`、`cosmos/`、`email/`、`auth/` 子目录；全部 35 个 function 文件的 import 路径同步更新
 
-### v1.6.0 — On This Day · Memory Map · Time Capsule · Auto Story
+### v1.6.0 — 历史上的今天 · 记忆地图 · 时光胶囊 · 自动故事
 
-- **📅 历史上的今天** — 时间线顶部自动检测往年同月同日的照片，按年份分组显示缩略图卡片，点击跳转到对应照片
-- **🗺️ 记忆地图** — 新增「记忆地图」标签，上传含 GPS EXIF 的照片时自动提取坐标存入元数据；地图（OpenStreetMap + Leaflet）以圆形照片图标标注拍摄地点，点击弹出详情面板并可跳转时间线
-- **💌 时光胶囊** — 新增「时光胶囊」标签，可将任意照片封存并设置解锁日期；到期前显示倒计时，到期后自动解锁可点击浏览；数据本地持久化（`localStorage`）
-- **🎬 自动故事** — 新增「自动故事」标签，选择文件夹或全部照片生成全屏幻灯片；支持淡入淡出/滑动/缩放三种过渡效果及 2–10 秒播放间隔；键盘 ←→ 切换、Esc 退出，顶部进度段可点击跳转
-- **快捷键扩展** — `4`=记忆地图，`5`=时光胶囊，`6`=自动故事
-- **GPS 数据管道** — `uploadPhoto` 服务端接受 `gpsLat`/`gpsLon` 查询参数写入 blob 元数据；`listPhotos` 在返回的照片对象中携带这两个字段；客户端上传时用 `exifr` 库自动解析 EXIF
+- **📅 历史上的今天** — 时间线顶部自动检测往年同月同日的照片，按年份分组显示缩略图卡片
+- **🗺️ 记忆地图** — 上传含 GPS EXIF 的照片时自动提取坐标；地图（OpenStreetMap + Leaflet）以圆形照片图标标注拍摄地点
+- **💌 时光胶囊** — 将任意照片封存并设置解锁日期；到期前倒计时，到期后自动解锁
+- **🎬 自动故事** — 选择文件夹生成全屏幻灯片；支持淡入淡出/滑动/缩放三种过渡效果及 2–10 秒播放间隔
+- **GPS 数据管道** — `uploadPhoto` 服务端接受 `gpsLat`/`gpsLon` 查询参数写入 blob 元数据
 
-### v1.5.4 — UX polish & What's New popup
+### v1.5.4 — 体验优化 · What's New 弹窗
 
-- **What's New popup** — on page load, a slide-in card (bottom-right) lists all changelog entries from the past 3 days; auto-dismisses after 10 s with a countdown bar; close button marks entries as seen in `localStorage` so it doesn't re-appear; new entries only need to be added to `CHANGELOG` in `WhatsNewPopup.tsx`
-- **Batch delete / empty-trash progress** — batch delete in PhotoGallery and FolderView, plus "清空回收站" in TrashView, now show a live progress bar (reusing the transfer-banner `🗑️` pattern); buttons disabled while running
-- **Delete confirm dialog centering** — delete confirm overlay rendered via `createPortal(…, document.body)` so it is always viewport-centered regardless of any transformed ancestor
-- **Folder path persists across refresh** — `FolderView` initialises `currentPath` directly from `localStorage` (lazy `useState`), so refreshing the page no longer resets navigation to the root folder
-- **Video thumbnail center-crop** — `.photo-thumbnail video` now gets `object-fit: cover; object-position: center`, matching `img` behaviour; video content is cropped to the centre of the frame, not a corner
-- **Video thumbnail seek** — on `loadedMetadata`, video element seeks to `Math.min(2, duration × 0.1)` for a representative frame instead of frame 0
-- **Modal detail vertical centering** — on mobile, `.modal-content` uses `margin: auto` inside the flex overlay so the dialog is vertically centered when it fits; content taller than the screen still scrolls from the top
+- **What's New 弹窗** — 页面加载时若过去 3 天内有新功能，右下角弹出更新卡片，10 秒自动消失，已读记录存 `localStorage`
+- **批量删除/清空回收站进度** — 批量删除及「清空回收站」显示实时进度条
+- **删除确认弹窗居中** — 通过 `createPortal` 渲染到 `document.body`，始终视口居中
+- **文件夹路径刷新持久化** — `FolderView` 从 `localStorage` 惰性初始化 `currentPath`
+- **视频缩略图居中裁剪** — `object-fit: cover; object-position: center`，内容居中裁剪不显示边角
+- **视频缩略图定位** — `loadedmetadata` 后 seek 到 `min(2, duration × 0.1)` 处
 
-### v1.5.3 — Voice memo (F1) & video picker fix
+### v1.5.3 — 语音备注（F1）· 视频选择修复
 
-- **F1 Voice memo** — record, upload, play, and delete a voice note attached to any photo or video; recorded audio is stored as a blob in the internal `_voice` folder (filtered from gallery), linked to the photo via blob metadata (`voiceMemoName`); a 🎤 button in the detail modal action strip opens the voice panel; an `<audio>` player renders existing memos; deleting clears the metadata link; supports `audio/webm` (Chrome/Android) and `audio/mp4` (Safari/iOS) via `MediaRecorder`
-- **Fix: video file picker** — `accept` attribute on file inputs in `UploadArea` and `FolderView` now includes `video/*` so video files can actually be selected for upload (previously only `image/*` was accepted)
+- **F1 语音备注** — 录制、上传、播放、删除附加在照片上的语音备注；存储在内部 `_voice` 文件夹，通过 blob 元数据 `voiceMemoName` 关联；支持 `audio/webm`（Chrome/Android）和 `audio/mp4`（Safari/iOS）
+- **视频文件选择修复** — `UploadArea` 和 `FolderView` 的文件输入框 `accept` 属性加入 `video/*`
 
-### v1.5.2 — Video, byte progress, privacy & detail redesign
+### v1.5.2 — 视频上传 · 字节级进度 · 隐私提示 · 详情页重设计
 
-- **F2 Privacy notice** — collapsible share panel now shows a 🔒 privacy reminder before link creation (身份证/银行卡等敏感信息提示)
-- **F3 Video upload** — backend accepts `video/mp4`, `video/quicktime`, `video/webm`, `video/x-msvideo`, `video/mpeg`, `video/3gpp` (max 200 MB per video, images stay at 20 MB); `<video>` rendered in card thumbnails and detail modal with ▶ badge
-- **F4 Byte-based upload progress** — progress bar and label now reflect actual bytes transferred (`XHR.upload.onprogress`) rather than file count; transfer banner shows `X.X / Y.Y MB` in real time
-- **F5 Photo detail redesign** — desktop photo pane expanded to 68% width (was 58%); separate action buttons collapsed into a single compact pill-strip row (⬇ 下载 · ♡ 收藏 · 🔗 分享 · 📁 移动 · 🔍 预览 · 🗑 删除); share and move panels are collapsible
+- **隐私提示** — 可折叠分享面板在创建链接前显示 🔒 隐私提醒（身份证/银行卡等敏感信息）
+- **视频上传** — 服务端接受 mp4/mov/webm/avi/mpeg/3gpp（最大 200 MB）；视频在缩略图卡片和详情弹窗中直接播放
+- **字节级上传进度** — `XHR.upload.onprogress` 驱动进度条，显示 X.X / Y.Y MB
+- **详情页重设计** — 桌面端照片占 68% 宽；操作按钮收敛为单行胶囊条（⬇ 下载 · ♡ 收藏 · 🔗 分享 · 📁 移动 · 🔍 预览 · 🗑 删除）
 
-### v1.5.1 — Layout & UX polish
+---
 
-- FAB right-side margin uses `env(safe-area-inset-right)` to respect notched devices
-- FAB bottom position raised with `env(safe-area-inset-bottom)` safe area
-- Folder cards reverted to icon-only (removed photo-stack overlay)
-- Upload progress track width fix (flex-stretch + negative margins)
-
-### v1.5.0 — Product upgrade (40 improvements)
-
-**Features (10)**
-- F1 Storage usage display: weekly summary card now shows total space occupied (`💾 占用存储`)
-- F2 Tab switch scrolls to top: switching tabs now auto-scrolls to page top
-- F3 Keyboard shortcuts 1/2/3: press 1=时间线, 2=文件夹, 3=重要片段 from anywhere
-- F4 Keyboard shortcut S: press S to open/close the sidebar
-- F5 Sort toggle: "↓ 最新" / "↑ 最早" pill chip in timeline to reverse date group order
-- F6 Install banner auto-dismisses after 10 seconds if not acted on
-- F7 Group name badge: current group name shown as a pill badge inside the header h1
-- F8 Shortcuts dialog updated with the new 1/2/3 and S shortcuts
-- F9 Filters auto-reset on group switch — no more stale filters when switching spaces
-- F10 Upload progress percentage: transfer banner now shows e.g. "67%" alongside the progress bar
-
-**Bug fixes / optimizations (10)**
-- B1 FilterBar: all UI strings localized to Chinese (搜索名称, 清空全部, 主题, 上传者, 开始日期, 截止日期)
-- B2 PhotoCard delete dialog: localized to Chinese (删除照片?, 取消, 删除)
-- B3 UploadArea: localized to Chinese (拖拽或点击上传照片, 上传中...)
-- B4 Backspace/Delete to clear filters now also scrolls to top
-- B5 Sidebar no longer auto-opens on every tab mount — only when explicitly activated
-- B6 Switching to folder tab now closes the sidebar
-- B7 Toast notifications: `ua`/`isIOS`/`isAndroid` moved to module level (computed once, not per render)
-- B8 `fetchPhotos` uses AbortController — stale in-flight requests are cancelled on re-fetch
-- B9 Storage estimate uses actual `photo.size` bytes, not a rough guess
-- B10 Weekly summary clipboard report now includes storage size
-
-**UI upgrades (10)**
-- U1 Upload % label beside progress bar (e.g. "67%")
-- U2 Photo thumbnail hover shows a gradient date overlay at the bottom of the image (CSS-only)
-- U3 Toast redesign: click-to-dismiss ✕ button on every notification
-- U4 Scroll-to-top button: gradient blue→purple pill with glow shadow
-- U5 Reading progress bar: 4px height + purple glow effect
-- U6 Header shows current group name as a styled badge pill
-- U7 Sort order chip: purple-toned pill consistent with the chip row
-- U8 FAB filter count badge: orange→red gradient badge showing active filter count
-- U9 Empty gallery icon: wrapped in gradient rounded square container
-- U10 App loading splash: bouncing dots animation added
-
-**Performance (10)**
-- P1 `PhotoCard` wrapped with `React.memo` — prevents unnecessary re-renders in large galleries
-- P2 `img` elements get `decoding="async"` — non-blocking image decoding on the main thread
-- P3 CSS `contain: layout style` on `.photo-grid` — scopes repaint to the grid
-- P4 `index.html` adds `<link rel="preconnect">` and `dns-prefetch` for the API endpoint
-- P5 CSS `content-visibility: auto` on `.date-group` sections — skips off-screen rendering
-- P6 `fetchPhotos` uses `AbortController` to cancel stale requests
-- P7 `ua`/`isIOS`/`isAndroid` moved outside component — avoids recalculation on every render
-- P8 `view-tab-count` transition reduced to color-only (removes box-shadow recalculation)
-- P9 PWA Workbox: `StaleWhileRevalidate` cache strategy added for Azure Blob image URLs
-- P10 Version bumped to `1.5.0`
-
-
-
-## Architecture
+## 架构
 
 ```text
-brave-sand-053b07a00.7.azurestaticapps.net   ← Azure Static Web Apps (frontend)
+brave-sand-053b07a00.7.azurestaticapps.net   ← Azure Static Web Apps（前端）
         │
         │  HTTPS + CORS
         ▼
-cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4 (backend)
+cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4（后端）
         │
         ├── Azure Cosmos DB NoSQL (cloudphoto)
-        │       ├── users    (partition: /id)
-        │       ├── admins   (partition: /id)
-        │       ├── groups   (partition: /id)
-        │       ├── invites  (partition: /id)
-        │       ├── sharelinks (partition: /id)
-        │       └── moments (partition: /id)
+        │       ├── users      (分区键: /id)
+        │       ├── admins     (分区键: /id)
+        │       ├── groups     (分区键: /id)
+        │       ├── invites    (分区键: /id)
+        │       ├── sharelinks (分区键: /id)
+        │       ├── changelogs (分区键: /id)
+        │       └── moments    (分区键: /id)
         │
         └── Azure Blob Storage (photostorage / photos)
-                └── Time-limited User Delegation SAS (2h, keyless)
+                └── 时效用户委托 SAS（2小时，无密钥）
 ```
 
-For local development, Vite proxies all `/api/*` requests to `localhost:7071`, so no
-URL changes are needed between dev and prod — the frontend reads `VITE_API_BASE` at
-build time (defaults to `/api`).
+本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`，开发与生产无需修改 URL——前端在构建时读取 `VITE_API_BASE`（默认为 `/api`）。
 
 ---
 
-## Features
+## 功能列表
 
-- **JWT auth with auto-refresh** — 2-hour access tokens + 30-day rotating refresh tokens; on 401 the client silently refreshes and retries the original request; concurrent 401s share a single in-flight refresh (mutex)
-- **Auth rate limiting** — in-memory sliding-window per IP: login 10 req/min, register 5 req/min, refresh 20 req/min; over-limit returns `429 + Retry-After: 60`
-- **Delegation key caching** — Azure User Delegation Key cached in-process and reused while > 10 min validity remains, eliminating one control-plane call per photo-list request
-- **Role system** — global `admin` / `viewer`; per-group `admin` / `member`
-- **Private photo space** — personal folders visible only to the owner (admin sees all)
-- **Group sharing** — create groups and invite members by username or email address; all additions go through an email invite flow — the recipient must accept the invite link before joining; invites expire after 7 days and can be cancelled by the group admin
-- **Sub-folder navigation** — nested folders (e.g. `旅游/北京`); breadcrumb navigation; drag-and-drop between folders; extra folders persisted in `localStorage` per context
-- **Folder back-stack behavior** — in folder view, browser/device back navigates up folder levels before exiting the app
-- **Folder back-stack integration** — while browsing folders, system/browser back first returns to previous folder levels instead of closing the app directly
-- **Session persistence** — last-used group space and current folder path are remembered in `localStorage` per user; page refresh returns you exactly where you were
-- **Recycle bin** — deleting a photo soft-deletes it (blob metadata `deletedAt`); a dedicated 🗑️ Trash tab lets you restore photos to their original folder or permanently delete them; "清空回收站" bulk-deletes all
-- **Mobile sticky trash actions** — on small screens, restore and permanent-delete actions are pinned to a sticky bottom bar for one-hand operation
-- **Batch operations** — multi-select mode with batch delete and batch move to folder
-- **Multi-photo upload** — select multiple photos at once; sequential upload with per-folder progress (`⏳ 2/5`); partial-failure reporting; client-side MIME type + 20 MB size guard before upload
-- **Photo download** — download original file directly from the browser (mobile & desktop)
-- **Expiring share links** — generate per-photo public read links with configurable TTL (1h / 24h / 3d / 7d)
-- **One-click share copy** — share URL copy uses Clipboard API first, then legacy copy fallback; only falls back to manual copy prompt as a last resort
-- **Managed share links (cloud)** — in Settings you can revoke links early or extend expiry, with per-link status and lifecycle maintained on the backend
-- **Folder share dialog** — sharing the current folder now opens a dedicated dialog with explicit duration options instead of occupying toolbar space with an inline expiry picker
-- **Managed share filters** — cloud share links support server-side filtering by status (`active` / `expired` / `revoked`) and fuzzy search by filename
-- **Flexible share extension** — managed links can be extended with selectable presets (1h / 24h / 3d / 7d / 30d) instead of fixed 24h only
-- **Share analytics** — every managed share link records createdAt, viewCount, and lastViewedAt for operation visibility
-- **Automatic expiry reconciliation** — while listing managed links, backend auto-normalizes time-expired active links to `expired` for accurate status display
-- **Optimistic concurrency safety** — metadata update / move / delete / restore / share maintenance all use conditional writes (ETag + retry) to prevent concurrent overwrite
-- **Unified conflict UX** — when backend returns `409` conflict, frontend shows a consistent toast message (`资源已被他人修改，请刷新后重试`)
-- **Share link manager (local)** — the Settings → 📱 应用 tab shows recent valid share links with one-click copy/open/delete and one-click clear
-- **Photo rename** — change the display name of any photo without re-uploading
-- **Move photos** — move photos between folders via UI or drag-and-drop
-- **Timeline view** — date-grouped photo gallery, newest first
-- **Photo-first focus toolbar** — the home surface now uses a compact top toolbar to show current space, lightweight counts, runtime mode, and a few high-value navigation actions without pushing photo content too far down the page
-- **Full-height partial-width workspace sidebar** — timeline and moments now use a full-height right-side panel that occupies roughly 80%–90% of the horizontal space, leaving a visible darkened margin so it reads clearly as a side panel instead of a full takeover
-- **Grouped floating pill controls** — the sidebar entry is now a capsule-style floating control group with a primary pill and secondary chips, giving users clearer, more discoverable entry points into filtering, cleanup, sharing, and diagnostics
-- **Recent activity feed** — the sidebar can surface the latest uploads, share creations, and sync updates without forcing those summaries above the photo content
-- **Cleanup assistant** — the sidebar highlights photos without subjects and uncategorised photos, with one-click jumps into focused timeline cleanup views and automatic scroll-to-target positioning
-- **Share watchlist** — the sidebar flags active share links expiring within 48 hours and provides a direct path into share maintenance
-- **Count-aware tab navigation** — Timeline / Folder / Moments tabs now display live counts so users can judge where to go without trial-and-error switching
-- **Stable top tab rail** — the three primary tabs now avoid awkward wrapping by using a compact, horizontally stable rail that stays readable on narrower widths
-- **Visible drag affordance** — the top tab rail now includes clearer swipe/drag cues so users understand it can scroll horizontally instead of mistaking clipped tabs for a rendering bug
-- **Quick date filter chips** — "今日 / 本周 / 本月 / ⭐ 收藏" one-tap chip row in the timeline tab bar for instant date-scoped browsing without opening the sidebar; active chip is highlighted and "✕ 清空" appears when any filter is on
-- **Active filter indicator dot** — a small amber dot appears on the Timeline tab label whenever any filter is active so users never lose track of a hidden search
-- **Empty-album first-run state** — when a space has no photos yet, the gallery shows a friendly "还没有照片" prompt with a direct CTA to the upload view instead of a blank grid
-- **Transfer progress banner** — while uploading, a sticky banner displays the current filename, a live `n/total` counter, a progress bar, and a percentage figure (e.g. "67%"); during download it shows a "下载中，请勿关闭页面" notice
-- **Scroll-to-top button** — a floating circular button appears after scrolling 500 px and smoothly returns the viewport to the top with one tap; hidden during sidebar scroll-lock
-- **Window-focus auto-refresh** — switching back to the app from another tab or app silently re-fetches the photo list (throttled to at most once per 60 s) so multi-device edits appear without manual reload
-- **Keyboard shortcuts** — press **R** to refresh; **1 / 2 / 3** to switch Timeline / Folder / Moments tabs; **S** to toggle the workspace sidebar; **Backspace / Delete** to clear all active filters with scroll-to-top; **?** to open the shortcuts cheatsheet; **Esc** to dismiss any overlay; all shortcuts skip input/textarea focus
-- **Timeline sort toggle** — a "↓ 最新 / ↑ 最早" chip in the quick-filter row instantly reverses the date-group order so users can browse from the oldest photo upward without touching any filter
-- **Group context header badge** — when browsing a group space, a "👥 GroupName" pill badge appears next to the app title for at-a-glance space confirmation
-- **Toast dismiss button** — every toast notification includes a ✕ button for immediate manual dismissal before the 3.5 s auto-dismiss timer fires
-- **FAB filter count badge** — the floating workspace pill shows an orange/red badge with the active filter count when any timeline filter is on, visible without opening the sidebar
-- **Install banner auto-dismiss** — the PWA install suggestion banner automatically hides after 10 seconds if the user takes no action, reducing persistent visual noise
-- **Group-switch filter reset** — switching between personal space and any group automatically clears all active timeline filters to prevent stale searches carrying over into unrelated contexts
-- **Upload filename in progress** — upload progress now tracks the current file being sent so in-flight status shows exactly which photo is uploading rather than a generic count
-- **Photo count header badge** — the header count now uses locale-formatted numerals (e.g. "1,234 张") and shows a green "+N 近7天" pill when photos were uploaded in the last 7 days
-- **Timeline memory highlights** — automatically surfaces "历史回忆" photos from the same month/day in previous years
-- **Important moments tab** — moments are ranked by engagement and shown in a dedicated ⭐ tab with independent filters and sort modes
-- **Moments cross-device analytics** — open/navigate in moments records views to backend (Cosmos), including total views, last viewed time, top viewer, and peak day; counters are updated atomically in Cosmos and no longer rely on local page-only state
-- **Moments count stabilization** — client-side moments counters now merge optimistic updates with server responses defensively so delayed responses do not easily cause visible count regressions or jitter
-- **Moments local fallback** — if the backend moments store is temporarily unavailable, the client preserves view counts locally across refreshes and marks the session as local-only until server sync resumes
-- **Moments diagnostics tab** — Settings now includes a dedicated diagnostics tab showing frontend version/build time, service worker count, local moments cache size, and whether moments persistence is local-only or server-synced
-- **Card-based settings panel** — Settings now uses a stronger visual hierarchy with hero headers, grouped cards, and denser information blocks so profile, security, app, and diagnostics content are easier to scan
-- **More restrained settings iconography** — settings hero icons now use softer, tab-specific tones instead of a single saturated blue treatment, improving clarity and reducing visual blur
-- **Settings deep links** — home-level action cards can open Settings directly on the App or Diagnostics tabs and scroll to the relevant section or share entry, reducing navigation cost for share maintenance and troubleshooting
-- **Moments details focus** — moments modal details focus on recommendation score + engagement metrics (not timeline-style upload/modify metadata)
-- **Recoverable empty states** — timeline and moments now show actionable no-result states with one-click reset / go-to-folder recovery actions instead of passive blank screens
-- **Timeline pagination** — timeline initially loads the newest page and can load more progressively to keep first paint fast
-- **Search & filter** — filter by name, subject, uploader, date range, missing subject, and uncategorised photos
-- **Fullscreen modal** — view full details, edit subject / rename / download inline
-- **Long-filename-safe modal layout** — very long file names are truncated with ellipsis and will not overlap or hide action buttons such as rename
-- **Modal keyboard navigation** — ← / → keys to step through photos in a folder or timeline; Esc to close; prev/next buttons for mouse/touch; available in both Timeline and Folder views
-- **Toast notification system** — lightweight React-Context toast queue (success / error / info); auto-dismisses after 3.5 s; replaces all inline error banners
-- **Image shimmer skeleton** — animated shimmer placeholder shown while each photo thumbnail loads; fades in on completion to eliminate layout shift
-- **Active filter chips** — applied subject / uploader / date filters shown as dismissible pill chips below the search bar for at-a-glance visibility
-- **Debounced name search** — 300 ms debounce on the name filter prevents unnecessary re-renders while typing
-- **Select All / Deselect All** — one-click toggle in batch mode for both Timeline and Folder views
-- **Batch delete confirmation dialog** — explicit confirm step before bulk deleting photos in both views
-- **Parallel batch move** — folder batch-move fires all move requests concurrently with `Promise.all`, replacing the previous sequential loop
-- **Loading spinner** — animated CSS spinner replaces static "Loading photos…" text during photo fetch
-- **Retry button** — load-error state shows a "重试" button allowing users to re-fetch without refreshing the page
-- **Rich empty state** — photo icon + bilingual message when no photos exist, replacing the bare English placeholder
-- **Delete with confirmation** — custom confirm dialog (no browser `alert`)
-- **Mobile responsive UI** — 2-column grid, compact header, touch-friendly modals on screens ≤ 680 px; the folder tab now adapts to two columns on mobile for folders, photos, and upload tiles
-- **Admin tools** — super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote other users to admin
-- **PWA app mode** — installable as an app on desktop/mobile (manifest + service worker + update prompt)
-- **Browser-first update mode** — regular browser sessions prefer immediate updates by unregistering stale service workers; only installed standalone mode keeps persistent SW caching semantics
-- **Reading progress bar** — a thin gradient bar at the very top of the viewport fills as the user scrolls through the photo timeline, providing instant spatial orientation
-- **Global drag-drop hint** — dragging image files anywhere over the app window triggers a full-screen overlay guiding users to the folder view; dropping auto-redirects and shows a toast, eliminating the "how do I upload?" discoverability gap
-- **Keyboard shortcuts help panel** — press `?` at any time (or click ⌨️ in the header) to open a floating cheatsheet of all keyboard shortcuts; press Escape or `?` again to dismiss
-- **Backspace / Delete clears filters** — when any filter is active and focus is not in an input, pressing Backspace or Delete clears all timeline filters in one keystroke with a toast confirmation
-- **Folder quick-filter chips** — the timeline chip row now shows up to 4 folder chips alongside the date chips, letting users instantly scope the timeline to a single folder without opening the sidebar
-- **Today uploads notice** — when photos were uploaded today, a green notice bar appears above the timeline grid with a one-tap button to toggle "今日" filter; removed when no uploads for today
-- **Time-of-day greeting** — the header title shows a contextual greeting ("早上好", "下午好", "晚上好") so the UI feels alive even before photos load
-- **Upload file size summary** — the upload progress banner now shows total file count and MB (e.g. "5 张 · 12.3 MB") alongside the per-file name so users can judge remaining time at a glance
-- **Weekly summary card** — a collapsible "📊 本周概况" card surfaces this-week uploads, total favorites, folder count, storage used (aggregated from blob size metadata), and today count; includes a "📋 复制周报" button that copies the summary (including storage size) to the clipboard
-- **Dev refresh stability** — local Vite dev mode disables SW registration by default to avoid development-time refresh loops
-- **Dev refresh stability** — PWA service worker registration is disabled in Vite dev mode to avoid local development refresh loops
-- **Transfer safety guard** — while upload/download is in progress, tab switching is blocked and browser refresh/close shows unload confirmation
-- **Keyless security** — no storage account keys or Cosmos DB keys anywhere; `DefaultAzureCredential` (Managed Identity on Azure, Azure CLI locally)
-- **CI/CD** — GitHub Actions with OIDC authentication (no stored passwords); separate workflows for frontend and backend, triggered only on relevant path changes
-- **Auto-hide header** — the top navigation bar slides up when scrolling down and reappears instantly on scroll-up or scroll-to-top; smooth 300 ms cubic-bezier animation maximises photo canvas on mobile without losing navigation
-- **Nav corner masking** — a full-width page-background overlay wraps the sticky tab shell, masking the transparent rounded-corner areas so photo content never bleeds through the card edges during scroll
-- **Pinch-to-zoom in modal** — photo detail modal supports two-finger pinch-to-zoom and double-tap to zoom for natural mobile inspection; smooth CSS transform with momentum release
-- **Swipe between photos** — horizontal swipe gesture in the detail modal navigates to the next / previous photo; replaces keyboard-only navigation for touch devices
-- **Batch tag editing** — select multiple photos in batch mode and apply or replace the subject tag for all at once; useful for tagging a shoot after bulk upload
-- **Photo search bar** — a persistent search input that fuzzy-matches filename and subject simultaneously; debounced 300 ms; clear button appears when active; result count shown inline
-- **Upload drag preview** — when files are dragged over the browser window a full-screen overlay shows a drop target with file count from the drag payload, giving immediate feedback before release
-- **Per-folder quota indicator** — the folder view shows a small progress bar per folder representing photo count relative to a configurable soft cap, surfacing folders that are growing too large
-- **Smart date grouping labels** — timeline date group headers use relative labels ("今天", "昨天", "本周", "上个月") for recent dates and ISO yyyy-mm-dd for older ones, reducing cognitive load for recent activity
-- **Contextual empty-state actions** — empty folder view now shows two CTAs ("上传照片" and "新建子文件夹") so users have a clear next step instead of a blank grid
+- **JWT 认证与自动刷新** — 2 小时访问令牌 + 30 天滚动刷新令牌；收到 401 时客户端静默刷新并重试原请求；并发 401 共享同一个刷新请求（互斥锁）
+- **认证限流** — 内存中按 IP 滑动窗口：登录 10 次/分，注册 5 次/分，刷新 20 次/分；超限返回 `429 + Retry-After: 60`
+- **委托密钥缓存** — Azure 用户委托密钥进程内缓存，有效期剩余 > 10 分钟时复用，省去每次列表请求的一次控制面调用
+- **角色系统** — 全局 `admin` / `viewer`；群组内 `admin` / `member`
+- **个人私有空间** — 个人文件夹仅对本人可见（管理员可看全部）
+- **群组共享** — 创建群组并通过用户名或邮箱邀请成员；所有加入均通过邮件邀请流程，收件人接受邀请链接后才正式加入；邀请 7 天后过期，群组管理员可取消
+- **子文件夹导航** — 支持嵌套文件夹（如 `旅游/北京`）；面包屑导航；文件夹间拖拽移动；额外文件夹按上下文存入 `localStorage`
+- **文件夹返回栈** — 文件夹视图中，系统/浏览器返回键先逐级返回上层文件夹，再退出应用
+- **会话持久化** — 最近使用的群组空间和当前文件夹路径按用户存入 `localStorage`；刷新后恢复原位
+- **回收站** — 删除照片时软删除（blob 元数据 `deletedAt`）；专用 🗑️ 回收站标签支持恢复到原文件夹或彻底删除；「清空回收站」批量永久删除
+- **移动端固定回收站操作** — 小屏上恢复和永久删除操作固定在底部操作栏，支持单手操作
+- **批量操作** — 多选模式支持批量删除、批量移动、批量设置拍摄时间、批量修改 GPS 位置
+- **多照片上传** — 同时选择多张照片；按文件夹顺序上传并显示进度（`⏳ 2/5`）；部分失败提示；客户端 MIME 类型与 20 MB 大小校验
+- **照片下载** — 直接从浏览器下载原始文件（移动端与桌面端均支持）
+- **过期分享链接** — 生成单张照片的公开可读链接，TTL 可选（1小时 / 24小时 / 3天 / 7天）
+- **一键分享复制** — 优先使用 Clipboard API，自动兜底到传统复制，最后降级为手动复制提示
+- **托管分享链接（云端）** — 设置页可提前吊销链接或延长有效期，维护每条链接的状态与生命周期
+- **文件夹分享对话框** — 分享当前文件夹时弹出专用对话框并明确选择时长，工具栏保持紧凑
+- **托管分享筛选** — 云端分享链接支持按状态（有效/已过期/已吊销）和文件名模糊搜索
+- **灵活延长分享** — 托管链接可按预设时长延长（1小时 / 24小时 / 3天 / 7天 / 30天）
+- **分享统计** — 每条托管分享链接记录创建时间、浏览次数和最近访问时间
+- **自动过期对齐** — 列出托管链接时，后端自动将时间已过期的有效链接标准化为「已过期」
+- **乐观并发安全** — 元数据更新/移动/删除/恢复/分享维护均使用条件写入（ETag + 重试）防止并发覆盖
+- **统一冲突 UX** — 后端返回 `409` 时，前端显示统一 toast（`资源已被他人修改，请刷新后重试`）
+- **本地分享链接管理器** — 设置 → 📱 应用 展示近期有效分享链接，支持一键复制/打开/删除和批量清除
+- **照片重命名** — 不重新上传即可更改任意照片的显示名称
+- **移动照片** — 通过 UI 或拖拽在文件夹间移动照片
+- **时间线视图** — 按日期分组的照片时间线，默认最新在前
+- **📷/☁ 排序方式切换** — 可在「拍摄时间」与「上传时间」两种排序之间切换；无拍摄时间时自动回退到上传时间
+- **历史照片元数据回填** — 一键扫描所有缺少拍摄时间或 GPS 的旧照片，从 EXIF 自动补全并写回
+- **以照片为主的聚焦工具栏** — 首页顶部工具栏轻量展示当前空间、数量、运行模式及高价值导航入口
+- **全高局部宽侧边栏** — 时间线和重要片段使用占横向 80%–90% 的右侧全高面板，其余区域变暗，视觉上明确是「侧面弹出工具面板」
+- **快速日期筛选 chip** — 「今日 / 本周 / 本月 / ⭐ 收藏」一键 chip 行，无需打开侧边栏即可即时按日期范围筛选；激活时高亮并出现「✕ 清空」
+- **激活筛选指示点** — 任意筛选激活时时间线页签标签上出现橙色小点
+- **空相册首次引导** — 空间无照片时显示「还没有照片」友好提示和直达上传入口
+- **传输进度横幅** — 上传时顶部固定横幅显示当前文件名、`n/total` 计数器、进度条和百分比；下载时显示「下载中，请勿关闭页面」
+- **返回顶部按钮** — 滚动 500px 后出现悬浮圆形按钮，一键平滑回顶；侧边栏锁定滚动时隐藏
+- **窗口聚焦自动刷新** — 切回应用时静默重新获取照片列表（每 60 秒最多一次），多设备编辑无需手动刷新
+- **键盘快捷键** — R=刷新；1/2/3=切换 Tab；S=切换侧边栏；Backspace/Delete=清空筛选；?=快捷键速查表；Esc=关闭任意浮层；均跳过输入框焦点
+- **时间线排序切换** — 「↓ 最新 / ↑ 最早」chip 即时翻转日期分组顺序，无需修改任何筛选条件
+- **群组上下文 header badge** — 浏览群组空间时，`👥 群组名` 徽章出现在应用标题旁
+- **Toast 关闭按钮** — 每条 toast 通知含 ✕ 按钮，可在 3.5 秒自动消失前手动关闭
+- **FAB 筛选数量 badge** — 任意时间线筛选激活时，悬浮胶囊显示橙/红渐变 badge 标注激活数量
+- **安装横幅自动消失** — PWA 安装建议横幅 10 秒无操作后自动隐藏
+- **群组切换筛选重置** — 切换个人空间与群组时自动清空所有时间线筛选，防止跨空间搜索残留
+- **上传文件名进度** — 上传进度追踪当前正在发送的文件名，而非通用计数
+- **照片数量 header badge** — 数量显示千分位格式（如「1,234 张」），近 7 天有上传时显示绿色「+N 近7天」徽章
+- **历史回忆** — 自动显示往年同月同日拍摄的「历史回忆」照片
+- **重要片段 Tab** — 照片按互动热度排序，显示在独立 ⭐ Tab 中；独立筛选和排序方式；固定展示前 20 张最佳照片
+- **重要片段跨设备统计** — 在重要片段中打开/切换记录浏览量到后端（Cosmos），包含总浏览量、最近查看时间、常看用户和高峰日；计数器在 Cosmos 中原子更新
+- **重要片段计数稳定** — 客户端合并乐观更新与服务端响应，防止延迟响应导致可见数字回退或抖动
+- **重要片段本地兜底** — 后端 moments 暂时不可用时，客户端跨刷新本地保存浏览计数，并将会话标记为「仅本地」直到服务端同步恢复
+- **重要片段诊断页** — 设置中专用诊断 Tab，显示前端版本/构建时间、Service Worker 数量、本地 moments 缓存大小及持久化状态
+- **卡片化设置面板** — 设置使用更强的视觉层级：hero header、分组卡片、更密集的信息块，个人资料/安全/应用/诊断内容更易扫读
+- **设置图标克制化** — 设置 hero 图标改用场景分色色调，不再全部使用饱和蓝渐变
+- **设置深度链接** — 首页操作卡可直接打开设置中的应用或诊断页签并滚动到对应区域
+- **重要片段详情聚焦** — 重要片段弹窗详情优先展示推荐值 + 互动指标，而非时间线风格的上传/修改元数据
+- **可恢复空状态** — 时间线和重要片段空结果状态提供一键重置/跳转到文件夹等恢复操作，替代被动空白屏幕
+- **时间线分页** — 时间线优先加载最新一批，可渐进式「加载更多」，保持首屏速度
+- **搜索与筛选** — 按名称、主题、上传者、日期范围、缺少主题、未分类筛选
+- **全屏弹窗** — 查看完整详情，内联编辑主题/重命名/下载
+- **弹窗长文件名安全** — 超长文件名省略显示，不遮挡重命名等操作按钮
+- **弹窗键盘导航** — ← / → 在文件夹或时间线中切换照片；Esc 关闭；prev/next 按钮支持鼠标/触摸
+- **Toast 通知系统** — 轻量 React-Context toast 队列（success/error/info）；3.5 秒后自动消失
+- **图片加载骨架屏** — 每张缩略图加载时显示闪光骨架，加载完成后淡入，消除布局偏移
+- **激活筛选 chip** — 已应用的主题/上传者/日期筛选以可关闭 chip 形式显示在搜索栏下方
+- **名称搜索防抖** — 名称筛选 300ms 防抖，防止输入时不必要的重新渲染
+- **全选 / 取消全选** — 批量模式下时间线和文件夹视图均支持一键全选切换
+- **批量删除确认对话框** — 批量删除前需明确确认
+- **并行批量移动** — 文件夹批量移动使用 `Promise.all` 并发发起所有移动请求
+- **加载 spinner** — 照片获取期间动态 CSS spinner 替代静态「加载中...」文字
+- **重试按钮** — 加载失败状态显示「重试」按钮，无需刷新页面即可重新获取
+- **丰富空状态** — 照片图标 + 中文提示替代纯文字占位符
+- **删除二次确认** — 自定义确认对话框（不使用浏览器 `alert`）
+- **移动端响应式** — ≤680px 时 2 列网格、紧凑 header、触摸友好弹窗；文件夹 Tab 移动端适配两列
+- **管理员工具** — 超级管理员（通过 `SUPER_ADMIN_USERNAME` 环境变量配置）可将其他用户提升为 admin
+- **PWA 应用模式** — 可安装为桌面/移动应用（manifest + Service Worker + 更新提示）
+- **浏览器优先更新模式** — 普通浏览器会话注销旧 Service Worker 优先即时更新；仅已安装的独立模式保留持久化 SW 缓存语义
+- **阅读进度条** — 视口最顶部一条渐变细条，随时间线滚动填充，提供即时空间定位感
+- **全局拖拽提示** — 向应用窗口拖入图片文件时触发全屏引导覆盖层，drop 后自动跳转文件夹视图
+- **键盘快捷键帮助面板** — 随时按 `?`（或点击 header 中 ⌨️）打开悬浮快捷键速查表；再按 Escape 或 `?` 关闭
+- **Backspace/Delete 清空筛选** — 任意筛选激活且焦点不在输入框时，按 Backspace/Delete 一键清空所有时间线筛选并附 toast 确认
+- **文件夹快速筛选 chip** — 时间线 chip 行最多显示 4 个文件夹 chip，一键将时间线限定在某一文件夹内
+- **今日上传提示** — 今日有上传时，时间线网格上方显示绿色提示条并含一键切换「今日」筛选的按钮
+- **时间段问候语** — header 标题显示上下文问候（「早上好」、「下午好」、「晚上好」）
+- **上传文件大小摘要** — 上传进度横幅同时显示总文件数和 MB（如「5 张 · 12.3 MB」）
+- **本周概况卡** — 可折叠「📊 本周概况」卡片，显示本周上传、总收藏、文件夹数、已用存储（从 blob size 元数据聚合）和今日数量；含「📋 复制周报」按钮
+- **开发刷新稳定** — Vite 开发模式下 SW 注册默认禁用，避免本地开发刷新循环
+- **传输安全守卫** — 上传/下载进行中时阻止 Tab 切换，浏览器刷新/关闭显示 unload 确认
+- **无密钥安全** — 存储和数据库均无账户密钥；使用 `DefaultAzureCredential`（Azure 上托管身份，本地 Azure CLI）
+- **CI/CD** — GitHub Actions + OIDC 认证（无存储密码）；前后端分离 workflow，仅在相关路径变更时触发
+- **自动隐藏 header** — 向下滚动时顶部导航栏滑出，向上滚动或回顶时立即重现；300ms cubic-bezier 平滑动画，移动端最大化照片画布
+- **导航圆角遮罩** — 全宽页面背景覆盖层包裹 sticky tab shell，遮蔽透明圆角区域，防止照片内容在滚动时透过卡片边缘渗出
+- **弹窗双指缩放** — 照片详情弹窗支持双指捏合缩放和双击缩放，自然的移动端检视；平滑 CSS transform + 惯性释放
+- **弹窗滑动切换** — 详情弹窗中水平滑动手势切换上/下一张照片
+- **批量主题标签编辑** — 批量选择模式下为多张照片一次性应用或替换主题标签
+- **照片搜索栏** — 持久搜索输入框，同时模糊匹配文件名和主题；300ms 防抖；激活时显示清除按钮和结果计数
+- **上传拖拽预览** — 文件拖入时全屏覆盖层显示拖拽目标和来自拖拽载荷的文件数，在 drop 前提供即时反馈
+- **文件夹配额指示** — 文件夹视图每个文件夹显示照片数相对于软上限的小进度条
+- **智能日期分组标签** — 时间线日期分组 header 对近期使用相对标签（「今天」、「昨天」、「本周」、「上个月」），较早的使用 ISO yyyy-mm-dd
+- **上下文空状态操作** — 空文件夹视图显示「上传照片」和「新建子文件夹」两个 CTA
 
 ---
 
-## Role System
+## 角色系统
 
-| Role | Permissions |
-|------|-------------|
-| `admin` | Sees all photos (private + all groups). Can add admins. |
-| `viewer` | Sees own private photos + photos in joined groups only. |
+| 角色 | 权限 |
+|------|------|
+| `admin` | 查看全部照片（私有 + 所有群组）；可添加管理员 |
+| `viewer` | 查看自己的私有照片 + 已加入群组的照片 |
 
-Within a group:
+群组内：
 
-| Group Role | Permissions |
-|------------|-------------|
-| `admin` | Add / remove members, update or delete the group |
-| `member` | View and upload photos to the group |
+| 群组角色 | 权限 |
+|----------|------|
+| `admin` | 添加/移除成员，更新或删除群组 |
+| `member` | 查看并上传照片到群组 |
 
-Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote users to global `admin`.
+仅超级管理员（通过 `SUPER_ADMIN_USERNAME` 环境变量配置）可将用户提升为全局 `admin`。
 
 ---
 
-## Data Model
+## 数据模型
 
-### UserDoc (`users` container)
+### UserDoc（`users` 容器）
 ```jsonc
 {
   "id": "<uuid>",
@@ -304,12 +240,12 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
 }
 ```
 
-### GroupDoc (`groups` container)
+### GroupDoc（`groups` 容器）
 ```jsonc
 {
   "id": "<uuid>",
-  "name": "Family Trip",
-  "description": "Summer 2025",
+  "name": "家庭旅行",
+  "description": "2025 年夏",
   "createdBy": "<userId>",
   "createdAt": "2025-06-01T00:00:00Z",
   "members": [
@@ -317,27 +253,27 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
       "displayName": "Alice", "role": "admin",
       "joinedAt": "...", "addedBy": "..." }
   ],
-  "folders": ["Arrival", "Beach", "Farewell"]
+  "folders": ["到达", "海滩", "告别"]
 }
 ```
 
-### InviteDoc (`invites` container)
+### InviteDoc（`invites` 容器）
 ```jsonc
 {
-  "id": "<uuid token>",        // also the partition key; sent in the invite link
+  "id": "<uuid token>",        // 同时是分区键；在邀请链接中发送
   "groupId": "<uuid>",
-  "groupName": "Family Trip",
-  "email": "bob@example.com",  // lowercase; must match the recipient's account email
+  "groupName": "家庭旅行",
+  "email": "bob@example.com",  // 小写；必须匹配收件人账户邮箱
   "invitedByUserId": "<uuid>",
   "invitedByName": "Alice",
   "status": "pending",         // pending | accepted | declined | cancelled
   "createdAt": "2025-06-01T00:00:00Z",
-  "expiresAt": "2025-06-08T00:00:00Z",  // 7 days after creation
-  "respondedAt": "2025-06-02T10:00:00Z"  // set on accept / decline
+  "expiresAt": "2025-06-08T00:00:00Z",  // 创建后 7 天
+  "respondedAt": "2025-06-02T10:00:00Z"
 }
 ```
 
-### MomentInsightDoc (`moments` container)
+### MomentInsightDoc（`moments` 容器）
 ```jsonc
 {
   "id": "moment:<base64url(photoName)>",
@@ -354,136 +290,134 @@ Only the super-admin (configured via `SUPER_ADMIN_USERNAME` env var) can promote
 }
 ```
 
-Moments scoring model used by the frontend:
+重要片段评分模型（前端）：
 
 $$
-(\text{recommendationScore}) =
-(\text{favorite}?120:0)
-+(\text{subject}?20:0)
-+\max(0, 40-\text{recencyDays})
+\text{推荐值} = (\text{已收藏}?120:0) + (\text{有主题}?20:0) + \max(0, 40-\text{距今天数})
 $$
 
 $$
-(\text{engagementScore}) =
-(\text{recommendationScore})
-+24\times\text{totalViews}
-+\text{recentViewBoost(0..72h)}
+\text{互动热度} = \text{推荐值} + 24 \times \text{总浏览量} + \text{近期浏览加成}(0..72h)
 $$
 
-### Blob Metadata (per photo in Azure Blob Storage)
+### Blob 元数据（Azure Blob Storage 每张照片）
 ```
-originalName    base64-encoded original filename
-subject         optional subject / caption
-folder          folder name (empty = uncategorised)
-groupId         group this photo belongs to (empty = private)
-createdBy       uploader display name
-createdById     uploader userId
-createdAt       ISO 8601 timestamp
-lastModifiedBy  display name of last editor
-lastModifiedAt  ISO 8601 timestamp
+originalName      Base64 编码的原始文件名
+subject           可选主题/说明
+folder            文件夹名（空 = 未分类）
+groupId           所属群组（空 = 私有）
+createdBy         上传者显示名
+createdById       上传者 userId
+createdAt         ISO 8601 时间戳（上传时间）
+takenAt           拍摄时间（naive datetime，不带 Z，EXIF 提取或手动设置）
+gpsLat            GPS 纬度（字符串，EXIF 提取或手动设置）
+gpsLon            GPS 经度（字符串，EXIF 提取或手动设置）
+lastModifiedBy    最后编辑者显示名
+lastModifiedAt    ISO 8601 时间戳
 ```
 
 ---
 
-## API Reference
+## API 参考
 
-All protected routes require `Authorization: Bearer <accessToken>`.
+所有受保护路由均需 `Authorization: Bearer <accessToken>`。
 
-### Auth
+### 认证
 
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `POST` | `/api/auth/register` | — | Register; returns `{ token, refreshToken, user }` |
-| `POST` | `/api/auth/login` | — | Login; returns `{ token, refreshToken, user }` |
-| `GET`  | `/api/auth/me` | ✓ | Get current user info |
-| `POST` | `/api/auth/refresh` | Refresh token | Exchange refresh token for new access + refresh tokens (rotating) |
-| `POST` | `/api/auth/admins` | Admin only | Promote a user to admin |
+| 方法 | 路由 | 鉴权 | 说明 |
+|------|------|------|------|
+| `POST` | `/api/auth/register` | — | 注册；返回 `{ token, refreshToken, user }` |
+| `POST` | `/api/auth/login` | — | 登录；返回 `{ token, refreshToken, user }` |
+| `GET`  | `/api/auth/me` | ✓ | 获取当前用户信息 |
+| `POST` | `/api/auth/refresh` | 刷新令牌 | 用刷新令牌换取新访问令牌 + 刷新令牌（滚动） |
+| `POST` | `/api/auth/admins` | 仅管理员 | 将用户提升为管理员 |
 
-### Photos
+### 照片
 
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `GET`    | `/api/photos[?groupId=<id>]` | ✓ | List photos; each URL is a 2-hour User Delegation SAS |
-| `POST`   | `/api/photos/upload?filename=<name>[&folder=<path>][&groupId=<id>]` | ✓ | Upload (raw binary body); rejects non-image MIME (415) and > 20 MB (413) |
-| `GET`    | `/api/photos/download?name=<blobName>` | ✓ | Proxy-download with `Content-Disposition: attachment` |
-| `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | Create expiring share link (`{ url, expiresAt }`) |
-| `GET`    | `/api/photos/share/open/{linkId}` | — | Open managed public share link (redirects to a short-lived SAS and increments view stats) |
-| `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | List current user's managed share links with optional status/name filtering |
-| `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | Revoke now (`action=revoke`) or extend expiry (`action=extend`, `hours=1..720`); conflict returns `409` |
-| `POST`   | `/api/photos/moments/insights` | ✓ | Batch query moments analytics for specified photos via JSON body `{ photoNames: string[] }` (cross-device persisted, avoids oversized URLs) |
-| `POST`   | `/api/photos/moments/view` | ✓ | Record one moments view (`photoName`, optional `viewerName`) with optimistic concurrency |
-| `POST`   | `/api/photos/move` | ✓ | Move photo to a different folder |
-| `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | Update subject / folder / originalName; conflict returns `409` |
-| `DELETE` | `/api/photos?name=<blobName>` | ✓ | Soft-delete a photo by blob name; conflict returns `409` |
+| 方法 | 路由 | 鉴权 | 说明 |
+|------|------|------|------|
+| `GET`    | `/api/photos[?groupId=<id>]` | ✓ | 列出照片；每个 URL 为 2 小时用户委托 SAS |
+| `POST`   | `/api/photos/upload?filename=<name>[&folder=<path>][&groupId=<id>][&gpsLat=<lat>][&gpsLon=<lon>]` | ✓ | 上传（原始二进制 body）；拒绝非图片/视频 MIME（415）和超大文件（413） |
+| `GET`    | `/api/photos/download?name=<blobName>` | ✓ | 代理下载，附 `Content-Disposition: attachment` |
+| `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | 创建过期分享链接（`{ url, expiresAt }`） |
+| `GET`    | `/api/photos/share/open/{linkId}` | — | 打开托管公开分享链接（重定向到短效 SAS 并增加浏览统计） |
+| `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | 列出当前用户的托管分享链接，支持状态/名称筛选 |
+| `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | 立即吊销（`action=revoke`）或延长有效期（`action=extend`, `hours=1..720`）；冲突返回 `409` |
+| `POST`   | `/api/photos/moments/insights` | ✓ | 批量查询指定照片的 moments 统计，通过 JSON body `{ photoNames: string[] }`（跨设备持久化） |
+| `POST`   | `/api/photos/moments/view` | ✓ | 记录一次 moments 浏览（`photoName`, 可选 `viewerName`），乐观并发 |
+| `POST`   | `/api/photos/move` | ✓ | 将照片移动到其他文件夹 |
+| `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | 更新主题/文件夹/原始名称/拍摄时间/GPS；冲突返回 `409` |
+| `DELETE` | `/api/photos?name=<blobName>` | ✓ | 软删除照片；冲突返回 `409` |
+| `POST`   | `/api/photos/backfill[?groupId=<id>]` | ✓ | 扫描缺少 `takenAt` 或 `gpsLat` 的 blob，从 EXIF 回填元数据；返回 `{ processed, updated, failed }` |
 
-**`GET /api/photos` ownership rules:**
-- `?groupId=<id>` — requester must be a member of that group
-- No `groupId` — returns requester's private photos (admin sees all private photos)
+**`GET /api/photos` 所有权规则：**
+- `?groupId=<id>` — 请求者必须是该群组成员
+- 无 `groupId` — 返回请求者的私有照片（管理员可看全部私有照片）
 
-### Groups
+### 群组
 
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `POST`   | `/api/groups` | ✓ | Create a group (creator becomes group admin) |
-| `GET`    | `/api/groups` | ✓ | List groups the user belongs to |
-| `GET`    | `/api/groups/{groupId}` | Member | Get group details + members |
-| `PATCH`  | `/api/groups/{groupId}` | Group admin | Update name / description |
-| `DELETE` | `/api/groups/{groupId}` | Group admin | Delete the group |
-| `POST`   | `/api/groups/{groupId}/members` | Group admin | Invite by **username** — looks up the user's email and creates an invite (returns 202, not added until accepted) |
-| `DELETE` | `/api/groups/{groupId}/members/{memberId}` | Group admin / self | Remove member |
+| 方法 | 路由 | 鉴权 | 说明 |
+|------|------|------|------|
+| `POST`   | `/api/groups` | ✓ | 创建群组（创建者成为群组管理员） |
+| `GET`    | `/api/groups` | ✓ | 列出用户所在的群组 |
+| `GET`    | `/api/groups/{groupId}` | 成员 | 获取群组详情 + 成员列表 |
+| `PATCH`  | `/api/groups/{groupId}` | 群组管理员 | 更新名称/描述 |
+| `DELETE` | `/api/groups/{groupId}` | 群组管理员 | 删除群组 |
+| `POST`   | `/api/groups/{groupId}/members` | 群组管理员 | 通过**用户名**邀请——查找邮箱并创建邀请（返回 202，接受前不加入） |
+| `DELETE` | `/api/groups/{groupId}/members/{memberId}` | 群组管理员/本人 | 移除成员 |
 
-### Invites
+### 邀请
 
-| Method | Route | Auth | Description |
-|--------|-------|------|-------------|
-| `POST`   | `/api/groups/{groupId}/invites` | Group admin | Send email invite by **email address**; creates `InviteDoc`, emails accept link |
-| `GET`    | `/api/groups/{groupId}/invites` | Group admin | List pending invites for the group |
-| `GET`    | `/api/invites/{token}` | — (public) | Get invite info (used by accept page); 410 if expired |
-| `POST`   | `/api/invites/{token}/respond` | ✓ (email must match) | Accept or decline; on accept, adds user to group |
-| `DELETE` | `/api/invites/{token}` | Group admin | Cancel a pending invite |
+| 方法 | 路由 | 鉴权 | 说明 |
+|------|------|------|------|
+| `POST`   | `/api/groups/{groupId}/invites` | 群组管理员 | 通过**邮箱**发送邀请；创建 InviteDoc，发送接受链接 |
+| `GET`    | `/api/groups/{groupId}/invites` | 群组管理员 | 列出群组待处理邀请 |
+| `GET`    | `/api/invites/{token}` | —（公开）| 获取邀请信息（供接受页使用）；已过期返回 410 |
+| `POST`   | `/api/invites/{token}/respond` | ✓（邮箱须匹配）| 接受或拒绝；接受时将用户加入群组 |
+| `DELETE` | `/api/invites/{token}` | 群组管理员 | 取消待处理邀请 |
 
-> Both `/api/groups/{groupId}/members` (username) and `/api/groups/{groupId}/invites` (email) use the same invite flow: no one is added to a group without explicitly accepting an invite link.
-
----
-
-## Authentication Flow
-
-### Registration / Login
-1. Client sends credentials; server responds with `{ token, refreshToken, user }`
-2. `token` — HS256 JWT, **2-hour** expiry, contains `{ userId, username, displayName, role }`
-3. `refreshToken` — HS256 JWT, **30-day** expiry, carries an additional `tokenType: "refresh"` claim
-4. Both tokens stored in `localStorage`
-
-### Silent Token Refresh
-1. Any API call that receives **HTTP 401** triggers `getRefreshedToken()`
-2. `getRefreshedToken()` is a **mutex** — if multiple concurrent requests all 401 at once, only one `POST /api/auth/refresh` call goes out; all waiters receive the same new token
-3. The original request is **retried once** with the new token, transparently to calling code
-4. If the refresh token itself is expired, the user is redirected to login
-5. Refresh tokens are **rotated** on every use (30-day window slides forward)
-
-### Session Restore (on page reload)
-1. App reads `cloudphoto_token` from `localStorage`
-2. Calls `GET /api/auth/me` to validate and restore user state
-3. If the access token expired between page loads, the first API call triggers silent refresh
+> `/api/groups/{groupId}/members`（用户名）和 `/api/groups/{groupId}/invites`（邮箱）均使用同一邀请流程：无人可在未明确接受邀请链接的情况下加入群组。
 
 ---
 
-## Local Development
+## 认证流程
 
-### Prerequisites
+### 注册 / 登录
+1. 客户端发送凭据；服务端响应 `{ token, refreshToken, user }`
+2. `token` — HS256 JWT，**2 小时**有效期，包含 `{ userId, username, displayName, role }`
+3. `refreshToken` — HS256 JWT，**30 天**有效期，携带额外 `tokenType: "refresh"` claim
+4. 两个令牌均存储在 `localStorage`
+
+### 静默令牌刷新
+1. 任何 API 调用收到 **HTTP 401** 时触发 `getRefreshedToken()`
+2. `getRefreshedToken()` 是**互斥锁**——多个并发请求同时 401 时，只发出一次 `POST /api/auth/refresh`；所有等待者收到同一个新令牌
+3. 原请求使用新令牌**自动重试一次**，对调用方完全透明
+4. 若刷新令牌本身已过期，用户跳转到登录页
+5. 刷新令牌在每次使用时**滚动**（30 天窗口向前推移）
+
+### 会话恢复（页面刷新时）
+1. App 从 `localStorage` 读取 `cloudphoto_token`
+2. 调用 `GET /api/auth/me` 验证并恢复用户状态
+3. 若访问令牌在两次页面加载之间过期，第一次 API 调用触发静默刷新
+
+---
+
+## 本地开发
+
+### 前提条件
 
 - Node.js 24+
-- Yarn (repo standard; keep a single root `yarn.lock`)
+- Yarn（monorepo 标准；保持单个根目录 `yarn.lock`）
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
-- Azure CLI (`az login` — used by `DefaultAzureCredential` locally)
+- Azure CLI（`az login`——本地由 `DefaultAzureCredential` 使用）
 
 ```bash
 npm install -g azure-functions-core-tools@4 --unsafe-perm true
 ```
 
-### Setup
+### 配置
 
-**1. Clone and install**
+**1. 克隆并安装**
 
 ```bash
 git clone https://github.com/jinyiyexing518/CloudPhoto.git
@@ -491,7 +425,7 @@ cd CloudPhoto
 yarn install
 ```
 
-**2. Configure backend secrets** — create `packages/server/local.settings.json` (git-ignored):
+**2. 配置后端密钥** — 创建 `packages/server/local.settings.json`（已 git-ignore）：
 
 ```json
 {
@@ -499,29 +433,29 @@ yarn install
   "Values": {
     "AzureWebJobsStorage": "",
     "FUNCTIONS_WORKER_RUNTIME": "node",
-    "STORAGE_ACCOUNT_NAME": "<your storage account name>",
+    "STORAGE_ACCOUNT_NAME": "<存储账户名>",
     "STORAGE_CONTAINER_NAME": "photos",
-    "COSMOS_ENDPOINT": "https://<your-cosmos>.documents.azure.com:443/",
+    "COSMOS_ENDPOINT": "https://<cosmos 账户>.documents.azure.com:443/",
     "COSMOS_DATABASE": "cloudphoto",
-    "JWT_SECRET": "<random 48-char hex string>",
-    "SUPER_ADMIN_USERNAME": "<your username>"
+    "JWT_SECRET": "<随机 48 字节 hex 字符串>",
+    "SUPER_ADMIN_USERNAME": "<你的用户名>"
   },
   "Host": { "CORS": "*" }
 }
 ```
 
-> **No storage or Cosmos keys required.** The backend uses [Managed Identity / DefaultAzureCredential](https://learn.microsoft.com/azure/developer/javascript/sdk/authentication/overview).
-> Locally, `DefaultAzureCredential` falls back to your **Azure CLI session** — run `az login` once and you're done.
+> **不需要存储或 Cosmos 密钥。** 后端使用 [托管身份 / DefaultAzureCredential](https://learn.microsoft.com/azure/developer/javascript/sdk/authentication/overview)。
+> 本地开发时，`DefaultAzureCredential` 回退到 **Azure CLI 会话**——运行一次 `az login` 即可。
 
-Generate a JWT secret:
+生成 JWT secret：
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-For local development, grant your own Azure AD identity the roles below:
+本地开发时，为你自己的 Azure AD 身份授予以下角色：
 
 ```bash
-# Storage: Blob Data Contributor + Blob Delegator
+# 存储：Blob 数据贡献者 + Blob 委托者
 az role assignment create --assignee <YOUR_PRINCIPAL_ID> \
   --role "Storage Blob Data Contributor" \
   --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Storage/storageAccounts/<STORAGE>
@@ -530,7 +464,7 @@ az role assignment create --assignee <YOUR_PRINCIPAL_ID> \
   --role "Storage Blob Delegator" \
   --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Storage/storageAccounts/<STORAGE>
 
-# Cosmos DB: Built-in Data Contributor
+# Cosmos DB：内置数据贡献者
 az cosmosdb sql role assignment create \
   --account-name <COSMOS_ACCOUNT> --resource-group <RG> \
   --role-definition-id 00000000-0000-0000-0000-000000000002 \
@@ -538,87 +472,89 @@ az cosmosdb sql role assignment create \
   --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.DocumentDB/databaseAccounts/<COSMOS_ACCOUNT>
 ```
 
-**3. Run locally**
+**3. 本地运行**
 
 ```bash
-# Terminal 1 — Backend
-yarn dev:server                   # func start on localhost:7071
+# 终端 1 — 后端
+yarn dev:server                   # func start，监听 localhost:7071
 
-# Terminal 2 — Frontend
-yarn dev:client                   # Vite on localhost:3000 (proxies /api → :7071)
+# 终端 2 — 前端
+yarn dev:client                   # Vite，监听 localhost:3000（代理 /api → :7071）
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+打开 [http://localhost:3000](http://localhost:3000)。
 
-### Feature Folder Convention
+### 功能文件夹约定
 
-- Client share feature utilities are grouped under `packages/client/src/features/share/`.
-- Server share-related HTTP functions are grouped under `packages/server/src/functions/share/`.
-- Keep new cross-cutting features grouped by domain to avoid scattering logic under generic folders.
+- 客户端分享功能工具类统一放在 `packages/client/src/features/share/`。
+- 服务端分享相关 HTTP 函数统一放在 `packages/server/src/functions/share/`。
+- 新增跨切面功能按领域分组，避免逻辑散落在通用文件夹中。
 
 ---
 
-## Azure Setup
+## Azure 配置
 
 ### Cosmos DB
 
-1. Portal → **Azure Cosmos DB** → **+ Create** → **NoSQL API** → **Serverless** (free tier)
-2. Create database `cloudphoto` with these containers:
+1. 门户 → **Azure Cosmos DB** → **+ 创建** → **NoSQL API** → **无服务器**（免费套餐）
+2. 创建数据库 `cloudphoto`，包含以下容器：
 
-   | Container | Partition key |
-   |-----------|---------------|
-   | `users`   | `/id` |
-   | `admins`  | `/id` |
-   | `groups`  | `/id` |
-   | `invites` | `/id` |
+   | 容器 | 分区键 |
+   |------|--------|
+   | `users`      | `/id` |
+   | `admins`     | `/id` |
+   | `groups`     | `/id` |
+   | `invites`    | `/id` |
+   | `changelogs` | `/id` |
+   | `moments`    | `/id` |
 
-3. Pre-seed `admins` with an entry for the super-admin:
+3. 在 `admins` 容器中预置超级管理员条目：
    ```json
    { "id": "your@email.com", "email": "your@email.com", "username": "yourusername" }
    ```
 
-> All containers are created automatically on first run if they don't exist.
+> 如果容器不存在，首次运行时会自动创建。
 
 ### Azure Blob Storage
 
-1. Create a Storage Account (e.g. `photostorage`)
-2. Create a container named `photos` with **Private** access
-3. No access keys needed — grant Managed Identity RBAC roles (below)
-4. If share links must open on public internet, Storage Account networking must allow public access (or equivalent routed access). Private-endpoint-only storage will make copied share links unreachable outside private network.
+1. 创建存储账户（如 `photostorage`）
+2. 创建名为 `photos` 的容器，访问级别设为**私有**
+3. 不需要访问密钥——为托管身份授予 RBAC 角色（见下方）
+4. 如果分享链接需要在公网打开，存储账户网络设置必须允许公网访问（或等效路由访问）
 
-### Function App Application Settings
+### Function App 应用设置
 
-| Name | Value |
-|------|-------|
+| 名称 | 值 |
+|------|----|
 | `COSMOS_ENDPOINT` | Cosmos DB URI |
 | `COSMOS_DATABASE` | `cloudphoto` |
-| `JWT_SECRET` | Random 48-char hex string |
+| `JWT_SECRET` | 随机 48 字节 hex 字符串 |
 | `STORAGE_ACCOUNT_NAME` | `photostorage` |
 | `STORAGE_CONTAINER_NAME` | `photos` |
-| `SUPER_ADMIN_USERNAME` | Super-admin username |
-| `ACS_ENDPOINT` | Azure Communication Services endpoint URL — used with Managed Identity (recommended for production, e.g. `https://<name>.communication.azure.com/`) |
-| `ACS_CONNECTION_STRING` | ACS connection string — fallback for local dev when Managed Identity is not available |
-| `ACS_SENDER_ADDRESS` | Verified sender address for ACS email (e.g. `DoNotReply@<uuid>.azurecomm.net`) |
-| `APP_BASE_URL` | Public URL of the app, embedded in invite links (e.g. `https://yourapp.azurestaticapps.net`) |
+| `SUPER_ADMIN_USERNAME` | 超级管理员用户名 |
+| `ACS_ENDPOINT` | Azure Communication Services 端点 URL（推荐生产环境，配合托管身份使用）|
+| `ACS_CONNECTION_STRING` | ACS 连接字符串（本地开发回退，托管身份不可用时使用）|
+| `ACS_SENDER_ADDRESS` | ACS 邮件验证发件人地址（如 `DoNotReply@<uuid>.azurecomm.net`）|
+| `APP_BASE_URL` | 应用公网 URL，嵌入邀请链接（如 `https://yourapp.azurestaticapps.net`）|
 
-> **Email invites via Managed Identity:** set `ACS_ENDPOINT` (not `ACS_CONNECTION_STRING`) in production and grant the Function App's Managed Identity the **Communication Services Contributor** role on your ACS resource. `ACS_CONNECTION_STRING` is only needed for local development.
+> **邮件邀请（托管身份）：** 生产环境设置 `ACS_ENDPOINT`（而非 `ACS_CONNECTION_STRING`），并为 Function App 托管身份授予 ACS 资源的 **Communication Services Contributor** 角色。本地开发才需要 `ACS_CONNECTION_STRING`。
 
-> `STORAGE_ACCOUNT_KEY` and `COSMOS_KEY` are **not needed** — the Function App uses Managed Identity.
+> `STORAGE_ACCOUNT_KEY` 和 `COSMOS_KEY` **不需要**——Function App 使用托管身份。
 
 ---
 
-## Managed Identity & RBAC Setup
+## 托管身份与 RBAC 配置
 
-The backend uses `DefaultAzureCredential`. No secrets are stored for storage or database access.
+后端使用 `DefaultAzureCredential`，不存储任何存储或数据库凭据。
 
-### 1. Enable System-assigned Managed Identity
+### 1. 启用系统分配托管身份
 
-Portal → `cloudphoto-api` → **Identity** → **System assigned** → toggle **On** → **Save**.
+门户 → `cloudphoto-api` → **标识** → **系统分配** → 切换为**启用** → **保存**。
 
-### 2. Grant Storage roles
+### 2. 授予存储角色
 
 ```bash
-MI_PRINCIPAL=<Object ID from Identity blade>
+MI_PRINCIPAL=<Identity 刀片中的对象 ID>
 STORAGE_SCOPE=/subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Storage/storageAccounts/photostorage
 
 az role assignment create --assignee $MI_PRINCIPAL \
@@ -628,7 +564,7 @@ az role assignment create --assignee $MI_PRINCIPAL \
   --role "Storage Blob Delegator" --scope $STORAGE_SCOPE
 ```
 
-### 3. Grant Cosmos DB role
+### 3. 授予 Cosmos DB 角色
 
 ```bash
 az cosmosdb sql role assignment create \
@@ -638,7 +574,7 @@ az cosmosdb sql role assignment create \
   --scope /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.DocumentDB/databaseAccounts/<COSMOS_ACCOUNT>
 ```
 
-### 4. Grant Azure Communication Services role (for email invites)
+### 4. 授予 Azure Communication Services 角色（邮件邀请）
 
 ```bash
 ACS_SCOPE=/subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Communication/communicationServices/<ACS_NAME>
@@ -647,168 +583,59 @@ az role assignment create --assignee $MI_PRINCIPAL \
   --role "Communication Services Contributor" --scope $ACS_SCOPE
 ```
 
-> Set `ACS_ENDPOINT` (the ACS resource URL) and `ACS_SENDER_ADDRESS` in the Function App's Application Settings. No connection string key is required.
+> 在 Function App 应用设置中配置 `ACS_ENDPOINT`（ACS 资源 URL）和 `ACS_SENDER_ADDRESS`，无需连接字符串密钥。
 
 ---
 
-## CI/CD (GitHub Actions)
+## CI/CD（GitHub Actions）
 
-Two workflows run automatically on push to `main`:
+push 到 `main` 时自动运行三个 workflow：
 
-| Workflow | File | Trigger |
-|----------|------|---------|
-| Deploy Backend | `.github/workflows/deploy-backend.yml` | `packages/server/**` changed |
-| Deploy Frontend | `.github/workflows/deploy-frontend.yml` | `packages/client/**` changed |
+| Workflow | 文件 | 触发条件 |
+|----------|------|----------|
+| 部署后端 | `.github/workflows/deploy-backend.yml` | `packages/server/**` 变更 |
+| 部署前端 | `.github/workflows/deploy-frontend.yml` | `packages/client/**` 或 `changes/**` 变更 |
+| 同步更新日志 | `.github/workflows/sync-changelog.yml` | `changes/**` 变更 |
 
-Both use **OIDC authentication** (no stored Azure passwords/keys).
+所有 workflow 均使用 **OIDC 认证**（无存储的 Azure 密码/密钥）。
 
-### Required GitHub Secrets
+### 所需 GitHub Secrets
 
-| Secret | Value |
-|--------|-------|
-| `AZURE_CLIENT_ID` | Service principal Application ID |
-| `AZURE_TENANT_ID` | Azure Tenant ID |
-| `AZURE_SUBSCRIPTION_ID` | Azure Subscription ID |
+| Secret | 值 |
+|--------|-----|
+| `AZURE_CLIENT_ID` | 服务主体应用程序 ID |
+| `AZURE_TENANT_ID` | Azure 租户 ID |
+| `AZURE_SUBSCRIPTION_ID` | Azure 订阅 ID |
 | `AZURE_FUNCTIONAPP_NAME` | `cloudphoto-api` |
 | `AZURE_RESOURCE_GROUP` | `CloudPhoto` |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA 部署令牌 |
 | `VITE_API_BASE` | `https://cloudphoto-api.azurewebsites.net/api` |
 
----
+### 更新日志自动化
 
-## PWA Install Guide
-
-The frontend is installable as a PWA and can run in both browser mode and app mode.
-
-### Desktop (Chrome / Edge)
-
-1. Open the production site over HTTPS
-2. Click the install icon in the address bar (or browser menu -> Install app)
-3. Launch from desktop/start menu as a standalone app window
-
-### Android (Chrome)
-
-1. Open the production site over HTTPS
-2. Browser menu -> Install app / Add to Home screen
-
-### iOS (Safari)
-
-1. Open the production site in Safari
-2. Tap Share
-3. Tap Add to Home Screen
-
-> iOS does not fire `beforeinstallprompt`, so in-app install buttons may not appear there.
-
-### OIDC Service Principal Setup
-
-```bash
-az ad sp create-for-rbac \
-  --name "cloudphoto-github" \
-  --role contributor \
-  --scopes /subscriptions/<SUB_ID>/resourceGroups/CloudPhoto \
-  --sdk-auth
-
-az ad app federated-credential create \
-  --id <APP_ID> \
-  --parameters '{
-    "name": "github-actions",
-    "issuer": "https://token.actions.githubusercontent.com",
-    "subject": "repo:jinyiyexing518/CloudPhoto:ref:refs/heads/main",
-    "audiences": ["api://AzureADTokenExchange"]
-  }'
-```
+- **Cosmos DB（线上 WhatsNew 数据）：** `sync-changelog.yml` 在 `changes/**` 有 push 时自动触发，无需手动操作
+- **`changelog.json`（静态兜底）：** 部署前端时 CI 自动运行 `node scripts/collect-changes.mjs` 重新生成，打包进静态资源
+- **新增 change 文件：** 在 `changes/` 目录创建 `YYYY-MM-DD-id.json`，commit + push，其余全部自动完成
 
 ---
 
-## Project Structure
+## PWA 安装指南
 
-```text
-CloudPhoto/
-├── .github/workflows/
-│   ├── deploy-backend.yml       # Build TypeScript, zip deploy via az CLI (OIDC)
-│   └── deploy-frontend.yml      # Build Vite, deploy to Azure Static Web Apps (OIDC)
-│
-├── client/                      # React 18 + Vite 5
-│   ├── public/
-│   │   ├── favicon.svg
-│   │   ├── apple-touch-icon.svg
-│   │   ├── pwa-192x192.svg
-│   │   ├── pwa-512x512.svg
-│   │   └── maskable-icon.svg
-│   ├── staticwebapp.config.json  # SPA fallback routing for SWA
-│   └── src/
-│       ├── App.tsx              # Root component — data loading, top-level routing, dialogs, transfer guard
-│       ├── index.css            # Global styles + responsive breakpoints + batch-select UI
-│       ├── contexts/
-│       │   ├── AuthContext.tsx  # JWT auth state: login / register / logout / token persistence
-│       │   ├── GroupContext.tsx # Current group selection
-│       │   └── ToastContext.tsx # Toast notification queue (success / error / info)
-│       ├── components/
-│       │   ├── auth/
-│       │   │   ├── AuthPage.tsx          # Login / Register tab UI
-│       │   │   └── AddAdminDialog.tsx    # Promote user to admin
-│       │   ├── home/
-│       │   │   ├── WorkspaceSidebar.tsx  # Context-aware right sidebar for timeline / moments filters and insights
-│       │   │   └── floating/
-│       │   │       └── WorkspaceFab.tsx  # Floating pill control group for opening sidebar tools
-│       │   ├── gallery/
-│       │   │   ├── PhotoGallery.tsx      # Date-grouped timeline + batch selection + focused photo targeting
-│       │   │   ├── FolderView.tsx        # Sub-folder navigation, breadcrumb, drag-drop, batch ops, share links
-│       │   │   ├── TrashView.tsx         # Recycle bin — restore or permanently delete
-│       │   │   ├── PhotoCard.tsx         # Thumbnail + selection badge + delete confirmation
-│       │   │   └── FilterBar.tsx         # Filter by name / subject / uploader / date / missing-subject / uncategorised
-│       │   └── groups/
-│       │       ├── GroupSwitcher.tsx     # Header dropdown: personal / groups
-│       │       ├── CreateGroupDialog.tsx # Create group form
-│       │       └── GroupSettings.tsx     # Members list + danger zone
-│       └── services/
-│           ├── photoApi.ts      # API calls with 15s timeout; 401→refresh→retry mutex; share-link/download helpers
-│           └── groupApi.ts      # Group CRUD API calls
-│
-└── server/                      # Azure Functions v4 (Node.js 24 + TypeScript)
-    └── src/
-        ├── index.ts             # Imports all function modules
-        ├── functions/
-        │   ├── auth/
-        │   │   ├── authRegister.ts      # POST /api/auth/register
-        │   │   ├── authLogin.ts         # POST /api/auth/login (returns refreshToken)
-        │   │   ├── authMe.ts            # GET  /api/auth/me
-        │   │   ├── authRefresh.ts       # POST /api/auth/refresh (rotating refresh tokens)
-        │   │   └── authAddAdmin.ts      # POST /api/auth/admins
-        │   ├── photos/
-        │   │   ├── listPhotos.ts        # GET    /api/photos (shared delegation key)
-        │   │   ├── uploadPhoto.ts       # POST   /api/photos/upload (MIME + size guard)
-        │   │   ├── downloadPhoto.ts     # GET    /api/photos/download
-        │   │   ├── createShareLink.ts   # GET    /api/photos/share (expiring URL)
-        │   │   ├── movePhoto.ts         # POST   /api/photos/move
-        │   │   ├── updatePhotoMetadata.ts  # PATCH /api/photos/metadata (JWT required)
-        │   │   └── deletePhoto.ts       # DELETE /api/photos (JWT required)
-        │   ├── trash/
-        │   │   ├── listTrash.ts         # GET    /api/photos/trash
-        │   │   ├── restorePhoto.ts      # POST   /api/photos/trash/restore
-        │   │   └── deleteTrashItem.ts   # DELETE /api/photos/trash
-        │   └── groups/
-        │       ├── createGroup.ts       # POST   /api/groups
-        │       ├── listGroups.ts        # GET    /api/groups
-        │       ├── getGroup.ts          # GET    /api/groups/{groupId}
-        │       ├── updateGroup.ts       # PATCH  /api/groups/{groupId}
-        │       ├── deleteGroup.ts       # DELETE /api/groups/{groupId}
-        │       ├── addMember.ts         # POST   /api/groups/{groupId}/members
-        │       └── removeMember.ts      # DELETE /api/groups/{groupId}/members/{memberId}
-        │   └── invites/
-        │       ├── createInvite.ts      # POST   /api/groups/{groupId}/invites
-        │       ├── getInvite.ts         # GET    /api/invites/{token}
-        │       ├── respondInvite.ts     # POST   /api/invites/{token}/respond
-        │       ├── listGroupInvites.ts  # GET    /api/groups/{groupId}/invites
-        │       └── cancelInvite.ts      # DELETE /api/invites/{token}
-        └── utils/
-            ├── blob/
-            │   └── blobStorage.ts   # DefaultAzureCredential + User Delegation SAS (2h)
-            ├── cosmos/
-            │   └── cosmosClient.ts  # DefaultAzureCredential + Cosmos DB client
-            ├── email/
-            │   └── emailUtils.ts    # ACS email (invite emails)
-            └── auth/
-                ├── jwtUtils.ts      # signToken (2h) / signRefreshToken (30d) / verify
-                └── rateLimit.ts     # In-memory sliding-window rate limiter (per IP)
-```
+### 桌面端（Chrome / Edge）
+
+1. 通过 HTTPS 打开生产站点
+2. 点击地址栏安装图标（或浏览器菜单 → 安装应用）
+3. 从桌面/开始菜单作为独立应用窗口启动
+
+### Android（Chrome）
+
+1. 通过 HTTPS 打开生产站点
+2. 浏览器菜单 → 安装应用 / 添加到主屏幕
+
+### iOS（Safari）
+
+1. 在 Safari 中打开生产站点
+2. 点击分享
+3. 选择「添加到主屏幕」
+
+> iOS 不触发 `beforeinstallprompt`，因此应用内安装按钮在 iOS 上可能不显示。

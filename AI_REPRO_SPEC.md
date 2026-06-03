@@ -29,6 +29,13 @@
 2.37 时光胶囊（TimeCapsule）：src/components/TimeCapsule.tsx；lazy 加载；localStorage key cf_capsules_{userId}；capsule 结构: { id, title, photoNames, unlockDate, createdAt }；锁定/解锁分区；创建弹窗使用 createPortal；新增 ViewTab: "capsule"；CSS 前缀 .capsule-*
 2.38 自动故事（AutoStory）：src/components/AutoStory.tsx；lazy 加载；选择文件夹/全部 + 过渡效果(fade/slide/zoom) + 播放间隔(2-10s)；全屏播放器通过 createPortal；键盘 ←→/Esc 支持；顶部进度段可点击；背景为当前图片的 blur 大图；新增 ViewTab: "story"；CSS 前缀 .story-*；@keyframes story-fade-in/story-slide-in/story-zoom-in
 2.39 GPS 数据管道：客户端上传时用 exifr.gps(file) 提取 latitude/longitude，作为 gpsLat/gpsLon 查询参数传给 uploadPhoto；服务端 uploadPhoto.ts 从 request.query 读取并写入 blob metadata；listPhotos.ts 在返回的照片对象中携带 gpsLat/gpsLon 字段；Photo interface 新增 gpsLat?: string; gpsLon?: string;
+2.40 EXIF 拍摄时间时区：exifr 内部将 EXIF 日期时间视为 UTC，因此使用 getUTCFullYear/Month/Date/Hours/Minutes/Seconds 格式化为不含 Z 后缀的 naive datetime 字符串（如 "2024-05-20T14:30:00"）；客户端 new Date("2024-05-20T14:30:00") 按本地时区解析，UTC+8 用户显示 14:30 而非 22:30
+2.41 排序键切换（takenAt / uploadedAt）：PhotoGallery 新增 sortKey prop（"taken" | "uploaded"，默认 "taken"）；groupByDate 和 flatPhotos useMemo 均按 sortKey 选择日期字段——"taken" 使用 photo.takenAt ?? photo.createdAt ?? photo.lastModified，"uploaded" 使用 photo.createdAt ?? photo.lastModified；App.tsx 新增 photoSortKey state，工具栏新增「📷 拍摄时间」和「☁ 上传时间」chip 切换按钮
+2.42 历史照片元数据回填：POST /api/photos/backfill[?groupId=<id>]；遍历所有 blob，下载缺少 takenAt 或 gpsLat 的照片，用 exifr.parse + exifr.gps 提取，写回 blob metadata；若有 GPS 则同时 upsert photoLocations Cosmos 记录；返回 { processed, updated, failed }；在 SettingsDialog「📱 应用」Tab 新增「历史照片回填」卡片，含加载状态和结果/错误展示
+2.43 批量修改拍摄时间：PhotoGallery 批量模式工具栏新增「修改时间 (N)」按钮；展开内联 datetime-local 输入框；handleBatchSetTakenAt 遍历 selected 集合调用 updatePhotoTakenAt，使用本地时区 naive datetime（不调用 toISOString()）
+2.44 批量修改 GPS 位置：PhotoGallery 批量模式工具栏新增「修改位置 (N)」按钮；展开内联纬度/经度输入框；handleBatchSetGps 校验 ±90/±180 范围后遍历 selected 调用 updatePhotoGps；通过 onGpsUpdate prop 回调同步 App state 中的 photos 数组
+2.45 重要片段 Top 20 限制：PhotoGallery 新增常量 MOMENTS_MAX = 20；momentCards useMemo 中将 ranked.slice(0, visibleCount) 改为 ranked.slice(0, MOMENTS_MAX)；hasMore 加入 !momentsMode 条件，重要片段视图不显示「加载更多」按钮
+2.46 change file 管道：changes/ 目录下所有文件命名规范为 YYYY-MM-DD-id.json，文件内 id 字段与文件名（去掉 .json）一致；scripts/create-change.mjs 支持 stdin 管道模式（!process.stdin.isTTY 时读 JSON 跳过交互）；deploy-frontend.yml 在 Build 步骤前执行 node scripts/collect-changes.mjs 自动重建 changelog.json；sync-changelog.yml 在 changes/** push 时自动同步到 Cosmos DB changelogs 容器
 
 ## 1. 目标
 
