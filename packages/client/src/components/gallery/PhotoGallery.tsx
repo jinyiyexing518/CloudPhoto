@@ -295,6 +295,7 @@ function PhotoGallery({
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
+  const [modalImageLoaded, setModalImageLoaded] = useState(false);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
@@ -672,6 +673,7 @@ function PhotoGallery({
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
     setImageDimensions(null);
+    setModalImageLoaded(false);
   }, [modalPhotos, trackMomentView]);
 
   // Keyboard navigation when modal is open
@@ -1394,17 +1396,21 @@ function PhotoGallery({
                   </span>
                 </>
               ) : (
-                <img
-                  src={selectedPhoto.url}
-                  alt={selectedPhoto.name}
-                  className="modal-image"
-                  onClick={() => setShowOriginalPreview(true)}
-                  title="点击预览原图"
-                  onLoad={(e) => {
-                    const img = e.currentTarget;
-                    setImageDimensions({ w: img.naturalWidth, h: img.naturalHeight });
-                  }}
-                />
+                <>
+                  {!modalImageLoaded && <div className="modal-image-spinner" />}
+                  <img
+                    src={selectedPhoto.url}
+                    alt={selectedPhoto.name}
+                    className={`modal-image${modalImageLoaded ? "" : " modal-image--loading"}`}
+                    onClick={() => setShowOriginalPreview(true)}
+                    title="点击预览原图"
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      setImageDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+                      setModalImageLoaded(true);
+                    }}
+                  />
+                </>
               )}
               {modalPhotos.length > 1 && (
                 <div className="modal-nav-hint">← → 切换 · Esc 关闭</div>

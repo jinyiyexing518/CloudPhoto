@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-modal-image-loading-spinner",
+  "date": "2026-06-03",
+  "title": "照片模态框图片加载时显示旋转进度圈",
+  "description": "照片预览模态框在图片加载完成之前显示旋转进度圈（spinner），图片加载完成后自动消失，避免出现长时间空白区域影响用户体验。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780481420053
+}
