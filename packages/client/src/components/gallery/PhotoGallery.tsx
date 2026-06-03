@@ -677,10 +677,11 @@ function PhotoGallery({
   useEffect(() => {
     if (selectedIdx === null) return;
     const handler = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).matches("input,textarea")) return;
       if (e.key === "Escape") { setSelectedIdx(null); setSelectedPhoto(null); }
       if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1);
       if (e.key === "ArrowRight" && selectedIdx < modalPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
-      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !(e.target as HTMLElement).matches("input,textarea")) {
+      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey) {
         if (selectedPhoto) {
           const next = !selectedPhoto.favorite;
           void onToggleFavorite(selectedPhoto.name, next).then((ok) => {
@@ -688,10 +689,20 @@ function PhotoGallery({
           });
         }
       }
+      if (e.key === "Delete" && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (selectedPhoto) {
+          const displayName = selectedPhoto.originalName || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
+          if (window.confirm(`确认删除照片：${displayName}？`)) {
+            onDelete(selectedPhoto.name);
+            setSelectedIdx(null);
+            setSelectedPhoto(null);
+          }
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedIdx, modalPhotos.length, navigateToPhoto, selectedPhoto, onToggleFavorite]);
+  }, [selectedIdx, modalPhotos.length, navigateToPhoto, selectedPhoto, onToggleFavorite, onDelete]);
 
   // Reverse geocode GPS coordinates to human-readable address
   useEffect(() => {

@@ -153,6 +153,15 @@
     "seq": 1780479680053
   },
   {
+    "id": "2026-06-03-keyboard-delete",
+    "date": "2026-06-03",
+    "title": "键盘 Delete 键删除模态框当前照片",
+    "description": "在照片预览模态框打开时，按 Delete 键可快速删除当前照片（弹出确认对话框），无需鼠标操作，提升键盘用户效率。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780480832570
+  },
+  {
     "id": "2026-06-03-keyboard-favorite",
     "date": "2026-06-03",
     "title": "快捷键 F 收藏/取消收藏照片",
