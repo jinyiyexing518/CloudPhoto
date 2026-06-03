@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-ctrl-a-select-all",
+  "date": "2026-06-03",
+  "title": "批量模式 Ctrl+A 全选所有照片",
+  "description": "在批量选择模式下，按 Ctrl+A（Mac 为 ⌘+A）可快速全选当前视图所有照片，再次按下则取消全选。快捷键速查表已同步更新。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780482257565
+}

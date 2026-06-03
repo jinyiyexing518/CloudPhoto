@@ -714,6 +714,20 @@ function PhotoGallery({
     return () => window.removeEventListener("keydown", handler);
   }, [selectedIdx, modalPhotos.length, navigateToPhoto, selectedPhoto, onToggleFavorite, onDelete]);
 
+  // Ctrl+A to select all photos in batch mode (when modal is closed)
+  useEffect(() => {
+    if (!selectMode || selectedIdx !== null) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+        if ((e.target as HTMLElement).matches("input,textarea")) return;
+        e.preventDefault();
+        toggleSelectAll();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectMode, selectedIdx, toggleSelectAll]);
+
   // Reverse geocode GPS coordinates to human-readable address
   useEffect(() => {
     setGeoAddress(null);
@@ -1774,6 +1788,7 @@ function PhotoGallery({
                 <tr><td><kbd>D</kbd></td><td>下载原图</td></tr>
                 <tr><td><kbd>Delete</kbd></td><td>删除照片</td></tr>
                 <tr><td><kbd>Esc</kbd></td><td>关闭预览</td></tr>
+                <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>批量模式下全选</td></tr>
                 <tr><td><kbd>?</kbd></td><td>显示/关闭此帮助</td></tr>
               </tbody>
             </table>
