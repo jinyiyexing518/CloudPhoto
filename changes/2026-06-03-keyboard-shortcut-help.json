@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-keyboard-shortcut-help",
+  "date": "2026-06-03",
+  "title": "「?」快捷键显示键盘速查表",
+  "description": "在照片预览模态框中按「?」键弹出键盘快捷键速查面板，列出 ←→ 切换、F 收藏、D 下载、Delete 删除、Esc 关闭等操作，方便用户快速学习所有快捷键。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780481101049
+}

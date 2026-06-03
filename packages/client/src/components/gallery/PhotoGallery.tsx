@@ -295,6 +295,7 @@ function PhotoGallery({
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -702,6 +703,9 @@ function PhotoGallery({
       if ((e.key === "d" || e.key === "D") && !e.ctrlKey && !e.metaKey && selectedPhoto) {
         const filename = selectedPhoto.originalName || selectedPhoto.name.replace(/^\d+-/, "");
         void downloadPhotoApi(selectedPhoto.name, filename);
+      }
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        setShowShortcutHelp((v) => !v);
       }
     };
     window.addEventListener("keydown", handler);
@@ -1705,6 +1709,26 @@ function PhotoGallery({
               在新窗口打开原图
             </a>
             <img src={selectedPhoto.url} alt={selectedPhoto.name} className="modal-preview-image" />
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard shortcut help overlay */}
+      {showShortcutHelp && (
+        <div className="shortcut-help-overlay" onClick={() => setShowShortcutHelp(false)}>
+          <div className="shortcut-help-panel" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowShortcutHelp(false)}>✕</button>
+            <h3 className="shortcut-help-title">键盘快捷键</h3>
+            <table className="shortcut-help-table">
+              <tbody>
+                <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>切换上/下一张</td></tr>
+                <tr><td><kbd>F</kbd></td><td>收藏 / 取消收藏</td></tr>
+                <tr><td><kbd>D</kbd></td><td>下载原图</td></tr>
+                <tr><td><kbd>Delete</kbd></td><td>删除照片</td></tr>
+                <tr><td><kbd>Esc</kbd></td><td>关闭预览</td></tr>
+                <tr><td><kbd>?</kbd></td><td>显示/关闭此帮助</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       )}
