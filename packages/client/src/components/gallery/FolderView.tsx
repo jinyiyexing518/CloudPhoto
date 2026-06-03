@@ -11,6 +11,7 @@ import {
   uploadPhotoWithProgress,
   setPhotoVoiceMemo as apiSetVoiceMemo,
   updatePhotoTakenAt,
+  updatePhotoGps,
   fetchMotionVideoBlob,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
@@ -18,6 +19,8 @@ import { copyText } from "../../features/share/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";
+import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
+import LocationSearchPanel from "../shared/LocationSearchPanel";
 
 const UNCATEGORIZED = "(未分类)";
 const MOVE_UNSELECTED = "__UNSEL__";
@@ -181,6 +184,7 @@ interface Props {
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onTakenAtUpdate?: (name: string, takenAt: string) => void;
+  onGpsUpdate?: (name: string, lat: string, lon: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
@@ -203,6 +207,7 @@ export default function FolderView({
   onSubjectUpdate,
   onRenamePhoto,
   onTakenAtUpdate,
+  onGpsUpdate,
   onToggleFavorite,
   onUploadToFolder,
   uploadProgress,
@@ -597,6 +602,7 @@ export default function FolderView({
           onSubjectUpdate={onSubjectUpdate}
           onRenamePhoto={onRenamePhoto}
           onTakenAtUpdate={onTakenAtUpdate}
+          onGpsUpdate={onGpsUpdate}
           onToggleFavorite={onToggleFavorite}
           onUploadToFolder={onUploadToFolder}
           uploadProgress={uploadProgress}
@@ -628,6 +634,7 @@ interface ContentProps {
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onTakenAtUpdate?: (name: string, takenAt: string) => void;
+  onGpsUpdate?: (name: string, lat: string, lon: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
   uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
@@ -653,6 +660,7 @@ function FolderContent({
   onSubjectUpdate,
   onRenamePhoto,
   onTakenAtUpdate,
+  onGpsUpdate,
   onToggleFavorite,
   onUploadToFolder,
   uploadProgress,
@@ -679,8 +687,9 @@ function FolderContent({
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [editingTakenAt, setEditingTakenAt] = useState(false);
-  const [takenAtInput, setTakenAtInput] = useState("");
   const [savingTakenAt, setSavingTakenAt] = useState(false);
+  const [editingGps, setEditingGps] = useState(false);
+  const [savingGps, setSavingGps] = useState(false);
   const [geoAddress, setGeoAddress] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -762,6 +771,7 @@ function FolderContent({
     setEditingName(false);
     setNameInput(getEditablePhotoName(photo));
     setEditingTakenAt(false);
+    setEditingGps(false);
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
     setShowOriginalPreview(false);
@@ -858,6 +868,8 @@ function FolderContent({
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
     setNameInput(getEditablePhotoName(photo));
+    setEditingTakenAt(false);
+    setEditingGps(false);
     setShowMovePanel(false);
     setMovingTo(MOVE_UNSELECTED);
     setShowOriginalPreview(false);
@@ -896,11 +908,11 @@ function FolderContent({
     }
   };
 
-  const saveTakenAt = async () => {
-    if (!selectedPhoto || !takenAtInput) return;
+  const saveTakenAt = async (isoStr: string) => {
+    if (!selectedPhoto) return;
     setSavingTakenAt(true);
     try {
-      const iso = new Date(takenAtInput).toISOString();
+      const iso = new Date(isoStr).toISOString();
       await updatePhotoTakenAt(selectedPhoto.name, iso, userName);
       onTakenAtUpdate?.(selectedPhoto.name, iso);
       setSelectedPhoto({ ...selectedPhoto, takenAt: iso });
@@ -909,6 +921,22 @@ function FolderContent({
       showToast("更新拍摄时间失败", "error");
     } finally {
       setSavingTakenAt(false);
+    }
+  };
+
+  const saveGps = async (lat: string, lon: string) => {
+    if (!selectedPhoto) return;
+    setSavingGps(true);
+    try {
+      await updatePhotoGps(selectedPhoto.name, lat, lon);
+      onGpsUpdate?.(selectedPhoto.name, lat, lon);
+      setSelectedPhoto({ ...selectedPhoto, gpsLat: lat, gpsLon: lon });
+      setEditingGps(false);
+      setGeoAddress(null);
+    } catch {
+      showToast("更新位置失败", "error");
+    } finally {
+      setSavingGps(false);
     }
   };
 
@@ -1497,30 +1525,17 @@ function FolderContent({
 
                 <span className="modal-detail-label">拍摄时间</span>
                 <span className="modal-detail-value modal-subject-cell">
-                  {editingTakenAt ? (
-                    <>
-                      <input
-                        type="datetime-local"
-                        className="modal-subject-input"
-                        value={takenAtInput}
-                        onChange={(e) => setTakenAtInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") void saveTakenAt();
-                          if (e.key === "Escape") setEditingTakenAt(false);
-                        }}
-                      />
-                      <button className="modal-subject-save" onClick={() => void saveTakenAt()} disabled={savingTakenAt}>
-                        {savingTakenAt ? "..." : "保存"}
-                      </button>
-                      <button className="modal-subject-cancel" onClick={() => setEditingTakenAt(false)}>✕</button>
-                    </>
-                  ) : (
-                    <>
-                      <span>{selectedPhoto.takenAt ? formatDate(selectedPhoto.takenAt) : <em className="modal-empty">未记录</em>}</span>
-                      <button className="modal-edit-btn" onClick={() => { setTakenAtInput(isoToDatetimeLocal(selectedPhoto.takenAt ?? "")); setEditingTakenAt(true); }}>✏</button>
-                    </>
-                  )}
+                  <span>{selectedPhoto.takenAt ? formatDate(selectedPhoto.takenAt) : <em className="modal-empty">未记录</em>}</span>
+                  <button className="modal-edit-btn" onClick={() => setEditingTakenAt(true)}>✏</button>
                 </span>
+                {editingTakenAt && (
+                  <PhotoTimeEditDialog
+                    currentIso={selectedPhoto.takenAt}
+                    saving={savingTakenAt}
+                    onSave={(iso) => void saveTakenAt(iso)}
+                    onClose={() => setEditingTakenAt(false)}
+                  />
+                )}
 
                 <span className="modal-detail-label">上传者</span>
                 <span className="modal-detail-value">{selectedPhoto.createdBy ?? "—"}</span>
@@ -1543,17 +1558,45 @@ function FolderContent({
                   isFinite(parseFloat(selectedPhoto.gpsLat)) && isFinite(parseFloat(selectedPhoto.gpsLon)) && (
                   <>
                     <span className="modal-detail-label">位置</span>
-                    <span className="modal-detail-value" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span>
-                        {geoLoading ? "正在定位..." : (geoAddress ?? `${parseFloat(selectedPhoto.gpsLat).toFixed(4)}°, ${parseFloat(selectedPhoto.gpsLon).toFixed(4)}°`)}
+                    <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>
+                          {geoLoading ? "正在定位..." : (geoAddress ?? `${parseFloat(selectedPhoto.gpsLat).toFixed(4)}°, ${parseFloat(selectedPhoto.gpsLon).toFixed(4)}°`)}
+                        </span>
+                        <a
+                          href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="modal-edit-btn"
+                          title="在 Google 地图中查看"
+                        >🗺</a>
+                        <button className="modal-edit-btn" title="修改位置" onClick={() => setEditingGps((v) => !v)}>✏</button>
                       </span>
-                      <a
-                        href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="modal-edit-btn"
-                        title="在 Google 地图中查看"
-                      >🗺</a>
+                      {editingGps && (
+                        <LocationSearchPanel
+                          saving={savingGps}
+                          onSelect={(lat, lon) => void saveGps(lat, lon)}
+                          onClose={() => setEditingGps(false)}
+                        />
+                      )}
+                    </span>
+                  </>
+                )}
+                {!selectedPhoto.gpsLat && (
+                  <>
+                    <span className="modal-detail-label">位置</span>
+                    <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <em className="modal-empty">未记录</em>
+                        <button className="modal-edit-btn" title="添加位置" onClick={() => setEditingGps((v) => !v)}>+ 添加</button>
+                      </span>
+                      {editingGps && (
+                        <LocationSearchPanel
+                          saving={savingGps}
+                          onSelect={(lat, lon) => void saveGps(lat, lon)}
+                          onClose={() => setEditingGps(false)}
+                        />
+                      )}
                     </span>
                   </>
                 )}
@@ -1631,14 +1674,5 @@ function formatDate(value: string | Date): string {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
-}
-
-function isoToDatetimeLocal(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch { return ""; }
 }
 

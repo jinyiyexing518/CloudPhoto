@@ -41,6 +41,37 @@ async function fetchAddress(lat: number, lon: number): Promise<string | null> {
   }
 }
 
+/** A single place result from Nominatim forward search. */
+export interface LocationSearchResult {
+  displayName: string;
+  lat: number;
+  lon: number;
+}
+
+/**
+ * Search for places by name using Nominatim (OpenStreetMap).
+ * Returns up to 6 results ordered by relevance.
+ */
+export async function searchLocation(query: string): Promise<LocationSearchResult[]> {
+  if (!query.trim()) return [];
+  try {
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=6&accept-language=zh-CN,zh`,
+    );
+    if (!resp.ok) return [];
+    const data = await resp.json() as Array<{ display_name?: string; lat?: string; lon?: string }>;
+    return data
+      .filter((r) => r.display_name && r.lat && r.lon)
+      .map((r) => ({
+        displayName: r.display_name!,
+        lat: parseFloat(r.lat!),
+        lon: parseFloat(r.lon!),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Reverse geocode coordinates to a human-readable address.
  * Results are cached per session (de-duplicated to 3 decimal places ≈ 111m).

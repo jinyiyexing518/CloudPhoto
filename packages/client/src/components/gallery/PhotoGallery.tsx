@@ -21,6 +21,8 @@ import { copyText } from "../../features/share/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";
+import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
+import LocationSearchPanel from "../shared/LocationSearchPanel";
 
 interface Props {
   photos: Photo[];
@@ -278,8 +280,9 @@ function PhotoGallery({
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [editingTakenAt, setEditingTakenAt] = useState(false);
-  const [takenAtInput, setTakenAtInput] = useState("");
   const [savingTakenAt, setSavingTakenAt] = useState(false);
+  const [editingGps, setEditingGps] = useState(false);
+  const [savingGps, setSavingGps] = useState(false);
   const [geoAddress, setGeoAddress] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -648,6 +651,7 @@ function PhotoGallery({
     setEditingName(false);
     setNameInput(getEditablePhotoName(photo));
     setEditingTakenAt(false);
+    setEditingGps(false);
     setMoveFolderInput(photo.folder ?? "");
     setShowOriginalPreview(false);
     setDownloading(false);
@@ -730,12 +734,12 @@ function PhotoGallery({
     }
   };
 
-  const saveTakenAt = async () => {
-    if (!selectedPhoto || !takenAtInput) return;
+  const saveTakenAt = async (isoStr: string) => {
+    if (!selectedPhoto) return;
     setSavingTakenAt(true);
     try {
       // Store as naive datetime (no Z) so all clients display in local time
-      const d = new Date(takenAtInput);
+      const d = new Date(isoStr);
       if (isNaN(d.getTime())) { showToast("无效的日期时间", "error"); return; }
       const pad = (n: number) => String(n).padStart(2, "0");
       const naive = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -747,6 +751,22 @@ function PhotoGallery({
       showToast("更新拍摄时间失败", "error");
     } finally {
       setSavingTakenAt(false);
+    }
+  };
+
+  const saveGps = async (lat: string, lon: string) => {
+    if (!selectedPhoto) return;
+    setSavingGps(true);
+    try {
+      await updatePhotoGps(selectedPhoto.name, lat, lon);
+      onGpsUpdate?.(selectedPhoto.name, lat, lon);
+      setSelectedPhoto({ ...selectedPhoto, gpsLat: lat, gpsLon: lon });
+      setEditingGps(false);
+      setGeoAddress(null);
+    } catch {
+      showToast("更新位置失败", "error");
+    } finally {
+      setSavingGps(false);
     }
   };
 
@@ -770,10 +790,12 @@ function PhotoGallery({
     else showToast(`已修改 ${selectedList.length} 张照片的拍摄时间`, "success");
   };
 
-  const handleBatchSetGps = async () => {
-    if (!batchGpsLat || !batchGpsLon || selected.size === 0) return;
-    const lat = parseFloat(batchGpsLat);
-    const lon = parseFloat(batchGpsLon);
+  const handleBatchSetGps = async (overrideLat?: string, overrideLon?: string) => {
+    const effectiveLat = overrideLat ?? batchGpsLat;
+    const effectiveLon = overrideLon ?? batchGpsLon;
+    if (!effectiveLat || !effectiveLon || selected.size === 0) return;
+    const lat = parseFloat(effectiveLat);
+    const lon = parseFloat(effectiveLon);
     if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
       showToast("坐标无效：纬度 ±90°，经度 ±180°", "error");
       return;
@@ -782,8 +804,8 @@ function PhotoGallery({
     let failed = 0;
     for (const p of selectedList) {
       try {
-        await updatePhotoGps(p.name, batchGpsLat, batchGpsLon);
-        onGpsUpdate?.(p.name, batchGpsLat, batchGpsLon);
+        await updatePhotoGps(p.name, effectiveLat, effectiveLon);
+        onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
       } catch { failed++; }
     }
     setShowBatchGpsEdit(false);
@@ -989,30 +1011,13 @@ function PhotoGallery({
         </div>
       )}
       {selectMode && showBatchGpsEdit && (
-        <div className="batch-edit-form">
-          <span className="batch-edit-label">统一位置坐标</span>
-          <input
-            type="number"
-            className="batch-edit-input batch-edit-input--short"
-            placeholder="纬度（如 39.9042）"
-            value={batchGpsLat}
-            onChange={(e) => setBatchGpsLat(e.target.value)}
-            step="any"
+        <div className="batch-edit-form batch-edit-form--gps">
+          <span className="batch-edit-label">统一位置（搜索地名）</span>
+          <LocationSearchPanel
+            saving={false}
+            onSelect={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
+            onClose={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
           />
-          <input
-            type="number"
-            className="batch-edit-input batch-edit-input--short"
-            placeholder="经度（如 116.4074）"
-            value={batchGpsLon}
-            onChange={(e) => setBatchGpsLon(e.target.value)}
-            step="any"
-          />
-          <button className="batch-select-btn" onClick={() => void handleBatchSetGps()} disabled={!batchGpsLat || !batchGpsLon}>
-            应用
-          </button>
-          <button className="batch-select-btn" onClick={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}>
-            取消
-          </button>
         </div>
       )}
 
@@ -1516,30 +1521,17 @@ function PhotoGallery({
                   <>
                     <span className="modal-detail-label">拍摄时间</span>
                     <span className="modal-detail-value modal-subject-cell">
-                      {editingTakenAt ? (
-                        <>
-                          <input
-                            type="datetime-local"
-                            className="modal-subject-input"
-                            value={takenAtInput}
-                            onChange={(e) => setTakenAtInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveTakenAt();
-                              if (e.key === "Escape") setEditingTakenAt(false);
-                            }}
-                          />
-                          <button className="modal-subject-save" onClick={() => void saveTakenAt()} disabled={savingTakenAt}>
-                            {savingTakenAt ? "..." : "保存"}
-                          </button>
-                          <button className="modal-subject-cancel" onClick={() => setEditingTakenAt(false)}>✕</button>
-                        </>
-                      ) : (
-                        <>
-                          <span>{selectedPhoto.takenAt ? formatDate(selectedPhoto.takenAt) : <em className="modal-empty">未记录</em>}</span>
-                          <button className="modal-edit-btn" onClick={() => { setTakenAtInput(isoToDatetimeLocal(selectedPhoto.takenAt ?? "")); setEditingTakenAt(true); }}>✏</button>
-                        </>
-                      )}
+                      <span>{selectedPhoto.takenAt ? formatDate(selectedPhoto.takenAt) : <em className="modal-empty">未记录</em>}</span>
+                      <button className="modal-edit-btn" onClick={() => setEditingTakenAt(true)}>✏</button>
                     </span>
+                    {editingTakenAt && (
+                      <PhotoTimeEditDialog
+                        currentIso={selectedPhoto.takenAt}
+                        saving={savingTakenAt}
+                        onSave={(iso) => void saveTakenAt(iso)}
+                        onClose={() => setEditingTakenAt(false)}
+                      />
+                    )}
 
                     <span className="modal-detail-label">上传者</span>
                     <span className="modal-detail-value">{selectedPhoto.createdBy ?? "—"}</span>
@@ -1566,17 +1558,45 @@ function PhotoGallery({
                       isFinite(parseFloat(selectedPhoto.gpsLat)) && isFinite(parseFloat(selectedPhoto.gpsLon)) && (
                       <>
                         <span className="modal-detail-label">位置</span>
-                        <span className="modal-detail-value" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span>
-                            {geoLoading ? "正在定位..." : (geoAddress ?? `${parseFloat(selectedPhoto.gpsLat).toFixed(4)}°, ${parseFloat(selectedPhoto.gpsLon).toFixed(4)}°`)}
+                        <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span>
+                              {geoLoading ? "正在定位..." : (geoAddress ?? `${parseFloat(selectedPhoto.gpsLat).toFixed(4)}°, ${parseFloat(selectedPhoto.gpsLon).toFixed(4)}°`)}
+                            </span>
+                            <a
+                              href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="modal-edit-btn"
+                              title="在 Google 地图中查看"
+                            >🗺</a>
+                            <button className="modal-edit-btn" title="修改位置" onClick={() => setEditingGps((v) => !v)}>✏</button>
                           </span>
-                          <a
-                            href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="modal-edit-btn"
-                            title="在 Google 地图中查看"
-                          >🗺</a>
+                          {editingGps && (
+                            <LocationSearchPanel
+                              saving={savingGps}
+                              onSelect={(lat, lon) => void saveGps(lat, lon)}
+                              onClose={() => setEditingGps(false)}
+                            />
+                          )}
+                        </span>
+                      </>
+                    )}
+                    {!selectedPhoto.gpsLat && (
+                      <>
+                        <span className="modal-detail-label">位置</span>
+                        <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <em className="modal-empty">未记录</em>
+                            <button className="modal-edit-btn" title="添加位置" onClick={() => setEditingGps((v) => !v)}>+ 添加</button>
+                          </span>
+                          {editingGps && (
+                            <LocationSearchPanel
+                              saving={savingGps}
+                              onSelect={(lat, lon) => void saveGps(lat, lon)}
+                              onClose={() => setEditingGps(false)}
+                            />
+                          )}
                         </span>
                       </>
                     )}
@@ -1628,15 +1648,6 @@ function formatDate(value: string | Date): string {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
-}
-
-function isoToDatetimeLocal(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch { return ""; }
 }
 
 export default memo(PhotoGallery);
