@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-video-duration-badge",
+  "date": "2026-06-03",
+  "title": "视频卡片显示视频时长",
+  "description": "视频照片的缩略图右下角播放徽章现在同时显示视频时长（如「▶ 1:24」），方便用户在浏览时快速了解视频长度。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780481301409
+}

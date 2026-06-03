@@ -34,6 +34,7 @@ function PhotoCard({
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [gifPaused, setGifPaused] = useState(false);
+  const [videoDuration, setVideoDuration] = useState<string | null>(null);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
@@ -47,6 +48,13 @@ function PhotoCard({
     if (!v) return;
     // Seek to 10% of duration (max 2 s) to get a representative thumbnail frame
     v.currentTime = Math.min(2, v.duration * 0.1);
+    // Format duration
+    const secs = Math.round(v.duration);
+    if (isFinite(secs)) {
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      setVideoDuration(`${m}:${String(s).padStart(2, "0")}`);
+    }
   };
   const handleVideoSeeked = () => setImgLoaded(true);
 
@@ -114,7 +122,7 @@ function PhotoCard({
               onLoad={() => setImgLoaded(true)}
             />
           )}
-          {isVideo && <div className="photo-video-badge">▶</div>}
+          {isVideo && <div className="photo-video-badge">▶{videoDuration ? ` ${videoDuration}` : ""}</div>}
           {isAnimated && isMotionPhoto && (
             <div className="photo-video-badge">动态照片 📱</div>
           )}
