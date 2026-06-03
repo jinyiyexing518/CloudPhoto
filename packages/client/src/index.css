@@ -5376,6 +5376,21 @@ body {
   font-weight: 400;
   color: #9ca3af;
 }
+.date-group-select-all {
+  margin-left: 10px;
+  background: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 0.73rem;
+  color: #6366f1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.date-group-select-all:hover {
+  background: #ede9fe;
+  border-color: #a5b4fc;
+}
 
 /* States */
 .empty-gallery {

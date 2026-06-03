@@ -1243,6 +1243,23 @@ function PhotoGallery({
               <span className="date-group-dot" />
               {group.label}
               <span className="date-group-count">{group.photos.length}</span>
+              {selectMode && (
+                <button
+                  className="date-group-select-all"
+                  onClick={() => {
+                    const names = group.photos.map((p) => p.name);
+                    const allIn = names.every((n) => selected.has(n));
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      if (allIn) names.forEach((n) => next.delete(n));
+                      else names.forEach((n) => next.add(n));
+                      return next;
+                    });
+                  }}
+                >
+                  {group.photos.every((p) => selected.has(p.name)) ? "取消全选" : "全选本日"}
+                </button>
+              )}
             </h2>
             <div className={`photo-grid${gridSize === "sm" ? " photo-grid--sm" : gridSize === "lg" ? " photo-grid--lg" : ""}`}>
               {group.photos.map((photo) => (
