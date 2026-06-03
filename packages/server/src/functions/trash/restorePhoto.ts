@@ -6,7 +6,7 @@ import {
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
-import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import { isGroupMember, getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
 
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -93,6 +93,27 @@ app.http("restorePhoto", {
           body: JSON.stringify({ error: "Photo restore conflict, please retry" }),
         };
       }
+
+      // Re-add GPS to Cosmos cache if the restored photo has coordinates
+      try {
+        const finalProps = await blockBlobClient.getProperties();
+        const meta = finalProps.metadata ?? {};
+        const lat = meta.gpsLat ?? meta.gpslat;
+        const lon = meta.gpsLon ?? meta.gpslon;
+        if (lat && lon) {
+          const scope = blobName.split("/").slice(0, 2).join("/");
+          const locsContainer = await getPhotoLocationsContainer();
+          const doc: PhotoLocationDoc = {
+            id: encodeURIComponent(blobName),
+            scope,
+            name: blobName,
+            lat: parseFloat(lat),
+            lon: parseFloat(lon),
+            uploadedAt: meta.createdAt ?? new Date().toISOString(),
+          };
+          await locsContainer.items.upsert(doc);
+        }
+      } catch { /* best-effort, non-fatal */ }
 
       return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Photo restored" }) };
     } catch (error) {

@@ -6,7 +6,7 @@ import {
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
-import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import { isGroupMember, getPhotoLocationsContainer } from "../../utils/cosmos/cosmosClient";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 
@@ -98,6 +98,13 @@ app.http("deletePhoto", {
           body: JSON.stringify({ error: "Photo delete conflict, please retry" }),
         };
       }
+
+      // Remove GPS cache from Cosmos so soft-deleted photos don't appear on the map
+      try {
+        const scope = blobName.split("/").slice(0, 2).join("/");
+        const locsContainer = await getPhotoLocationsContainer();
+        await locsContainer.item(encodeURIComponent(blobName), scope).delete();
+      } catch { /* photo may not have had GPS — ignore */ }
 
       return {
         status: 200,
