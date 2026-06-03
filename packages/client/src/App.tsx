@@ -227,6 +227,7 @@ function AppContent() {
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dragFileCount, setDragFileCount] = useState(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
   const [uploadPaused, setUploadPaused] = useState(false);
@@ -757,6 +758,7 @@ function AppContent() {
       if (!e.dataTransfer?.types.includes("Files")) return;
       enterCount++;
       setIsDragOver(true);
+      setDragFileCount(e.dataTransfer.items ? Array.from(e.dataTransfer.items).filter((i) => i.kind === "file").length : 0);
     };
     const onDragLeave = () => {
       enterCount = Math.max(0, enterCount - 1);
@@ -1202,7 +1204,7 @@ function AppContent() {
         <div className="drag-overlay">
           <div className="drag-overlay-content">
             <div className="drag-overlay-icon">📂</div>
-            <p className="drag-overlay-title">松开后跳转到文件夹视图上传</p>
+            <p className="drag-overlay-title">{dragFileCount > 0 ? `拖入 ${dragFileCount} 个文件` : "松开后跳转到文件夹视图上传"}</p>
             <p className="drag-overlay-sub">支持 JPG、PNG、WebP、HEIC 等格式</p>
           </div>
         </div>

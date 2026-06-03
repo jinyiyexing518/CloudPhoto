@@ -101,6 +101,15 @@
     "seq": 1780480780595
   },
   {
+    "id": "2026-06-03-drag-file-count",
+    "date": "2026-06-03",
+    "title": "拖拽上传时显示文件数量提示",
+    "description": "将文件拖拽到页面上时，全屏覆盖层标题实时显示「拖入 N 个文件」，让用户在松开前确认选中的文件数量。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780481637391
+  },
+  {
     "id": "2026-06-03-exif-timezone-fix",
     "date": "2026-06-03",
     "icon": "🕐",
