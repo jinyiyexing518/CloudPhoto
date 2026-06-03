@@ -165,6 +165,13 @@
     "summary": "上传视频时从MP4/MOV容器解析拍摄时间(mvhd box)和GPS坐标(©xyz atom)，修复视频无法获取拍摄时间和位置的问题"
   },
   {
+    "id": "2026-06-03-whats-new-scroll-fix",
+    "date": "2026-06-03",
+    "type": "fix",
+    "title": "最近更新弹窗可正常滚动",
+    "summary": "修复最近更新弹窗无法滚动、滑动穿透到后方照片的问题：将内容统一放入独立滚动容器并设置overscroll-behavior:contain"
+  },
+  {
     "id": "2026-06-02-auto-story",
     "date": "2026-06-02",
     "icon": "🎬",
