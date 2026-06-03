@@ -1078,7 +1078,7 @@ function PhotoGallery({
                     alt={selectedPhoto.name}
                     className="modal-image modal-image--gif"
                   />
-                  <span className="modal-gif-badge">GIF</span>
+                  <span className="modal-gif-badge">动图 ▶ 循环播放</span>
                 </>
               ) : (
                 <img

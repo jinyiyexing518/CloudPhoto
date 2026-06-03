@@ -10,6 +10,7 @@ import {
   generateSasUrl,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
 
 const ALLOWED_IMAGE_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif",
@@ -97,6 +98,26 @@ app.http("uploadPhoto", {
           ...(gpsLon && { gpsLon }),
         },
       });
+
+      // Cache GPS coordinates in Cosmos for fast map queries
+      if (gpsLat && gpsLon) {
+        try {
+          const locsContainer = await getPhotoLocationsContainer();
+          const doc: PhotoLocationDoc = {
+            id: blobName,
+            scope,
+            name: blobName,
+            lat: parseFloat(gpsLat),
+            lon: parseFloat(gpsLon),
+            originalName: filename,
+            contentType: mimeType,
+            uploadedAt: now,
+          };
+          await locsContainer.items.upsert(doc);
+        } catch (e) {
+          context.warn("photoLocations upsert failed (non-fatal):", e);
+        }
+      }
 
       return {
         status: 200,

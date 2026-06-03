@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Photo, updatePhotoGps } from "../../services/photoApi";
+import { Photo, PhotoLocation, fetchPhotoLocations, updatePhotoGps } from "../../services/photoApi";
 import MediaThumb from "../shared/MediaThumb";
 
 // Module-level Leaflet cache - avoids re-importing on every effect run
@@ -22,19 +22,26 @@ function loadLeaflet(): Promise<typeof import("leaflet")> {
 }
 
 // Pure helper outside component - stable reference
-function displayName(p: Photo): string {
+function displayName(p: { name: string; originalName?: string }): string {
   return p.originalName ?? p.name.split("/").pop() ?? p.name;
 }
 
 interface Props {
   photos: Photo[];
+  groupId?: string;
   onViewPhoto?: (name: string) => void;
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
 }
 
-interface GeoPhoto extends Photo {
+/** Unified GPS pin — may come from the full Photo list or the fast Cosmos cache */
+interface GeoPin {
+  name: string;
   lat: number;
   lon: number;
+  originalName?: string;
+  contentType?: string;
+  /** Present when the full Photo object has been loaded */
+  photo?: Photo;
 }
 
 interface NominatimResult {
@@ -43,7 +50,7 @@ interface NominatimResult {
   display_name: string;
 }
 
-export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
+export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpdate }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
   // name -> Marker for O(1) incremental add/remove/update
@@ -52,6 +59,14 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
   const [mapReady, setMapReady] = useState(false);
   // Track by name so detail card always shows latest data
   const [selectedName, setSelectedName] = useState<string | null>(null);
+
+  // Fast GPS locations from Cosmos cache (lat/lon only, no URL)
+  const [cosmosLocations, setCosmosLocations] = useState<PhotoLocation[]>([]);
+
+  // Fetch GPS locations from Cosmos on mount (fast, independent of full photo list)
+  useEffect(() => {
+    void fetchPhotoLocations(groupId).then(setCosmosLocations);
+  }, [groupId]);
 
   // Manual GPS editing
   const [editTarget, setEditTarget] = useState<Photo | null>(null);
@@ -65,14 +80,36 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
   const [noGpsShowAll, setNoGpsShowAll] = useState(false);
 
   // Memoised derived state
-  const geoPhotos = useMemo<GeoPhoto[]>(
-    () =>
-      photos
-        .filter((p) => p.gpsLat && p.gpsLon)
-        .map((p) => ({ ...p, lat: parseFloat(p.gpsLat!), lon: parseFloat(p.gpsLon!) }))
-        .filter((p) => !isNaN(p.lat) && !isNaN(p.lon)),
-    [photos],
-  );
+  const geoPhotos = useMemo<GeoPin[]>(() => {
+    // Build a fast lookup of full Photo objects by name
+    const photoMap = new Map<string, Photo>(photos.map((p) => [p.name, p]));
+
+    // Merge: Cosmos locations are the source of truth for GPS coords;
+    // enrich with full Photo object when available (provides URL, subject, etc.)
+    const fromCosmos: GeoPin[] = cosmosLocations
+      .filter((l) => !isNaN(l.lat) && !isNaN(l.lon))
+      .map((l) => ({
+        name: l.name,
+        lat: l.lat,
+        lon: l.lon,
+        originalName: l.originalName,
+        contentType: l.contentType,
+        photo: photoMap.get(l.name),
+      }));
+
+    // Also include photos with GPS that aren't in Cosmos yet (e.g. just uploaded this session)
+    const cosmosNames = new Set(cosmosLocations.map((l) => l.name));
+    const fromPhotosOnly: GeoPin[] = photos
+      .filter((p) => p.gpsLat && p.gpsLon && !cosmosNames.has(p.name))
+      .flatMap((p) => {
+        const lat = parseFloat(p.gpsLat!);
+        const lon = parseFloat(p.gpsLon!);
+        if (isNaN(lat) || isNaN(lon)) return [];
+        return [{ name: p.name, lat, lon, originalName: p.originalName, contentType: p.contentType, photo: p } satisfies GeoPin];
+      });
+
+    return [...fromCosmos, ...fromPhotosOnly];
+  }, [cosmosLocations, photos]);
 
   const noGpsPhotos = useMemo(
     () => photos.filter((p) => !p.gpsLat || !p.gpsLon),
@@ -170,7 +207,7 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
     };
   }, []);
 
-  // Always resolves to latest photo data via name lookup
+  // Always resolves to latest pin data via name lookup
   const selected = useMemo(
     () => (selectedName ? geoPhotos.find((p) => p.name === selectedName) ?? null : null),
     [selectedName, geoPhotos],
@@ -185,6 +222,14 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
       const bounds = L.latLngBounds(geoPhotos.map((p) => [p.lat, p.lon]));
       leafletMapRef.current.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
     }
+  };
+
+  const openEditFor = (photo: Photo) => {
+    setEditTarget(photo);
+    setAddressQuery("");
+    setGeocodeResults([]);
+    setManualLat(photo.gpsLat ?? "");
+    setManualLon(photo.gpsLon ?? "");
   };
 
   const doGeocode = async () => {
@@ -203,14 +248,6 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
     } finally {
       setGeocoding(false);
     }
-  };
-
-  const openEditFor = (photo: Photo) => {
-    setEditTarget(photo);
-    setAddressQuery("");
-    setGeocodeResults([]);
-    setManualLat(photo.gpsLat ?? "");
-    setManualLon(photo.gpsLon ?? "");
   };
 
   const closeEdit = () => {
@@ -316,27 +353,35 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
         <div className="memory-map-detail" onClick={() => setSelectedName(null)}>
           <div className="memory-map-detail-card" onClick={(e) => e.stopPropagation()}>
             <button className="memory-map-detail-close" onClick={() => setSelectedName(null)}>✕</button>
-            <img src={selected.url} alt={displayName(selected)} className="memory-map-detail-img" loading="lazy" />
+            {selected.photo ? (
+              <img src={selected.photo.url} alt={displayName(selected)} className="memory-map-detail-img" loading="lazy" />
+            ) : (
+              <div className="memory-map-detail-img memory-map-detail-img--placeholder">📷</div>
+            )}
             <div className="memory-map-detail-info">
               <div className="memory-map-detail-name">{displayName(selected)}</div>
               <div className="memory-map-detail-coords">
                 📍 {selected.lat.toFixed(4)}, {selected.lon.toFixed(4)}
               </div>
-              {selected.subject && <div className="memory-map-detail-subject">🏷 {selected.subject}</div>}
-              <div className="memory-map-detail-date">
-                🗓 {new Date(selected.createdAt ?? selected.lastModified ?? "").toLocaleDateString("zh-CN")}
-              </div>
+              {selected.photo?.subject && <div className="memory-map-detail-subject">🏷 {selected.photo.subject}</div>}
+              {selected.photo?.createdAt && (
+                <div className="memory-map-detail-date">
+                  🗓 {new Date(selected.photo.createdAt).toLocaleDateString("zh-CN")}
+                </div>
+              )}
               <div className="memory-map-detail-actions">
-                {onViewPhoto && (
+                {onViewPhoto && selected.photo && (
                   <button
                     className="memory-map-detail-jump"
                     onClick={() => { setSelectedName(null); onViewPhoto(selected.name); }}
                   >在时间线中查看</button>
                 )}
-                <button
-                  className="memory-map-detail-edit"
-                  onClick={() => { setSelectedName(null); openEditFor(selected); }}
-                >✏️ 修改位置</button>
+                {selected.photo && (
+                  <button
+                    className="memory-map-detail-edit"
+                    onClick={() => { setSelectedName(null); openEditFor(selected.photo!); }}
+                  >✏️ 修改位置</button>
+                )}
               </div>
             </div>
           </div>

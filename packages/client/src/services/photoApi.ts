@@ -203,11 +203,37 @@ export interface Photo {
   gpsLon?: string;
 }
 
+/** Lightweight GPS-only record from the fast Cosmos cache */
+export interface PhotoLocation {
+  name: string;
+  lat: number;
+  lon: number;
+  originalName?: string;
+  contentType?: string;
+}
+
 export async function listPhotos(groupId = ""): Promise<Photo[]> {
   const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
   const response = await fetchWithTimeout(url, { headers: authHeaders() });
   if (!response.ok) throw new Error("Failed to fetch photos");
   return response.json() as Promise<Photo[]>;
+}
+
+/**
+ * Fetch GPS-tagged photo locations from the fast Cosmos cache.
+ * Returns only coordinates — no SAS URLs. Much faster than listPhotos.
+ */
+export async function fetchPhotoLocations(groupId = ""): Promise<PhotoLocation[]> {
+  const url = groupId
+    ? `${API_BASE}/photos/locations?groupId=${encodeURIComponent(groupId)}`
+    : `${API_BASE}/photos/locations`;
+  try {
+    const response = await fetchWithTimeout(url, { headers: authHeaders() });
+    if (!response.ok) return [];
+    return response.json() as Promise<PhotoLocation[]>;
+  } catch {
+    return [];
+  }
 }
 
 export async function uploadPhoto(

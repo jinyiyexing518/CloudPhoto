@@ -78,14 +78,14 @@ function PhotoCard({
             <img
               src={photo.url}
               alt={displayName}
-              loading="lazy"
-              decoding={isGif ? "sync" : "async"}
+              loading={isGif ? "eager" : "lazy"}
+              decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
             />
           )}
           {isVideo && <div className="photo-video-badge">▶</div>}
-          {isGif && <div className="photo-gif-badge">GIF</div>}
+          {isGif && <div className="photo-gif-badge">动图 ▶</div>}
         </div>
         <div className="photo-info">
           <span className="photo-name" title={displayName}>

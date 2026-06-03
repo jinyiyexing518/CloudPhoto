@@ -1568,6 +1568,7 @@ function AppContent() {
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
                 <MemoryMap
                   photos={photos}
+                  groupId={currentGroupId || ""}
                   onViewPhoto={jumpToTimelinePhoto}
                   onGpsUpdate={(name, lat, lon) =>
                     setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))

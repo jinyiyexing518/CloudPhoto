@@ -6,6 +6,7 @@ import {
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
 
 function decodeMeta(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -136,6 +137,33 @@ app.http("updatePhotoMetadata", {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ error: "Photo update conflict, please retry" }),
         };
+      }
+
+      // Sync GPS changes to Cosmos photoLocations cache (best-effort)
+      if (body.gpsLat !== undefined || body.gpsLon !== undefined) {
+        try {
+          const locsContainer = await getPhotoLocationsContainer();
+          const segs = blobName.split("/");
+          const scope = segs.slice(0, 2).join("/"); // "personal/{userId}" or "groups/{groupId}"
+          const latStr = body.gpsLat ?? "";
+          const lonStr = body.gpsLon ?? "";
+          if (latStr && lonStr) {
+            const doc: PhotoLocationDoc = {
+              id: blobName,
+              scope,
+              name: blobName,
+              lat: parseFloat(latStr),
+              lon: parseFloat(lonStr),
+              uploadedAt: new Date().toISOString(),
+            };
+            await locsContainer.items.upsert(doc);
+          } else {
+            // GPS cleared — remove from locations cache
+            await locsContainer.item(blobName, scope).delete();
+          }
+        } catch (e) {
+          context.warn("photoLocations GPS sync failed (non-fatal):", e);
+        }
       }
 
       return {

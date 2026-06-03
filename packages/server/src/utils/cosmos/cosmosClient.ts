@@ -89,6 +89,23 @@ export async function getGroupsContainer(): Promise<Container> {
   return getContainer("groups");
 }
 
+export async function getPhotoLocationsContainer(): Promise<Container> {
+  return getContainer("photoLocations");
+}
+
+export interface PhotoLocationDoc {
+  /** Blob name — e.g. "personal/userId/folder/1234-photo.jpg" */
+  id: string;
+  /** Partition key — "personal/{userId}" or "groups/{groupId}" */
+  scope: string;
+  name: string;
+  lat: number;
+  lon: number;
+  originalName?: string;
+  contentType?: string;
+  uploadedAt: string;
+}
+
 export async function getUserById(userId: string): Promise<UserDoc | null> {
   try {
     const container = await getUsersContainer();

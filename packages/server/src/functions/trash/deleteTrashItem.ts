@@ -6,7 +6,7 @@ import {
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
-import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import { isGroupMember, getPhotoLocationsContainer } from "../../utils/cosmos/cosmosClient";
 
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -100,6 +100,13 @@ app.http("deleteTrashItem", {
           body: JSON.stringify({ error: "Photo delete conflict, please retry" }),
         };
       }
+
+      // Remove GPS cache from Cosmos (best-effort — photo may not have had GPS)
+      try {
+        const scope = blobName.split("/").slice(0, 2).join("/");
+        const locsContainer = await getPhotoLocationsContainer();
+        await locsContainer.item(blobName, scope).delete();
+      } catch { /* not all photos have GPS — ignore 404 */ }
 
       return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Permanently deleted" }) };
     } catch (error) {
