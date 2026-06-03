@@ -1,0 +1,7 @@
+{
+  "id": "2026-06-03-motion-photo-regex-fix",
+  "date": "2026-06-03",
+  "type": "fix",
+  "title": "修复动态照片视频播放",
+  "summary": "修复 Container:Item 正则表达式中 [^/]* 错误排除 video/mp4 的斜杠导致 Android 12+ 动态照片无法解析，同时将 XMP 扫描范围从 64KB 扩大到 128KB，并添加播放失败提示"
+}

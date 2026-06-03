@@ -31,8 +31,8 @@ function findMotionVideoRange(
 
   // ---- Android 12+ Container Directory ----
   // <Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="N"/>
-  // The order of attributes can vary, so we scan each <Container:Item ...> element.
-  const itemRe = /<Container:Item\b([^/]*\/?>)/g;
+  // NOTE: use [\s\S]*? so the slash in "video/mp4" does not break the match.
+  const itemRe = /<Container:Item\b([\s\S]*?)(?:\/?\s*>)/g;
   let m: RegExpExecArray | null;
   while ((m = itemRe.exec(headerText)) !== null) {
     const attrs = m[1];
@@ -105,8 +105,8 @@ app.http("motionVideo", {
         };
       }
 
-      // Step 2: download first 64 KB to parse XMP
-      const headerCount = Math.min(65536, totalSize);
+      // Step 2: download first 128 KB to parse XMP (larger buffer covers more phones)
+      const headerCount = Math.min(131072, totalSize);
       const headerDl = await blobClient.download(0, headerCount);
       const headerChunks: Buffer[] = [];
       for await (const chunk of headerDl.readableStreamBody!) {

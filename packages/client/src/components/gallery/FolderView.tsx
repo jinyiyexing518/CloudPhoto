@@ -1258,6 +1258,7 @@ function FolderContent({
                           onClick={async () => {
                             setMotionVideoLoading(true);
                             const url = await fetchMotionVideoBlob(selectedPhoto.name);
+                            if (!url) showToast("未找到嵌入的动态视频，此格式可能暂不支持", "error");
                             setMotionVideoUrl(url);
                             setMotionVideoLoading(false);
                           }}
