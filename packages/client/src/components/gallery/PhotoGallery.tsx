@@ -1471,6 +1471,11 @@ function PhotoGallery({
                   </span>
                 )}
                 <span className="modal-size">{formatSize(selectedPhoto.size)}{imageDimensions ? ` · ${imageDimensions.w}×${imageDimensions.h}` : ""}</span>
+                {selectedPhoto.contentType && (
+                  <span className="modal-format-tag">
+                    {selectedPhoto.contentType.split("/")[1]?.toUpperCase().replace("JPEG", "JPG").replace("QUICKTIME", "MOV") ?? selectedPhoto.contentType}
+                  </span>
+                )}
               </div>
 
               <div className="modal-action-strip">

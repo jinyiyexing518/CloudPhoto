@@ -5435,6 +5435,18 @@ body {
   color: #374151;
   font-weight: 600;
 }
+.modal-format-tag {
+  display: inline-block;
+  background: #ede9fe;
+  color: #6d28d9;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .date-group-select-all {
   margin-left: 10px;
   background: none;

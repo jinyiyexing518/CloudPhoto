@@ -261,6 +261,15 @@
     "seq": 1780480254254
   },
   {
+    "id": "2026-06-03-modal-format-tag",
+    "date": "2026-06-03",
+    "title": "模态框显示照片文件格式标签",
+    "description": "在照片模态框元数据区域显示文件格式徽标（如 JPG、PNG、WEBP、MP4、MOV 等），帮助用户快速识别照片类型，格式标签以紫色背景高亮显示。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780482175076
+  },
+  {
     "id": "2026-06-03-modal-fullscreen",
     "date": "2026-06-03",
     "title": "照片模态框全屏模式",
