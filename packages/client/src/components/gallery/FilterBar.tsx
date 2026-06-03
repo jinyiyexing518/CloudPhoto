@@ -25,6 +25,8 @@ export const emptyFilter: FilterState = {
   folder: "",
 };
 
+export type GridSize = "sm" | "md" | "lg";
+
 interface Props {
   filters: FilterState;
   onChange: (f: FilterState) => void;
@@ -32,6 +34,8 @@ interface Props {
   subjects: string[];
   total: number;
   filtered: number;
+  gridSize?: GridSize;
+  onGridSizeChange?: (size: GridSize) => void;
 }
 
 export default function FilterBar({
@@ -41,6 +45,8 @@ export default function FilterBar({
   subjects,
   total,
   filtered,
+  gridSize = "md",
+  onGridSizeChange,
 }: Props) {
   // Debounced name search: local state updates immediately; parent notified after 300ms
   const [localName, setLocalName] = useState(filters.name);
@@ -123,6 +129,21 @@ export default function FilterBar({
 
         {hasAny && (
           <span className="search-count">{filtered} / {total}</span>
+        )}
+
+        {onGridSizeChange && (
+          <div className="grid-size-toggle">
+            {(["sm", "md", "lg"] as GridSize[]).map((size) => (
+              <button
+                key={size}
+                className={`grid-size-btn${gridSize === size ? " active" : ""}`}
+                onClick={() => onGridSizeChange(size)}
+                title={size === "sm" ? "小缩略图" : size === "md" ? "中缩略图" : "大缩略图"}
+              >
+                {size === "sm" ? "⊞" : size === "md" ? "⊟" : "▣"}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 

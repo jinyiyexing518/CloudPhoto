@@ -3999,6 +3999,45 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 16px;
 }
+.photo-grid--sm {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+.photo-grid--lg {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+/* Grid size toggle buttons */
+.grid-size-toggle {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+.grid-size-btn {
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.grid-size-btn:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+.grid-size-btn.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #2563eb;
+}
 
 .photo-card {
   position: relative;

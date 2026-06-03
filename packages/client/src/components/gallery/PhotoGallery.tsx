@@ -47,6 +47,8 @@ interface Props {
   reverseOrder?: boolean;
   /** Whether to group/sort by photo taken time or upload time */
   sortKey?: "taken" | "uploaded";
+  /** Thumbnail grid density */
+  gridSize?: "sm" | "md" | "lg";
 }
 
 interface DateGroup {
@@ -268,6 +270,7 @@ function PhotoGallery({
   focusRequestKey,
   reverseOrder = false,
   sortKey = "taken",
+  gridSize = "md",
 }: Props) {
   const showToast = useToast();
   const focusCardRef = useRef<HTMLDivElement | null>(null);
@@ -1185,7 +1188,7 @@ function PhotoGallery({
               {group.label}
               <span className="date-group-count">{group.photos.length}</span>
             </h2>
-            <div className="photo-grid">
+            <div className={`photo-grid${gridSize === "sm" ? " photo-grid--sm" : gridSize === "lg" ? " photo-grid--lg" : ""}`}>
               {group.photos.map((photo) => (
                 <div
                   key={photo.name}

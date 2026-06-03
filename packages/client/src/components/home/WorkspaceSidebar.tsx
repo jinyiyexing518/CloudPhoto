@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useRef } from "react";
-import FilterBar, { FilterState } from "../gallery/FilterBar";
+import FilterBar, { FilterState, GridSize } from "../gallery/FilterBar";
 
 interface MomentsStats {
   total: number;
@@ -40,6 +40,8 @@ interface Props {
   onOpenManagedShares: () => void;
   onOpenDiagnostics: () => void;
   onClose: () => void;
+  gridSize?: GridSize;
+  onGridSizeChange?: (size: GridSize) => void;
 }
 
 function SidebarSection({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
@@ -79,6 +81,8 @@ export default function WorkspaceSidebar({
   onOpenManagedShares,
   onOpenDiagnostics,
   onClose,
+  gridSize,
+  onGridSizeChange,
 }: Props) {
   if (activeTab === "folder") return null;
 
@@ -124,6 +128,8 @@ export default function WorkspaceSidebar({
                     subjects={subjects}
                     total={totalPhotos}
                     filtered={filteredPhotos}
+                    gridSize={gridSize}
+                    onGridSizeChange={onGridSizeChange}
                   />
                 </SidebarSection>
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } fro
 import { listPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo, ManagedShareLink } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
-import { FilterState, emptyFilter } from "./components/gallery/FilterBar";
+import { FilterState, emptyFilter, GridSize } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
 import WorkspaceFab from "./components/home/floating/WorkspaceFab";
 import WorkspaceSidebar from "./components/home/WorkspaceSidebar";
@@ -237,6 +237,8 @@ function AppContent() {
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
   const [photoSortKey, setPhotoSortKey] = useState<"taken" | "uploaded">("taken");
+  const [gridSize, setGridSize] = useState<GridSize>(() => (localStorage.getItem("cf_grid_size") as GridSize | null) ?? "md");
+  const handleGridSizeChange = (size: GridSize) => { setGridSize(size); localStorage.setItem("cf_grid_size", size); };
   const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
 
   const switchTab = (tab: ViewTab) => {
@@ -1629,6 +1631,7 @@ function AppContent() {
                 showImportantMoments={false}
                 reverseOrder={photoSortAsc}
                 sortKey={photoSortKey}
+                gridSize={gridSize}
                 focusPhotoName={timelineFocusPhotoName ?? undefined}
                 focusRequestKey={timelineFocusRequestKey}
               />
@@ -1651,6 +1654,7 @@ function AppContent() {
                 showImportantMoments={false}
                 momentsMode
                 momentsShareViews={momentsShareViews}
+                gridSize={gridSize}
               />
             ) : activeTab === "folder" ? (
               <Suspense fallback={null}><FolderView
@@ -1723,6 +1727,8 @@ function AppContent() {
             onOpenManagedShares={() => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
             onOpenDiagnostics={() => openSettingsTab("diagnostics", "diagnostics")}
             onClose={() => setSidebarOpen(false)}
+            gridSize={gridSize}
+            onGridSizeChange={handleGridSizeChange}
           />
         </div>
       </main>

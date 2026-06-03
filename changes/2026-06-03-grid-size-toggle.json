@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-grid-size-toggle",
+  "date": "2026-06-03",
+  "title": "缩略图尺寸切换（S/M/L）",
+  "description": "在侧边工具栏筛选面板中增加网格密度切换按钮，支持小（S）/ 中（M）/ 大（L）三种缩略图尺寸，偏好自动保存到 localStorage。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780479680053
+}
