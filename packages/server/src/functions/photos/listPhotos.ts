@@ -123,8 +123,9 @@ app.http("listPhotos", {
       }
 
       photos.sort((a, b) => {
-        const timeA = a.lastModified ? new Date(a.lastModified).getTime() : 0;
-        const timeB = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+        // Sort by upload time (createdAt metadata) descending; fall back to lastModified
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.lastModified ? new Date(a.lastModified).getTime() : 0);
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.lastModified ? new Date(b.lastModified).getTime() : 0);
         return timeB - timeA;
       });
 
