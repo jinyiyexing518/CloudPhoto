@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-batch-selection-size",
+  "date": "2026-06-03",
+  "title": "批量选中显示总文件大小",
+  "description": "批量选择模式下，已选张数旁同步显示选中照片的总文件大小（如「已选 12 张 · 34.5 MB」），帮助用户了解选中内容的占用空间。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780480557357
+}

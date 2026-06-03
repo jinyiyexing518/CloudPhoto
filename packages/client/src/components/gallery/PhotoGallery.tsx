@@ -341,6 +341,12 @@ function PhotoGallery({
   }, [selectedPhoto]);
   const allSelected = selected.size > 0 && selected.size === photos.length;
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
+  const selectedTotalSize = useMemo(() => {
+    const bytes = photos.filter((p) => selected.has(p.name)).reduce((s, p) => s + (p.size ?? 0), 0);
+    if (bytes === 0) return null;
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  }, [photos, selected]);
   const togglePhoto = (name: string) => {
     setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
   };
@@ -991,7 +997,7 @@ function PhotoGallery({
             <button className="batch-select-btn" onClick={toggleSelectAll}>
               {allSelected ? "取消全选" : "全选"}
             </button>
-            <span className="batch-count">已选 {selected.size} 张</span>
+            <span className="batch-count">已选 {selected.size} 张{selectedTotalSize ? ` · ${selectedTotalSize}` : ""}</span>
           </>
         )}
         {selectMode && selected.size > 0 && (
