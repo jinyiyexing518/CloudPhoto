@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-gallery-summary-bar",
+  "date": "2026-06-03",
+  "title": "时间线顶部显示照片总数与日期组统计",
+  "description": "时间线视图（非批量模式下）在照片列表顶部显示「共 N 张照片 · M 个日期」统计信息，帮助用户快速了解当前筛选结果规模。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780482117695
+}

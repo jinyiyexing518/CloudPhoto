@@ -1252,7 +1252,13 @@ function PhotoGallery({
           )}
         </section>
       ) : (
-        groups.map((group) => (
+        <>
+          {groups.length > 0 && !selectMode && (
+            <div className="gallery-summary-bar">
+              共 <strong>{visiblePhotos.length}</strong> 张照片 · <strong>{groups.length}</strong> 个日期
+            </div>
+          )}
+          {groups.map((group) => (
           <section key={group.key} className="date-group">
             <h2 className="date-group-label">
               <span className="date-group-dot" />
@@ -1295,7 +1301,8 @@ function PhotoGallery({
               ))}
             </div>
           </section>
-        ))
+          ))}
+        </>
       )}
 
       {hasMore && (

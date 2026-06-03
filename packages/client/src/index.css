@@ -5424,6 +5424,17 @@ body {
   font-weight: 400;
   color: #9ca3af;
 }
+.gallery-summary-bar {
+  font-size: 0.82rem;
+  color: #6b7280;
+  padding: 4px 2px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+.gallery-summary-bar strong {
+  color: #374151;
+  font-weight: 600;
+}
 .date-group-select-all {
   margin-left: 10px;
   background: none;
