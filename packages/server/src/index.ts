@@ -1,5 +1,6 @@
 import "./functions/photos/listPhotos";
 import "./functions/photos/uploadPhoto";
+import "./functions/photos/backfillPhotoMetadata";
 import "./functions/photos/deletePhoto";
 import "./functions/photos/updatePhotoMetadata";
 import "./functions/photos/movePhoto";

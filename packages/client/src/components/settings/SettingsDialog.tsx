@@ -8,6 +8,7 @@ import {
   listManagedShareLinks,
   updateManagedShareLink,
   ManagedShareLink,
+  backfillPhotoMetadata,
 } from "../../services/photoApi";
 import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -98,6 +99,25 @@ export default function SettingsDialog({
   const [shareStatusFilter, setShareStatusFilter] = useState<"all" | "active" | "revoked" | "expired">("all");
   const [shareSearch, setShareSearch] = useState("");
   const [extendHours, setExtendHours] = useState("24");
+
+  // Backfill state
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ processed: number; updated: number; failed: number } | null>(null);
+  const [backfillError, setBackfillError] = useState("");
+
+  const handleBackfill = async () => {
+    setBackfillLoading(true);
+    setBackfillResult(null);
+    setBackfillError("");
+    try {
+      const result = await backfillPhotoMetadata(currentGroupId ?? "");
+      setBackfillResult(result);
+    } catch (err) {
+      setBackfillError(err instanceof Error ? err.message : "回填失败");
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
 
   const [shareLinksVersion, setShareLinksVersion] = useState(0);
   const shareLinks = useMemo(() => {
@@ -409,6 +429,32 @@ export default function SettingsDialog({
                     <span className="settings-info-value">{canInstall ? "当前浏览器支持" : "当前浏览器可能不支持"}</span>
                   </div>
                 </div>
+              </div>
+              <div className="settings-form settings-card" style={{ gap: 10 }}>
+                <div className="settings-card-head">
+                  <h3>历史照片回填</h3>
+                </div>
+                <p className="add-admin-hint">
+                  对已上传的照片重新提取拍摄时间和 GPS 位置。仅处理尚未有该信息的照片，不会覆盖已有数据。
+                </p>
+                <button
+                  type="button"
+                  className="settings-save-btn"
+                  onClick={() => void handleBackfill()}
+                  disabled={backfillLoading}
+                >
+                  {backfillLoading ? "正在回填…" : "开始回填"}
+                </button>
+                {backfillResult && (
+                  <p className="add-admin-hint" style={{ color: "var(--color-success, #2e7d32)", marginTop: 4 }}>
+                    完成：共扫描 {backfillResult.processed} 张，更新 {backfillResult.updated} 张，失败 {backfillResult.failed} 张。
+                  </p>
+                )}
+                {backfillError && (
+                  <p className="add-admin-hint" style={{ color: "var(--color-error, #c62828)", marginTop: 4 }}>
+                    {backfillError}
+                  </p>
+                )}
               </div>
               <div className="settings-form settings-card" style={{ gap: 10 }}>
                 <div className="settings-card-head">

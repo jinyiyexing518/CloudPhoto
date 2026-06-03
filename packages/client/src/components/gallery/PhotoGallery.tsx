@@ -13,6 +13,7 @@ import {
   uploadPhotoWithProgress,
   setPhotoVoiceMemo as apiSetVoiceMemo,
   updatePhotoTakenAt,
+  updatePhotoGps,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -26,6 +27,7 @@ interface Props {
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onTakenAtUpdate?: (name: string, takenAt: string) => void;
+  onGpsUpdate?: (name: string, gpsLat: string, gpsLon: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onMovePhoto?: (name: string, toFolder: string) => Promise<boolean>;
   onBatchDelete?: (names: string[]) => Promise<void>;
@@ -40,6 +42,8 @@ interface Props {
   focusRequestKey?: number;
   /** When true, oldest date groups appear first instead of newest */
   reverseOrder?: boolean;
+  /** Whether to group/sort by photo taken time or upload time */
+  sortKey?: "taken" | "uploaded";
 }
 
 interface DateGroup {
@@ -198,11 +202,13 @@ function writeMomentsDiagnostics(status: MomentsDiagnosticsStatus, details?: { m
   }
 }
 
-function groupByDate(photos: Photo[]): DateGroup[] {
+function groupByDate(photos: Photo[], sortKey: "taken" | "uploaded" = "taken"): DateGroup[] {
   const map = new Map<string, Photo[]>();
 
   for (const photo of photos) {
-    const raw = photo.createdAt ?? photo.lastModified;
+    const raw = sortKey === "taken"
+      ? (photo.takenAt ?? photo.createdAt ?? photo.lastModified)
+      : (photo.createdAt ?? photo.lastModified);
     const date = raw ? new Date(raw) : new Date(0);
     const key = date.toISOString().slice(0, 10); // YYYY-MM-DD
     const bucket = map.get(key) ?? [];
@@ -243,6 +249,7 @@ function PhotoGallery({
   onSubjectUpdate,
   onRenamePhoto,
   onTakenAtUpdate,
+  onGpsUpdate,
   onToggleFavorite,
   onMovePhoto,
   onBatchDelete,
@@ -256,6 +263,7 @@ function PhotoGallery({
   focusPhotoName,
   focusRequestKey,
   reverseOrder = false,
+  sortKey = "taken",
 }: Props) {
   const showToast = useToast();
   const focusCardRef = useRef<HTMLDivElement | null>(null);
@@ -294,6 +302,11 @@ function PhotoGallery({
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+  const [showBatchTimeEdit, setShowBatchTimeEdit] = useState(false);
+  const [batchTimeInput, setBatchTimeInput] = useState("");
+  const [showBatchGpsEdit, setShowBatchGpsEdit] = useState(false);
+  const [batchGpsLat, setBatchGpsLat] = useState("");
+  const [batchGpsLon, setBatchGpsLon] = useState("");
 
   useEffect(() => {
     onDownloadStateChange?.(downloading);
@@ -368,11 +381,14 @@ function PhotoGallery({
   // Flat photo list for keyboard navigation (ordered as displayed: by date desc or asc)
   const flatPhotos = useMemo(() => {
     return [...photos].sort((a, b) => {
-      const da = (a.createdAt ?? a.lastModified) ?? "";
-      const db = (b.createdAt ?? b.lastModified) ?? "";
+      const getDate = (p: Photo) => sortKey === "taken"
+        ? (p.takenAt ?? p.createdAt ?? p.lastModified) ?? ""
+        : (p.createdAt ?? p.lastModified) ?? "";
+      const da = getDate(a);
+      const db = getDate(b);
       return reverseOrder ? da.localeCompare(db) : db.localeCompare(da);
     });
-  }, [photos, reverseOrder]);
+  }, [photos, reverseOrder, sortKey]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -710,16 +726,63 @@ function PhotoGallery({
     if (!selectedPhoto || !takenAtInput) return;
     setSavingTakenAt(true);
     try {
-      const iso = new Date(takenAtInput).toISOString();
-      await updatePhotoTakenAt(selectedPhoto.name, iso, userName);
-      onTakenAtUpdate?.(selectedPhoto.name, iso);
-      setSelectedPhoto({ ...selectedPhoto, takenAt: iso });
+      // Store as naive datetime (no Z) so all clients display in local time
+      const d = new Date(takenAtInput);
+      if (isNaN(d.getTime())) { showToast("无效的日期时间", "error"); return; }
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const naive = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      await updatePhotoTakenAt(selectedPhoto.name, naive, userName);
+      onTakenAtUpdate?.(selectedPhoto.name, naive);
+      setSelectedPhoto({ ...selectedPhoto, takenAt: naive });
       setEditingTakenAt(false);
     } catch {
       showToast("更新拍摄时间失败", "error");
     } finally {
       setSavingTakenAt(false);
     }
+  };
+
+  const handleBatchSetTakenAt = async () => {
+    if (!batchTimeInput || selected.size === 0) return;
+    const d = new Date(batchTimeInput);
+    if (isNaN(d.getTime())) { showToast("无效的日期时间", "error"); return; }
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const naive = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const selectedList = flatPhotos.filter((p) => selected.has(p.name));
+    let failed = 0;
+    for (const p of selectedList) {
+      try {
+        await updatePhotoTakenAt(p.name, naive, userName);
+        onTakenAtUpdate?.(p.name, naive);
+      } catch { failed++; }
+    }
+    setShowBatchTimeEdit(false);
+    setBatchTimeInput("");
+    if (failed > 0) showToast(`批量修改时间完成，失败 ${failed} 张`, "error");
+    else showToast(`已修改 ${selectedList.length} 张照片的拍摄时间`, "success");
+  };
+
+  const handleBatchSetGps = async () => {
+    if (!batchGpsLat || !batchGpsLon || selected.size === 0) return;
+    const lat = parseFloat(batchGpsLat);
+    const lon = parseFloat(batchGpsLon);
+    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      showToast("坐标无效：纬度 ±90°，经度 ±180°", "error");
+      return;
+    }
+    const selectedList = flatPhotos.filter((p) => selected.has(p.name));
+    let failed = 0;
+    for (const p of selectedList) {
+      try {
+        await updatePhotoGps(p.name, batchGpsLat, batchGpsLon);
+        onGpsUpdate?.(p.name, batchGpsLat, batchGpsLon);
+      } catch { failed++; }
+    }
+    setShowBatchGpsEdit(false);
+    setBatchGpsLat("");
+    setBatchGpsLon("");
+    if (failed > 0) showToast(`批量修改位置完成，失败 ${failed} 张`, "error");
+    else showToast(`已修改 ${selectedList.length} 张照片的位置`, "success");
   };
 
   const handleDownload = async () => {
@@ -855,7 +918,7 @@ function PhotoGallery({
     );
   }
 
-  const groups = groupByDate(visiblePhotos);
+  const groups = groupByDate(visiblePhotos, sortKey);
   if (reverseOrder) groups.reverse();
   const hasMore = visibleCount < flatPhotos.length;
 
@@ -882,12 +945,68 @@ function PhotoGallery({
             <button className="batch-select-btn" onClick={() => void handleBatchRename()}>
               重命名 ({selected.size})
             </button>
+            <button
+              className={`batch-select-btn${showBatchTimeEdit ? " active" : ""}`}
+              onClick={() => { setShowBatchTimeEdit((v) => !v); setShowBatchGpsEdit(false); }}
+            >
+              修改时间 ({selected.size})
+            </button>
+            <button
+              className={`batch-select-btn${showBatchGpsEdit ? " active" : ""}`}
+              onClick={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
+            >
+              修改位置 ({selected.size})
+            </button>
             <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>
               删除 ({selected.size})
             </button>
           </>
         )}
       </div>
+      {selectMode && showBatchTimeEdit && (
+        <div className="batch-edit-form">
+          <span className="batch-edit-label">统一拍摄时间</span>
+          <input
+            type="datetime-local"
+            className="batch-edit-input"
+            value={batchTimeInput}
+            onChange={(e) => setBatchTimeInput(e.target.value)}
+          />
+          <button className="batch-select-btn" onClick={() => void handleBatchSetTakenAt()} disabled={!batchTimeInput}>
+            应用
+          </button>
+          <button className="batch-select-btn" onClick={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}>
+            取消
+          </button>
+        </div>
+      )}
+      {selectMode && showBatchGpsEdit && (
+        <div className="batch-edit-form">
+          <span className="batch-edit-label">统一位置坐标</span>
+          <input
+            type="number"
+            className="batch-edit-input batch-edit-input--short"
+            placeholder="纬度（如 39.9042）"
+            value={batchGpsLat}
+            onChange={(e) => setBatchGpsLat(e.target.value)}
+            step="any"
+          />
+          <input
+            type="number"
+            className="batch-edit-input batch-edit-input--short"
+            placeholder="经度（如 116.4074）"
+            value={batchGpsLon}
+            onChange={(e) => setBatchGpsLon(e.target.value)}
+            step="any"
+          />
+          <button className="batch-select-btn" onClick={() => void handleBatchSetGps()} disabled={!batchGpsLat || !batchGpsLon}>
+            应用
+          </button>
+          <button className="batch-select-btn" onClick={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}>
+            取消
+          </button>
+        </div>
+      )}
 
       {!selectMode && showMemoryHighlights && memoryHighlights.length > 0 && (
         <section className="insight-section">
@@ -1116,6 +1235,8 @@ function PhotoGallery({
                     src={selectedPhoto.url}
                     alt={selectedPhoto.name}
                     className="modal-image modal-image--gif"
+                    onClick={() => setShowOriginalPreview(true)}
+                    title="点击预览原图"
                   />
                   <span className="modal-gif-badge">
                     {(selectedPhoto.contentType === "image/jpeg" || selectedPhoto.contentType === "image/jpg") && selectedPhoto.isAnimated

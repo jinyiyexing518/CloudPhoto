@@ -1,0 +1,9 @@
+{
+  "id": "exif-timezone-fix",
+  "date": "2026-06-03",
+  "icon": "🕐",
+  "title": "拍摄时间时区修复（UTC+8 偏差 8 小时）",
+  "type": "fix",
+  "desc": "exifr 将 EXIF 日期时间内部视为 UTC，导致存储后 UTC+8 用户看到的时间偏差 8 小时；现已修复",
+  "details": "uploadPhoto.ts 和弹窗「修改拍摄时间」均改为不带 Z 后缀的 naive datetime 格式（如 2024-06-01T14:30:00），客户端直接按本地时间解析，不再有时区偏移。历史照片可通过「历史照片回填」功能重新提取并修正。"
+}

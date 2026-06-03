@@ -138,7 +138,12 @@ app.http("uploadPhoto", {
         try {
           const exifData = await exifr.parse(buf, ["DateTimeOriginal", "CreateDate", "DateTime"]);
           const dt: unknown = exifData?.DateTimeOriginal ?? exifData?.CreateDate ?? exifData?.DateTime;
-          if (dt instanceof Date && !isNaN(dt.getTime())) takenAt = dt.toISOString();
+          if (dt instanceof Date && !isNaN(dt.getTime())) {
+            // exifr treats EXIF datetime as UTC internally. Store as naive datetime
+            // (no Z suffix) so the client interprets it in local time, not UTC.
+            const pad = (n: number) => String(n).padStart(2, "0");
+            takenAt = `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}T${pad(dt.getUTCHours())}:${pad(dt.getUTCMinutes())}:${pad(dt.getUTCSeconds())}`;
+          }
         } catch { /* best-effort */ }
         if (!resolvedLat) {
           try {

@@ -1,4 +1,7 @@
 import { memo, useRef, useState } from "react";
+
+// 1×1 transparent GIF — used as src placeholder when animation is paused
+const BLANK_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 
@@ -30,6 +33,7 @@ function PhotoCard({
 }: Props) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [gifPaused, setGifPaused] = useState(false);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
@@ -45,6 +49,13 @@ function PhotoCard({
     v.currentTime = Math.min(2, v.duration * 0.1);
   };
   const handleVideoSeeked = () => setImgLoaded(true);
+
+  // Toggle play/pause for animated images. Uses src-swap instead of canvas
+  // to avoid cross-origin (CORS) security errors on Azure SAS URLs.
+  const toggleGifPause = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setGifPaused(prev => !prev);
+  };
   const basename = photo.name.split("/").pop() ?? photo.name;
   const displayName = photo.originalName || basename.replace(/^\d+-/, "");
   const uploadTime = photo.createdAt
@@ -78,21 +89,40 @@ function PhotoCard({
               onLoadedMetadata={handleVideoMetadata}
               onSeeked={handleVideoSeeked}
             />
+          ) : isAnimated ? (
+            <img
+              src={gifPaused ? BLANK_GIF : photo.url}
+              alt={displayName}
+              loading="eager"
+              decoding="async"
+              className={imgLoaded ? "img-loaded" : "img-loading"}
+              onLoad={() => setImgLoaded(true)}
+            />
           ) : (
             <img
               src={photo.url}
               alt={displayName}
-              loading={isAnimated ? "eager" : "lazy"}
+              loading="lazy"
               decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
             />
           )}
           {isVideo && <div className="photo-video-badge">▶</div>}
-          {isAnimated && (
-            <div className="photo-gif-badge">
-              {isMotionPhoto ? "动态照片 📱" : "动图 ▶"}
-            </div>
+          {isAnimated && isMotionPhoto && (
+            <div className="photo-video-badge">动态照片 📱</div>
+          )}
+          {isAnimated && !isMotionPhoto && (
+            <>
+              {gifPaused && <div className="photo-gif-paused-overlay" />}
+              <button
+                className="photo-gif-play-btn"
+                onClick={toggleGifPause}
+                title={gifPaused ? "继续播放" : "暂停动图"}
+              >
+                {gifPaused ? "▶" : "⏸"}
+              </button>
+            </>
           )}
         </div>
         <div className="photo-info">

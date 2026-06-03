@@ -4002,6 +4002,7 @@ body {
 }
 
 .photo-thumbnail {
+  position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   cursor: pointer;
@@ -4335,24 +4336,52 @@ body {
   position: absolute;
   bottom: 6px;
   right: 6px;
-  background: rgba(16, 124, 16, 0.88);
+  background: rgba(0, 0, 0, 0.6);
   color: #fff;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 0.68rem;
   padding: 2px 7px;
   border-radius: 4px;
   pointer-events: none;
   backdrop-filter: blur(4px);
-  animation: gif-badge-pulse 2s ease-in-out infinite;
 }
 
+/* Clickable play/pause button for animated images — same look as video badge */
+.photo-gif-play-btn {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+  border: none;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.photo-gif-play-btn:hover {
+  background: rgba(0, 0, 0, 0.82);
+}
+
+/* Dark overlay shown over the thumbnail when an animated image is paused */
+.photo-gif-paused-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+/* GIF badge inside the review modal */
 @keyframes gif-badge-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.65; }
 }
 
-/* GIF badge inside the review modal */
 .modal-gif-badge {
   position: absolute;
   top: 10px;
@@ -4368,9 +4397,9 @@ body {
   pointer-events: none;
 }
 
-/* GIF in modal — ensure pointer is default (no zoom cursor) */
+/* GIF in modal — supports click-to-preview like regular images */
 .modal-image--gif {
-  cursor: default;
+  cursor: zoom-in;
 }
 
 /* Confirm dialog */
@@ -5724,6 +5753,33 @@ body {
   transition: background 0.15s;
 }
 .batch-delete-btn:hover { background: #fce8e6; }
+
+.batch-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0f6ff;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+.batch-edit-label {
+  font-size: 0.82rem;
+  color: #444;
+  white-space: nowrap;
+}
+.batch-edit-input {
+  padding: 4px 8px;
+  border: 1.5px solid #aac4e0;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  background: #fff;
+  color: #222;
+}
+.batch-edit-input--short {
+  width: 130px;
+}
 
 /* Selected card highlight */
 .photo-card--selected {

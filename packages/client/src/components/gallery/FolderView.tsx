@@ -1213,6 +1213,8 @@ function FolderContent({
                     src={selectedPhoto.url}
                     alt={displayName(selectedPhoto)}
                     className="modal-image modal-image--gif"
+                    onClick={() => setShowOriginalPreview(true)}
+                    title="点击预览原图"
                   />
                   <span className="modal-gif-badge">
                     {(selectedPhoto.contentType === "image/jpeg" || selectedPhoto.contentType === "image/jpg") && selectedPhoto.isAnimated

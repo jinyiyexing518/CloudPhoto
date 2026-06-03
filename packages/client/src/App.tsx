@@ -169,6 +169,7 @@ function AppContent() {
   const speedRef = useRef<{ ts: number; bytes: number; ema: number }>({ ts: 0, bytes: 0, ema: 0 });
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
+  const [photoSortKey, setPhotoSortKey] = useState<"taken" | "uploaded">("taken");
   const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
 
   const switchTab = (tab: ViewTab) => {
@@ -901,6 +902,12 @@ function AppContent() {
     );
   };
 
+  const handleGpsUpdate = (name: string, gpsLat: string, gpsLon: string) => {
+    setPhotos((prev) =>
+      prev.map((p) => (p.name === name ? { ...p, gpsLat, gpsLon } : p))
+    );
+  };
+
   const handleRenamePhoto = (name: string, newOriginalName: string) => {
     setPhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, originalName: newOriginalName } : p))
@@ -1401,6 +1408,17 @@ function AppContent() {
               {activeFiltersCount > 0 && (
                 <button className="quick-chip quick-chip--clear" onClick={() => setFilters(emptyFilter)}>✕ 清空</button>
               )}
+              {/* Sort key toggle */}
+              <button
+                className={`quick-chip${photoSortKey === "taken" ? " quick-chip--sort active" : ""}`}
+                onClick={() => setPhotoSortKey("taken")}
+                title="按照片拍摄时间排序"
+              >📷 拍摄时间</button>
+              <button
+                className={`quick-chip${photoSortKey === "uploaded" ? " quick-chip--sort active" : ""}`}
+                onClick={() => setPhotoSortKey("uploaded")}
+                title="按上传时间排序"
+              >☁ 上传时间</button>
               {/* Sort order toggle */}
               <button
                 className={`quick-chip quick-chip--sort${photoSortAsc ? " active" : ""}`}
@@ -1523,6 +1541,7 @@ function AppContent() {
                 onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
                 onTakenAtUpdate={handleTakenAtUpdate}
+                onGpsUpdate={handleGpsUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}
                 onMovePhoto={handleMovePhoto}
@@ -1531,6 +1550,7 @@ function AppContent() {
                 userName={user?.displayName}
                 showImportantMoments={false}
                 reverseOrder={photoSortAsc}
+                sortKey={photoSortKey}
                 focusPhotoName={timelineFocusPhotoName ?? undefined}
                 focusRequestKey={timelineFocusRequestKey}
               />
@@ -1542,6 +1562,7 @@ function AppContent() {
                 onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
                 onTakenAtUpdate={handleTakenAtUpdate}
+                onGpsUpdate={handleGpsUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}
                 onMovePhoto={handleMovePhoto}

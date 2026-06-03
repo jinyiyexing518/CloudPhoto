@@ -414,6 +414,20 @@ export async function updatePhotoTakenAt(
   }
 }
 
+export async function backfillPhotoMetadata(
+  groupId = "",
+): Promise<{ processed: number; updated: number; failed: number }> {
+  const url = `${API_BASE}/photos/backfill${groupId ? `?groupId=${encodeURIComponent(groupId)}` : ""}`;
+  const response = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "回填历史照片元数据失败"));
+  }
+  return response.json() as Promise<{ processed: number; updated: number; failed: number }>;
+}
+
 export interface ChangelogEntry {
   id: string;
   date: string;

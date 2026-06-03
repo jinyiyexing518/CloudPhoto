@@ -1,0 +1,9 @@
+{
+  "id": "backfill-metadata",
+  "date": "2026-06-03",
+  "icon": "📦",
+  "title": "历史照片元数据回填",
+  "type": "feature",
+  "desc": "设置 → 应用 新增「历史照片回填」，对已上传但缺少拍摄时间或 GPS 的照片重新提取 EXIF 并写回",
+  "details": "新增 POST /api/photos/backfill 端点，逐一下载缺少 takenAt 或 gpsLat 的图片 blob，用 exifr 提取 EXIF；拍摄时间以 naive datetime（无 Z 后缀）存储，GPS 同时写入 Cosmos photoLocations；返回 { processed, updated, failed }。设置页面显示按钮、加载状态和完成统计。"
+}
