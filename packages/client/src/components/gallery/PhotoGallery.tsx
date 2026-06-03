@@ -293,6 +293,7 @@ function PhotoGallery({
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -1244,14 +1245,21 @@ function PhotoGallery({
           onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}
         >
           <div
-            className="modal-content"
+            className={`modal-content${isFullscreen ? " modal-content--fullscreen" : ""}`}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               className="modal-close"
-              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}
+              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); setIsFullscreen(false); }}
             >
               ✕
+            </button>
+            <button
+              className="modal-fullscreen-btn"
+              onClick={() => setIsFullscreen((v) => !v)}
+              title={isFullscreen ? "退出全屏" : "全屏"}
+            >
+              {isFullscreen ? "✕✕" : "⛶"}
             </button>
             {selectedIdx !== null && (
               <span className="modal-nav-counter">{selectedIdx + 1} / {modalPhotos.length}</span>

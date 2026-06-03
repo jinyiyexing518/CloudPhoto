@@ -4201,6 +4201,42 @@ body {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
   animation: modalSlideUp 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+.modal-content--fullscreen {
+  max-width: 100vw;
+  max-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+}
+.modal-content--fullscreen .modal-image {
+  max-width: 100vw;
+  max-height: calc(100vh - 120px);
+}
+
+/* Fullscreen toggle button */
+.modal-fullscreen-btn {
+  position: absolute;
+  top: 12px;
+  right: 54px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 0.88rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  transition: background 0.2s;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.modal-fullscreen-btn:hover {
+  background: rgba(0, 0, 0, 0.82);
+}
 
 .modal-image-pane {
   position: relative;

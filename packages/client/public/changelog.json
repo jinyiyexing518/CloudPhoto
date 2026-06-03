@@ -144,6 +144,15 @@
     "seq": 1780480254254
   },
   {
+    "id": "2026-06-03-modal-fullscreen",
+    "date": "2026-06-03",
+    "title": "照片模态框全屏模式",
+    "description": "在照片预览模态框中增加「⛶ 全屏」按钮，点击可将预览窗口扩展为全屏，再次点击退出。方便在大屏上细看照片细节。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780480488784
+  },
+  {
     "id": "2026-06-03-modal-photo-counter",
     "date": "2026-06-03",
     "title": "模态框照片序号显示",
