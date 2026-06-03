@@ -61,6 +61,11 @@ function PhotoCard({
   const uploadTime = photo.createdAt
     ? new Date(photo.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
+  const takenTime = photo.takenAt
+    ? new Date(photo.takenAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : null;
+  // Show taken date if it's different from upload date (or if upload date unknown)
+  const showTakenDate = takenTime && takenTime !== uploadTime;
 
   return (
     <>
@@ -179,11 +184,12 @@ function PhotoCard({
             </>
           )}
         </div>
-        {(uploadTime || photo.createdBy || photo.subject) && (
+        {(uploadTime || takenTime || photo.createdBy || photo.subject) && (
           <div className="photo-meta">
             {photo.subject && <span className="photo-subject-tag">{photo.subject}</span>}
             {photo.createdBy && <span className="photo-meta-by">👤 {photo.createdBy}</span>}
-            {uploadTime && <span className="photo-meta-date">{uploadTime}</span>}
+            {showTakenDate && <span className="photo-meta-taken" title="拍摄时间">📷 {takenTime}</span>}
+            {uploadTime && !showTakenDate && <span className="photo-meta-date">{uploadTime}</span>}
           </div>
         )}
       </div>

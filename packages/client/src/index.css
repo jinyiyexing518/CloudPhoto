@@ -3525,6 +3525,12 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
 }
+.photo-meta-taken {
+  font-size: 0.70rem;
+  color: #6366f1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 
 /* Modal detail grid */
 .modal-info-row {

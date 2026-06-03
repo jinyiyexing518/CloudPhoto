@@ -39,6 +39,15 @@
     "seq": 1780472229287
   },
   {
+    "id": "2026-06-03-card-taken-date",
+    "date": "2026-06-03",
+    "title": "照片卡片显示拍摄日期",
+    "description": "照片卡片底部元信息区域：当拍摄日期（takenAt）与上传日期不同时，优先显示拍摄日期（📷 标识，紫色），方便区分扫描老照片等场景。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780480162795
+  },
+  {
     "id": "2026-06-03-docs-chinese-readme",
     "date": "2026-06-03",
     "type": "improvement",
