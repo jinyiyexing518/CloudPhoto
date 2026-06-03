@@ -1353,10 +1353,10 @@ function PhotoGallery({
               <span className="modal-nav-counter">{selectedIdx + 1} / {modalPhotos.length}</span>
             )}
             {selectedIdx !== null && selectedIdx > 0 && (
-              <button className="modal-nav modal-nav--prev" onClick={() => navigateToPhoto(selectedIdx - 1)} title="上一张 (←)">‹</button>
+              <button className="modal-nav modal-nav--prev" onClick={() => navigateToPhoto(selectedIdx - 1)} title={`上一张：${modalPhotos[selectedIdx - 1]?.originalName || (modalPhotos[selectedIdx - 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")} (←)`}>‹</button>
             )}
             {selectedIdx !== null && selectedIdx < modalPhotos.length - 1 && (
-              <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title="下一张 (→)">›</button>
+              <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title={`下一张：${modalPhotos[selectedIdx + 1]?.originalName || (modalPhotos[selectedIdx + 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")} (→)`}>›</button>
             )}
             <div className="modal-image-pane"
               onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}

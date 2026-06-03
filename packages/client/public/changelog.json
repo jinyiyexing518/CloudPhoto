@@ -347,6 +347,15 @@
     "seq": 1780478603447
   },
   {
+    "id": "2026-06-03-nav-btn-tooltip",
+    "date": "2026-06-03",
+    "title": "模态框导航按钮显示相邻照片名称 tooltip",
+    "description": "模态框中「上一张」和「下一张」按钮 hover 时，tooltip 显示相邻照片的文件名，便于用户在翻看前了解下一张是什么。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780482301493
+  },
+  {
     "id": "2026-06-03-no-gps-filter",
     "date": "2026-06-03",
     "title": "无GPS快速筛选",
