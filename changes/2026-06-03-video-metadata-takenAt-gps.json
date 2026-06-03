@@ -1,0 +1,7 @@
+{
+  "id": "2026-06-03-video-metadata-takenAt-gps",
+  "date": "2026-06-03",
+  "type": "fix",
+  "title": "视频拍摄时间和位置提取",
+  "summary": "上传视频时从MP4/MOV容器解析拍摄时间(mvhd box)和GPS坐标(©xyz atom)，修复视频无法获取拍摄时间和位置的问题"
+}

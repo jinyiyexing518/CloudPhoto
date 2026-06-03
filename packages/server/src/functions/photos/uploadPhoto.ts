@@ -133,7 +133,8 @@ app.http("uploadPhoto", {
       // Server-side GPS extraction: try to read EXIF if client didn't provide coordinates
       let resolvedLat = gpsLat;
       let resolvedLon = gpsLon;
-      let takenAt: string | undefined;
+      // Use client-supplied takenAt as the base; EXIF will override it below for images
+      let takenAt: string | undefined = (request.query.get("takenAt") ?? "") || undefined;
       if (!isVideoUpload && !isAudioUpload) {
         try {
           const exifData = await exifr.parse(buf, ["DateTimeOriginal", "CreateDate", "DateTime"]);

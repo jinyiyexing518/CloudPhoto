@@ -23,6 +23,73 @@ const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPag
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 
+// ─── Video metadata extraction (MP4 / MOV / 3GP) ────────────────────────────
+// Parses binary MP4 container to extract creation time (mvhd box) and GPS
+// coordinates (©xyz atom inside udta box). Reads only the first 8 MB so
+// large video files are handled efficiently.
+async function extractVideoMetadata(file: File): Promise<{ takenAt?: string; gpsLat?: string; gpsLon?: string }> {
+  try {
+    const ab = await file.slice(0, Math.min(file.size, 8 * 1024 * 1024)).arrayBuffer();
+    const u8 = new Uint8Array(ab);
+    const dv = new DataView(ab);
+    let pos = 0;
+    while (pos + 8 <= u8.length) {
+      const boxSize = dv.getUint32(pos);
+      const type = String.fromCharCode(u8[pos+4], u8[pos+5], u8[pos+6], u8[pos+7]);
+      if (boxSize === 1 || boxSize < 8) break; // 64-bit or corrupt
+      if (type === "moov") return _parseMoovBox(dv, u8, pos + 8, Math.min(pos + boxSize, u8.length));
+      pos += boxSize;
+    }
+  } catch { /* best-effort */ }
+  return {};
+}
+
+function _parseMoovBox(dv: DataView, u8: Uint8Array, start: number, end: number) {
+  let takenAt: string | undefined;
+  let gpsLat: string | undefined;
+  let gpsLon: string | undefined;
+  let pos = start;
+  while (pos + 8 <= end) {
+    const boxSize = dv.getUint32(pos);
+    if (boxSize < 8 || pos + boxSize > end) break;
+    const type = String.fromCharCode(u8[pos+4], u8[pos+5], u8[pos+6], u8[pos+7]);
+    if (type === "mvhd" && !takenAt) {
+      // QuickTime epoch is 1904-01-01; offset to Unix epoch = 2082844800 s
+      const QT = 2082844800;
+      const ver = u8[pos + 8];
+      const qtSec = ver === 1
+        ? dv.getUint32(pos + 12) * 4294967296 + dv.getUint32(pos + 16)
+        : dv.getUint32(pos + 12);
+      const d = new Date((qtSec - QT) * 1000);
+      if (!isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) {
+        const p = (n: number) => String(n).padStart(2, "0");
+        takenAt = `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+      }
+    }
+    if (type === "udta") {
+      // Search for ©xyz atom (0xa9 0x78 0x79 0x7a) inside udta
+      let p2 = pos + 8;
+      while (p2 + 8 <= pos + boxSize) {
+        const s2 = dv.getUint32(p2);
+        if (s2 < 8 || p2 + s2 > pos + boxSize) break;
+        if (u8[p2+4] === 0xa9 && u8[p2+5] === 0x78 && u8[p2+6] === 0x79 && u8[p2+7] === 0x7a && p2 + 12 < p2 + s2) {
+          // data: 2-byte length + 2-byte language + ISO-6709 GPS string
+          const str = new TextDecoder("utf-8", { fatal: false }).decode(u8.slice(p2 + 12, p2 + s2));
+          const m = str.match(/([+-]\d+\.?\d*)([+-]\d+\.?\d*)/);
+          if (m) {
+            const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+            if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) { gpsLat = String(lat); gpsLon = String(lon); }
+          }
+        }
+        p2 += s2;
+      }
+    }
+    pos += boxSize;
+  }
+  return { takenAt, gpsLat, gpsLon };
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 // Computed once at module load — avoids recalculating on every render
 const _ua = navigator.userAgent.toLowerCase();
 const IS_IOS = /iphone|ipad|ipod/.test(_ua);
@@ -766,9 +833,10 @@ function AppContent() {
       setUploadProgress({ bytesLoaded: completedBytes, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
       const fileBase = completedBytes;
       try {
-        // Extract GPS from EXIF if available (images only)
+        // Extract GPS from EXIF (images) or MP4/MOV container (videos)
         let gpsLat: string | undefined;
         let gpsLon: string | undefined;
+        let videoTakenAt: string | undefined;
         if (valid[i].type.startsWith("image/")) {
           try {
             const exifrLib = await import("exifr");
@@ -779,6 +847,13 @@ function AppContent() {
               gpsLon = String(gps.longitude);
             }
           } catch { /* EXIF extraction is best-effort */ }
+        } else if (valid[i].type.startsWith("video/")) {
+          try {
+            const meta = await extractVideoMetadata(valid[i]);
+            gpsLat = meta.gpsLat;
+            gpsLon = meta.gpsLon;
+            videoTakenAt = meta.takenAt;
+          } catch { /* best-effort */ }
         }
 
         // ── Upload with retry (up to 3 attempts, auto-waits for network) ──
@@ -809,6 +884,7 @@ function AppContent() {
               gpsLat,
               gpsLon,
               controller.signal,
+              videoTakenAt,
             );
             // Immediately add the uploaded photo so the folder view refreshes live
             setPhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);

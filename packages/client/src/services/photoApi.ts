@@ -292,6 +292,7 @@ export function uploadPhotoWithProgress(
   gpsLat?: string,
   gpsLon?: string,
   signal?: AbortSignal,
+  takenAt?: string,
 ): Promise<Photo> {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams({ filename: file.name });
@@ -301,6 +302,7 @@ export function uploadPhotoWithProgress(
     if (groupId) params.set("groupId", groupId);
     if (gpsLat) params.set("gpsLat", gpsLat);
     if (gpsLon) params.set("gpsLon", gpsLon);
+    if (takenAt) params.set("takenAt", takenAt);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/photos/upload?${params.toString()}`);
