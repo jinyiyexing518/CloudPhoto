@@ -203,6 +203,8 @@ export interface Photo {
   gpsLon?: string;
   /** True for GIF, animated WebP, APNG, and Android/Google Motion Photos */
   isAnimated?: boolean;
+  /** ISO 8601 timestamp from EXIF DateTimeOriginal — when the photo was actually taken */
+  takenAt?: string;
 }
 
 /** Lightweight GPS-only record from the fast Cosmos cache */
@@ -391,6 +393,24 @@ export async function updatePhotoGps(
   );
   if (!response.ok) {
     throw new Error(await parseApiError(response, "更新位置失败"));
+  }
+}
+
+export async function updatePhotoTakenAt(
+  name: string,
+  takenAt: string,
+  updatedBy?: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ takenAt, updatedBy }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "更新拍摄时间失败"));
   }
 }
 

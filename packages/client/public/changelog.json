@@ -24,6 +24,14 @@
     "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   },
   {
+    "id": "sort-by-taken-at",
+    "date": "2026-06-03",
+    "icon": "📅",
+    "title": "按拍摄时间排序 + 支持编辑拍摄时间",
+    "type": "feature",
+    "desc": "上传时自动从 EXIF 提取拍摄时间；照片列表按拍摄时间排序；详情弹窗支持手动编辑拍摄时间"
+  },
+  {
     "id": "perf-new-features",
     "date": "2026-06-03",
     "icon": "⚡",

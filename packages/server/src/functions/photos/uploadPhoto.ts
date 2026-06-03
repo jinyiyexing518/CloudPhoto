@@ -133,14 +133,22 @@ app.http("uploadPhoto", {
       // Server-side GPS extraction: try to read EXIF if client didn't provide coordinates
       let resolvedLat = gpsLat;
       let resolvedLon = gpsLon;
-      if (!resolvedLat && !isVideoUpload && !isAudioUpload) {
+      let takenAt: string | undefined;
+      if (!isVideoUpload && !isAudioUpload) {
         try {
-          const gps = await exifr.gps(buf);
-          if (gps?.latitude != null && gps?.longitude != null) {
-            resolvedLat = String(gps.latitude);
-            resolvedLon = String(gps.longitude);
-          }
-        } catch { /* EXIF extraction is best-effort */ }
+          const exifData = await exifr.parse(buf, ["DateTimeOriginal", "CreateDate", "DateTime"]);
+          const dt: unknown = exifData?.DateTimeOriginal ?? exifData?.CreateDate ?? exifData?.DateTime;
+          if (dt instanceof Date && !isNaN(dt.getTime())) takenAt = dt.toISOString();
+        } catch { /* best-effort */ }
+        if (!resolvedLat) {
+          try {
+            const gps = await exifr.gps(buf);
+            if (gps?.latitude != null && gps?.longitude != null) {
+              resolvedLat = String(gps.latitude);
+              resolvedLon = String(gps.longitude);
+            }
+          } catch { /* best-effort */ }
+        }
       }
       await blockBlobClient.uploadData(buf, {
         blobHTTPHeaders: { blobContentType: contentType },
@@ -154,6 +162,7 @@ app.http("uploadPhoto", {
           lastModifiedAt: now,
           ...(resolvedLat && { gpsLat: resolvedLat }),
           ...(resolvedLon && { gpsLon: resolvedLon }),
+          ...(takenAt && { takenAt }),
           ...(isAnimated && { isAnimated: "1" }),
         },
       });

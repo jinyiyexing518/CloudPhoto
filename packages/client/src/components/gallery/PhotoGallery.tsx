@@ -12,6 +12,7 @@ import {
   ManagedMomentsUnavailableError,
   uploadPhotoWithProgress,
   setPhotoVoiceMemo as apiSetVoiceMemo,
+  updatePhotoTakenAt,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -23,6 +24,7 @@ interface Props {
   onDelete: (name: string) => void;
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
+  onTakenAtUpdate?: (name: string, takenAt: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onMovePhoto?: (name: string, toFolder: string) => Promise<boolean>;
   onBatchDelete?: (names: string[]) => Promise<void>;
@@ -239,6 +241,7 @@ function PhotoGallery({
   onDelete,
   onSubjectUpdate,
   onRenamePhoto,
+  onTakenAtUpdate,
   onToggleFavorite,
   onMovePhoto,
   onBatchDelete,
@@ -263,6 +266,9 @@ function PhotoGallery({
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [editingTakenAt, setEditingTakenAt] = useState(false);
+  const [takenAtInput, setTakenAtInput] = useState("");
+  const [savingTakenAt, setSavingTakenAt] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -618,6 +624,7 @@ function PhotoGallery({
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
     setNameInput(getEditablePhotoName(photo));
+    setEditingTakenAt(false);
     setMoveFolderInput(photo.folder ?? "");
     setShowOriginalPreview(false);
     setDownloading(false);
@@ -680,6 +687,22 @@ function PhotoGallery({
       setEditingName(false);
     } finally {
       setSavingName(false);
+    }
+  };
+
+  const saveTakenAt = async () => {
+    if (!selectedPhoto || !takenAtInput) return;
+    setSavingTakenAt(true);
+    try {
+      const iso = new Date(takenAtInput).toISOString();
+      await updatePhotoTakenAt(selectedPhoto.name, iso, userName);
+      onTakenAtUpdate?.(selectedPhoto.name, iso);
+      setSelectedPhoto({ ...selectedPhoto, takenAt: iso });
+      setEditingTakenAt(false);
+    } catch {
+      showToast("更新拍摄时间失败", "error");
+    } finally {
+      setSavingTakenAt(false);
     }
   };
 
@@ -1306,6 +1329,33 @@ function PhotoGallery({
                   </>
                 ) : (
                   <>
+                    <span className="modal-detail-label">拍摄时间</span>
+                    <span className="modal-detail-value modal-subject-cell">
+                      {editingTakenAt ? (
+                        <>
+                          <input
+                            type="datetime-local"
+                            className="modal-subject-input"
+                            value={takenAtInput}
+                            onChange={(e) => setTakenAtInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveTakenAt();
+                              if (e.key === "Escape") setEditingTakenAt(false);
+                            }}
+                          />
+                          <button className="modal-subject-save" onClick={() => void saveTakenAt()} disabled={savingTakenAt}>
+                            {savingTakenAt ? "..." : "保存"}
+                          </button>
+                          <button className="modal-subject-cancel" onClick={() => setEditingTakenAt(false)}>✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{selectedPhoto.takenAt ? formatDate(selectedPhoto.takenAt) : <em className="modal-empty">未记录</em>}</span>
+                          <button className="modal-edit-btn" onClick={() => { setTakenAtInput(isoToDatetimeLocal(selectedPhoto.takenAt ?? "")); setEditingTakenAt(true); }}>✏</button>
+                        </>
+                      )}
+                    </span>
+
                     <span className="modal-detail-label">上传者</span>
                     <span className="modal-detail-value">{selectedPhoto.createdBy ?? "—"}</span>
 
@@ -1392,6 +1442,15 @@ function formatDate(value: string | Date): string {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
+}
+
+function isoToDatetimeLocal(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return ""; }
 }
 
 export default memo(PhotoGallery);

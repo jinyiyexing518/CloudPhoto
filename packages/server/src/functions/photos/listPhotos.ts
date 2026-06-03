@@ -79,6 +79,7 @@ app.http("listPhotos", {
         voiceMemoUrl: string | undefined;
         gpsLat: string | undefined;
         gpsLon: string | undefined;
+        takenAt: string | undefined;
         isAnimated: boolean;
       }> = [];
 
@@ -120,14 +121,15 @@ app.http("listPhotos", {
           voiceMemoUrl: voiceMemoName ? generateSasUrlWithKey(voiceMemoName, delegationKey) : undefined,
           gpsLat: getMeta(blob.metadata, "gpsLat"),
           gpsLon: getMeta(blob.metadata, "gpsLon"),
+          takenAt: getMeta(blob.metadata, "takenAt"),
           isAnimated: getMeta(blob.metadata, "isAnimated") === "1" || blob.properties.contentType === "image/gif",
         });
       }
 
       photos.sort((a, b) => {
-        // Sort by upload time (createdAt metadata) descending; fall back to lastModified
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.lastModified ? new Date(a.lastModified).getTime() : 0);
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.lastModified ? new Date(b.lastModified).getTime() : 0);
+        // Sort by photo taken time first, then upload time, then lastModified
+        const timeA = a.takenAt ? new Date(a.takenAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : (a.lastModified ? new Date(a.lastModified).getTime() : 0));
+        const timeB = b.takenAt ? new Date(b.takenAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : (b.lastModified ? new Date(b.lastModified).getTime() : 0));
         return timeB - timeA;
       });
 

@@ -256,7 +256,7 @@ function AppContent() {
   const filteredPhotos = useMemo(() => {
     return photos.filter((p) => {
       const name = (p.originalName || p.name.replace(/^\d+-/, "")).toLowerCase();
-      const date = p.createdAt ?? p.lastModified;
+      const date = p.takenAt ?? p.createdAt ?? p.lastModified;
 
       if (filters.name && !name.includes(filters.name.toLowerCase())) return false;
       if (filters.subject && !(p.subject ?? "").toLowerCase().includes(filters.subject.toLowerCase())) return false;
@@ -894,6 +894,12 @@ function AppContent() {
     );
   };
 
+  const handleTakenAtUpdate = (name: string, takenAt: string) => {
+    setPhotos((prev) =>
+      prev.map((p) => (p.name === name ? { ...p, takenAt } : p))
+    );
+  };
+
   const handleRenamePhoto = (name: string, newOriginalName: string) => {
     setPhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, originalName: newOriginalName } : p))
@@ -1515,6 +1521,7 @@ function AppContent() {
                 onDelete={handleDelete}
                 onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
+                onTakenAtUpdate={handleTakenAtUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}
                 onMovePhoto={handleMovePhoto}
@@ -1533,6 +1540,7 @@ function AppContent() {
                 onDelete={handleDelete}
                 onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
+                onTakenAtUpdate={handleTakenAtUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}
                 onMovePhoto={handleMovePhoto}
@@ -1551,6 +1559,7 @@ function AppContent() {
                 onDelete={handleDelete}
                 onBatchDelete={handleBatchDeleteWithProgress}
                 onSubjectUpdate={handleSubjectUpdate}
+                onTakenAtUpdate={handleTakenAtUpdate}
                 onRenamePhoto={handleRenamePhoto}
                 onToggleFavorite={handleToggleFavorite}
                 onUploadToFolder={handleUploadToFolder}
