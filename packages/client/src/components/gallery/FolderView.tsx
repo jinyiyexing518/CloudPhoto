@@ -107,6 +107,7 @@ function FolderCard({
   onClick,
   onDrop,
   onRename,
+  onDelete,
   hasSubFolders = false,
 }: {
   name: string;
@@ -114,6 +115,7 @@ function FolderCard({
   onClick: () => void;
   onDrop?: (photoName: string, fromFolder: string) => void;
   onRename?: (newName: string) => void;
+  onDelete?: () => void;
   hasSubFolders?: boolean;
 }) {
   const [dragOver, setDragOver] = useState(false);
@@ -170,6 +172,15 @@ function FolderCard({
           onClick={(e) => { e.stopPropagation(); setEditVal(name); setEditing(true); }}
         >
           ✏️
+        </button>
+      )}
+      {onDelete && !editing && (
+        <button
+          className="folder-card-delete-btn"
+          title="删除文件夹（照片移入回收站）"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        >
+          🗑️
         </button>
       )}
     </div>
@@ -390,9 +401,43 @@ export default function FolderView({
     }
   };
 
+  const handleDeleteFolder = async (folderName: string) => {
+    const fullPath = fullFolderPath(folderName);
+    const photosInFolder = photos.filter((p) => {
+      const f = p.folder?.trim() ?? "";
+      return f === fullPath || f.startsWith(fullPath + "/");
+    });
+    const msg = photosInFolder.length > 0
+      ? `删除文件夹「${folderName}」及其 ${photosInFolder.length} 张照片？\n照片将移入回收站，随时可以恢复。`
+      : `删除空文件夹「${folderName}」？`;
+    if (!confirm(msg)) return;
+
+    if (photosInFolder.length > 0) {
+      const names = photosInFolder.map((p) => p.name);
+      if (onBatchDelete) {
+        await onBatchDelete(names);
+      } else {
+        for (const p of photosInFolder) onDelete(p.name);
+      }
+    }
+
+    // Remove from locally-tracked empty folders
+    setExtraFolders((prev) =>
+      prev.filter((ef) => ef !== fullPath && !ef.startsWith(fullPath + "/"))
+    );
+
+    // Navigate back if we're currently inside the deleted folder
+    if (currentPath !== null && (currentPath === fullPath || currentPath.startsWith(fullPath + "/"))) {
+      const parentPath = fullPath.includes("/") ? fullPath.split("/").slice(0, -1).join("/") : null;
+      setCurrentPath(parentPath);
+    }
+
+    if (photosInFolder.length === 0) showToast(`已删除文件夹「${folderName}」`, "success");
+  };
+
   const navigateTo = (folderName: string) => {
     if (currentPath === null) {
-      setCurrentPath(folderName); // folderName="" for uncategorized
+      setCurrentPath(folderName);
     } else if (currentPath === "") {
       setCurrentPath(folderName);
     } else {
@@ -574,6 +619,7 @@ export default function FolderView({
                 void moveByDragWithToast(photoName, fromFolder, name);
               }}
               onRename={onRenameFolder ? (newName) => void handleRenameFolder(name, newName) : undefined}
+              onDelete={() => void handleDeleteFolder(name)}
               hasSubFolders={getImmediateSubFolders(photos, extraFolders, name).length > 0}
             />
           ))}
@@ -608,6 +654,7 @@ export default function FolderView({
           uploadProgress={uploadProgress}
           onMovePhoto={onMovePhoto}
           onRenameSubFolder={onRenameFolder ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
+          onDeleteSubFolder={(sub) => handleDeleteFolder(sub)}
           onBatchDelete={onBatchDelete}
           onDownloadStateChange={onDownloadStateChange}
           onShareCreated={onShareCreated}
@@ -640,6 +687,7 @@ interface ContentProps {
   uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
+  onDeleteSubFolder?: (sub: string) => void;
   onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onShareCreated?: (photoName: string) => void;
@@ -666,6 +714,7 @@ function FolderContent({
   uploadProgress,
   onMovePhoto,
   onRenameSubFolder,
+  onDeleteSubFolder,
   onBatchDelete,
   onDownloadStateChange,
   onShareCreated,
@@ -1162,6 +1211,7 @@ function FolderContent({
               onClick={() => onNavigate(sub)}
               onDrop={(photoName, fromFolder) => onDropToSubFolder(photoName, fromFolder, sub)}
               onRename={onRenameSubFolder ? (newSub) => onRenameSubFolder(sub, newSub) : undefined}
+              onDelete={onDeleteSubFolder ? () => onDeleteSubFolder(sub) : undefined}
               hasSubFolders={getImmediateSubFolders(allPhotos, allExtraFolders, subFullPath).length > 0}
             />
           );

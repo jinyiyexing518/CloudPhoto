@@ -95,6 +95,52 @@ export default function TrashView({ groupId, onRestored }: Props) {
     onRestored?.();
   };
 
+  const handleRestoreFolder = async (folderKey: string) => {
+    const folderPhotos = grouped.get(folderKey) ?? [];
+    const displayName = folderKey || "（未分类）";
+    if (!confirm(`恢复文件夹「${displayName}」的 ${folderPhotos.length} 张照片？`)) return;
+    let failed = 0;
+    for (const p of folderPhotos) {
+      setBusy(p.name, true);
+      try { await restorePhoto(p.name); }
+      catch { failed++; }
+      setBusy(p.name, false);
+    }
+    setPhotos((prev) => prev.filter((p) => !folderPhotos.some((fp) => fp.name === p.name)));
+    if (failed > 0) showToast(`${failed} 张恢复失败`, "error");
+    else showToast(`文件夹「${displayName}」已恢复`, "success");
+    onRestored?.();
+  };
+
+  const handleDeleteFolder = async (folderKey: string) => {
+    const folderPhotos = grouped.get(folderKey) ?? [];
+    const displayName = folderKey || "（未分类）";
+    if (!confirm(`彻底删除文件夹「${displayName}」的 ${folderPhotos.length} 张照片？此操作不可撤销。`)) return;
+    let failed = 0;
+    for (const p of folderPhotos) {
+      setBusy(p.name, true);
+      try { await permanentlyDeletePhoto(p.name); }
+      catch { failed++; }
+      setBusy(p.name, false);
+    }
+    setPhotos((prev) => prev.filter((p) => !folderPhotos.some((fp) => fp.name === p.name)));
+    if (failed > 0) showToast(`${failed} 张删除失败`, "error");
+    else showToast(`文件夹「${displayName}」已彻底删除`, "success");
+  };
+
+  // Group photos by folder
+  const grouped = new Map<string, Photo[]>();
+  for (const p of photos) {
+    const key = p.folder?.trim() ?? "";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(p);
+  }
+  const folderGroups = Array.from(grouped.entries()).sort(([a], [b]) => {
+    if (a === "") return 1;
+    if (b === "") return -1;
+    return a.localeCompare(b, "zh-CN");
+  });
+
   if (loading) {
     return (
       <div className="loading">
@@ -148,53 +194,80 @@ export default function TrashView({ groupId, onRestored }: Props) {
           </div>
         </div>
       )}
-      <div className="trash-grid">
-        {photos.map((p) => {
-          const displayName = p.originalName || p.name.split("/").pop() || p.name;
-          const deletedDate = p.deletedAt
-            ? new Date(p.deletedAt).toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" })
-            : "未知";
-          const deletedBy = p.deletedByName
-            ? p.deletedBy === user?.id
-              ? `${p.deletedByName}（我）`
-              : p.deletedByName
-            : p.deletedBy
-              ? p.deletedBy === user?.id
-                ? `${user?.displayName ?? "我"}（我）`
-                : p.deletedBy
-              : "未知用户";
-          const folder = p.folder ? p.folder : "（根目录）";
-          const busy = busyNames.has(p.name);
+      <div className="trash-groups">
+        {folderGroups.map(([folderKey, folderPhotos]) => {
+          const folderLabel = folderKey || "（未分类）";
           return (
-            <div key={p.name} className={`trash-card${busy ? " trash-card--busy" : ""}`}>
-              <div className="trash-card-thumb">
-                <MediaThumb url={p.url} alt={displayName} contentType={p.contentType} loading="lazy" />
-              </div>
-              <div className="trash-card-body">
-                <div className="trash-card-name" title={displayName}>{displayName}</div>
-                <div className="trash-card-meta">
-                  <span>📁 {folder}</span>
-                  <span>🗑 {deletedDate}</span>
-                  <span>👤 删除人：{deletedBy}</span>
+            <div key={folderKey} className="trash-folder-group">
+              <div className="trash-folder-header">
+                <span className="trash-folder-name">📁 {folderLabel}</span>
+                <span className="trash-folder-count">{folderPhotos.length} 张</span>
+                <div className="trash-folder-actions">
+                  <button
+                    className="trash-folder-restore-btn"
+                    onClick={() => void handleRestoreFolder(folderKey)}
+                    disabled={!!emptyProgress}
+                  >
+                    恢复文件夹
+                  </button>
+                  <button
+                    className="trash-folder-delete-btn"
+                    onClick={() => void handleDeleteFolder(folderKey)}
+                    disabled={!!emptyProgress}
+                  >
+                    彻底删除
+                  </button>
                 </div>
               </div>
-              <div className="trash-card-actions">
-                <button
-                  className="trash-restore-btn"
-                  onClick={() => handleRestore(p.name)}
-                  disabled={busy}
-                  title="恢复到原位置"
-                >
-                  恢复
-                </button>
-                <button
-                  className="trash-delete-btn"
-                  onClick={() => handlePermanentDelete(p.name, displayName)}
-                  disabled={busy}
-                  title="彻底删除，不可恢复"
-                >
-                  彻底删除
-                </button>
+              <div className="trash-grid">
+                {folderPhotos.map((p) => {
+                  const displayName = p.originalName || p.name.split("/").pop() || p.name;
+                  const deletedDate = p.deletedAt
+                    ? new Date(p.deletedAt).toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" })
+                    : "未知";
+                  const deletedBy = p.deletedByName
+                    ? p.deletedBy === user?.id
+                      ? `${p.deletedByName}（我）`
+                      : p.deletedByName
+                    : p.deletedBy
+                      ? p.deletedBy === user?.id
+                        ? `${user?.displayName ?? "我"}（我）`
+                        : p.deletedBy
+                      : "未知用户";
+                  const busy = busyNames.has(p.name);
+                  return (
+                    <div key={p.name} className={`trash-card${busy ? " trash-card--busy" : ""}`}>
+                      <div className="trash-card-thumb">
+                        <MediaThumb url={p.url} alt={displayName} contentType={p.contentType} loading="lazy" />
+                      </div>
+                      <div className="trash-card-body">
+                        <div className="trash-card-name" title={displayName}>{displayName}</div>
+                        <div className="trash-card-meta">
+                          <span>🗑 {deletedDate}</span>
+                          <span>👤 删除人：{deletedBy}</span>
+                        </div>
+                      </div>
+                      <div className="trash-card-actions">
+                        <button
+                          className="trash-restore-btn"
+                          onClick={() => void handleRestore(p.name)}
+                          disabled={busy}
+                          title="恢复到原位置"
+                        >
+                          恢复
+                        </button>
+                        <button
+                          className="trash-delete-btn"
+                          onClick={() => void handlePermanentDelete(p.name, displayName)}
+                          disabled={busy}
+                          title="彻底删除，不可恢复"
+                        >
+                          彻底删除
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

@@ -2460,6 +2460,24 @@ body {
 }
 .folder-card:hover .folder-card-rename-btn { opacity: 1; }
 .folder-card-rename-btn:hover { background: #e5e7eb; }
+
+/* Folder delete button */
+.folder-card-delete-btn {
+  position: absolute;
+  top: 6px;
+  right: 34px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s, background 0.15s;
+  line-height: 1;
+}
+.folder-card:hover .folder-card-delete-btn { opacity: 1; }
+.folder-card-delete-btn:hover { background: rgba(220, 38, 38, 0.12); }
 .folder-card-rename-input {
   width: 90%;
   font-size: 0.85rem;
@@ -6521,6 +6539,44 @@ body {
   padding: 10px 0 4px;
   background: linear-gradient(to top, #fff 70%, rgba(255,255,255,0));
 }
+
+/* Trash folder grouping */
+.trash-groups { display: flex; flex-direction: column; gap: 20px; }
+.trash-folder-group { }
+.trash-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1.5px solid #e5e7eb;
+  margin-bottom: 8px;
+}
+.trash-folder-name { font-weight: 600; color: #374151; font-size: 0.95rem; }
+.trash-folder-count { font-size: 0.82rem; color: #9ca3af; }
+.trash-folder-actions { display: flex; gap: 6px; margin-left: auto; }
+.trash-folder-restore-btn {
+  background: none;
+  border: 1.5px solid #16a34a;
+  color: #16a34a;
+  border-radius: 7px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.trash-folder-restore-btn:hover:not(:disabled) { background: #f0fdf4; }
+.trash-folder-delete-btn {
+  background: none;
+  border: 1.5px solid #dc2626;
+  color: #dc2626;
+  border-radius: 7px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.trash-folder-delete-btn:hover:not(:disabled) { background: #fef2f2; }
+.trash-folder-restore-btn:disabled, .trash-folder-delete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ===== Settings Dialog ===== */
 .settings-dialog {

@@ -67,6 +67,13 @@
     "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   },
   {
+    "id": "2026-06-03-folder-delete-restore",
+    "date": "2026-06-03",
+    "type": "feature",
+    "title": "文件夹删除与恢复支持",
+    "summary": "FolderView支持整个文件夹删除（所有照片移入回收站），回收站按文件夹分组展示并支持一键恢复或彻底删除整个文件夹"
+  },
+  {
     "id": "2026-06-03-folder-pin-on-create",
     "date": "2026-06-03",
     "type": "improvement",
