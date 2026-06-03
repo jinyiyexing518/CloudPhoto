@@ -158,6 +158,15 @@
     "seq": 1780478603447
   },
   {
+    "id": "2026-06-03-no-gps-filter",
+    "date": "2026-06-03",
+    "title": "无GPS快速筛选",
+    "description": "在筛选栏增加「📍 无GPS」快速筛选按钮，一键找出所有缺少地理位置的照片，配合批量修改位置功能使用。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780479779925
+  },
+  {
     "id": "2026-06-03-perf-new-features",
     "date": "2026-06-03",
     "icon": "⚡",

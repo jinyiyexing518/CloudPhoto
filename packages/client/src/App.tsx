@@ -336,6 +336,7 @@ function AppContent() {
       if (filters.favoriteOnly && !p.favorite) return false;
       if (filters.missingSubjectOnly && Boolean(p.subject?.trim())) return false;
       if (filters.uncategorizedOnly && Boolean((p.folder ?? "").trim())) return false;
+      if (filters.noGpsOnly && Boolean(p.gpsLat)) return false;
       if (filters.folder && (p.folder ?? "").trim() !== filters.folder) return false;
       return true;
     });
@@ -418,7 +419,7 @@ function AppContent() {
   );
 
   const timelineHasActiveFilters = useMemo(
-    () => Boolean(filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly || filters.missingSubjectOnly || filters.uncategorizedOnly),
+    () => Boolean(filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly || filters.missingSubjectOnly || filters.uncategorizedOnly || filters.noGpsOnly),
     [filters],
   );
 
@@ -431,6 +432,7 @@ function AppContent() {
     if (filters.favoriteOnly) count++;
     if (filters.missingSubjectOnly) count++;
     if (filters.uncategorizedOnly) count++;
+    if (filters.noGpsOnly) count++;
     return count;
   }, [filters]);
 
