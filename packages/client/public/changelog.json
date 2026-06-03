@@ -48,6 +48,15 @@
     "seq": 1780480557357
   },
   {
+    "id": "2026-06-03-card-filename-tooltip",
+    "date": "2026-06-03",
+    "title": "照片卡片悬停显示文件名",
+    "description": "鼠标悬停在照片缩略图卡片上时，显示原始文件名 tooltip，方便快速查看完整文件名而无需打开预览。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780480880296
+  },
+  {
     "id": "2026-06-03-card-taken-date",
     "date": "2026-06-03",
     "title": "照片卡片显示拍摄日期",

@@ -75,6 +75,7 @@ function PhotoCard({
         draggable={draggable}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
+        title={displayName}
       >
         {onSelect !== undefined && (
           <div className={`photo-select-badge${selected ? " photo-select-badge--on" : ""}`}>
