@@ -110,7 +110,7 @@ app.http("motionVideo", {
       const headerDl = await blobClient.download(0, headerCount);
       const headerChunks: Buffer[] = [];
       for await (const chunk of headerDl.readableStreamBody!) {
-        headerChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as ArrayBuffer));
+        headerChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as ArrayBuffer));
       }
       const headerText = Buffer.concat(headerChunks).toString("latin1");
 
@@ -127,7 +127,7 @@ app.http("motionVideo", {
       const videoDl = await blobClient.download(range.offset, range.length);
       const videoChunks: Buffer[] = [];
       for await (const chunk of videoDl.readableStreamBody!) {
-        videoChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as ArrayBuffer));
+        videoChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as ArrayBuffer));
       }
       const videoBuf = Buffer.concat(videoChunks);
 
