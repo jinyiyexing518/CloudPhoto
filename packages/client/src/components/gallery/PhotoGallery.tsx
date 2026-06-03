@@ -301,6 +301,7 @@ function PhotoGallery({
   const [moving, setMoving] = useState(false);
   const [showVoicePanel, setShowVoicePanel] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "recording" | "uploading">("idle");
+  const touchStartX = useRef<number | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1261,7 +1262,17 @@ function PhotoGallery({
             {selectedIdx !== null && selectedIdx < modalPhotos.length - 1 && (
               <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title="下一张 (→)">›</button>
             )}
-            <div className="modal-image-pane">
+            <div className="modal-image-pane"
+              onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+              onTouchEnd={(e) => {
+                if (touchStartX.current === null || selectedIdx === null) return;
+                const dx = e.changedTouches[0].clientX - touchStartX.current;
+                touchStartX.current = null;
+                if (Math.abs(dx) < 50) return; // too short
+                if (dx < 0 && selectedIdx < modalPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
+                if (dx > 0 && selectedIdx > 0) navigateToPhoto(selectedIdx - 1);
+              }}
+            >
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <video className="modal-image modal-video" controls playsInline>
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />

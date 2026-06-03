@@ -232,6 +232,15 @@
     "seq": 1780472229414
   },
   {
+    "id": "2026-06-03-swipe-to-navigate",
+    "date": "2026-06-03",
+    "title": "触摸滑动切换照片",
+    "description": "在移动端照片预览模态框中支持左右滑动手势（≥50px）切换上一张/下一张照片，与桌面端键盘左右键导航保持一致。时间线和文件夹视图均已支持。",
+    "impact": "mobile-ux",
+    "breaking": false,
+    "seq": 1780480387231
+  },
+  {
     "id": "2026-06-03-upload-live-photo-refresh",
     "date": "2026-06-03",
     "type": "improvement",

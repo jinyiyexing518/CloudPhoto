@@ -723,6 +723,7 @@ function FolderContent({
   const showToast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const dragCount = useRef(0);
+  const touchStartX = useRef<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadSubject, setUploadSubject] = useState("");
 
@@ -1371,7 +1372,17 @@ function FolderContent({
       {selectedPhoto && (
         <div className="modal-overlay" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-image-pane">
+          <div className="modal-image-pane"
+              onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+              onTouchEnd={(e) => {
+                if (touchStartX.current === null || selectedIdx === null) return;
+                const dx = e.changedTouches[0].clientX - touchStartX.current;
+                touchStartX.current = null;
+                if (Math.abs(dx) < 50) return;
+                if (dx < 0 && selectedIdx < directPhotos.length - 1) navigateToPhoto(selectedIdx + 1, directPhotos);
+                if (dx > 0 && selectedIdx > 0) navigateToPhoto(selectedIdx - 1, directPhotos);
+              }}
+            >
               {/* Prev / Next navigation */}
               {selectedIdx !== null && selectedIdx > 0 && (
                 <button
