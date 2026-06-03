@@ -32,6 +32,10 @@ function PhotoCard({
   const [imgLoaded, setImgLoaded] = useState(false);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
+  const isAnimated = photo.isAnimated || isGif;
+  // Motion photo = animated JPEG (Android/Google Motion Photo) — browser can't play the video part
+  const isMotionPhoto = isAnimated && !isGif &&
+    (photo.contentType === "image/jpeg" || photo.contentType === "image/jpg");
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const handleVideoMetadata = () => {
@@ -78,14 +82,18 @@ function PhotoCard({
             <img
               src={photo.url}
               alt={displayName}
-              loading={isGif ? "eager" : "lazy"}
+              loading={isAnimated ? "eager" : "lazy"}
               decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
             />
           )}
           {isVideo && <div className="photo-video-badge">▶</div>}
-          {isGif && <div className="photo-gif-badge">动图 ▶</div>}
+          {isAnimated && (
+            <div className="photo-gif-badge">
+              {isMotionPhoto ? "动态照片 📱" : "动图 ▶"}
+            </div>
+          )}
         </div>
         <div className="photo-info">
           <span className="photo-name" title={displayName}>

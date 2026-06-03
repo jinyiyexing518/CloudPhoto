@@ -1070,7 +1070,7 @@ function PhotoGallery({
                 <video className="modal-image modal-video" controls playsInline>
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
                 </video>
-              ) : selectedPhoto.contentType === "image/gif" ? (
+              ) : selectedPhoto.contentType === "image/gif" || selectedPhoto.isAnimated ? (
                 <>
                   <img
                     key={selectedPhoto.url}
@@ -1078,7 +1078,11 @@ function PhotoGallery({
                     alt={selectedPhoto.name}
                     className="modal-image modal-image--gif"
                   />
-                  <span className="modal-gif-badge">动图 ▶ 循环播放</span>
+                  <span className="modal-gif-badge">
+                    {(selectedPhoto.contentType === "image/jpeg" || selectedPhoto.contentType === "image/jpg") && selectedPhoto.isAnimated
+                      ? "动态照片 📱"
+                      : "动图 ▶ 循环播放"}
+                  </span>
                 </>
               ) : (
                 <img
@@ -1158,7 +1162,7 @@ function PhotoGallery({
                     📁 移动
                   </button>
                 )}
-                {!selectedPhoto.contentType?.startsWith("video/") && selectedPhoto.contentType !== "image/gif" && (
+                {!selectedPhoto.contentType?.startsWith("video/") && !selectedPhoto.isAnimated && selectedPhoto.contentType !== "image/gif" && (
                   <button
                     className="modal-action-btn"
                     onClick={() => setShowOriginalPreview(true)}

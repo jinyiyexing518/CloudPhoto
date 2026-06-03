@@ -201,6 +201,8 @@ export interface Photo {
   voiceMemoUrl?: string;
   gpsLat?: string;
   gpsLon?: string;
+  /** True for GIF, animated WebP, APNG, and Android/Google Motion Photos */
+  isAnimated?: boolean;
 }
 
 /** Lightweight GPS-only record from the fast Cosmos cache */

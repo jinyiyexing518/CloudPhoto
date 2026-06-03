@@ -27,6 +27,44 @@ const ALLOWED_UPLOAD_MIME = new Set([...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIM
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;   // 20 MB
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;  // 200 MB
 
+/**
+ * Detect animated/motion photos that are not standard GIF.
+ * - Animated WebP: RIFF container with VP8X chunk + animation flag
+ * - APNG: PNG with acTL (animation control) chunk
+ * - Android/Google Motion Photo: JPEG with XMP MotionPhoto markers
+ */
+function detectAnimated(buf: Buffer, mime: string): boolean {
+  if (mime === "image/webp") {
+    // VP8X chunk at offset 12, flags byte at offset 20, bit 1 = animation
+    return (
+      buf.length >= 21 &&
+      buf.toString("ascii", 0, 4) === "RIFF" &&
+      buf.toString("ascii", 8, 12) === "WEBP" &&
+      buf.toString("ascii", 12, 16) === "VP8X" &&
+      (buf[20] & 0x02) !== 0
+    );
+  }
+  if (mime === "image/png") {
+    // APNG has 'acTL' chunk somewhere before IDAT
+    const scan = buf.subarray(0, Math.min(buf.length, 8192));
+    for (let i = 8; i < scan.length - 8; i++) {
+      if (scan[i] === 0x61 && scan[i+1] === 0x63 && scan[i+2] === 0x54 && scan[i+3] === 0x4c) return true; // 'acTL'
+      if (scan[i] === 0x49 && scan[i+1] === 0x44 && scan[i+2] === 0x41 && scan[i+3] === 0x54) break;       // 'IDAT'
+    }
+    return false;
+  }
+  if (mime === "image/jpeg" || mime === "image/jpg") {
+    // Android/Google Motion Photo embed XMP with MotionPhoto marker in the JPEG APP1 section
+    const header = buf.subarray(0, Math.min(buf.length, 65536)).toString("latin1");
+    return (
+      header.includes("MotionPhoto") ||
+      header.includes("MicroVideo") ||
+      header.includes("GCamera")
+    );
+  }
+  return false;
+}
+
 app.http("uploadPhoto", {
   methods: ["POST"],
   authLevel: "anonymous",
@@ -84,7 +122,9 @@ app.http("uploadPhoto", {
 
       // Azure Blob metadata only allows ASCII — base64-encode all free-text fields
       const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
-      await blockBlobClient.uploadData(Buffer.from(arrayBuffer), {
+      const buf = Buffer.from(arrayBuffer);
+      const isAnimated = !isVideoUpload && !isAudioUpload && detectAnimated(buf, mimeType);
+      await blockBlobClient.uploadData(buf, {
         blobHTTPHeaders: { blobContentType: contentType },
         metadata: {
           originalName: b64(filename),
@@ -96,6 +136,7 @@ app.http("uploadPhoto", {
           lastModifiedAt: now,
           ...(gpsLat && { gpsLat }),
           ...(gpsLon && { gpsLon }),
+          ...(isAnimated && { isAnimated: "1" }),
         },
       });
 
@@ -135,6 +176,7 @@ app.http("uploadPhoto", {
           createdAt: now,
           lastModifiedBy: uploadedBy,
           lastModifiedAt: now,
+          ...(isAnimated && { isAnimated: true }),
         }),
       };
     } catch (error) {

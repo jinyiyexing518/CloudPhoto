@@ -1164,7 +1164,7 @@ function FolderContent({
                 <video className="modal-image modal-video" controls playsInline>
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
                 </video>
-              ) : selectedPhoto.contentType === "image/gif" ? (
+              ) : selectedPhoto.contentType === "image/gif" || selectedPhoto.isAnimated ? (
                 <>
                   <img
                     key={selectedPhoto.url}
@@ -1172,7 +1172,11 @@ function FolderContent({
                     alt={displayName(selectedPhoto)}
                     className="modal-image modal-image--gif"
                   />
-                  <span className="modal-gif-badge">GIF</span>
+                  <span className="modal-gif-badge">
+                    {(selectedPhoto.contentType === "image/jpeg" || selectedPhoto.contentType === "image/jpg") && selectedPhoto.isAnimated
+                      ? "动态照片 📱"
+                      : "动图 ▶ 循环播放"}
+                  </span>
                 </>
               ) : (
                 <img
@@ -1250,7 +1254,7 @@ function FolderContent({
                 >
                   📁 移动
                 </button>
-                {!selectedPhoto.contentType?.startsWith("video/") && selectedPhoto.contentType !== "image/gif" && (
+                {!selectedPhoto.contentType?.startsWith("video/") && !selectedPhoto.isAnimated && selectedPhoto.contentType !== "image/gif" && (
                   <button
                     className="modal-action-btn"
                     onClick={() => setShowOriginalPreview(true)}

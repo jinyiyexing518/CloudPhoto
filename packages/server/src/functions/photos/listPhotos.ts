@@ -79,6 +79,7 @@ app.http("listPhotos", {
         voiceMemoUrl: string | undefined;
         gpsLat: string | undefined;
         gpsLon: string | undefined;
+        isAnimated: boolean;
       }> = [];
 
       // Fetch one delegation key for the whole listing — avoids a round-trip per blob
@@ -119,6 +120,7 @@ app.http("listPhotos", {
           voiceMemoUrl: voiceMemoName ? generateSasUrlWithKey(voiceMemoName, delegationKey) : undefined,
           gpsLat: getMeta(blob.metadata, "gpsLat"),
           gpsLon: getMeta(blob.metadata, "gpsLon"),
+          isAnimated: getMeta(blob.metadata, "isAnimated") === "1" || blob.properties.contentType === "image/gif",
         });
       }
 
