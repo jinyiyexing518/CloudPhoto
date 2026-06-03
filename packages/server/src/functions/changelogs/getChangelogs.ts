@@ -35,7 +35,7 @@ app.http("getChangelogs", {
       const { resources } = await container.items
         .query<ChangelogEntry>({
           query:
-            "SELECT c.id, c.date, c.icon, c.title, c.desc, c.details FROM c WHERE c.date >= @cutoff",
+            "SELECT c.id, c.date, c.icon, c.title, c.desc, c.details, c.type FROM c WHERE c.date >= @cutoff",
           parameters: [{ name: "@cutoff", value: cutoffStr }],
         })
         .fetchAll();

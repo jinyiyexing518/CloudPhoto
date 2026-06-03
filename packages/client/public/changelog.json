@@ -1,5 +1,23 @@
 [
   {
+    "id": "voice-memo",
+    "date": "2026-05-30",
+    "icon": "🎙️",
+    "title": "语音备注",
+    "desc": "为每张照片录制语音备注，随时回听",
+    "details": "在照片/视频详情弹窗的操作栏点击 🎤 语音，即可录制一段语音备注。支持 webm（Chrome/Android）和 mp4（Safari/iOS）。已有备注时按钮显示为「🎤 备注✓」，面板内有播放器可直接收听，也可删除备注。",
+    "type": "feature"
+  },
+  {
+    "id": "video-upload",
+    "date": "2026-05-30",
+    "icon": "🎬",
+    "title": "视频上传",
+    "desc": "现在可以上传视频文件，与照片一同保存在相册中",
+    "details": "支持格式：MP4 / MOV / WebM / AVI / MPEG / 3GPP，单文件最大 200 MB（图片仍为 20 MB）。视频卡片右下角显示 ▶ 标识，点击可在详情弹窗中直接播放。缩略图自动定位到视频约 10% 时长处的代表性帧。",
+    "type": "feature"
+  },
+  {
     "id": "video-thumbnail-crop",
     "date": "2026-06-02",
     "icon": "🖼️",
@@ -45,6 +63,15 @@
     "type": "fix"
   },
   {
+    "id": "perf-new-features",
+    "date": "2026-06-03",
+    "icon": "⚡",
+    "title": "新功能性能优化",
+    "desc": "防抖 localStorage 写入、移除 insights dep、AutoStory 文件夹计数 Memo、地图加载提示",
+    "details": "Moments 浏览记录写 localStorage 改为 1.5s 防抖；trackMomentView 移除 momentsInsightsMap dep 消除级联重渲染；AutoStory 文件夹照片数量改用 useMemo 预计算；MemoryMap 首次加载显示旋转提示。",
+    "type": "improvement"
+  },
+  {
     "id": "on-this-day",
     "date": "2026-06-02",
     "icon": "📅",
@@ -81,6 +108,24 @@
     "type": "feature"
   },
   {
+    "id": "memory-map-video-thumb-fix",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "修复记忆地图渲染与视频封面",
+    "desc": "地图不显示、GPS 对话框视频无封面、重要片段浏览量被清零三个问题同步修复",
+    "details": "记忆地图改用静态 import leaflet CSS 修复不渲染问题；修复 Vite CJS 互操作；GPS 编辑对话框改用 MediaThumb 支持视频封面；重要片段服务端返回空数据时不再覆盖本地浏览记录。",
+    "type": "fix"
+  },
+  {
+    "id": "memory-map-perf",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "记忆地图性能优化",
+    "desc": "增量标记更新、缓存 Leaflet、轻量 CSS 点标记、修复 GPS 更新不刷新、新增全览按钮",
+    "details": "重写 MemoryMap：Map<name,Marker> diff 增量更新避免全量重建；模块级 Leaflet 单例缓存；CSS 圆点替代 img src 图标消除 N 次额外请求；geoPhotoKey 序列化坐标修复 GPS 更新不触发 Effect 的 bug；新增全览按钮；地图高度缩小（42vh/移动端 32vh）；无 GPS 照片列表支持分页。",
+    "type": "improvement"
+  },
+  {
     "id": "memory-map-gps-fix",
     "date": "2026-06-02",
     "icon": "🗺️",
@@ -90,12 +135,48 @@
     "type": "fix"
   },
   {
+    "id": "group-dialog-portal-fix",
+    "date": "2026-06-02",
+    "icon": "👥",
+    "title": "修复群组对话框向上溢出",
+    "desc": "群组管理弹窗改用 createPortal 渲染到 body，修复 position:fixed 被 header 截断的问题",
+    "details": "GroupSwitcher 中的 CreateGroupDialog 和 GroupSettings 改用 createPortal 渲染到 document.body，绕过 app-header will-change:transform 导致 position:fixed 相对 header 定位的问题。",
+    "type": "fix"
+  },
+  {
+    "id": "folder-persist",
+    "date": "2026-05-30",
+    "icon": "📁",
+    "title": "文件夹路径记忆",
+    "desc": "刷新页面后自动回到上次浏览的文件夹位置",
+    "details": "此前刷新页面会重置到文件夹根目录，需要重新点击进入。现在使用惰性 useState 初始器在组件挂载时直接从 localStorage 读取上次路径，刷新后立即恢复，无需任何额外操作。",
+    "type": "feature"
+  },
+  {
     "id": "fab-position-fix",
     "date": "2026-06-02",
     "icon": "📌",
     "title": "FAB 位置抖动修复",
     "desc": "修复浮动操作栏在时间线/重要片段切换时芯片位置不一致，以及触摸滑动误触导致的抖动偏移问题。",
     "details": "给 .workspace-fab-rail 设置固定宽度锁定左边缘；onPointerMove 添加 8px 拖动阈值防止滚动手势误触；从 localStorage 恢复位置时校验视口范围，超出则丢弃。",
+    "type": "fix"
+  },
+  {
+    "id": "error-boundary-tab-crash",
+    "date": "2026-06-02",
+    "icon": "🛡️",
+    "title": "ErrorBoundary 防白屏",
+    "desc": "新增 ErrorBoundary 组件，切换 Tab 时渲染异常不再导致整页白屏",
+    "details": "新增 ErrorBoundary 类组件捕获 render 期间异常，App.tsx 主内容区用 key={activeTab} 包裹，切换 Tab 自动重置错误状态并显示友好提示卡片而非白屏。",
+    "type": "fix"
+  },
+  {
+    "id": "dialog-centering",
+    "date": "2026-06-01",
+    "icon": "📐",
+    "title": "删除确认弹窗居中",
+    "desc": "删除确认弹窗现在始终显示在屏幕正中央",
+    "details": "之前删除确认弹窗在部分场景（尤其是有 CSS transform 的父元素内）会出现在视口底部或偏移位置。现在改用 React createPortal 直接渲染到 document.body，始终固定居中。",
     "type": "fix"
   },
   {
@@ -123,42 +204,6 @@
     "title": "自动故事",
     "desc": "选择文件夹一键生成幻灯片，支持淡入淡出/滑动/缩放效果",
     "details": "在「🎬 自动故事」标签选择照片来源和切换效果，点击「开始播放」进入全屏幻灯片。支持键盘操作（←→切换，Esc退出），顶部进度条可点击跳转。",
-    "type": "feature"
-  },
-  {
-    "id": "dialog-centering",
-    "date": "2026-06-01",
-    "icon": "📐",
-    "title": "删除确认弹窗居中",
-    "desc": "删除确认弹窗现在始终显示在屏幕正中央",
-    "details": "之前删除确认弹窗在部分场景（尤其是有 CSS transform 的父元素内）会出现在视口底部或偏移位置。现在改用 React createPortal 直接渲染到 document.body，始终固定居中。",
-    "type": "fix"
-  },
-  {
-    "id": "voice-memo",
-    "date": "2026-05-30",
-    "icon": "🎙️",
-    "title": "语音备注",
-    "desc": "为每张照片录制语音备注，随时回听",
-    "details": "在照片/视频详情弹窗的操作栏点击 🎤 语音，即可录制一段语音备注。支持 webm（Chrome/Android）和 mp4（Safari/iOS）。已有备注时按钮显示为「🎤 备注✓」，面板内有播放器可直接收听，也可删除备注。",
-    "type": "feature"
-  },
-  {
-    "id": "video-upload",
-    "date": "2026-05-30",
-    "icon": "🎬",
-    "title": "视频上传",
-    "desc": "现在可以上传视频文件，与照片一同保存在相册中",
-    "details": "支持格式：MP4 / MOV / WebM / AVI / MPEG / 3GPP，单文件最大 200 MB（图片仍为 20 MB）。视频卡片右下角显示 ▶ 标识，点击可在详情弹窗中直接播放。缩略图自动定位到视频约 10% 时长处的代表性帧。",
-    "type": "feature"
-  },
-  {
-    "id": "folder-persist",
-    "date": "2026-05-30",
-    "icon": "📁",
-    "title": "文件夹路径记忆",
-    "desc": "刷新页面后自动回到上次浏览的文件夹位置",
-    "details": "此前刷新页面会重置到文件夹根目录，需要重新点击进入。现在使用惰性 useState 初始器在组件挂载时直接从 localStorage 读取上次路径，刷新后立即恢复，无需任何额外操作。",
     "type": "feature"
   }
 ]

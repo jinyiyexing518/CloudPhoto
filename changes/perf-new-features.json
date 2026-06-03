@@ -1,17 +1,9 @@
 {
   "id": "perf-new-features",
-  "summary": "优化 Moments/AutoStory/MemoryMap 卡顿问题",
   "date": "2026-06-03",
-  "changes": [
-    "PhotoGallery: momentsInsightsMap 写入 localStorage 改为 1.5s 防抖，解决每次翻看照片都同步阻塞主线程",
-    "PhotoGallery: trackMomentView 的 useCallback 移除 momentsInsightsMap dep，改用 functional updater，消除每次浏览都重建 navigateToPhoto/键盘监听器的级联重渲染",
-    "AutoStory: 文件夹照片数量改用 useMemo 预计算（folderCounts），替代之前每次渲染 O(n×folders) 的 filter",
-    "MemoryMap: 首次加载时在地图容器下方显示旋转加载提示"
-  ],
-  "files": [
-    "packages/client/src/components/gallery/PhotoGallery.tsx",
-    "packages/client/src/components/auto-story/AutoStory.tsx",
-    "packages/client/src/components/memory-map/MemoryMap.tsx",
-    "packages/client/src/index.css"
-  ]
+  "icon": "⚡",
+  "title": "新功能性能优化",
+  "desc": "防抖 localStorage 写入、移除 insights dep、AutoStory 文件夹计数 Memo、地图加载提示",
+  "details": "Moments 浏览记录写 localStorage 改为 1.5s 防抖；trackMomentView 移除 momentsInsightsMap dep 消除级联重渲染；AutoStory 文件夹照片数量改用 useMemo 预计算；MemoryMap 首次加载显示旋转提示。",
+  "type": "improvement"
 }

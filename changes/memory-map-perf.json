@@ -1,10 +1,9 @@
 {
   "id": "memory-map-perf",
   "date": "2026-06-02",
-  "title": "记忆地图性能优化与 UX 改进",
-  "description": "重写 MemoryMap 组件：增量标记更新（Map<name,Marker> diff）避免全量重建；模块级 Leaflet 缓存防止重复导入；轻量 CSS 点标记替代 img src 图标（消除 N 次额外网络请求）；geoPhotoKey 序列化坐标值修复 GPS 更新不触发 Effect 的 bug；新增全览按钮；减小地图高度（42vh/移动端 32vh）；无 GPS 照片列表支持分页显示",
-  "files": [
-    "packages/client/src/components/memory-map/MemoryMap.tsx",
-    "packages/client/src/index.css"
-  ]
+  "icon": "🗺️",
+  "title": "记忆地图性能优化",
+  "desc": "增量标记更新、缓存 Leaflet、轻量 CSS 点标记、修复 GPS 更新不刷新、新增全览按钮",
+  "details": "重写 MemoryMap：Map<name,Marker> diff 增量更新避免全量重建；模块级 Leaflet 单例缓存；CSS 圆点替代 img src 图标消除 N 次额外请求；geoPhotoKey 序列化坐标修复 GPS 更新不触发 Effect 的 bug；新增全览按钮；地图高度缩小（42vh/移动端 32vh）；无 GPS 照片列表支持分页。",
+  "type": "improvement"
 }
