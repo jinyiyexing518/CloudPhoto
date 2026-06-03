@@ -207,6 +207,18 @@ export interface Photo {
   takenAt?: string;
 }
 
+/**
+ * Fetch the embedded motion video from a Google/Samsung/etc. motion JPEG.
+ * Returns a Blob URL (remember to call URL.revokeObjectURL when done), or null on failure.
+ */
+export async function fetchMotionVideoBlob(photoName: string): Promise<string | null> {
+  const url = `${API_BASE}/photos/motion-video?name=${encodeURIComponent(photoName)}`;
+  const res = await fetchWithTimeout(url, { headers: authHeaders() }, 30000).catch(() => null);
+  if (!res?.ok) return null;
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 /** Lightweight GPS-only record from the fast Cosmos cache */
 export interface PhotoLocation {
   name: string;

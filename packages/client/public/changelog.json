@@ -90,6 +90,13 @@
     "summary": "重要片段视图固定只展示评分最高的前 20 张照片，提升加载速度与准确性，并隐藏「加载更多」按钮。"
   },
   {
+    "id": "2026-06-03-motion-photo-preview",
+    "date": "2026-06-03",
+    "type": "feature",
+    "title": "动态照片原生预览",
+    "summary": "新增服务端 /api/photos/motion-video 接口，从 Google/Samsung 等动态 JPEG 中提取嵌入的 MP4 片段；弹窗点击「▶ 播放动态」按钮后加载并自动循环播放动态视频，GIF/动图不受影响。"
+  },
+  {
     "id": "2026-06-03-perf-new-features",
     "date": "2026-06-03",
     "icon": "⚡",

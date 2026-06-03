@@ -14,6 +14,7 @@ import {
   setPhotoVoiceMemo as apiSetVoiceMemo,
   updatePhotoTakenAt,
   updatePhotoGps,
+  fetchMotionVideoBlob,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -283,6 +284,8 @@ function PhotoGallery({
   const [geoLoading, setGeoLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
+  const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
+  const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -648,6 +651,8 @@ function PhotoGallery({
     setMoveFolderInput(photo.folder ?? "");
     setShowOriginalPreview(false);
     setDownloading(false);
+    setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setMotionVideoLoading(false);
   }, [modalPhotos, trackMomentView]);
 
   // Keyboard navigation when modal is open
@@ -692,6 +697,8 @@ function PhotoGallery({
     setShowVoicePanel(false);
     setVoiceState("idle");
     setVoiceError(null);
+    setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setMotionVideoLoading(false);
   };
 
   const saveSubject = async () => {
@@ -1231,17 +1238,56 @@ function PhotoGallery({
                 </video>
               ) : selectedPhoto.contentType === "image/gif" || selectedPhoto.isAnimated ? (
                 <>
-                  <img
-                    key={selectedPhoto.url}
-                    src={selectedPhoto.url}
-                    alt={selectedPhoto.name}
-                    className="modal-image modal-image--gif"
-                    onClick={() => setShowOriginalPreview(true)}
-                    title="点击预览原图"
-                  />
+                  {/* Motion JPEG (Google/Samsung/etc.): show video player if available */}
+                  {(selectedPhoto.contentType === "image/jpeg" || selectedPhoto.contentType === "image/jpg") && selectedPhoto.isAnimated ? (
+                    motionVideoUrl ? (
+                      <video
+                        key={motionVideoUrl}
+                        src={motionVideoUrl}
+                        className="modal-image modal-video"
+                        autoPlay
+                        loop
+                        playsInline
+                        controls
+                      />
+                    ) : (
+                      <>
+                        <img
+                          key={selectedPhoto.url}
+                          src={selectedPhoto.url}
+                          alt={selectedPhoto.name}
+                          className="modal-image modal-image--gif"
+                          onClick={() => setShowOriginalPreview(true)}
+                          title="点击预览原图"
+                        />
+                        <button
+                          className="motion-play-btn"
+                          disabled={motionVideoLoading}
+                          onClick={async () => {
+                            setMotionVideoLoading(true);
+                            const url = await fetchMotionVideoBlob(selectedPhoto.name);
+                            setMotionVideoUrl(url);
+                            setMotionVideoLoading(false);
+                          }}
+                          title="播放动态视频"
+                        >
+                          {motionVideoLoading ? "⏳ 加载中…" : "▶ 播放动态"}
+                        </button>
+                      </>
+                    )
+                  ) : (
+                    <img
+                      key={selectedPhoto.url}
+                      src={selectedPhoto.url}
+                      alt={selectedPhoto.name}
+                      className="modal-image modal-image--gif"
+                      onClick={() => setShowOriginalPreview(true)}
+                      title="点击预览原图"
+                    />
+                  )}
                   <span className="modal-gif-badge">
                     {(selectedPhoto.contentType === "image/jpeg" || selectedPhoto.contentType === "image/jpg") && selectedPhoto.isAnimated
-                      ? "动态照片 📱"
+                      ? (motionVideoUrl ? "动态照片 ▶ 播放中" : "动态照片 📱")
                       : "动图 ▶ 循环播放"}
                   </span>
                 </>

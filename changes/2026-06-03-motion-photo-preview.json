@@ -1,0 +1,7 @@
+{
+  "id": "2026-06-03-motion-photo-preview",
+  "date": "2026-06-03",
+  "type": "feature",
+  "title": "动态照片原生预览",
+  "summary": "新增服务端 /api/photos/motion-video 接口，从 Google/Samsung 等动态 JPEG 中提取嵌入的 MP4 片段；弹窗点击「▶ 播放动态」按钮后加载并自动循环播放动态视频，GIF/动图不受影响。"
+}
