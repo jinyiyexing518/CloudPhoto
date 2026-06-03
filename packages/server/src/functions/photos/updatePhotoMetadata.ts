@@ -149,18 +149,20 @@ app.http("updatePhotoMetadata", {
           const scope = segs.slice(0, 2).join("/"); // "personal/{userId}" or "groups/{groupId}"
           const latStr = body.gpsLat ?? "";
           const lonStr = body.gpsLon ?? "";
-          if (latStr && lonStr) {
+          const latNum = parseFloat(latStr);
+          const lonNum = parseFloat(lonStr);
+          if (latStr && lonStr && isFinite(latNum) && isFinite(lonNum)) {
             const doc: PhotoLocationDoc = {
               id: encodeURIComponent(blobName),
               scope,
               name: blobName,
-              lat: parseFloat(latStr),
-              lon: parseFloat(lonStr),
+              lat: latNum,
+              lon: lonNum,
               uploadedAt: new Date().toISOString(),
             };
             await locsContainer.items.upsert(doc);
           } else {
-            // GPS cleared — remove from locations cache
+            // GPS cleared or invalid — remove from locations cache
             await locsContainer.item(encodeURIComponent(blobName), scope).delete();
           }
         } catch (e) {

@@ -772,7 +772,8 @@ function AppContent() {
           try {
             const exifrLib = await import("exifr");
             const gps = await exifrLib.gps(valid[i]);
-            if (gps?.latitude != null && gps?.longitude != null) {
+            if (gps?.latitude != null && gps?.longitude != null
+                && isFinite(gps.latitude) && isFinite(gps.longitude)) {
               gpsLat = String(gps.latitude);
               gpsLon = String(gps.longitude);
             }

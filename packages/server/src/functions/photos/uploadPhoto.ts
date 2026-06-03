@@ -143,7 +143,8 @@ app.http("uploadPhoto", {
         if (!resolvedLat) {
           try {
             const gps = await exifr.gps(buf);
-            if (gps?.latitude != null && gps?.longitude != null) {
+            if (gps?.latitude != null && gps?.longitude != null
+                && isFinite(gps.latitude) && isFinite(gps.longitude)) {
               resolvedLat = String(gps.latitude);
               resolvedLon = String(gps.longitude);
             }
@@ -168,15 +169,17 @@ app.http("uploadPhoto", {
       });
 
       // Cache GPS coordinates in Cosmos for fast map queries
-      if (resolvedLat && resolvedLon) {
+      const latNum = parseFloat(resolvedLat ?? "");
+      const lonNum = parseFloat(resolvedLon ?? "");
+      if (resolvedLat && resolvedLon && isFinite(latNum) && isFinite(lonNum)) {
         try {
           const locsContainer = await getPhotoLocationsContainer();
           const doc: PhotoLocationDoc = {
             id: encodeURIComponent(blobName),
             scope,
             name: blobName,
-            lat: parseFloat(resolvedLat),
-            lon: parseFloat(resolvedLon),
+            lat: latNum,
+            lon: lonNum,
             originalName: filename,
             contentType: mimeType,
             uploadedAt: now,

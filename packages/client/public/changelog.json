@@ -32,6 +32,14 @@
     "desc": "软删除时同步删除 Cosmos GPS 记录，避免垃圾桶照片出现在地图；恢复时重新写入 Cosmos"
   },
   {
+    "id": "gps-reverse-geocode",
+    "date": "2026-06-03",
+    "icon": "📍",
+    "title": "修复GPS NaN + 位置显示改为可读地址",
+    "type": "fix",
+    "desc": "EXIF 返回 NaN 坐标时不再写入；照片弹窗位置改为 Nominatim 反向地理编码的可读地址（省+市+区）"
+  },
+  {
     "id": "sort-by-taken-at",
     "date": "2026-06-03",
     "icon": "📅",

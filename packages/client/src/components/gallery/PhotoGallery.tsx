@@ -18,6 +18,7 @@ import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
+import { reverseGeocode } from "../../utils/geocode";
 
 interface Props {
   photos: Photo[];
@@ -269,6 +270,8 @@ function PhotoGallery({
   const [editingTakenAt, setEditingTakenAt] = useState(false);
   const [takenAtInput, setTakenAtInput] = useState("");
   const [savingTakenAt, setSavingTakenAt] = useState(false);
+  const [geoAddress, setGeoAddress] = useState<string | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -641,6 +644,19 @@ function PhotoGallery({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [selectedIdx, modalPhotos.length, navigateToPhoto]);
+
+  // Reverse geocode GPS coordinates to human-readable address
+  useEffect(() => {
+    setGeoAddress(null);
+    const lat = parseFloat(selectedPhoto?.gpsLat ?? "");
+    const lon = parseFloat(selectedPhoto?.gpsLon ?? "");
+    if (!isFinite(lat) || !isFinite(lon)) return;
+    setGeoLoading(true);
+    void reverseGeocode(lat, lon).then((addr) => {
+      setGeoAddress(addr);
+      setGeoLoading(false);
+    });
+  }, [selectedPhoto?.gpsLat, selectedPhoto?.gpsLon]);
 
   const openModal = (photo: Photo) => {
     const idx = modalPhotos.findIndex((p) => p.name === photo.name);
@@ -1377,12 +1393,13 @@ function PhotoGallery({
                     <span className="modal-detail-label">文件类型</span>
                     <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
 
-                    {selectedPhoto.gpsLat && selectedPhoto.gpsLon && (
+                    {selectedPhoto.gpsLat && selectedPhoto.gpsLon &&
+                      isFinite(parseFloat(selectedPhoto.gpsLat)) && isFinite(parseFloat(selectedPhoto.gpsLon)) && (
                       <>
                         <span className="modal-detail-label">位置</span>
                         <span className="modal-detail-value" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontFamily: "monospace", fontSize: "0.82em" }}>
-                            {parseFloat(selectedPhoto.gpsLat).toFixed(5)}°, {parseFloat(selectedPhoto.gpsLon).toFixed(5)}°
+                          <span>
+                            {geoLoading ? "正在定位..." : (geoAddress ?? `${parseFloat(selectedPhoto.gpsLat).toFixed(4)}°, ${parseFloat(selectedPhoto.gpsLon).toFixed(4)}°`)}
                           </span>
                           <a
                             href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
