@@ -1,5 +1,5 @@
 {
-  "id": "fix-pre-push-hook-windows",
+  "id": "2026-06-03-fix-pre-push-hook-windows",
   "date": "2026-06-03",
   "icon": "🐛",
   "title": "修复 pre-push hook 在 Windows 下 stdin 为空时不拦截的问题",

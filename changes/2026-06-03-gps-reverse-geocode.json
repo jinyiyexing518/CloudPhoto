@@ -1,5 +1,5 @@
 {
-  "id": "gps-reverse-geocode",
+  "id": "2026-06-03-gps-reverse-geocode",
   "date": "2026-06-03",
   "icon": "📍",
   "title": "修复GPS NaN + 位置显示改为可读地址",

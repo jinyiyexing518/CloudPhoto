@@ -1,5 +1,5 @@
 {
-  "id": "gps-cosmos-sync-fix",
+  "id": "2026-06-03-gps-cosmos-sync-fix",
   "date": "2026-06-03",
   "icon": "🔧",
   "title": "修复GPS地图缓存与照片生命周期同步",

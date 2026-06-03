@@ -1,5 +1,5 @@
 {
-  "id": "exif-timezone-fix",
+  "id": "2026-06-03-exif-timezone-fix",
   "date": "2026-06-03",
   "icon": "🕐",
   "title": "拍摄时间时区修复（UTC+8 偏差 8 小时）",

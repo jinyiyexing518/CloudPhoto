@@ -1,6 +1,6 @@
 [
   {
-    "id": "animated-detect-gps-display",
+    "id": "2026-06-03-animated-detect-gps-display",
     "date": "2026-06-03",
     "icon": "✨",
     "title": "动图检测支持 vivo/华为/小米/Apple，照片详情展示 GPS 位置",
@@ -8,7 +8,7 @@
     "desc": "Added vivo (VivoLivePhoto), Huawei (HwMotionPhoto), and Apple Live Photo (apple_fi/Photos:Live) animated detection. Server now extracts EXIF GPS server-side as fallback using exifr. Photo detail modals now show GPS coordinates with a Google Maps link."
   },
   {
-    "id": "animated-gif-pause",
+    "id": "2026-06-03-animated-gif-pause",
     "date": "2026-06-03",
     "icon": "🎞️",
     "title": "动图暂停/恢复修复 + 弹窗预览可点击",
@@ -17,7 +17,7 @@
     "details": "原实现用 <canvas> 截帧检测跨域会抛出 SecurityError（Azure SAS URL 跨域）；改为 BLANK_GIF（1×1 透明 GIF Data URL）src 替换方案，暂停时显示半透明遮罩，恢复时 GIF 从第 0 帧重播。弹窗中动图 img 缺少 onClick 且 cursor 为 default，现已添加点击回调并改为 cursor: zoom-in。"
   },
   {
-    "id": "backfill-metadata",
+    "id": "2026-06-03-backfill-metadata",
     "date": "2026-06-03",
     "icon": "📦",
     "title": "历史照片元数据回填",
@@ -26,7 +26,7 @@
     "details": "新增 POST /api/photos/backfill 端点，逐一下载缺少 takenAt 或 gpsLat 的图片 blob，用 exifr 提取 EXIF；拍摄时间以 naive datetime（无 Z 后缀）存储，GPS 同时写入 Cosmos photoLocations；返回 { processed, updated, failed }。设置页面显示按钮、加载状态和完成统计。"
   },
   {
-    "id": "batch-edit-time-location",
+    "id": "2026-06-03-batch-edit-time-location",
     "date": "2026-06-03",
     "icon": "✏️",
     "title": "批量修改拍摄时间和位置",
@@ -35,7 +35,7 @@
     "details": "批量选中照片后工具栏出现两个新按钮：「修改时间」展开 datetime-local 时间选择器，「修改位置」展开纬度/经度输入框；点击「应用」后逐张调用 PATCH /api/photos/metadata，完成后显示 Toast 统计结果。新增 onGpsUpdate 回调确保 App 内存状态同步更新。"
   },
   {
-    "id": "exif-timezone-fix",
+    "id": "2026-06-03-exif-timezone-fix",
     "date": "2026-06-03",
     "icon": "🕐",
     "title": "拍摄时间时区修复（UTC+8 偏差 8 小时）",
@@ -44,7 +44,7 @@
     "details": "uploadPhoto.ts 和弹窗「修改拍摄时间」均改为不带 Z 后缀的 naive datetime 格式（如 2024-06-01T14:30:00），客户端直接按本地时间解析，不再有时区偏移。历史照片可通过「历史照片回填」功能重新提取并修正。"
   },
   {
-    "id": "fix-changelog-sort-order",
+    "id": "2026-06-03-fix-changelog-sort-order",
     "date": "2026-06-03",
     "icon": "🐛",
     "title": "最近更新按日期倒序排列",
@@ -52,7 +52,7 @@
     "desc": "collect-changes.mjs was sorting by filename alphabetically instead of by the date field inside each JSON. Old change files lack date prefixes in their names, causing scrambled order. Now sorts by entry.date descending."
   },
   {
-    "id": "fix-pre-push-hook-windows",
+    "id": "2026-06-03-fix-pre-push-hook-windows",
     "date": "2026-06-03",
     "icon": "🐛",
     "title": "修复 pre-push hook 在 Windows 下 stdin 为空时不拦截的问题",
@@ -60,7 +60,7 @@
     "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   },
   {
-    "id": "gps-cosmos-sync-fix",
+    "id": "2026-06-03-gps-cosmos-sync-fix",
     "date": "2026-06-03",
     "icon": "🔧",
     "title": "修复GPS地图缓存与照片生命周期同步",
@@ -68,7 +68,7 @@
     "desc": "软删除时同步删除 Cosmos GPS 记录，避免垃圾桶照片出现在地图；恢复时重新写入 Cosmos"
   },
   {
-    "id": "gps-reverse-geocode",
+    "id": "2026-06-03-gps-reverse-geocode",
     "date": "2026-06-03",
     "icon": "📍",
     "title": "修复GPS NaN + 位置显示改为可读地址",
@@ -76,7 +76,7 @@
     "desc": "EXIF 返回 NaN 坐标时不再写入；照片弹窗位置改为 Nominatim 反向地理编码的可读地址（省+市+区）"
   },
   {
-    "id": "perf-new-features",
+    "id": "2026-06-03-perf-new-features",
     "date": "2026-06-03",
     "icon": "⚡",
     "title": "新功能性能优化",
@@ -85,7 +85,7 @@
     "type": "improvement"
   },
   {
-    "id": "sort-by-taken-at",
+    "id": "2026-06-03-sort-by-taken-at",
     "date": "2026-06-03",
     "icon": "📅",
     "title": "按拍摄时间排序 + 支持编辑拍摄时间",
@@ -93,7 +93,7 @@
     "desc": "上传时自动从 EXIF 提取拍摄时间；照片列表按拍摄时间排序；详情弹窗支持手动编辑拍摄时间"
   },
   {
-    "id": "sort-key-toggle",
+    "id": "2026-06-03-sort-key-toggle",
     "date": "2026-06-03",
     "icon": "📷",
     "title": "排序方式切换：拍摄时间 / 上传时间",
@@ -102,7 +102,7 @@
     "details": "PhotoGallery 新增 sortKey prop（\"taken\" | \"uploaded\"），groupByDate 和 flatPhotos 均尊重该字段；默认按拍摄时间分组，无拍摄时间时回退到上传时间。App.tsx 状态 photoSortKey 控制当前模式。"
   },
   {
-    "id": "auto-story",
+    "id": "2026-06-02-auto-story",
     "date": "2026-06-02",
     "icon": "🎬",
     "title": "自动故事",
@@ -111,7 +111,7 @@
     "type": "feature"
   },
   {
-    "id": "changelog-pipeline",
+    "id": "2026-06-02-changelog-pipeline",
     "date": "2026-06-02",
     "icon": "🔧",
     "title": "Changelog Pipeline 精简",
@@ -120,7 +120,7 @@
     "type": "fix"
   },
   {
-    "id": "delete-progress",
+    "id": "2026-06-02-delete-progress",
     "date": "2026-06-02",
     "icon": "🗑️",
     "title": "删除与清空进度条",
@@ -129,7 +129,7 @@
     "type": "improvement"
   },
   {
-    "id": "error-boundary-tab-crash",
+    "id": "2026-06-02-error-boundary-tab-crash",
     "date": "2026-06-02",
     "icon": "🛡️",
     "title": "ErrorBoundary 防白屏",
@@ -138,7 +138,7 @@
     "type": "fix"
   },
   {
-    "id": "fab-position-fix",
+    "id": "2026-06-02-fab-position-fix",
     "date": "2026-06-02",
     "icon": "📌",
     "title": "FAB 位置抖动修复",
@@ -147,7 +147,7 @@
     "type": "fix"
   },
   {
-    "id": "group-dialog-portal-fix",
+    "id": "2026-06-02-group-dialog-portal-fix",
     "date": "2026-06-02",
     "icon": "👥",
     "title": "修复群组对话框向上溢出",
@@ -156,7 +156,7 @@
     "type": "fix"
   },
   {
-    "id": "memory-map-gps-fix",
+    "id": "2026-06-02-memory-map-gps-fix",
     "date": "2026-06-02",
     "icon": "🗺️",
     "title": "修复记忆地图 GPS 照片不显示",
@@ -165,7 +165,7 @@
     "type": "fix"
   },
   {
-    "id": "memory-map-perf",
+    "id": "2026-06-02-memory-map-perf",
     "date": "2026-06-02",
     "icon": "🗺️",
     "title": "记忆地图性能优化",
@@ -174,7 +174,7 @@
     "type": "improvement"
   },
   {
-    "id": "memory-map-video-thumb-fix",
+    "id": "2026-06-02-memory-map-video-thumb-fix",
     "date": "2026-06-02",
     "icon": "🗺️",
     "title": "修复记忆地图渲染与视频封面",
@@ -183,7 +183,7 @@
     "type": "fix"
   },
   {
-    "id": "memory-map",
+    "id": "2026-06-02-memory-map",
     "date": "2026-06-02",
     "icon": "🗺️",
     "title": "记忆地图",
@@ -192,7 +192,7 @@
     "type": "feature"
   },
   {
-    "id": "modal-centering",
+    "id": "2026-06-02-modal-centering",
     "date": "2026-06-02",
     "icon": "📱",
     "title": "详情弹窗垂直居中",
@@ -201,7 +201,7 @@
     "type": "fix"
   },
   {
-    "id": "moments-video-thumb",
+    "id": "2026-06-02-moments-video-thumb",
     "date": "2026-06-02",
     "icon": "🎞️",
     "title": "重要片段支持视频封面",
@@ -210,7 +210,7 @@
     "type": "improvement"
   },
   {
-    "id": "on-this-day",
+    "id": "2026-06-02-on-this-day",
     "date": "2026-06-02",
     "icon": "📅",
     "title": "历史上的今天",
@@ -219,7 +219,7 @@
     "type": "feature"
   },
   {
-    "id": "scroll-top-fix",
+    "id": "2026-06-02-scroll-top-fix",
     "date": "2026-06-02",
     "icon": "⬆️",
     "title": "返回顶部按钮位置优化",
@@ -228,7 +228,7 @@
     "type": "fix"
   },
   {
-    "id": "time-capsule",
+    "id": "2026-06-02-time-capsule",
     "date": "2026-06-02",
     "icon": "💌",
     "title": "时光胶囊",
@@ -237,7 +237,7 @@
     "type": "feature"
   },
   {
-    "id": "timeline-tremble-fix",
+    "id": "2026-06-02-timeline-tremble-fix",
     "date": "2026-06-02",
     "icon": "🛠️",
     "title": "修复时间线颤抖问题",
@@ -246,7 +246,7 @@
     "type": "fix"
   },
   {
-    "id": "upload-pause-speed-retry",
+    "id": "2026-06-02-upload-pause-speed-retry",
     "date": "2026-06-02",
     "icon": "⬆️",
     "title": "上传增强：速度显示、暂停/继续、断网重试",
@@ -255,7 +255,7 @@
     "type": "feature"
   },
   {
-    "id": "video-thumbnail-crop",
+    "id": "2026-06-02-video-thumbnail-crop",
     "date": "2026-06-02",
     "icon": "🖼️",
     "title": "视频缩略图居中裁剪",
@@ -264,7 +264,7 @@
     "type": "improvement"
   },
   {
-    "id": "dialog-centering",
+    "id": "2026-06-01-dialog-centering",
     "date": "2026-06-01",
     "icon": "📐",
     "title": "删除确认弹窗居中",
@@ -273,7 +273,7 @@
     "type": "fix"
   },
   {
-    "id": "folder-persist",
+    "id": "2026-05-30-folder-persist",
     "date": "2026-05-30",
     "icon": "📁",
     "title": "文件夹路径记忆",
@@ -282,7 +282,7 @@
     "type": "feature"
   },
   {
-    "id": "video-upload",
+    "id": "2026-05-30-video-upload",
     "date": "2026-05-30",
     "icon": "🎬",
     "title": "视频上传",
@@ -291,7 +291,7 @@
     "type": "feature"
   },
   {
-    "id": "voice-memo",
+    "id": "2026-05-30-voice-memo",
     "date": "2026-05-30",
     "icon": "🎙️",
     "title": "语音备注",
