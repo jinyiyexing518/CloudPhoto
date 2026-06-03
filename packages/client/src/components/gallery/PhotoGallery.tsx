@@ -73,6 +73,7 @@ interface MomentCardData {
 }
 
 const PAGE_SIZE = 120;
+const MOMENTS_MAX = 20;
 const MOMENT_SCORE_FAVORITE_WEIGHT = 120;
 const MOMENT_SCORE_SUBJECT_WEIGHT = 20;
 const MOMENT_SCORE_RECENCY_MAX = 40;
@@ -575,7 +576,7 @@ function PhotoGallery({
       }
     });
 
-    return ranked.slice(0, visibleCount).map((item, index) => ({ ...item, rank: index + 1 }));
+    return ranked.slice(0, MOMENTS_MAX).map((item, index) => ({ ...item, rank: index + 1 }));
   }, [flatPhotos, getMomentScore, momentsFilters, momentsInsightsMap, momentsShareViews, visibleCount]);
 
   const modalPhotos = useMemo(
@@ -920,7 +921,7 @@ function PhotoGallery({
 
   const groups = groupByDate(visiblePhotos, sortKey);
   if (reverseOrder) groups.reverse();
-  const hasMore = visibleCount < flatPhotos.length;
+  const hasMore = !momentsMode && visibleCount < flatPhotos.length;
 
   return (
     <>
