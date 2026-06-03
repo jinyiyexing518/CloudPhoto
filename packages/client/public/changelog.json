@@ -198,6 +198,15 @@
     "seq": 1780479680053
   },
   {
+    "id": "2026-06-03-heic-format-badge",
+    "date": "2026-06-03",
+    "title": "HEIC/HEIF 格式照片显示格式标签",
+    "description": "HEIC/HEIF 格式的照片缩略图左下角显示「HEIC」紫色徽章，提示用户该照片为 iPhone 原始格式，部分浏览器可能无法直接预览。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780481804824
+  },
+  {
     "id": "2026-06-03-keyboard-delete",
     "date": "2026-06-03",
     "title": "键盘 Delete 键删除模态框当前照片",

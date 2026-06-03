@@ -41,6 +41,8 @@ function PhotoCard({
   // Motion photo = animated JPEG (Android/Google Motion Photo) — browser can't play the video part
   const isMotionPhoto = isAnimated && !isGif &&
     (photo.contentType === "image/jpeg" || photo.contentType === "image/jpg");
+  const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
+    photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const handleVideoMetadata = () => {
@@ -123,6 +125,7 @@ function PhotoCard({
             />
           )}
           {isVideo && <div className="photo-video-badge">▶{videoDuration ? ` ${videoDuration}` : ""}</div>}
+          {isHeic && <div className="photo-format-badge">HEIC</div>}
           {photo.favorite && <div className="photo-favorite-badge" title="已收藏">★</div>}
           {isAnimated && isMotionPhoto && (
             <div className="photo-video-badge">动态照片 📱</div>
