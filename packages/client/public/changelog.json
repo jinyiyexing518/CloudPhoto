@@ -1,66 +1,11 @@
 [
   {
-    "id": "voice-memo",
-    "date": "2026-05-30",
-    "icon": "🎙️",
-    "title": "语音备注",
-    "desc": "为每张照片录制语音备注，随时回听",
-    "details": "在照片/视频详情弹窗的操作栏点击 🎤 语音，即可录制一段语音备注。支持 webm（Chrome/Android）和 mp4（Safari/iOS）。已有备注时按钮显示为「🎤 备注✓」，面板内有播放器可直接收听，也可删除备注。",
-    "type": "feature"
-  },
-  {
-    "id": "video-upload",
-    "date": "2026-05-30",
-    "icon": "🎬",
-    "title": "视频上传",
-    "desc": "现在可以上传视频文件，与照片一同保存在相册中",
-    "details": "支持格式：MP4 / MOV / WebM / AVI / MPEG / 3GPP，单文件最大 200 MB（图片仍为 20 MB）。视频卡片右下角显示 ▶ 标识，点击可在详情弹窗中直接播放。缩略图自动定位到视频约 10% 时长处的代表性帧。",
-    "type": "feature"
-  },
-  {
-    "id": "video-thumbnail-crop",
-    "date": "2026-06-02",
-    "icon": "🖼️",
-    "title": "视频缩略图居中裁剪",
-    "desc": "视频封面以帧的中心居中裁剪填满格子，不再显示边角",
-    "details": "之前视频缩略图会把整帧压缩进正方形格子，横/竖屏视频都会出现黑边或拉伸。现在使用 object-fit: cover + object-position: center，与图片缩略图行为完全一致，封面始终取帧的中央区域，不改变原始比例。",
-    "type": "improvement"
-  },
-  {
-    "id": "upload-pause-speed-retry",
-    "date": "2026-06-02",
-    "icon": "⬆️",
-    "title": "上传增强：速度显示、暂停/继续、断网重试",
-    "desc": "上传照片时可暂停/继续，显示实时速度，断网后自动恢复",
-    "details": "三项改进：① 上传进度条新增实时速度（如 2.1 MB/s），基于 EMA 平滑避免闪烁；② 新增暂停⏸/继续▶按钮，点击后当前文件传完再暂停，恢复后从下一文件继续；③ 每个文件最多自动重试 3 次，断网时等待 online 事件后自动续传，恢复网络后无需手动操作。XHR 上传在浏览器后台标签页中照常继续，不会因切换网页而中断。",
-    "type": "feature"
-  },
-  {
-    "id": "timeline-tremble-fix",
-    "date": "2026-06-02",
-    "icon": "🛠️",
-    "title": "修复时间线颤抖问题",
-    "desc": "消除滚动时界面莫名颤抖、组件偏移的现象",
-    "details": "三处根因修复：① 去掉 header 3秒空闲自动弹出的 idle timer，header 现在只在向上滚动或靠近顶部时才重新显示；② 进度条改为直接操作 DOM ref，不再每帧触发 React setState 重渲整棵组件树；③ content-visibility 的 contain-intrinsic-size 加上 auto 关键字，浏览器复用已测量的真实高度，避免日期分组高度估算出错造成滚动偏移。同步清理 index.css 中重复的 .scroll-progress-bar 定义。",
-    "type": "fix"
-  },
-  {
-    "id": "time-capsule",
-    "date": "2026-06-02",
-    "icon": "💌",
-    "title": "时光胶囊",
-    "desc": "将照片锁定到未来某天，到期后解锁查看",
-    "details": "在「💌 时光胶囊」标签新建胶囊：选择照片、设定解锁日期，胶囊将锁定显示倒计时；到期后自动解锁，可点击打开浏览封存的照片。数据存储在本地。",
-    "type": "feature"
-  },
-  {
-    "id": "scroll-top-fix",
-    "date": "2026-06-02",
-    "icon": "⬆️",
-    "title": "返回顶部按钮位置优化",
-    "desc": "返回顶部按钮不再与右侧悬浮菜单冲突，位置始终稳定",
-    "details": "之前按钮与右下角 WorkspaceFab 在同一侧，展开操作菜单后按钮被遮挡。现调整至左下角，并使用系统安全区距离自动适配 iOS 底部横条，无论界面如何调整位置都不会偏移。",
-    "type": "fix"
+    "id": "fix-pre-push-hook-windows",
+    "date": "2026-06-03",
+    "icon": "🐛",
+    "title": "修复 pre-push hook 在 Windows 下 stdin 为空时不拦截的问题",
+    "type": "fix",
+    "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   },
   {
     "id": "perf-new-features",
@@ -72,111 +17,21 @@
     "type": "improvement"
   },
   {
-    "id": "on-this-day",
+    "id": "auto-story",
     "date": "2026-06-02",
-    "icon": "📅",
-    "title": "历史上的今天",
-    "desc": "时间线顶部自动显示往年同一天拍摄的照片",
-    "details": "每次进入时间线，若往年同月同日有照片，会在顶部出现「历史上的今天」卡片，按年份分组展示缩略图，点击跳转到对应照片。",
+    "icon": "🎬",
+    "title": "自动故事",
+    "desc": "选择文件夹一键生成幻灯片，支持淡入淡出/滑动/缩放效果",
+    "details": "在「🎬 自动故事」标签选择照片来源和切换效果，点击「开始播放」进入全屏幻灯片。支持键盘操作（←→切换，Esc退出），顶部进度条可点击跳转。",
     "type": "feature"
   },
   {
-    "id": "moments-video-thumb",
+    "id": "changelog-pipeline",
     "date": "2026-06-02",
-    "icon": "🎞️",
-    "title": "重要片段支持视频封面",
-    "desc": "「重要片段」视图中视频文件现在正确显示封面帧和播放标识",
-    "details": "之前重要片段（Moments）中的视频会显示为空白或损坏图片。现已统一使用 MediaThumb 组件，视频自动定位封面帧，右下角显示 ▶ 标识，与时间线和垃圾桶视图行为一致。",
-    "type": "improvement"
-  },
-  {
-    "id": "modal-centering",
-    "date": "2026-06-02",
-    "icon": "📱",
-    "title": "详情弹窗垂直居中",
-    "desc": "点击照片/视频打开详情页时，弹窗在移动端垂直居中显示",
-    "details": "此前移动端详情弹窗总是出现在页面顶部，用户需要滚动才能看到完整内容。现在改用 margin: auto 在 flex 容器中居中，内容适合屏幕时自动居中；内容超出屏幕高度时从顶部开始可滚动，两种情况均处理正确。",
-    "type": "fix"
-  },
-  {
-    "id": "memory-map",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "记忆地图",
-    "desc": "含 GPS 信息的照片在世界地图上展示拍摄地点",
-    "details": "在「🗺️ 记忆地图」标签查看所有含位置信息的照片分布。上传时自动读取图片 EXIF GPS 数据并存储。点击地图上的照片图标可查看详情并跳转到时间线。",
-    "type": "feature"
-  },
-  {
-    "id": "memory-map-video-thumb-fix",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "修复记忆地图渲染与视频封面",
-    "desc": "地图不显示、GPS 对话框视频无封面、重要片段浏览量被清零三个问题同步修复",
-    "details": "记忆地图改用静态 import leaflet CSS 修复不渲染问题；修复 Vite CJS 互操作；GPS 编辑对话框改用 MediaThumb 支持视频封面；重要片段服务端返回空数据时不再覆盖本地浏览记录。",
-    "type": "fix"
-  },
-  {
-    "id": "memory-map-perf",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "记忆地图性能优化",
-    "desc": "增量标记更新、缓存 Leaflet、轻量 CSS 点标记、修复 GPS 更新不刷新、新增全览按钮",
-    "details": "重写 MemoryMap：Map<name,Marker> diff 增量更新避免全量重建；模块级 Leaflet 单例缓存；CSS 圆点替代 img src 图标消除 N 次额外请求；geoPhotoKey 序列化坐标修复 GPS 更新不触发 Effect 的 bug；新增全览按钮；地图高度缩小（42vh/移动端 32vh）；无 GPS 照片列表支持分页。",
-    "type": "improvement"
-  },
-  {
-    "id": "memory-map-gps-fix",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "修复记忆地图 GPS 照片不显示",
-    "desc": "上传有位置照片后地图能自动对焦到拍摄地点",
-    "details": "两处修复：① 第二个 useEffect 在更新 marker 后新增 setView/fitBounds 调用，保证第一张 GPS 照片出现时地图从世界视图（zoom=2）自动缩放定位到拍摄地（zoom=5），而不是让 marker 缩在大地图里看不到；② 移除冗余的 geoCount state（初始值为 0 会导致第一帧短暂闪烁空状态提示），改为直接读取 geoPhotos.length 渲染 UI。",
-    "type": "fix"
-  },
-  {
-    "id": "group-dialog-portal-fix",
-    "date": "2026-06-02",
-    "icon": "👥",
-    "title": "修复群组对话框向上溢出",
-    "desc": "群组管理弹窗改用 createPortal 渲染到 body，修复 position:fixed 被 header 截断的问题",
-    "details": "GroupSwitcher 中的 CreateGroupDialog 和 GroupSettings 改用 createPortal 渲染到 document.body，绕过 app-header will-change:transform 导致 position:fixed 相对 header 定位的问题。",
-    "type": "fix"
-  },
-  {
-    "id": "folder-persist",
-    "date": "2026-05-30",
-    "icon": "📁",
-    "title": "文件夹路径记忆",
-    "desc": "刷新页面后自动回到上次浏览的文件夹位置",
-    "details": "此前刷新页面会重置到文件夹根目录，需要重新点击进入。现在使用惰性 useState 初始器在组件挂载时直接从 localStorage 读取上次路径，刷新后立即恢复，无需任何额外操作。",
-    "type": "feature"
-  },
-  {
-    "id": "fab-position-fix",
-    "date": "2026-06-02",
-    "icon": "📌",
-    "title": "FAB 位置抖动修复",
-    "desc": "修复浮动操作栏在时间线/重要片段切换时芯片位置不一致，以及触摸滑动误触导致的抖动偏移问题。",
-    "details": "给 .workspace-fab-rail 设置固定宽度锁定左边缘；onPointerMove 添加 8px 拖动阈值防止滚动手势误触；从 localStorage 恢复位置时校验视口范围，超出则丢弃。",
-    "type": "fix"
-  },
-  {
-    "id": "error-boundary-tab-crash",
-    "date": "2026-06-02",
-    "icon": "🛡️",
-    "title": "ErrorBoundary 防白屏",
-    "desc": "新增 ErrorBoundary 组件，切换 Tab 时渲染异常不再导致整页白屏",
-    "details": "新增 ErrorBoundary 类组件捕获 render 期间异常，App.tsx 主内容区用 key={activeTab} 包裹，切换 Tab 自动重置错误状态并显示友好提示卡片而非白屏。",
-    "type": "fix"
-  },
-  {
-    "id": "dialog-centering",
-    "date": "2026-06-01",
-    "icon": "📐",
-    "title": "删除确认弹窗居中",
-    "desc": "删除确认弹窗现在始终显示在屏幕正中央",
-    "details": "之前删除确认弹窗在部分场景（尤其是有 CSS transform 的父元素内）会出现在视口底部或偏移位置。现在改用 React createPortal 直接渲染到 document.body，始终固定居中。",
+    "icon": "🔧",
+    "title": "Changelog Pipeline 精简",
+    "desc": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
+    "details": "sync-changelog.mjs 直接读取 changes/*.json；collect-changes.mjs 只写 public/changelog.json；fetchChangelogs API 失败时 fallback 到静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗。",
     "type": "fix"
   },
   {
@@ -189,29 +44,174 @@
     "type": "improvement"
   },
   {
-    "id": "changelog-pipeline",
+    "id": "error-boundary-tab-crash",
     "date": "2026-06-02",
-    "icon": "🔧",
-    "title": "Changelog Pipeline 精简",
-    "desc": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
-    "details": "sync-changelog.mjs 直接读取 changes/*.json；collect-changes.mjs 只写 public/changelog.json；fetchChangelogs API 失败时 fallback 到静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗。",
+    "icon": "🛡️",
+    "title": "ErrorBoundary 防白屏",
+    "desc": "新增 ErrorBoundary 组件，切换 Tab 时渲染异常不再导致整页白屏",
+    "details": "新增 ErrorBoundary 类组件捕获 render 期间异常，App.tsx 主内容区用 key={activeTab} 包裹，切换 Tab 自动重置错误状态并显示友好提示卡片而非白屏。",
     "type": "fix"
   },
   {
-    "id": "auto-story",
+    "id": "fab-position-fix",
     "date": "2026-06-02",
-    "icon": "🎬",
-    "title": "自动故事",
-    "desc": "选择文件夹一键生成幻灯片，支持淡入淡出/滑动/缩放效果",
-    "details": "在「🎬 自动故事」标签选择照片来源和切换效果，点击「开始播放」进入全屏幻灯片。支持键盘操作（←→切换，Esc退出），顶部进度条可点击跳转。",
+    "icon": "📌",
+    "title": "FAB 位置抖动修复",
+    "desc": "修复浮动操作栏在时间线/重要片段切换时芯片位置不一致，以及触摸滑动误触导致的抖动偏移问题。",
+    "details": "给 .workspace-fab-rail 设置固定宽度锁定左边缘；onPointerMove 添加 8px 拖动阈值防止滚动手势误触；从 localStorage 恢复位置时校验视口范围，超出则丢弃。",
+    "type": "fix"
+  },
+  {
+    "id": "group-dialog-portal-fix",
+    "date": "2026-06-02",
+    "icon": "👥",
+    "title": "修复群组对话框向上溢出",
+    "desc": "群组管理弹窗改用 createPortal 渲染到 body，修复 position:fixed 被 header 截断的问题",
+    "details": "GroupSwitcher 中的 CreateGroupDialog 和 GroupSettings 改用 createPortal 渲染到 document.body，绕过 app-header will-change:transform 导致 position:fixed 相对 header 定位的问题。",
+    "type": "fix"
+  },
+  {
+    "id": "memory-map-gps-fix",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "修复记忆地图 GPS 照片不显示",
+    "desc": "上传有位置照片后地图能自动对焦到拍摄地点",
+    "details": "两处修复：① 第二个 useEffect 在更新 marker 后新增 setView/fitBounds 调用，保证第一张 GPS 照片出现时地图从世界视图（zoom=2）自动缩放定位到拍摄地（zoom=5），而不是让 marker 缩在大地图里看不到；② 移除冗余的 geoCount state（初始值为 0 会导致第一帧短暂闪烁空状态提示），改为直接读取 geoPhotos.length 渲染 UI。",
+    "type": "fix"
+  },
+  {
+    "id": "memory-map-perf",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "记忆地图性能优化",
+    "desc": "增量标记更新、缓存 Leaflet、轻量 CSS 点标记、修复 GPS 更新不刷新、新增全览按钮",
+    "details": "重写 MemoryMap：Map<name,Marker> diff 增量更新避免全量重建；模块级 Leaflet 单例缓存；CSS 圆点替代 img src 图标消除 N 次额外请求；geoPhotoKey 序列化坐标修复 GPS 更新不触发 Effect 的 bug；新增全览按钮；地图高度缩小（42vh/移动端 32vh）；无 GPS 照片列表支持分页。",
+    "type": "improvement"
+  },
+  {
+    "id": "memory-map-video-thumb-fix",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "修复记忆地图渲染与视频封面",
+    "desc": "地图不显示、GPS 对话框视频无封面、重要片段浏览量被清零三个问题同步修复",
+    "details": "记忆地图改用静态 import leaflet CSS 修复不渲染问题；修复 Vite CJS 互操作；GPS 编辑对话框改用 MediaThumb 支持视频封面；重要片段服务端返回空数据时不再覆盖本地浏览记录。",
+    "type": "fix"
+  },
+  {
+    "id": "memory-map",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "记忆地图",
+    "desc": "含 GPS 信息的照片在世界地图上展示拍摄地点",
+    "details": "在「🗺️ 记忆地图」标签查看所有含位置信息的照片分布。上传时自动读取图片 EXIF GPS 数据并存储。点击地图上的照片图标可查看详情并跳转到时间线。",
     "type": "feature"
   },
   {
-    "id": "fix-pre-push-hook-windows",
-    "date": "2026-06-03",
-    "icon": "🐛",
-    "title": "修复 pre-push hook 在 Windows 下 stdin 为空时不拦截的问题",
-    "type": "fix",
-    "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
+    "id": "modal-centering",
+    "date": "2026-06-02",
+    "icon": "📱",
+    "title": "详情弹窗垂直居中",
+    "desc": "点击照片/视频打开详情页时，弹窗在移动端垂直居中显示",
+    "details": "此前移动端详情弹窗总是出现在页面顶部，用户需要滚动才能看到完整内容。现在改用 margin: auto 在 flex 容器中居中，内容适合屏幕时自动居中；内容超出屏幕高度时从顶部开始可滚动，两种情况均处理正确。",
+    "type": "fix"
+  },
+  {
+    "id": "moments-video-thumb",
+    "date": "2026-06-02",
+    "icon": "🎞️",
+    "title": "重要片段支持视频封面",
+    "desc": "「重要片段」视图中视频文件现在正确显示封面帧和播放标识",
+    "details": "之前重要片段（Moments）中的视频会显示为空白或损坏图片。现已统一使用 MediaThumb 组件，视频自动定位封面帧，右下角显示 ▶ 标识，与时间线和垃圾桶视图行为一致。",
+    "type": "improvement"
+  },
+  {
+    "id": "on-this-day",
+    "date": "2026-06-02",
+    "icon": "📅",
+    "title": "历史上的今天",
+    "desc": "时间线顶部自动显示往年同一天拍摄的照片",
+    "details": "每次进入时间线，若往年同月同日有照片，会在顶部出现「历史上的今天」卡片，按年份分组展示缩略图，点击跳转到对应照片。",
+    "type": "feature"
+  },
+  {
+    "id": "scroll-top-fix",
+    "date": "2026-06-02",
+    "icon": "⬆️",
+    "title": "返回顶部按钮位置优化",
+    "desc": "返回顶部按钮不再与右侧悬浮菜单冲突，位置始终稳定",
+    "details": "之前按钮与右下角 WorkspaceFab 在同一侧，展开操作菜单后按钮被遮挡。现调整至左下角，并使用系统安全区距离自动适配 iOS 底部横条，无论界面如何调整位置都不会偏移。",
+    "type": "fix"
+  },
+  {
+    "id": "time-capsule",
+    "date": "2026-06-02",
+    "icon": "💌",
+    "title": "时光胶囊",
+    "desc": "将照片锁定到未来某天，到期后解锁查看",
+    "details": "在「💌 时光胶囊」标签新建胶囊：选择照片、设定解锁日期，胶囊将锁定显示倒计时；到期后自动解锁，可点击打开浏览封存的照片。数据存储在本地。",
+    "type": "feature"
+  },
+  {
+    "id": "timeline-tremble-fix",
+    "date": "2026-06-02",
+    "icon": "🛠️",
+    "title": "修复时间线颤抖问题",
+    "desc": "消除滚动时界面莫名颤抖、组件偏移的现象",
+    "details": "三处根因修复：① 去掉 header 3秒空闲自动弹出的 idle timer，header 现在只在向上滚动或靠近顶部时才重新显示；② 进度条改为直接操作 DOM ref，不再每帧触发 React setState 重渲整棵组件树；③ content-visibility 的 contain-intrinsic-size 加上 auto 关键字，浏览器复用已测量的真实高度，避免日期分组高度估算出错造成滚动偏移。同步清理 index.css 中重复的 .scroll-progress-bar 定义。",
+    "type": "fix"
+  },
+  {
+    "id": "upload-pause-speed-retry",
+    "date": "2026-06-02",
+    "icon": "⬆️",
+    "title": "上传增强：速度显示、暂停/继续、断网重试",
+    "desc": "上传照片时可暂停/继续，显示实时速度，断网后自动恢复",
+    "details": "三项改进：① 上传进度条新增实时速度（如 2.1 MB/s），基于 EMA 平滑避免闪烁；② 新增暂停⏸/继续▶按钮，点击后当前文件传完再暂停，恢复后从下一文件继续；③ 每个文件最多自动重试 3 次，断网时等待 online 事件后自动续传，恢复网络后无需手动操作。XHR 上传在浏览器后台标签页中照常继续，不会因切换网页而中断。",
+    "type": "feature"
+  },
+  {
+    "id": "video-thumbnail-crop",
+    "date": "2026-06-02",
+    "icon": "🖼️",
+    "title": "视频缩略图居中裁剪",
+    "desc": "视频封面以帧的中心居中裁剪填满格子，不再显示边角",
+    "details": "之前视频缩略图会把整帧压缩进正方形格子，横/竖屏视频都会出现黑边或拉伸。现在使用 object-fit: cover + object-position: center，与图片缩略图行为完全一致，封面始终取帧的中央区域，不改变原始比例。",
+    "type": "improvement"
+  },
+  {
+    "id": "dialog-centering",
+    "date": "2026-06-01",
+    "icon": "📐",
+    "title": "删除确认弹窗居中",
+    "desc": "删除确认弹窗现在始终显示在屏幕正中央",
+    "details": "之前删除确认弹窗在部分场景（尤其是有 CSS transform 的父元素内）会出现在视口底部或偏移位置。现在改用 React createPortal 直接渲染到 document.body，始终固定居中。",
+    "type": "fix"
+  },
+  {
+    "id": "folder-persist",
+    "date": "2026-05-30",
+    "icon": "📁",
+    "title": "文件夹路径记忆",
+    "desc": "刷新页面后自动回到上次浏览的文件夹位置",
+    "details": "此前刷新页面会重置到文件夹根目录，需要重新点击进入。现在使用惰性 useState 初始器在组件挂载时直接从 localStorage 读取上次路径，刷新后立即恢复，无需任何额外操作。",
+    "type": "feature"
+  },
+  {
+    "id": "video-upload",
+    "date": "2026-05-30",
+    "icon": "🎬",
+    "title": "视频上传",
+    "desc": "现在可以上传视频文件，与照片一同保存在相册中",
+    "details": "支持格式：MP4 / MOV / WebM / AVI / MPEG / 3GPP，单文件最大 200 MB（图片仍为 20 MB）。视频卡片右下角显示 ▶ 标识，点击可在详情弹窗中直接播放。缩略图自动定位到视频约 10% 时长处的代表性帧。",
+    "type": "feature"
+  },
+  {
+    "id": "voice-memo",
+    "date": "2026-05-30",
+    "icon": "🎙️",
+    "title": "语音备注",
+    "desc": "为每张照片录制语音备注，随时回听",
+    "details": "在照片/视频详情弹窗的操作栏点击 🎤 语音，即可录制一段语音备注。支持 webm（Chrome/Android）和 mp4（Safari/iOS）。已有备注时按钮显示为「🎤 备注✓」，面板内有播放器可直接收听，也可删除备注。",
+    "type": "feature"
   }
 ]

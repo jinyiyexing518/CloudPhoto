@@ -25,9 +25,7 @@ const publicPath = join(root, "packages", "client", "public", "changelog.json");
 mkdirSync(changesDir, { recursive: true });
 
 const files = readdirSync(changesDir)
-  .filter((f) => f.endsWith(".json"))
-  .sort()      // lexicographic = chronological since filenames start with YYYY-MM-DD
-  .reverse();  // newest first (matches existing changelog.json order)
+  .filter((f) => f.endsWith(".json"));
 
 if (files.length === 0) {
   console.warn("  ⚠  No change files found in changes/. public/changelog.json not updated.");
@@ -41,6 +39,13 @@ const entries = files.map((f) => {
     console.error(`  ❌ Failed to parse changes/${f}: ${e.message}`);
     process.exit(1);
   }
+});
+
+// Sort by date field descending (newest first), fall back to filename order for ties.
+entries.sort((a, b) => {
+  const da = a?.date ?? "";
+  const db = b?.date ?? "";
+  return db.localeCompare(da);
 });
 
 writeFileSync(publicPath, JSON.stringify(entries, null, 2) + "\n", "utf8");
