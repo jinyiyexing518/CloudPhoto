@@ -430,9 +430,18 @@ function PhotoGallery({
       + Math.max(0, MOMENT_SCORE_RECENCY_MAX - recencyDays);
   }, []);
 
+  // Debounce localStorage writes — synchronous JSON.stringify+write on every view
+  // blocked the main thread and caused noticeable jank.
+  const writeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    writeLocalMomentInsights(momentsInsightsMap);
-    writeMomentsDiagnostics("local-only", { photoCount: Object.keys(momentsInsightsMap).length });
+    if (writeDebounceRef.current) clearTimeout(writeDebounceRef.current);
+    writeDebounceRef.current = setTimeout(() => {
+      writeLocalMomentInsights(momentsInsightsMap);
+      writeMomentsDiagnostics("local-only", { photoCount: Object.keys(momentsInsightsMap).length });
+    }, 1500);
+    return () => {
+      if (writeDebounceRef.current) clearTimeout(writeDebounceRef.current);
+    };
   }, [momentsInsightsMap]);
 
   useEffect(() => {
@@ -584,7 +593,8 @@ function PhotoGallery({
 
     void recordMomentViewApi(photoName, userName).then((serverItem) => {
       if (!serverItem) return;
-      writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(momentsInsightsMap).length + 1 });
+      writeMomentsDiagnostics("server-synced", {});
+      // Use functional updater — no need to read momentsInsightsMap in closure
       setMomentsInsightsMap((prev) => ({
         ...prev,
         [photoName]: mergeMomentInsight(prev[photoName], serverItem),
@@ -592,14 +602,11 @@ function PhotoGallery({
     }).catch((e) => {
       if (e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
         momentsUnavailableNoticeShown.current = true;
-        writeMomentsDiagnostics("server-unavailable", {
-          message: e.message,
-          photoCount: Object.keys(momentsInsightsMap).length,
-        });
+        writeMomentsDiagnostics("server-unavailable", { message: e.message });
         showToast("照片浏览量暂时不可持久化，当前设备会先本地记录浏览变化", "info");
       }
     });
-  }, [momentsInsightsMap, userName]);
+  }, [userName]);  // momentsInsightsMap removed — functional updaters give latest state
 
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = modalPhotos[idx];

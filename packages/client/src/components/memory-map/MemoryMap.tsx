@@ -261,6 +261,12 @@ export default function MemoryMap({ photos, onViewPhoto, onGpsUpdate }: Props) {
       </div>
 
       <div ref={mapRef} className="memory-map-container" />
+      {!mapReady && (
+        <div className="memory-map-loading">
+          <div className="memory-map-loading-spinner" />
+          <span>地图加载中…</span>
+        </div>
+      )}
 
       {geoPhotos.length === 0 && (
         <div className="memory-map-empty">

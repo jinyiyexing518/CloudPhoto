@@ -21,6 +21,16 @@ export default function AutoStory({ photos }: Props) {
     [photos],
   );
 
+  // Pre-compute per-folder counts once — avoids O(n×folders) in render
+  const folderCounts = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    for (const p of photos) {
+      const f = (p.folder ?? "").trim();
+      if (f) map[f] = (map[f] ?? 0) + 1;
+    }
+    return map;
+  }, [photos]);
+
   const storyPhotos = useMemo(() => {
     if (selectedFolder === null) return photos.slice().reverse();
     if (selectedFolder === "") return photos.filter((p) => !(p.folder ?? "").trim()).slice().reverse();
@@ -85,12 +95,9 @@ export default function AutoStory({ photos }: Props) {
             }}
           >
             <option value="__all__">全部照片（{photos.length} 张）</option>
-            {folders.map((f) => {
-              const count = photos.filter((p) => (p.folder ?? "").trim() === f).length;
-              return (
-                <option key={f} value={f}>{f}（{count} 张）</option>
-              );
-            })}
+            {folders.map((f) => (
+              <option key={f} value={f}>{f}（{folderCounts[f] ?? 0} 张）</option>
+            ))}
             <option value="">未分类文件夹</option>
           </select>
         </div>
