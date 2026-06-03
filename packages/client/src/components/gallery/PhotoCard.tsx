@@ -113,16 +113,27 @@ function PhotoCard({
             <div className="photo-video-badge">动态照片 📱</div>
           )}
           {isAnimated && !isMotionPhoto && (
-            <>
-              {gifPaused && <div className="photo-gif-paused-overlay" />}
-              <button
-                className="photo-gif-play-btn"
-                onClick={toggleGifPause}
-                title={gifPaused ? "继续播放" : "暂停动图"}
-              >
-                {gifPaused ? "▶" : "⏸"}
-              </button>
-            </>
+            gifPaused ? (
+              <>
+                <div className="photo-gif-paused-overlay" />
+                <div className="gif-play-center">
+                  <button className="gif-play-center-btn" onClick={toggleGifPause} title="继续播放">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="gif-animated-badge">GIF</span>
+                <button className="gif-pause-corner-btn" onClick={toggleGifPause} title="暂停动图">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                  </svg>
+                </button>
+              </>
+            )
           )}
         </div>
         <div className="photo-info">

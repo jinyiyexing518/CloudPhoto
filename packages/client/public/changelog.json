@@ -123,6 +123,13 @@
     "details": "PhotoGallery 新增 sortKey prop（\"taken\" | \"uploaded\"），groupByDate 和 flatPhotos 均尊重该字段；默认按拍摄时间分组，无拍摄时间时回退到上传时间。App.tsx 状态 photoSortKey 控制当前模式。"
   },
   {
+    "id": "2026-06-03-upload-live-photo-refresh",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "上传时文件夹实时刷新",
+    "summary": "每张图片上传完成后立即更新照片列表，无需等待全部上传完毕，文件夹内容随上传进度实时变化"
+  },
+  {
     "id": "2026-06-02-auto-story",
     "date": "2026-06-02",
     "icon": "🎬",

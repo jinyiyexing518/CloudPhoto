@@ -786,7 +786,7 @@ function AppContent() {
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             const controller = new AbortController();
-            await uploadPhotoWithProgress(
+            const uploadedPhoto = await uploadPhotoWithProgress(
               valid[i],
               (loaded) => {
                 // Speed tracking (EMA, update every 500 ms)
@@ -810,6 +810,8 @@ function AppContent() {
               gpsLon,
               controller.signal,
             );
+            // Immediately add the uploaded photo so the folder view refreshes live
+            setPhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
             lastErr = undefined;
             break; // success — exit retry loop
           } catch (e) {
