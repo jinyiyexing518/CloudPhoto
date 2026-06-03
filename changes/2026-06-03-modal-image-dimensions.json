@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-03-modal-image-dimensions",
+  "date": "2026-06-03",
+  "title": "照片模态框显示图片分辨率",
+  "description": "照片预览模态框的文件大小旁显示图片原始分辨率（如「1.2 MB · 4032×3024」），帮助用户了解照片精度。分辨率在图片加载完成后自动读取。",
+  "impact": "user-experience",
+  "breaking": false,
+  "seq": 1780480652624
+}

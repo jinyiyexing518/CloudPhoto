@@ -294,6 +294,7 @@ function PhotoGallery({
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -669,6 +670,7 @@ function PhotoGallery({
     setDownloading(false);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
+    setImageDimensions(null);
   }, [modalPhotos, trackMomentView]);
 
   // Keyboard navigation when modal is open
@@ -1354,6 +1356,10 @@ function PhotoGallery({
                   className="modal-image"
                   onClick={() => setShowOriginalPreview(true)}
                   title="点击预览原图"
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    setImageDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+                  }}
                 />
               )}
               {modalPhotos.length > 1 && (
@@ -1394,7 +1400,7 @@ function PhotoGallery({
                     <button className="modal-rename-btn" title="重命名" onClick={() => setEditingName(true)}>✏ 重命名</button>
                   </span>
                 )}
-                <span className="modal-size">{formatSize(selectedPhoto.size)}</span>
+                <span className="modal-size">{formatSize(selectedPhoto.size)}{imageDimensions ? ` · ${imageDimensions.w}×${imageDimensions.h}` : ""}</span>
               </div>
 
               <div className="modal-action-strip">
