@@ -1,0 +1,8 @@
+{
+  "id": "animated-detect-gps-display",
+  "date": "2026-06-03",
+  "icon": "✨",
+  "title": "动图检测支持 vivo/华为/小米/Apple，照片详情展示 GPS 位置",
+  "type": "feature",
+  "desc": "Added vivo (VivoLivePhoto), Huawei (HwMotionPhoto), and Apple Live Photo (apple_fi/Photos:Live) animated detection. Server now extracts EXIF GPS server-side as fallback using exifr. Photo detail modals now show GPS coordinates with a Google Maps link."
+}

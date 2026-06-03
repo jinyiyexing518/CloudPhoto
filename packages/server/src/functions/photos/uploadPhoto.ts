@@ -11,6 +11,7 @@ import {
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
+import exifr from "exifr";
 
 const ALLOWED_IMAGE_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif",
@@ -54,12 +55,16 @@ function detectAnimated(buf: Buffer, mime: string): boolean {
     return false;
   }
   if (mime === "image/jpeg" || mime === "image/jpg") {
-    // Android/Google Motion Photo embed XMP with MotionPhoto marker in the JPEG APP1 section
+    // Motion/Live Photo formats: Google, Samsung, vivo, Huawei, Xiaomi, OPPO/OnePlus, Apple
     const header = buf.subarray(0, Math.min(buf.length, 65536)).toString("latin1");
     return (
-      header.includes("MotionPhoto") ||
-      header.includes("MicroVideo") ||
-      header.includes("GCamera")
+      header.includes("MotionPhoto")     ||  // Google Pixel, Samsung, vivo, OPPO, Xiaomi
+      header.includes("MicroVideo")      ||  // older Google Pixel
+      header.includes("GCamera")         ||  // Google Camera
+      header.includes("HwMotionPhoto")   ||  // Huawei
+      header.includes("VivoLivePhoto")   ||  // vivo Live Photo (some models)
+      header.includes("apple_fi")        ||  // Apple Live Photo (JPEG export)
+      header.includes("Photos:Live")         // Apple Live Photo (iOS 14+)
     );
   }
   return false;
@@ -124,6 +129,19 @@ app.http("uploadPhoto", {
       const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
       const buf = Buffer.from(arrayBuffer);
       const isAnimated = !isVideoUpload && !isAudioUpload && detectAnimated(buf, mimeType);
+
+      // Server-side GPS extraction: try to read EXIF if client didn't provide coordinates
+      let resolvedLat = gpsLat;
+      let resolvedLon = gpsLon;
+      if (!resolvedLat && !isVideoUpload && !isAudioUpload) {
+        try {
+          const gps = await exifr.gps(buf);
+          if (gps?.latitude != null && gps?.longitude != null) {
+            resolvedLat = String(gps.latitude);
+            resolvedLon = String(gps.longitude);
+          }
+        } catch { /* EXIF extraction is best-effort */ }
+      }
       await blockBlobClient.uploadData(buf, {
         blobHTTPHeaders: { blobContentType: contentType },
         metadata: {
@@ -134,22 +152,22 @@ app.http("uploadPhoto", {
           createdAt: now,
           lastModifiedBy: b64(uploadedBy),
           lastModifiedAt: now,
-          ...(gpsLat && { gpsLat }),
-          ...(gpsLon && { gpsLon }),
+          ...(resolvedLat && { gpsLat: resolvedLat }),
+          ...(resolvedLon && { gpsLon: resolvedLon }),
           ...(isAnimated && { isAnimated: "1" }),
         },
       });
 
       // Cache GPS coordinates in Cosmos for fast map queries
-      if (gpsLat && gpsLon) {
+      if (resolvedLat && resolvedLon) {
         try {
           const locsContainer = await getPhotoLocationsContainer();
           const doc: PhotoLocationDoc = {
             id: encodeURIComponent(blobName),
             scope,
             name: blobName,
-            lat: parseFloat(gpsLat),
-            lon: parseFloat(gpsLon),
+            lat: parseFloat(resolvedLat),
+            lon: parseFloat(resolvedLon),
             originalName: filename,
             contentType: mimeType,
             uploadedAt: now,

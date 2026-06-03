@@ -1405,6 +1405,24 @@ function FolderContent({
                 </span>
                 <span className="modal-detail-label">格式</span>
                 <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
+
+                {selectedPhoto.gpsLat && selectedPhoto.gpsLon && (
+                  <>
+                    <span className="modal-detail-label">位置</span>
+                    <span className="modal-detail-value" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontFamily: "monospace", fontSize: "0.82em" }}>
+                        {parseFloat(selectedPhoto.gpsLat).toFixed(5)}°, {parseFloat(selectedPhoto.gpsLon).toFixed(5)}°
+                      </span>
+                      <a
+                        href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="modal-edit-btn"
+                        title="在 Google 地图中查看"
+                      >🗺</a>
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             </div>
