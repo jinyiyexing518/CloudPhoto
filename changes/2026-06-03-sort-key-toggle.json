@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-03-sort-key-toggle",
-  "date": "2026-06-03",
-  "icon": "📷",
-  "title": "排序方式切换：拍摄时间 / 上传时间",
-  "type": "feature",
-  "desc": "时间线工具栏新增「📷 拍摄时间」和「☁ 上传时间」切换按钮，可选择按哪个时间字段分组排序",
-  "details": "PhotoGallery 新增 sortKey prop（\"taken\" | \"uploaded\"），groupByDate 和 flatPhotos 均尊重该字段；默认按拍摄时间分组，无拍摄时间时回退到上传时间。App.tsx 状态 photoSortKey 控制当前模式。"
-}
+{"id":"2026-06-03-sort-key-toggle","date":"2026-06-03","icon":"📷","title":"排序方式切换：拍摄时间 / 上传时间","type":"feature","desc":"时间线工具栏新增「📷 拍摄时间」和「☁ 上传时间」切换按钮，可选择按哪个时间字段分组排序","details":"PhotoGallery 新增 sortKey prop（\"taken\" | \"uploaded\"），groupByDate 和 flatPhotos 均尊重该字段；默认按拍摄时间分组，无拍摄时间时回退到上传时间。App.tsx 状态 photoSortKey 控制当前模式。","seq":1780472229414}

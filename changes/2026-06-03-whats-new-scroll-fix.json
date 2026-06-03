@@ -1,7 +1,1 @@
-{
-  "id": "2026-06-03-whats-new-scroll-fix",
-  "date": "2026-06-03",
-  "type": "fix",
-  "title": "最近更新弹窗可正常滚动",
-  "summary": "修复最近更新弹窗无法滚动、滑动穿透到后方照片的问题：将内容统一放入独立滚动容器并设置overscroll-behavior:contain"
-}
+{"id":"2026-06-03-whats-new-scroll-fix","date":"2026-06-03","type":"fix","title":"最近更新弹窗可正常滚动","summary":"修复最近更新弹窗无法滚动、滑动穿透到后方照片的问题：将内容统一放入独立滚动容器并设置overscroll-behavior:contain","seq":1780478815689}

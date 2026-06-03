@@ -1,7 +1,1 @@
-{
-  "id": "2026-06-03-folder-pin-on-create",
-  "date": "2026-06-03",
-  "type": "improvement",
-  "title": "新建文件夹临时置顶",
-  "summary": "新创建的文件夹在当前会话中自动置顶显示，导航离开或刷新后恢复正常字母排序"
-}
+{"id":"2026-06-03-folder-pin-on-create","date":"2026-06-03","type":"improvement","title":"新建文件夹临时置顶","summary":"新创建的文件夹在当前会话中自动置顶显示，导航离开或刷新后恢复正常字母排序","seq":1780475617638}

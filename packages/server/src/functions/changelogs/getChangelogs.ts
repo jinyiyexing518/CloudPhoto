@@ -13,6 +13,7 @@ interface ChangelogEntry {
   title: string;
   desc: string;
   details?: string;
+  seq?: number;
   _ts?: number;
 }
 
@@ -36,16 +37,26 @@ app.http("getChangelogs", {
       const { resources } = await container.items
         .query<ChangelogEntry>({
           query:
-            "SELECT c.id, c.date, c.icon, c.title, c.desc, c.details, c.type, c._ts FROM c WHERE c.date >= @cutoff",
+            "SELECT c.id, c.date, c.icon, c.title, c.desc, c.details, c.type, c.seq, c._ts FROM c WHERE c.date >= @cutoff",
           parameters: [{ name: "@cutoff", value: cutoffStr }],
         })
         .fetchAll();
 
-      // Sort newest-first by date, then by _ts (Cosmos modification time) within the same date
+      // Sort newest-first by date, then by seq (stable creation timestamp written
+      // into each change file) within the same date.  Fall back to id alphabetical
+      // for old entries that pre-date the seq field, and finally to _ts.
       resources.sort((a, b) => {
         const dateCmp = b.date.localeCompare(a.date);
         if (dateCmp !== 0) return dateCmp;
-        return (b._ts ?? 0) - (a._ts ?? 0);
+        // seq present on both → use it
+        if (a.seq != null && b.seq != null) return b.seq - a.seq;
+        // seq present on one side only → seq'd entry sorts first (it's newer)
+        if (a.seq != null) return 1;
+        if (b.seq != null) return -1;
+        // neither has seq → fall back to _ts, then id
+        const tsCmp = (b._ts ?? 0) - (a._ts ?? 0);
+        if (tsCmp !== 0) return tsCmp;
+        return b.id.localeCompare(a.id);
       });
 
       return {

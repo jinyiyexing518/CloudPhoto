@@ -1,7 +1,1 @@
-{
-  "id": "2026-06-03-docs-chinese-readme",
-  "date": "2026-06-03",
-  "type": "improvement",
-  "title": "README 全中文改写 + 文档更新",
-  "summary": "README 完整改写为中文；USER_GUIDE 新增排序切换、回填、批量时间/位置章节；AI_REPRO_SPEC 新增规范；create-change.mjs 支持 --pipe 模式"
-}
+{"id":"2026-06-03-docs-chinese-readme","date":"2026-06-03","type":"improvement","title":"README 全中文改写 + 文档更新","summary":"README 完整改写为中文；USER_GUIDE 新增排序切换、回填、批量时间/位置章节；AI_REPRO_SPEC 新增规范；create-change.mjs 支持 --pipe 模式","seq":1780473780049}

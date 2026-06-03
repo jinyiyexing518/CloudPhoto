@@ -1,8 +1,1 @@
-{
-  "id": "2026-06-03-gps-reverse-geocode",
-  "date": "2026-06-03",
-  "icon": "📍",
-  "title": "修复GPS NaN + 位置显示改为可读地址",
-  "type": "fix",
-  "desc": "EXIF 返回 NaN 坐标时不再写入；照片弹窗位置改为 Nominatim 反向地理编码的可读地址（省+市+区）"
-}
+{"id":"2026-06-03-gps-reverse-geocode","date":"2026-06-03","icon":"📍","title":"修复GPS NaN + 位置显示改为可读地址","type":"fix","desc":"EXIF 返回 NaN 坐标时不再写入；照片弹窗位置改为 Nominatim 反向地理编码的可读地址（省+市+区）","seq":1780472229359}

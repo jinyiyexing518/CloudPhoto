@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-02-memory-map-video-thumb-fix",
-  "date": "2026-06-02",
-  "icon": "🗺️",
-  "title": "修复记忆地图渲染与视频封面",
-  "desc": "地图不显示、GPS 对话框视频无封面、重要片段浏览量被清零三个问题同步修复",
-  "details": "记忆地图改用静态 import leaflet CSS 修复不渲染问题；修复 Vite CJS 互操作；GPS 编辑对话框改用 MediaThumb 支持视频封面；重要片段服务端返回空数据时不再覆盖本地浏览记录。",
-  "type": "fix"
-}
+{"id":"2026-06-02-memory-map-video-thumb-fix","date":"2026-06-02","icon":"🗺️","title":"修复记忆地图渲染与视频封面","desc":"地图不显示、GPS 对话框视频无封面、重要片段浏览量被清零三个问题同步修复","details":"记忆地图改用静态 import leaflet CSS 修复不渲染问题；修复 Vite CJS 互操作；GPS 编辑对话框改用 MediaThumb 支持视频封面；重要片段服务端返回空数据时不再覆盖本地浏览记录。","type":"fix","seq":1780472229116}

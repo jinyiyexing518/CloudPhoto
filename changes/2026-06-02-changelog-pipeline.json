@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-02-changelog-pipeline",
-  "date": "2026-06-02",
-  "icon": "🔧",
-  "title": "Changelog Pipeline 精简",
-  "desc": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
-  "details": "sync-changelog.mjs 直接读取 changes/*.json；collect-changes.mjs 只写 public/changelog.json；fetchChangelogs API 失败时 fallback 到静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗。",
-  "type": "fix"
-}
+{"id":"2026-06-02-changelog-pipeline","date":"2026-06-02","icon":"🔧","title":"Changelog Pipeline 精简","desc":"移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。","details":"sync-changelog.mjs 直接读取 changes/*.json；collect-changes.mjs 只写 public/changelog.json；fetchChangelogs API 失败时 fallback 到静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗。","type":"fix","seq":1780472229012}

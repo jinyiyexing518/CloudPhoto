@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-03-perf-new-features",
-  "date": "2026-06-03",
-  "icon": "⚡",
-  "title": "新功能性能优化",
-  "desc": "防抖 localStorage 写入、移除 insights dep、AutoStory 文件夹计数 Memo、地图加载提示",
-  "details": "Moments 浏览记录写 localStorage 改为 1.5s 防抖；trackMomentView 移除 momentsInsightsMap dep 消除级联重渲染；AutoStory 文件夹照片数量改用 useMemo 预计算；MemoryMap 首次加载显示旋转提示。",
-  "type": "improvement"
-}
+{"id":"2026-06-03-perf-new-features","date":"2026-06-03","icon":"⚡","title":"新功能性能优化","desc":"防抖 localStorage 写入、移除 insights dep、AutoStory 文件夹计数 Memo、地图加载提示","details":"Moments 浏览记录写 localStorage 改为 1.5s 防抖；trackMomentView 移除 momentsInsightsMap dep 消除级联重渲染；AutoStory 文件夹照片数量改用 useMemo 预计算；MemoryMap 首次加载显示旋转提示。","type":"improvement","seq":1780472229388}

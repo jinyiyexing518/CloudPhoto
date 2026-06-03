@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-02-group-dialog-portal-fix",
-  "date": "2026-06-02",
-  "icon": "👥",
-  "title": "修复群组对话框向上溢出",
-  "desc": "群组管理弹窗改用 createPortal 渲染到 body，修复 position:fixed 被 header 截断的问题",
-  "details": "GroupSwitcher 中的 CreateGroupDialog 和 GroupSettings 改用 createPortal 渲染到 document.body，绕过 app-header will-change:transform 导致 position:fixed 相对 header 定位的问题。",
-  "type": "fix"
-}
+{"id":"2026-06-02-group-dialog-portal-fix","date":"2026-06-02","icon":"👥","title":"修复群组对话框向上溢出","desc":"群组管理弹窗改用 createPortal 渲染到 body，修复 position:fixed 被 header 截断的问题","details":"GroupSwitcher 中的 CreateGroupDialog 和 GroupSettings 改用 createPortal 渲染到 document.body，绕过 app-header will-change:transform 导致 position:fixed 相对 header 定位的问题。","type":"fix","seq":1780472229067}

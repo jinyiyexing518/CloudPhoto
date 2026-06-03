@@ -37,7 +37,8 @@ function writeEntry(entry) {
   if (!id.startsWith(date + "-")) {
     id = `${date}-${id}`;
   }
-  const normalised = { ...entry, id };
+  // seq: stable creation-time ordering key (survives repeated Cosmos upserts)
+  const normalised = { ...entry, id, seq: entry.seq ?? Date.now() };
 
   const changesDir = join(root, "changes");
   mkdirSync(changesDir, { recursive: true });

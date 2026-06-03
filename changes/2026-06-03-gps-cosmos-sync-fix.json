@@ -1,8 +1,1 @@
-{
-  "id": "2026-06-03-gps-cosmos-sync-fix",
-  "date": "2026-06-03",
-  "icon": "🔧",
-  "title": "修复GPS地图缓存与照片生命周期同步",
-  "type": "fix",
-  "desc": "软删除时同步删除 Cosmos GPS 记录，避免垃圾桶照片出现在地图；恢复时重新写入 Cosmos"
-}
+{"id":"2026-06-03-gps-cosmos-sync-fix","date":"2026-06-03","icon":"🔧","title":"修复GPS地图缓存与照片生命周期同步","type":"fix","desc":"软删除时同步删除 Cosmos GPS 记录，避免垃圾桶照片出现在地图；恢复时重新写入 Cosmos","seq":1780472229347}

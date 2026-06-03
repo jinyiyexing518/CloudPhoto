@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-03-animated-gif-pause",
-  "date": "2026-06-03",
-  "icon": "🎞️",
-  "title": "动图暂停/恢复修复 + 弹窗预览可点击",
-  "type": "fix",
-  "desc": "修复动图卡片暂停跨域报错，改用 BLANK_GIF 方案；修复动图在弹窗中无法点击预览原图的问题",
-  "details": "原实现用 <canvas> 截帧检测跨域会抛出 SecurityError（Azure SAS URL 跨域）；改为 BLANK_GIF（1×1 透明 GIF Data URL）src 替换方案，暂停时显示半透明遮罩，恢复时 GIF 从第 0 帧重播。弹窗中动图 img 缺少 onClick 且 cursor 为 default，现已添加点击回调并改为 cursor: zoom-in。"
-}
+{"id":"2026-06-03-animated-gif-pause","date":"2026-06-03","icon":"🎞️","title":"动图暂停/恢复修复 + 弹窗预览可点击","type":"fix","desc":"修复动图卡片暂停跨域报错，改用 BLANK_GIF 方案；修复动图在弹窗中无法点击预览原图的问题","details":"原实现用 <canvas> 截帧检测跨域会抛出 SecurityError（Azure SAS URL 跨域）；改为 BLANK_GIF（1×1 透明 GIF Data URL）src 替换方案，暂停时显示半透明遮罩，恢复时 GIF 从第 0 帧重播。弹窗中动图 img 缺少 onClick 且 cursor 为 default，现已添加点击回调并改为 cursor: zoom-in。","seq":1780472229268}

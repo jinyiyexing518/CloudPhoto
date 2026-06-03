@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-02-video-thumbnail-crop",
-  "date": "2026-06-02",
-  "icon": "🖼️",
-  "title": "视频缩略图居中裁剪",
-  "desc": "视频封面以帧的中心居中裁剪填满格子，不再显示边角",
-  "details": "之前视频缩略图会把整帧压缩进正方形格子，横/竖屏视频都会出现黑边或拉伸。现在使用 object-fit: cover + object-position: center，与图片缩略图行为完全一致，封面始终取帧的中央区域，不改变原始比例。",
-  "type": "improvement"
-}
+{"id":"2026-06-02-video-thumbnail-crop","date":"2026-06-02","icon":"🖼️","title":"视频缩略图居中裁剪","desc":"视频封面以帧的中心居中裁剪填满格子，不再显示边角","details":"之前视频缩略图会把整帧压缩进正方形格子，横/竖屏视频都会出现黑边或拉伸。现在使用 object-fit: cover + object-position: center，与图片缩略图行为完全一致，封面始终取帧的中央区域，不改变原始比例。","type":"improvement","seq":1780472229215}

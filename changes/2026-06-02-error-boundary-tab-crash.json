@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-02-error-boundary-tab-crash",
-  "date": "2026-06-02",
-  "icon": "🛡️",
-  "title": "ErrorBoundary 防白屏",
-  "desc": "新增 ErrorBoundary 组件，切换 Tab 时渲染异常不再导致整页白屏",
-  "details": "新增 ErrorBoundary 类组件捕获 render 期间异常，App.tsx 主内容区用 key={activeTab} 包裹，切换 Tab 自动重置错误状态并显示友好提示卡片而非白屏。",
-  "type": "fix"
-}
+{"id":"2026-06-02-error-boundary-tab-crash","date":"2026-06-02","icon":"🛡️","title":"ErrorBoundary 防白屏","desc":"新增 ErrorBoundary 组件，切换 Tab 时渲染异常不再导致整页白屏","details":"新增 ErrorBoundary 类组件捕获 render 期间异常，App.tsx 主内容区用 key={activeTab} 包裹，切换 Tab 自动重置错误状态并显示友好提示卡片而非白屏。","type":"fix","seq":1780472229042}

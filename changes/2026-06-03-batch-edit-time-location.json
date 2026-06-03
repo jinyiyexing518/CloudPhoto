@@ -1,9 +1,1 @@
-{
-  "id": "2026-06-03-batch-edit-time-location",
-  "date": "2026-06-03",
-  "icon": "✏️",
-  "title": "批量修改拍摄时间和位置",
-  "type": "feature",
-  "desc": "批量选择模式下新增「修改时间」和「修改位置」操作，可一次性更新多张照片的元数据",
-  "details": "批量选中照片后工具栏出现两个新按钮：「修改时间」展开 datetime-local 时间选择器，「修改位置」展开纬度/经度输入框；点击「应用」后逐张调用 PATCH /api/photos/metadata，完成后显示 Toast 统计结果。新增 onGpsUpdate 回调确保 App 内存状态同步更新。"
-}
+{"id":"2026-06-03-batch-edit-time-location","date":"2026-06-03","icon":"✏️","title":"批量修改拍摄时间和位置","type":"feature","desc":"批量选择模式下新增「修改时间」和「修改位置」操作，可一次性更新多张照片的元数据","details":"批量选中照片后工具栏出现两个新按钮：「修改时间」展开 datetime-local 时间选择器，「修改位置」展开纬度/经度输入框；点击「应用」后逐张调用 PATCH /api/photos/metadata，完成后显示 Toast 统计结果。新增 onGpsUpdate 回调确保 App 内存状态同步更新。","seq":1780472229287}
