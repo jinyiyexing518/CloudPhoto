@@ -24,6 +24,14 @@
     "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data."
   },
   {
+    "id": "gps-cosmos-sync-fix",
+    "date": "2026-06-03",
+    "icon": "🔧",
+    "title": "修复GPS地图缓存与照片生命周期同步",
+    "type": "fix",
+    "desc": "软删除时同步删除 Cosmos GPS 记录，避免垃圾桶照片出现在地图；恢复时重新写入 Cosmos"
+  },
+  {
     "id": "sort-by-taken-at",
     "date": "2026-06-03",
     "icon": "📅",
