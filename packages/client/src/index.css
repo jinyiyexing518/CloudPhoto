@@ -752,33 +752,47 @@ body {
 .memory-map-wrap { padding: 0 0 24px; }
 .memory-map-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   padding: 16px 16px 12px;
 }
 .memory-map-title { font-size: 1.1rem; font-weight: 700; }
-.memory-map-subtitle { font-size: 0.85rem; color: #64748b; }
+.memory-map-subtitle { font-size: 0.85rem; color: #64748b; flex: 1 1 100%; }
 .memory-map-container {
-  height: 55vh;
-  min-height: 320px;
+  height: 42vh;
+  min-height: 220px;
   border-radius: 16px;
   overflow: hidden;
   margin: 0 12px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.12);
 }
-.map-photo-marker {
-  border-radius: 50%;
-  overflow: hidden;
+/* Lightweight dot marker - no photo URL = no extra network requests */
+.map-marker-pin {
+  width: 20px;
+  height: 20px;
+  background: #0078d4;
   border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35), 0 0 0 3px rgba(0,120,212,0.18);
+  cursor: pointer;
+  transition: transform 0.1s;
 }
-.map-photo-marker img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  display: block;
+.map-marker-pin:hover { transform: scale(1.25); }
+/* Fit-all button in map header */
+.memory-map-fitall {
+  margin-left: auto;
+  padding: 4px 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #0078d4;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
+.memory-map-fitall:hover { background: #dbeafe; }
 .memory-map-empty {
   text-align: center;
   padding: 40px 24px;
@@ -909,6 +923,17 @@ body {
   font-size: 0.85rem;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
 }
+.memory-map-nogps-more {
+  width: 100%;
+  padding: 10px;
+  background: none;
+  border: none;
+  border-top: 1px solid #f1f5f9;
+  color: #0078d4;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.memory-map-nogps-more:hover { background: #f8fafc; }
 /* GPS edit dialog */
 .map-gps-overlay {
   position: fixed;
@@ -5301,6 +5326,12 @@ body {
 
   .moments-filter-input {
     grid-column: 1 / -1;
+  }
+
+  /* ── Memory map: smaller on mobile ── */
+  .memory-map-container {
+    height: 32vh;
+    min-height: 180px;
   }
 
   /* ── Filter bar ── */
