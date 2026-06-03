@@ -1204,7 +1204,7 @@ function AppContent() {
         <div className="drag-overlay">
           <div className="drag-overlay-content">
             <div className="drag-overlay-icon">📂</div>
-            <p className="drag-overlay-title">{dragFileCount > 0 ? `拖入 ${dragFileCount} 个文件` : "松开后跳转到文件夹视图上传"}t > 0 ? `拖入 ${dragFileCount} 个文件` : "松开后跳转到文件夹视图上传"}</p>
+            <p className="drag-overlay-title">{dragFileCount > 0 ? `拖入 ${dragFileCount} 个文件` : "松开后跳转到文件夹视图上传"}
             <p className="drag-overlay-sub">支持 JPG、PNG、WebP、HEIC 等格式</p>
           </div>
         </div>
@@ -1554,6 +1554,11 @@ function AppContent() {
                     <button className={`quick-chip${isTodayActive ? " active" : ""}`} onClick={() => applyOrClear(todayStr, todayStr, isTodayActive)} title="仅显示今天">📅 今天</button>
                     <button className={`quick-chip${isWeekActive ? " active" : ""}`} onClick={() => applyOrClear(weekStart, todayStr, isWeekActive)} title="仅显示本周">🗓 本周</button>
                     <button className={`quick-chip${isMonthActive ? " active" : ""}`} onClick={() => applyOrClear(monthStart, todayStr, isMonthActive)} title="仅显示本月">📆 本月</button>
+                    {(() => {
+                      const sevenDaysAgo = fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6));
+                      const is7DaysActive = filters.dateFrom === sevenDaysAgo && filters.dateTo === todayStr;
+                      return <button className={`quick-chip${is7DaysActive ? " active" : ""}`} onClick={() => applyOrClear(sevenDaysAgo, todayStr, is7DaysActive)} title="最近7天">🕖 近7天</button>;
+                    })()}
                   </>
                 );
               })()}
