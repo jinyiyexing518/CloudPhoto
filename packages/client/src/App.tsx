@@ -1535,6 +1535,26 @@ function AppContent() {
                 onClick={() => setPhotoSortAsc((v) => !v)}
                 title={photoSortAsc ? "当前：时间正序" : "当前：时间倒序"}
               >{photoSortAsc ? "↑ 最早" : "↓ 最新"}</button>
+              {/* Date quick-filter chips */}
+              {(() => {
+                const today = new Date();
+                const fmt = (d: Date) => d.toISOString().slice(0, 10);
+                const todayStr = fmt(today);
+                const weekStart = fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay()));
+                const monthStart = fmt(new Date(today.getFullYear(), today.getMonth(), 1));
+                const isTodayActive = filters.dateFrom === todayStr && filters.dateTo === todayStr;
+                const isWeekActive = filters.dateFrom === weekStart && filters.dateTo === todayStr;
+                const isMonthActive = filters.dateFrom === monthStart && filters.dateTo === todayStr;
+                const applyOrClear = (from: string, to: string, active: boolean) =>
+                  setFilters((f) => active ? { ...f, dateFrom: "", dateTo: "" } : { ...f, dateFrom: from, dateTo: to });
+                return (
+                  <>
+                    <button className={`quick-chip${isTodayActive ? " active" : ""}`} onClick={() => applyOrClear(todayStr, todayStr, isTodayActive)} title="仅显示今天">📅 今天</button>
+                    <button className={`quick-chip${isWeekActive ? " active" : ""}`} onClick={() => applyOrClear(weekStart, todayStr, isWeekActive)} title="仅显示本周">🗓 本周</button>
+                    <button className={`quick-chip${isMonthActive ? " active" : ""}`} onClick={() => applyOrClear(monthStart, todayStr, isMonthActive)} title="仅显示本月">📆 本月</button>
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>{/* /view-tabs-shell */}

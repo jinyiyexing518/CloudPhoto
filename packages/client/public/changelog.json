@@ -66,6 +66,15 @@
     "seq": 1780480162795
   },
   {
+    "id": "2026-06-03-date-quick-filter",
+    "date": "2026-06-03",
+    "title": "时间轴「今天/本周/本月」日期快速筛选",
+    "description": "时间轴工具栏新增「今天」「本周」「本月」快速筛选 chip，点击即可快速过滤到对应日期范围的照片，再次点击取消筛选，无需手动填写日期区间。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780481155154
+  },
+  {
     "id": "2026-06-03-docs-chinese-readme",
     "date": "2026-06-03",
     "type": "improvement",
