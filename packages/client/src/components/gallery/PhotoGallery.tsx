@@ -699,6 +699,10 @@ function PhotoGallery({
           }
         }
       }
+      if ((e.key === "d" || e.key === "D") && !e.ctrlKey && !e.metaKey && selectedPhoto) {
+        const filename = selectedPhoto.originalName || selectedPhoto.name.replace(/^\d+-/, "");
+        void downloadPhotoApi(selectedPhoto.name, filename);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

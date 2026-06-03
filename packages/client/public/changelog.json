@@ -171,6 +171,15 @@
     "seq": 1780480832570
   },
   {
+    "id": "2026-06-03-keyboard-download",
+    "date": "2026-06-03",
+    "title": "快捷键 D 下载当前照片",
+    "description": "在照片预览模态框打开时，按 D 键可快速下载当前照片原图，无需鼠标点击，方便键盘党快速存档。",
+    "impact": "user-experience",
+    "breaking": false,
+    "seq": 1780481001130
+  },
+  {
     "id": "2026-06-03-keyboard-favorite",
     "date": "2026-06-03",
     "title": "快捷键 F 收藏/取消收藏照片",
