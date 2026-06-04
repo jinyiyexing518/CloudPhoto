@@ -116,6 +116,9 @@ app.http("listPhotos", {
           thumbnailUrl: decodeMeta(getMeta(blob.metadata, "thumbnailName"))
             ? generateSasUrlWithKey(decodeMeta(getMeta(blob.metadata, "thumbnailName"))!, delegationKey)
             : undefined,
+          previewUrl: decodeMeta(getMeta(blob.metadata, "previewName"))
+            ? generateSasUrlWithKey(decodeMeta(getMeta(blob.metadata, "previewName"))!, delegationKey)
+            : undefined,
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,

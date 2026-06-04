@@ -1462,7 +1462,7 @@ function FolderContent({
                   {/* Spinner only when there is no thumbnail to show */}
                   {!modalImageLoaded && !selectedPhoto.thumbnailUrl && <div className="modal-image-spinner" />}
                   <img
-                    src={selectedPhoto.url}
+                    src={selectedPhoto.previewUrl ?? selectedPhoto.url}
                     alt={displayName(selectedPhoto)}
                     className={`modal-image${modalImageLoaded ? " modal-image--fadein" : " modal-image--loading"}`}
                     onClick={() => setShowOriginalPreview(true)}

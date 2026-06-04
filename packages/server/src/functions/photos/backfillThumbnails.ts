@@ -74,44 +74,58 @@ app.http("backfillThumbnails", {
           && (mime === "image/jpeg" || mime === "image/jpg");
         if (getMeta(blob.metadata, "isAnimated") === "1" && !isMotionPhotoBlob) { skipped++; continue; }
 
-        // Skip blobs that already have a thumbnail
-        if (getMeta(blob.metadata, "thumbnailName")) { skipped++; continue; }
+        const needsThumb = !getMeta(blob.metadata, "thumbnailName");
+        const needsPreview = !getMeta(blob.metadata, "previewName");
+        // Skip blobs that already have both thumbnail and preview
+        if (!needsThumb && !needsPreview) { skipped++; continue; }
 
         processed++;
         try {
-          // Derive thumbnail blob name: same folder, _th_ prefix, .webp suffix
+          // Derive blob names: same folder, _th_ prefix, .webp suffix
           const lastSlash = blob.name.lastIndexOf("/");
           const dir = blob.name.substring(0, lastSlash + 1);
           const thumbName = `${dir}_th_${filename}.webp`;
+          const previewName = `${dir}_th_${filename}-prev.webp`;
 
           const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
           const buf = await blockBlobClient.downloadToBuffer();
-
-          const thumbBuf = await sharp(buf)
-            .resize({ width: 400, withoutEnlargement: true })
-            .webp({ quality: 75 })
-            .toBuffer();
-
-          // Upload thumbnail blob
-          const thumbClient = containerClient.getBlockBlobClient(thumbName);
-          await thumbClient.uploadData(thumbBuf, {
-            blobHTTPHeaders: { blobContentType: "image/webp" },
-            metadata: { isThumb: "1" },
-          });
-
-          // Update original blob metadata to point to thumbnail
-          // b64-encode because the path may contain non-ASCII (Chinese folder/file names)
           const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
-          await blockBlobClient.setMetadata({
-            ...blob.metadata,
-            thumbnailName: b64(thumbName),
-          });
+          const updatedMeta = { ...blob.metadata };
 
+          if (needsThumb) {
+            const thumbBuf = await sharp(buf)
+              .resize({ width: 400, withoutEnlargement: true })
+              .webp({ quality: 75 })
+              .toBuffer();
+            const thumbClient = containerClient.getBlockBlobClient(thumbName);
+            await thumbClient.uploadData(thumbBuf, {
+              blobHTTPHeaders: { blobContentType: "image/webp" },
+              metadata: { isThumb: "1" },
+            });
+            updatedMeta.thumbnailName = b64(thumbName);
+            context.log(`Thumbnail generated: ${thumbName}`);
+          }
+
+          if (needsPreview) {
+            // 2048 px preview — used by the viewer instead of the full original
+            const previewBuf = await sharp(buf)
+              .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+              .webp({ quality: 82 })
+              .toBuffer();
+            const previewClient = containerClient.getBlockBlobClient(previewName);
+            await previewClient.uploadData(previewBuf, {
+              blobHTTPHeaders: { blobContentType: "image/webp" },
+              metadata: { isThumb: "1" },
+            });
+            updatedMeta.previewName = b64(previewName);
+            context.log(`Preview generated: ${previewName}`);
+          }
+
+          await blockBlobClient.setMetadata(updatedMeta);
           generated++;
-          context.log(`Thumbnail generated: ${thumbName}`);
         } catch (e) {
           failed++;
-          context.warn(`Thumbnail failed for ${blob.name}:`, e);
+          context.warn(`Thumbnail/preview failed for ${blob.name}:`, e);
         }
       }
 

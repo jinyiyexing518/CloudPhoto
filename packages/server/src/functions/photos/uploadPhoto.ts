@@ -137,6 +137,8 @@ app.http("uploadPhoto", {
         THUMBNAIL_MIME.has(mimeType);
       // isAnimated is computed later; re-check after buf is available
       const thumbnailBlobName = `${scope}/${safeFolderPath}/_th_${ts}-${safeName}.webp`;
+      // 2048 px preview — same conditions as thumbnail, stored with -prev suffix
+      const previewBlobName = `${scope}/${safeFolderPath}/_th_${ts}-${safeName}-prev.webp`;
 
       const blobServiceClient = getBlobServiceClient();
       const containerClient =
@@ -209,11 +211,13 @@ app.http("uploadPhoto", {
           // Store thumbnail name so listPhotos can build a SAS URL without scanning
           // b64-encode because the path may contain non-ASCII (Chinese folder/file names)
           ...(!skipThumb && { thumbnailName: b64(thumbnailBlobName) }),
+          ...(!skipThumb && { previewName: b64(previewBlobName) }),
         },
       });
 
       // Generate 400 px WebP thumbnail — best-effort, failure is non-fatal
       let thumbnailGenerated = false;
+      let previewGenerated = false;
       if (!skipThumb) {
         try {
           const sharpFn = getSharp();
@@ -228,9 +232,21 @@ app.http("uploadPhoto", {
               metadata: { isThumb: "1" },
             });
             thumbnailGenerated = true;
+
+            // Generate 2048 px preview — viewers use this instead of the full original
+            const previewBuf = await sharpFn(buf)
+              .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+              .webp({ quality: 82 })
+              .toBuffer();
+            const previewClient = containerClient.getBlockBlobClient(previewBlobName);
+            await previewClient.uploadData(previewBuf, {
+              blobHTTPHeaders: { blobContentType: "image/webp" },
+              metadata: { isThumb: "1" },
+            });
+            previewGenerated = true;
           }
         } catch (e) {
-          context.warn("Thumbnail generation failed (non-fatal):", e);
+          context.warn("Thumbnail/preview generation failed (non-fatal):", e);
         }
       }
 
@@ -267,6 +283,7 @@ app.http("uploadPhoto", {
           groupId: groupId || undefined,
           url: await generateSasUrl(blobName),
           ...(thumbnailGenerated && { thumbnailUrl: await generateSasUrl(thumbnailBlobName) }),
+          ...(previewGenerated && { previewUrl: await generateSasUrl(previewBlobName) }),
           size: arrayBuffer.byteLength,
           contentType,
           createdBy: uploadedBy,

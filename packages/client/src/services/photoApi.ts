@@ -189,6 +189,9 @@ export interface Photo {
   url: string;
   /** SAS URL for the 400 px WebP thumbnail — present for JPEG/PNG/WebP uploads. */
   thumbnailUrl?: string;
+  /** SAS URL for the 2048 px WebP preview — used in the photo viewer for fast loading.
+   *  Falls back to `url` (original) when absent (older uploads or HEIC). */
+  previewUrl?: string;
   size: number;
   lastModified: string;
   contentType: string;
@@ -271,6 +274,7 @@ function proxyPhoto(photo: Photo): Photo {
     ...photo,
     url: proxyBlobUrl(photo.url),
     thumbnailUrl: photo.thumbnailUrl ? proxyBlobUrl(photo.thumbnailUrl) : undefined,
+    previewUrl: photo.previewUrl ? proxyBlobUrl(photo.previewUrl) : undefined,
     voiceMemoUrl: photo.voiceMemoUrl ? proxyBlobUrl(photo.voiceMemoUrl) : undefined,
   };
 }
