@@ -123,7 +123,7 @@ export default function SettingsDialog({
     } finally {
       setThumbBackfillLoading(false);
     }
-  ;
+  };
 
   const handleBackfill = async () => {
     setBackfillLoading(true);
