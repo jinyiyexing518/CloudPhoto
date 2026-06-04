@@ -4926,7 +4926,31 @@ body {
 }
 .location-search-result:hover { background: #f0f6ff; }
 
-.location-result-name {
+.location-result-secondary {
+  font-size: 0.76rem;
+  color: #6b7280;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Coordinate direct-input preview row */
+.location-search-coord-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border-bottom: 1px solid #bae6fd;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.location-search-coord-preview:hover { background: #e0f2fe; }
+.location-coord-icon { font-size: 1rem; flex-shrink: 0; }
+.location-coord-text { font-size: 0.84rem; color: #0369a1; flex: 1; }
+.location-coord-text strong { font-variant-numeric: tabular-nums; }
+.location-coord-confirm { font-size: 0.74rem; color: #7dd3fc; white-space: nowrap; }
   font-size: 0.85rem;
   color: #111827;
   line-height: 1.3;

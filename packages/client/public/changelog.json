@@ -34,6 +34,14 @@
     "seq": 1780541474745
   },
   {
+    "id": "2026-06-04-upload-gps-and-search-ux",
+    "date": "2026-06-04",
+    "title": "fix: 上传 GPS 丢失 + 地址搜索体验全面优化",
+    "description": "1) uploadPhoto 响应体新增 gpsLat/gpsLon/takenAt，解决新上传照片立即进入地图但 GPS 为空的问题。2) LocationSearchPanel 重写：400ms 防抖+请求 ID 防竞态、结果名称截短（只显示前两段）+副标题、直接输入坐标（39.90,116.39）即可使用、Enter 立即搜索/Esc 关闭。",
+    "type": "fix",
+    "seq": 1780541790367
+  },
+  {
     "id": "2026-06-04-upload-pause-svg-icons",
     "date": "2026-06-04",
     "title": "fix: 上传暂停/继续按钮改用 SVG 图标",

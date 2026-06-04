@@ -213,6 +213,11 @@ app.http("uploadPhoto", {
           lastModifiedBy: uploadedBy,
           lastModifiedAt: now,
           ...(isAnimated && { isAnimated: true }),
+          // Return resolved GPS/takenAt so the client can immediately show them
+          // without waiting for the next full photo list refresh.
+          ...(resolvedLat && { gpsLat: resolvedLat }),
+          ...(resolvedLon && { gpsLon: resolvedLon }),
+          ...(takenAt && { takenAt }),
         }),
       };
     } catch (error) {
