@@ -15,6 +15,8 @@
 
 import { API_BASE } from "../utils/apiBase";
 import { fetchWithTimeout, authHeaders, parseApiError } from "./http";
+import type { MomentInsight } from "./shareApi";
+import { ManagedMomentsUnavailableError } from "./shareApi";
 
 // ── Re-exports for backward compatibility ─────────────────────────────────
 export {
@@ -196,6 +198,80 @@ export async function backfillThumbnails(groupId = ""): Promise<{ processed: num
     hasMore = result.hasMore;
   }
   return totals;
+}
+
+// ── Folder operations ─────────────────────────────────────────────────────
+export async function renameFolderApi(
+  oldFolder: string,
+  newFolder: string,
+  groupId?: string,
+): Promise<{ renamed: number }> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/folder`,
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ oldFolder, newFolder, groupId }),
+    },
+    60_000,
+  );
+  if (!response.ok) throw new Error(await parseApiError(response, "重命名文件夹失败"));
+  return response.json() as Promise<{ renamed: number }>;
+}
+
+// ── Moment insights ───────────────────────────────────────────────────────
+/** Bulk-fetch moment insight records (view counts etc.) for a list of photos. */
+export async function listMomentInsights(
+  photoNames: string[],
+): Promise<Record<string, MomentInsight>> {
+  type InsightsBody = { items: MomentInsight[]; managedUnavailable?: boolean; message?: string };
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/moments/insights`,
+    {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ photoNames }),
+    },
+  );
+  if (!response.ok) throw new Error(await parseApiError(response, "加载浏览统计失败"));
+  const body = await response.json() as InsightsBody;
+  if (body.managedUnavailable) {
+    // re-use the well-known error class from shareApi so callers can instanceof-check
+    throw new ManagedMomentsUnavailableError(body.message ?? "Moments unavailable");
+  }
+  const map: Record<string, MomentInsight> = {};
+  for (const item of body.items ?? []) {
+    if (item.photoName) map[item.photoName] = item;
+  }
+  return map as Record<string, MomentInsight>;
+}
+
+/** Record a single photo view for the current user and return the updated insight. */
+export async function recordMomentViewApi(
+  photoName: string,
+  viewerName?: string,
+): Promise<MomentInsight | null> {
+  type RecordBody = { ok: boolean; item?: MomentInsight; managedUnavailable?: boolean; message?: string };
+  try {
+    const response = await fetchWithTimeout(
+      `${API_BASE}/photos/moments/view`,
+      {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ photoName, viewerName }),
+      },
+    );
+    if (!response.ok) {
+      if (response.status === 503 || response.status === 404) return null;
+      throw new Error(await parseApiError(response, "记录浏览失败"));
+    }
+    const body = await response.json() as RecordBody;
+    if (body.managedUnavailable) throw new ManagedMomentsUnavailableError(body.message ?? "Moments unavailable");
+    return body.item ?? null;
+  } catch (err) {
+    if (err instanceof ManagedMomentsUnavailableError) throw err;
+    return null;
+  }
 }
 
 // ── Changelog ─────────────────────────────────────────────────────────────
