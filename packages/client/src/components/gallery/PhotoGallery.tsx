@@ -23,6 +23,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
+import BatchOperationsBar from "../shared/BatchOperationsBar";
 
 interface Props {
   photos: Photo[];
@@ -1068,71 +1069,29 @@ function PhotoGallery({
   return (
     <>
       {/* Batch selection toolbar */}
-      <div className="gallery-batch-toolbar">
-        <button
-          className={`batch-select-btn${selectMode ? " active" : ""}`}
-          onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
-        >
-          {selectMode ? `取消选择` : "批量选择"}
-        </button>
-        {selectMode && (
-          <>
-            <button className="batch-select-btn" onClick={toggleSelectAll}>
-              {allSelected ? "取消全选" : "全选"}
-            </button>
-            <span className="batch-count">已选 {selected.size} 张{selectedTotalSize ? ` · ${selectedTotalSize}` : ""}</span>
-          </>
-        )}
-        {selectMode && selected.size > 0 && (
-          <>
-            <button className="batch-select-btn" onClick={() => void handleBatchRename()}>
-              重命名 ({selected.size})
-            </button>
-            <button
-              className={`batch-select-btn${showBatchTimeEdit ? " active" : ""}`}
-              onClick={() => { setShowBatchTimeEdit((v) => !v); setShowBatchGpsEdit(false); }}
-            >
-              修改时间 ({selected.size})
-            </button>
-            <button
-              className={`batch-select-btn${showBatchGpsEdit ? " active" : ""}`}
-              onClick={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
-            >
-              修改位置 ({selected.size})
-            </button>
-            <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>
-              删除 ({selected.size})
-            </button>
-          </>
-        )}
-      </div>
-      {selectMode && showBatchTimeEdit && (
-        <div className="batch-edit-form">
-          <span className="batch-edit-label">统一拍摄时间</span>
-          <input
-            type="datetime-local"
-            className="batch-edit-input"
-            value={batchTimeInput}
-            onChange={(e) => setBatchTimeInput(e.target.value)}
-          />
-          <button className="batch-select-btn" onClick={() => void handleBatchSetTakenAt()} disabled={!batchTimeInput}>
-            应用
-          </button>
-          <button className="batch-select-btn" onClick={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}>
-            取消
-          </button>
-        </div>
-      )}
-      {selectMode && showBatchGpsEdit && (
-        <div className="batch-edit-form batch-edit-form--gps">
-          <span className="batch-edit-label">统一位置（搜索地名）</span>
-          <LocationSearchPanel
-            saving={false}
-            onSelect={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
-            onClose={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
-          />
-        </div>
-      )}
+      <BatchOperationsBar
+        selectMode={selectMode}
+        onToggleSelectMode={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+        selectedCount={selected.size}
+        selectedTotalSize={selectedTotalSize ?? undefined}
+        allSelected={allSelected}
+        onToggleSelectAll={toggleSelectAll}
+        onBatchRename={() => void handleBatchRename()}
+        showBatchTimeEdit={showBatchTimeEdit}
+        onToggleBatchTimeEdit={() => { setShowBatchTimeEdit((v) => !v); setShowBatchGpsEdit(false); }}
+        batchTimeInput={batchTimeInput}
+        onBatchTimeInputChange={setBatchTimeInput}
+        onApplyBatchTime={() => void handleBatchSetTakenAt()}
+        onCancelBatchTime={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}
+        showBatchGpsEdit={showBatchGpsEdit}
+        onToggleBatchGpsEdit={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
+        onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
+        onCancelBatchGpsEdit={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
+        showBatchConfirm={showBatchConfirm}
+        onRequestDelete={() => setShowBatchConfirm(true)}
+        onCancelDelete={() => setShowBatchConfirm(false)}
+        onConfirmDelete={handleBatchDelete}
+      />
 
       {!selectMode && showMemoryHighlights && memoryHighlights.length > 0 && (
         <section className="insight-section">
@@ -1823,19 +1782,6 @@ function PhotoGallery({
         </div>
       )}
 
-      {/* Batch delete confirmation */}
-      {showBatchConfirm && (
-        <div className="confirm-overlay" onClick={() => setShowBatchConfirm(false)}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <p className="confirm-title">确认删除 {selected.size} 张照片？</p>
-            <p className="confirm-filename">此操作不可撤销</p>
-            <div className="confirm-actions">
-              <button className="confirm-cancel-btn" onClick={() => setShowBatchConfirm(false)}>取消</button>
-              <button className="confirm-delete-btn" onClick={handleBatchDelete}>删除</button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

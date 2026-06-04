@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-shared-batch-ops-bar",
+  "date": "2026-06-04",
+  "title": "refactor: 提取 BatchOperationsBar 共享组件，消除时间线/文件夹视图重复代码",
+  "description": "将 PhotoGallery 和 FolderView 中完全重复的批量操作工具栏（批量选择、全选、重命名、修改时间、修改位置、删除）提取为 shared/BatchOperationsBar 组件；删除确认对话框改用 createPortal 渲染到 body；FolderView 专有的移动到文件夹下拉 + 添加原图按钮通过 extraToolbarActions slot 注入。",
+  "type": "improvement",
+  "seq": 1780544621573
+}

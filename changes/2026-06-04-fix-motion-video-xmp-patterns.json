@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-04-fix-motion-video-xmp-patterns",
+  "date": "2026-06-04",
+  "icon": "🐛",
+  "title": "修复动态视频提取：新增 vivo/华为 XMP 格式支持，扩大二进制扫描窗口",
+  "type": "fix",
+  "desc": "支持 vivo VivoLivePhoto:LivePhotoOffset 和华为 rdf:Description Item:Length XMP 字段提取嵌入视频；EOI→ftyp 二进制扫描窗口从 64 扩大到 512 字节",
+  "seq": 1780544580996
+}

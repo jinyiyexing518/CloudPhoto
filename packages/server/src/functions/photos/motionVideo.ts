@@ -34,17 +34,48 @@ function findMotionVideoRange(
     }
   }
 
+  // ---- vivo VivoLivePhoto:LivePhotoOffset (offset from EOF, same semantics as MicroVideoOffset) ----
+  // Attribute form: VivoLivePhoto:LivePhotoOffset="123456"
+  // Element form:   <VivoLivePhoto:LivePhotoOffset>123456</VivoLivePhoto:LivePhotoOffset>
+  const vivoMatch =
+    headerText.match(/LivePhotoOffset[=\s]*"(\d+)"/) ||
+    headerText.match(/LivePhotoOffset[^>]*>(\d+)</);
+  if (vivoMatch) {
+    const length = parseInt(vivoMatch[1], 10);
+    const offset = totalSize - length;
+    if (offset > 1000 && length > 0 && offset < totalSize) {
+      return { offset, length };
+    }
+  }
+
   // ---- Android 12+ Container Directory ----
   // Google: <Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="N"/>
   // Samsung variant: <Container:Item Container:Mime="video/mp4" Container:Length="N"/>
   // NOTE: use [\s\S]*? so the slash in "video/mp4" does not break the match.
-  const itemRe = /<Container:Item\b([\s\S]*?)(?:\/?\s*>)/g;
+  const itemRe = /<Container:Item\b([\s\S]*?)(?:\/? *>)/g;
   let m: RegExpExecArray | null;
   while ((m = itemRe.exec(headerText)) !== null) {
     const attrs = m[1];
     if (attrs.includes("video/mp4") || attrs.includes("video/quicktime")) {
       // Accept both Item:Length (Google) and Container:Length (Samsung)
       const lenMatch = attrs.match(/(?:Item|Container):Length="(\d+)"/);
+      if (lenMatch) {
+        const length = parseInt(lenMatch[1], 10);
+        const offset = totalSize - length;
+        if (offset > 1000 && length > 0 && offset < totalSize) {
+          return { offset, length };
+        }
+      }
+    }
+  }
+
+  // ---- Huawei newer format: <rdf:Description ... Item:Mime="video/mp4" Item:Length="N"/> ----
+  // Different from Container:Item — uses rdf:Description with Item:* attributes directly.
+  const rdDescRe = /<rdf:Description\b([\s\S]*?)(?:\/?\s*>)/g;
+  while ((m = rdDescRe.exec(headerText)) !== null) {
+    const attrs = m[1];
+    if ((attrs.includes("video/mp4") || attrs.includes("video/quicktime")) && attrs.includes("Item:Length")) {
+      const lenMatch = attrs.match(/Item:Length="(\d+)"/);
       if (lenMatch) {
         const length = parseInt(lenMatch[1], 10);
         const offset = totalSize - length;
@@ -92,7 +123,7 @@ function findMotionVideoByBinary(
   // ── Strategy 1: JPEG EOI (FF D9) → ftyp within 64 bytes ─────────────────
   for (let i = 0; i < trailingBuf.length - 8; i++) {
     if (trailingBuf[i] === 0xff && trailingBuf[i + 1] === 0xd9) {
-      const searchEnd = Math.min(i + 66, trailingBuf.length - 8);
+      const searchEnd = Math.min(i + 514, trailingBuf.length - 8);
       for (let j = i + 2; j < searchEnd; j++) {
         const atomType = trailingBuf.toString("ascii", j + 4, j + 8);
         if (atomType === "ftyp") {

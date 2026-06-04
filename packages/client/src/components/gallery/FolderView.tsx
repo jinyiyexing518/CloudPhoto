@@ -21,6 +21,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
+import BatchOperationsBar from "../shared/BatchOperationsBar";
 
 const UNCATEGORIZED = "(未分类)";
 const MOVE_UNSELECTED = "__UNSEL__";
@@ -1212,89 +1213,62 @@ function FolderContent({
       }}
     >
       {directPhotos.length > 0 && (
-        <div className="gallery-batch-toolbar gallery-batch-toolbar--folder">
-          <button
-            className={`batch-select-btn${selectMode ? " active" : ""}`}
-            onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
-          >
-            {selectMode ? `取消选择` : "批量选择"}
-          </button>
-          {selectMode && (
-            <button className="batch-select-btn" onClick={toggleSelectAll}>
-              {allSelected ? "取消全选" : "全选"}
-            </button>
-          )}
-          {selectMode && <span className="batch-count">已选 {selected.size} 张{selectedTotalSize ? ` · ${selectedTotalSize}` : ""}</span>}
-          {selectMode && selected.size > 0 && (
+        <BatchOperationsBar
+          className="gallery-batch-toolbar--folder"
+          selectMode={selectMode}
+          onToggleSelectMode={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+          selectedCount={selected.size}
+          selectedTotalSize={selectedTotalSize}
+          allSelected={allSelected}
+          onToggleSelectAll={toggleSelectAll}
+          onBatchRename={() => void handleBatchRename()}
+          showBatchTimeEdit={showBatchTimeEdit}
+          onToggleBatchTimeEdit={() => { setShowBatchTimeEdit((v) => !v); setShowBatchGpsEdit(false); }}
+          batchTimeInput={batchTimeInput}
+          onBatchTimeInputChange={setBatchTimeInput}
+          onApplyBatchTime={() => void handleBatchSetTakenAt()}
+          onCancelBatchTime={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}
+          showBatchGpsEdit={showBatchGpsEdit}
+          onToggleBatchGpsEdit={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
+          onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
+          onCancelBatchGpsEdit={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
+          showBatchConfirm={showBatchConfirm}
+          onRequestDelete={() => setShowBatchConfirm(true)}
+          onCancelDelete={() => setShowBatchConfirm(false)}
+          onConfirmDelete={handleBatchDelete}
+          extraToolbarActions={
             <>
-              <button className="batch-select-btn" onClick={() => void handleBatchRename()}>重命名 ({selected.size})</button>
-              <button
-                className={`batch-select-btn${showBatchTimeEdit ? " active" : ""}`}
-                onClick={() => { setShowBatchTimeEdit((v) => !v); setShowBatchGpsEdit(false); }}
-              >
-                修改时间 ({selected.size})
-              </button>
-              <button
-                className={`batch-select-btn${showBatchGpsEdit ? " active" : ""}`}
-                onClick={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
-              >
-                修改位置 ({selected.size})
-              </button>
-              <button className="batch-delete-btn" onClick={() => setShowBatchConfirm(true)}>删除 ({selected.size})</button>
-              <select
-                className="modal-move-select"
-                value={batchMoveTo}
-                onChange={(e) => setBatchMoveTo(e.target.value)}
-              >
-                <option value={MOVE_UNSELECTED}>移动到…</option>
-                <option value={MOVE_CREATE}>+ 新建文件夹…</option>
-                {allFolderPaths.map((f) => (
-                  <option key={f} value={f}>{f === "" ? "(未分类)" : f}</option>
-                ))}
-              </select>
-              {batchMoveTo !== MOVE_UNSELECTED && (
-                <button className="batch-select-btn" onClick={() => void handleBatchMove()}>确认移动</button>
+              {selectMode && selected.size > 0 && (
+                <>
+                  <select
+                    className="modal-move-select"
+                    value={batchMoveTo}
+                    onChange={(e) => setBatchMoveTo(e.target.value)}
+                  >
+                    <option value={MOVE_UNSELECTED}>移动到…</option>
+                    <option value={MOVE_CREATE}>+ 新建文件夹…</option>
+                    {allFolderPaths.map((f) => (
+                      <option key={f} value={f}>{f === "" ? "(未分类)" : f}</option>
+                    ))}
+                  </select>
+                  {batchMoveTo !== MOVE_UNSELECTED && (
+                    <button className="batch-select-btn" onClick={() => void handleBatchMove()}>确认移动</button>
+                  )}
+                </>
               )}
+              <button
+                className="batch-select-btn"
+                style={{ marginLeft: "auto", opacity: anyUploading ? 0.5 : 1 }}
+                onClick={() => !anyUploading && inputRef.current?.click()}
+                title="上传原图到当前文件夹"
+              >
+                {isMyUpload && uploadProgress
+                  ? `⏳ ${uploadProgress.filesDone}/${uploadProgress.filesTotal}`
+                  : "+ 添加原图"}
+              </button>
             </>
-          )}
-          <button
-            className="batch-select-btn"
-            style={{ marginLeft: "auto", opacity: anyUploading ? 0.5 : 1 }}
-            onClick={() => !anyUploading && inputRef.current?.click()}
-            title="上传原图到当前文件夹"
-          >
-            {isMyUpload && uploadProgress
-              ? `⏳ ${uploadProgress.filesDone}/${uploadProgress.filesTotal}`
-              : "+ 添加原图"}
-          </button>
-        </div>
-      )}
-      {selectMode && showBatchTimeEdit && (
-        <div className="batch-edit-form">
-          <span className="batch-edit-label">统一拍摄时间</span>
-          <input
-            type="datetime-local"
-            className="batch-edit-input"
-            value={batchTimeInput}
-            onChange={(e) => setBatchTimeInput(e.target.value)}
-          />
-          <button className="batch-select-btn" onClick={() => void handleBatchSetTakenAt()} disabled={!batchTimeInput}>
-            应用
-          </button>
-          <button className="batch-select-btn" onClick={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}>
-            取消
-          </button>
-        </div>
-      )}
-      {selectMode && showBatchGpsEdit && (
-        <div className="batch-edit-form batch-edit-form--gps">
-          <span className="batch-edit-label">统一位置（搜索地名）</span>
-          <LocationSearchPanel
-            saving={false}
-            onSelect={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
-            onClose={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
-          />
-        </div>
+          }
+        />
       )}
 
       <div className="photo-grid folder-section-grid">
@@ -1777,20 +1751,6 @@ function FolderContent({
               在新窗口打开原图
             </a>
             <img src={selectedPhoto.url} alt={displayName(selectedPhoto)} className="modal-preview-image" />
-          </div>
-        </div>
-      )}
-
-      {/* Batch delete confirmation */}
-      {showBatchConfirm && (
-        <div className="confirm-overlay" onClick={() => setShowBatchConfirm(false)}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <p className="confirm-title">确认删除 {selected.size} 张照片？</p>
-            <p className="confirm-filename">此操作不可撤销</p>
-            <div className="confirm-actions">
-              <button className="confirm-cancel-btn" onClick={() => setShowBatchConfirm(false)}>取消</button>
-              <button className="confirm-delete-btn" onClick={handleBatchDelete}>删除</button>
-            </div>
           </div>
         </div>
       )}
