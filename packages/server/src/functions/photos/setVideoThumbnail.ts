@@ -11,6 +11,7 @@ import {
   generateSasUrlWithKey,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { getSharp } from "../../utils/image/sharpLoader";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 
@@ -55,9 +56,17 @@ app.http("setVideoThumbnail", {
       const fname = blobName.substring(lastSlash + 1);
       const thumbnailBlobName = `${dir}_th_${fname}.webp`;
 
+      // Resize thumbnail to 400px wide before storing — client sends raw canvas
+      // frames which can be 1920×1080 WebP (~500KB); we need ~50KB like image thumbs.
+      const sharpFn = await getSharp();
+      const resizedBuf = await sharpFn(Buffer.from(body))
+        .resize({ width: 400, withoutEnlargement: true })
+        .webp({ quality: 75 })
+        .toBuffer();
+
       // Store the thumbnail blob
       const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);
-      await thumbClient.uploadData(Buffer.from(body), {
+      await thumbClient.uploadData(resizedBuf, {
         blobHTTPHeaders: { blobContentType: "image/webp" },
         metadata: { isThumb: "1" },
       });

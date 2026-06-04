@@ -269,6 +269,24 @@ function proxyBlobUrl(url: string): string {
   } catch { return url; }
 }
 
+/**
+ * Choose the best display URL for the photo viewer based on screen size.
+ *
+ * Logic (physical pixels = CSS width × devicePixelRatio × 0.85vw):
+ *  ≤ 450 px  → thumbnail (400px, ~50KB)  — rare tiny screens
+ *  ≤ 2200 px → preview   (2048px, ~400KB) — all phones + desktops up to QHD
+ *  > 2200 px → original               — 4K/large monitors (full-res needed)
+ *
+ * Falls back gracefully when a lower-tier URL is absent.
+ */
+export function getViewerSrc(photo: Photo): string {
+  const dpr = window.devicePixelRatio || 1;
+  const physicalViewerPx = Math.round(window.innerWidth * dpr * 0.85);
+  if (physicalViewerPx <= 450 && photo.thumbnailUrl) return photo.thumbnailUrl;
+  if (physicalViewerPx <= 2200 && photo.previewUrl) return photo.previewUrl;
+  return photo.url;
+}
+
 function proxyPhoto(photo: Photo): Photo {
   return {
     ...photo,

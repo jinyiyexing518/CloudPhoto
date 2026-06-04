@@ -15,6 +15,7 @@ import {
   updatePhotoTakenAt,
   updatePhotoGps,
   fetchMotionVideoBlob,
+  getViewerSrc,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -1429,7 +1430,7 @@ function PhotoGallery({
                   {/* Spinner only when there is no thumbnail to show */}
                   {!modalImageLoaded && !selectedPhoto.thumbnailUrl && <div className="modal-image-spinner" />}
                   <img
-                    src={selectedPhoto.previewUrl ?? selectedPhoto.url}
+                    src={getViewerSrc(selectedPhoto)}
                     alt={selectedPhoto.name}
                     className={`modal-image${modalImageLoaded ? " modal-image--fadein" : " modal-image--loading"}`}
                     onClick={() => setShowOriginalPreview(true)}
