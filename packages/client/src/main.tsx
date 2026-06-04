@@ -19,10 +19,9 @@ const disableBrowserPwaCaching = async () => {
 
 const registerPwa = async () => {
   if (!("serviceWorker" in navigator)) return;
-  if (!isStandaloneMode()) {
-    await disableBrowserPwaCaching();
-    return;
-  }
+  // Register SW unconditionally — non-PWA browsers benefit from /media/ caching
+  // (Service Worker caches images keyed by path, ignoring SAS token query params).
+  // `skipWaiting + clientsClaim` in Workbox config ensures app code is always fresh.
   const { registerSW } = await import("virtual:pwa-register");
   let refreshTriggered = false;
   const updateSW = registerSW({
@@ -31,7 +30,9 @@ const registerPwa = async () => {
       if (!registration) return;
       const checkForUpdates = () => { void registration.update(); };
       checkForUpdates();
-      window.setInterval(checkForUpdates, 30 * 1000);
+      // Poll for updates — only check frequently in PWA mode; browsers rely on page reload
+      const interval = isStandaloneMode() ? 30 * 1000 : 5 * 60 * 1000;
+      window.setInterval(checkForUpdates, interval);
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") checkForUpdates();
       });

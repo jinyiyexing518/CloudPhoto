@@ -52,6 +52,12 @@
 
 ### 渲染优化
 
+- **Service Worker 媒体缓存**（SAS 令牌穿透缓存）  
+  - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），每 2h 轮换 → URL 变化 → 浏览器缓存失效，每次访问重新下载全部图片（200 张 ≈ 90MB/次）  
+  - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  
+  - 我们的方案：Workbox `CacheFirst` + `matchOptions: { ignoreSearch: true }` — Service Worker 以路径为缓存键，忽略 SAS 参数；效果等同于个人 CDN  
+  - 效果：重复访问 **0 字节**；600 条目 / 7 天 / `purgeOnQuotaError` 自动淘汰；SW 全模式注册（非 PWA 普通浏览器同样受益）
+- **nginx 浏览器缓存头** — `Cache-Control: public, max-age=3600, stale-while-revalidate=7200`，覆盖 Azure Blob 默认 `no-cache`；无 SW 的浏览器在 SAS 有效期内命中 HTTP 缓存
 - **骨架屏** — 每张卡片渲染前展示闪光骨架，消除 CLS
 - **防抖搜索** — 300ms 防抖，避免每次击键触发全列表重渲
 - **useMemo 隔离大计算** — 时间线分组、片段评分、可见切片均按依赖变化重算

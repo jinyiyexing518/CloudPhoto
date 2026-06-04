@@ -35,6 +35,8 @@
 - **地址搜索服务端代理** — 新增 `/api/geocode/search` 代理接口，服务端携带正确 `User-Agent` 调用 Nominatim（否则返回 429），带 10 分钟内存缓存，解决国内直连被封锁问题
 
 #### 渲染速度优化
+- **Service Worker 媒体缓存** — SAS 令牌每 2h 轮换导致浏览器无法按 URL 命中缓存；改用 Workbox `CacheFirst` 策略并设置 `matchOptions: { ignoreSearch: true }`，以路径（不含 SAS 参数）为缓存键；首次访问后图片完全离线可用，重复访问 **0 字节网络流量**（200 张画廊 ≈ 90MB 缓存，7 天有效期 + `purgeOnQuotaError` 自动淘汰）；SW 全模式注册（非 PWA 普通浏览器同样受益）
+- **nginx 浏览器缓存头** — `/media/` 路由添加 `Cache-Control: public, max-age=3600, stale-while-revalidate=7200`，覆盖 Azure Blob 的 `no-cache` 默认头；非 SW 浏览器在 SAS 有效期（2h）内重复请求直接命中 HTTP 缓存
 - **骨架屏消除布局偏移** — 每张照片卡片加载前渲染闪光骨架，`onLoad` 后淡入，完全消除 CLS（Cumulative Layout Shift）
 - **防抖搜索** — 名称/主题搜索 300ms 防抖，避免每次击键触发全列表重新渲染
 - **useMemo 隔离大计算** — 时间线分组、重要片段评分、可见照片切片均用 `useMemo` 包裹，仅在依赖变化时重算

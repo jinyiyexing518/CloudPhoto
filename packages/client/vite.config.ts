@@ -57,23 +57,23 @@ export default defineConfig({
             handler: "NetworkOnly",
           },
           {
-            // Cache Azure Blob image URLs with stale-while-revalidate strategy
-            urlPattern: /\.blob\.core\.windows\.net\/.*$/i,
-            handler: "StaleWhileRevalidate",
+            // Cache all /media/** requests (thumbnails, previews, originals, videos).
+            // KEY: matchOptions.ignoreSearch strips SAS token query params from the cache
+            // key — so a re-issued SAS URL still hits the cached response.
+            // This turns the browser into a personal CDN: first visit fetches from network,
+            // every repeat visit is instant (0 bytes). CacheFirst = serve cache without
+            // even checking the network (thumbnails/previews don't change after upload).
+            urlPattern: ({ url }) => url.pathname.startsWith("/media/"),
+            handler: "CacheFirst" as const,
             options: {
-              cacheName: "cf-blob-images",
-              expiration: { maxEntries: 300, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              cacheName: "cf-media-v1",
+              matchOptions: { ignoreSearch: true }, // ignore SAS ?sv=...&sig=...&se=...
+              expiration: {
+                maxEntries: 600,           // ~200 photos × 3 sizes (thumb+preview+orig)
+                maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+                purgeOnQuotaError: true,   // auto-evict oldest if storage quota exceeded
+              },
               cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            // Cache local /api/photos thumbnail URLs
-            urlPattern: /\/api\/photos\?.*$/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "cf-api-photos",
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 },
-              networkTimeoutSeconds: 5,
             },
           },
         ],
