@@ -15,18 +15,6 @@
 
 ---
 
-
-## 项目亮点（简历版）
-
-详见 [HIGHLIGHTS.md](HIGHLIGHTS.md)
-
----
-
-## 更新日志
-
-详见 [CHANGELOG.md](CHANGELOG.md)
-
-
 ## 架构
 
 ### 直连模式（国际访问）
@@ -614,3 +602,16 @@ push 到 `main` 时自动运行三个 workflow：
 3. 选择「添加到主屏幕」
 
 > iOS 不触发 `beforeinstallprompt`，因此应用内安装按钮在 iOS 上可能不显示。
+
+---
+
+## 项目亮点（简历版）
+
+详见 [HIGHLIGHTS.md](HIGHLIGHTS.md)
+
+---
+
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)
+
