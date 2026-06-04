@@ -1,19 +1,101 @@
-# CloudPhoto
+# CloudPhoto — 全栈私有云相册系统
 
-私有化云相册，支持用户认证、JWT 自动刷新、群组共享、文件夹管理，以及全程无密钥的 Azure 托管身份鉴权。
+> 一款生产级全栈私有云相册，基于 **React 18 + Azure Functions v4 + Azure Blob Storage + Cosmos DB** 独立设计与实现，具备完整的用户认证、群组共享、多媒体管理、智能推荐与渐进式性能优化体系，累计实现 **85+ 功能迭代**，全程使用 GitHub Actions + OIDC 自动化部署至 Azure。
 
-用户手册：[USER_GUIDE.md](USER_GUIDE.md)
+**用户手册：** [USER_GUIDE.md](USER_GUIDE.md)
 
-**前端：** React 18 + Vite 5 → 部署到 **Azure Static Web Apps**
-**后端：** Azure Functions v4（Node.js 24、TypeScript）→ 部署到 **Azure Functions**（`cloudphoto-api`）
-**存储：** Azure Blob Storage（`photostorage` / `photos`）— 通过**用户委托 SAS**（无账户密钥）访问
-**数据库：** Azure Cosmos DB NoSQL（`cloudphoto`）— 通过**托管身份**（无连接字符串密钥）访问
+| 层 | 技术栈 | 托管 |
+|---|---|---|
+| 前端 | React 18 · TypeScript 5 · Vite 5 · CSS Modules | Azure Static Web Apps |
+| 后端 | Azure Functions v4 · Node.js 24 · TypeScript | Azure Functions (Consumption) |
+| 存储 | Azure Blob Storage（用户委托 SAS，无账户密钥） | East Asia |
+| 数据库 | Azure Cosmos DB NoSQL（托管身份，无连接字符串） | East Asia |
+| CI/CD | GitHub Actions + OIDC 无密码部署 | GitHub |
+
+---
+
+## 项目亮点（简历版）
+
+### 🚀 性能优化
+
+#### 流量优化
+- **渐进式加载（IntersectionObserver）** — 首屏仅渲染 40 张照片，滚动到底部时 sentinel 节点自动触发下一批加载，替代需要点击的"加载更多"按钮，首屏流量减少 **66%**
+- **视频按需加载** — 视频卡片改用 `preload="none"` + `IntersectionObserver`，进入视口才触发 `video.load()`，消除批量视频卡片的 metadata 预请求
+- **动图懒加载** — GIF/HEIC 动图从 `loading="eager"` 改为 `loading="lazy"`，仅在接近视口时才发起请求
+- **地址搜索服务端代理** — 新增 `/api/geocode/search` 代理接口，服务端携带正确 `User-Agent` 调用 Nominatim（否则返回 429），带 10 分钟内存缓存，解决国内直连被封锁问题
+
+#### 渲染速度优化
+- **骨架屏消除布局偏移** — 每张照片卡片加载前渲染闪光骨架，`onLoad` 后淡入，完全消除 CLS（Cumulative Layout Shift）
+- **防抖搜索** — 名称/主题搜索 300ms 防抖，避免每次击键触发全列表重新渲染
+- **useMemo 隔离大计算** — 时间线分组、重要片段评分、可见照片切片均用 `useMemo` 包裹，仅在依赖变化时重算
+- **用户委托密钥进程内缓存** — 有效期 > 10 分钟时复用，节省每次 `listPhotos` 一次 Azure 控制面调用
+
+#### 数据管道优化
+- **历史元数据回填** — 一键后台扫描所有缺少拍摄时间/GPS 的旧照片，服务端用 `exifr` 解析后批量写回 Blob 元数据，无需重新上传
+- **乐观并发（ETag 条件写入）** — 全部写操作（元数据/移动/删除/分享）使用 Azure Blob ETag 乐观锁，冲突返回 409，防止多设备并发覆盖
+
+---
+
+### 🔐 安全与鉴权
+
+- **零密钥架构** — 存储与数据库均通过 Azure Managed Identity（`DefaultAzureCredential`）访问，代码库中无任何账户密钥或连接字符串
+- **JWT 双令牌体系** — 2h 访问令牌 + 30d 滚动刷新令牌；并发 401 时通过 Promise 互斥锁只发一次刷新请求，所有挂起请求共享同一个新令牌后自动重试
+- **IP 级限流（滑动窗口）** — 登录 10 次/分、注册 5 次/分、刷新 20 次/分，超限返回 `429 + Retry-After: 60`，防止暴力破解
+- **OIDC 无密码 CI/CD** — GitHub Actions 通过 Azure Federated Credential（OIDC）认证，部署全流程无任何长期密码
+- **分享链接隐私提示** — 创建外链前显示不可关闭的 🔒 隐私提醒，避免用户意外分享含敏感信息的照片
+
+---
+
+### 🧠 智能与推荐算法
+
+- **重要片段多维评分模型** — 综合收藏权重（×120）、主题完整度（×20）、时间衰减（40→0）、浏览热度（×24）构建推荐评分，前 20 张独立展示
+- **跨设备浏览统计持久化** — Cosmos DB 原子更新每张照片的总浏览量、按用户分布（`viewers`）、按日分布（`dailyViews`），支持跨设备访问排行和高峰日分析
+- **乐观 UI + 服务端合并** — 浏览计数先在客户端乐观更新，服务端响应后合并取最大值，防止并发响应导致数字回退
+- **本地降级兜底** — 后端 moments 不可用时，客户端跨刷新保持本地计数并标注「仅本地」状态，服务端恢复后自动同步
+- **历史上的今天** — 自动检测往年同月同日拍摄的照片，按年份分组在时间线顶部呈现
+- **EXIF 智能提取** — 上传时服务端用 `exifr` 解析 GPS 坐标、拍摄时间（naive datetime 防时区错位），Apple Live Photo 单独识别并返回友好错误
+
+---
+
+### 🎨 用户体验设计
+
+- **多媒体完整支持** — 图片（JPEG/PNG/HEIC/WebP）、GIF 动图（暂停/恢复）、视频（MP4/MOV/WebM，最大 200MB）、语音备注（WebM+MP4 双格式）、Android 动态照片（Live Motion Photo）
+- **触摸手势** — 详情弹窗双指捏合缩放 + 双击缩放 + 水平滑动切换照片，CSS transform 平滑动画
+- **自动隐藏导航栏** — 下滚时 header 滑出，上滚/回顶时立即恢复，300ms cubic-bezier 动画，移动端最大化照片画布
+- **字节级上传进度** — `XHR.upload.onprogress` 驱动进度条，精确显示 X.X / Y.Y MB 实时进度
+- **批量操作** — 多选模式支持批量删除/移动/修改拍摄时间/修改 GPS，`Promise.all` 并发执行
+- **传输安全守卫** — 上传/下载中阻止 Tab 切换，`beforeunload` 拦截意外刷新
+- **PWA 可安装** — Service Worker + Web App Manifest，支持安装到桌面/移动端；浏览器会话优先即时更新
+- **键盘全覆盖** — 14 个快捷键（R/1/2/3/S/←/→/Esc/Backspace/Delete/?），快捷键速查表随时可查
+- **响应式布局** — ≤680px 自动切换两列网格、紧凑 header、底部固定操作栏（单手可用）
+
+---
+
+### ☁️ 云原生架构设计
+
+- **Serverless 计算** — 后端全部使用 Azure Functions v4 Consumption Plan，按请求计费，无服务器管理
+- **路径前缀多租户** — Blob 路径 `personal/{userId}/` 与 `groups/{groupId}/` 前缀隔离，单 Container 支持多用户私有空间 + 群组空间
+- **邮件邀请流程** — 群组成员添加通过邮件邀请链接完成，7 天有效，未接受前不会加入群组，防止未授权加入
+- **软删除 + 回收站** — Blob 元数据 `deletedAt` 标记软删除，支持按原路径恢复；彻底删除才真正调 Blob Delete API
+- **分离部署 Workflow** — 前后端独立 GitHub Actions，`packages/server/**` 变更只触发后端部署，`packages/client/**` 变更只触发前端部署
+
+---
+
+### 🛠️ 工程实践
+
+- **TypeScript 全栈** — 前后端共享类型定义，`strict: true`，编译时捕获绝大部分类型错误
+- **monorepo（yarn workspaces）** — `packages/client` + `packages/server` 共享同一 `yarn.lock`，统一依赖管理
+- **Pre-push 变更日志强制检查** — git hook 检测代码变更必须附带 `changes/*.json` 变更记录，确保每次推送都有可追溯的 changelog
+- **`collect-changes.mjs`** — 自动归集变更文件生成 `changelog.json`，前端 What's New 弹窗消费；含类型自动推断（`fix:`/`perf:`/`feat:`前缀）
+- **后端 `utils/` 按领域分层** — `blob/`、`cosmos/`、`auth/`、`email/` 子目录，职责清晰
+
+---
+
+
 
 ---
 
 ## 更新日志
-
-### v1.7.1 — 重要片段 Top 20 限制
 
 - **⭐ 重要片段最多展示 Top 20** — 重要片段视图按评分排序后固定只展示前 20 张，提升加载速度与准确性；「加载更多」按钮在此模式下隐藏
 

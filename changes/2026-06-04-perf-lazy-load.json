@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-perf-lazy-load",
+  "date": "2026-06-04",
+  "title": "perf: 渐进式加载优化 — 首屏减少66%图片请求",
+  "description": "PAGE_SIZE 从 120 降至 40，IntersectionObserver 滚动自动加载替代点击按钮；视频卡片 preload=none + 视口内再触发 video.load()；GIF/动图 loading=eager 改 lazy；更新 README 新增项目亮点与简历介绍章节",
+  "type": "improvement",
+  "seq": 1780543971991
+}

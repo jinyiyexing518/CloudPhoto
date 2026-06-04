@@ -79,7 +79,7 @@ interface MomentCardData {
   engagement: number;
 }
 
-const PAGE_SIZE = 120;
+const PAGE_SIZE = 40;
 const MOMENTS_MAX = 20;
 const MOMENT_SCORE_FAVORITE_WEIGHT = 120;
 const MOMENT_SCORE_SUBJECT_WEIGHT = 20;
@@ -313,6 +313,7 @@ function PhotoGallery({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>(() => readLocalMomentInsights());
   const momentsUnavailableNoticeShown = useRef(false);
   const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>(createDefaultMomentsFilters);
@@ -418,6 +419,22 @@ function PhotoGallery({
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [photos]);
+
+  // Auto-load next page when the sentinel div scrolls into view
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((v) => v + PAGE_SIZE);
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [flatPhotos]);
 
   useEffect(() => {
     if (!focusPhotoName) return;
@@ -1328,10 +1345,10 @@ function PhotoGallery({
       )}
 
       {hasMore && (
-        <div className="timeline-more-wrap">
-          <button className="timeline-more-btn" onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}>
-            加载更多 ({visibleCount}/{flatPhotos.length})
-          </button>
+        <div ref={sentinelRef} className="timeline-more-wrap">
+          <span className="timeline-more-hint">
+            已显示 {visibleCount} / {flatPhotos.length} 张，向下滚动加载更多
+          </span>
         </div>
       )}
 

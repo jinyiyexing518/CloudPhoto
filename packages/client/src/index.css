@@ -6653,22 +6653,15 @@ body {
 .timeline-more-wrap {
   display: flex;
   justify-content: center;
-  padding: 8px 0 4px;
+  align-items: center;
+  padding: 24px 0 8px;
+  min-height: 48px; /* sentinel needs visible area for IntersectionObserver */
 }
 
-.timeline-more-btn {
-  border: 1px solid #93c5fd;
-  background: #f0f7ff;
-  color: #1d4ed8;
-  border-radius: 999px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-
-.timeline-more-btn:hover {
-  background: #dbeafe;
+.timeline-more-hint {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  letter-spacing: 0.02em;
 }
 
 /* ===== Trash View ===== */

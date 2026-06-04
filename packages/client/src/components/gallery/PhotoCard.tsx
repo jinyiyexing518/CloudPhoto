@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 // 1×1 transparent GIF — used as src placeholder when animation is paused
 const BLANK_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -45,6 +45,26 @@ function PhotoCard({
   const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
     photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // With preload="none" the video element needs a manual load() call once it enters
+  // the viewport before metadata is available.
+  useEffect(() => {
+    if (!isVideo) return;
+    const el = videoRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          el.load(); // triggers metadata fetch only when card is visible
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "100px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVideo]);
 
   const handleVideoMetadata = () => {
     const v = videoRef.current;
@@ -104,7 +124,7 @@ function PhotoCard({
               ref={videoRef}
               src={photo.url}
               className={imgLoaded ? "img-loaded" : "img-loading"}
-              preload="metadata"
+              preload="none"
               muted
               playsInline
               onLoadedMetadata={handleVideoMetadata}
@@ -114,7 +134,7 @@ function PhotoCard({
             <img
               src={gifPaused ? BLANK_GIF : photo.url}
               alt={displayName}
-              loading="eager"
+              loading="lazy"
               decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
