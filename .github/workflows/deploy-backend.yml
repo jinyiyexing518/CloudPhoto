@@ -65,9 +65,9 @@ jobs:
           cp packages/server/.funcignore deploy-stage/ 2>/dev/null || true
           cd deploy-stage
           npm install --production --no-package-lock
-          # Azure Functions runs on Windows — install the Windows sharp binary
-          # alongside the Linux one so sharp can find it at runtime.
-          npm install @img/sharp-win32-x64@0.34.5 --no-save --ignore-scripts
+          # Azure Functions runs on Windows — force-install the Windows sharp binary.
+          # npm_config_os/cpu overrides platform check so this runs on Linux CI.
+          npm_config_os=win32 npm_config_cpu=x64 npm install @img/sharp-win32-x64@0.34.5 --no-save --ignore-scripts || true
           zip -r ../deployment.zip .
 
       - name: Deploy to Azure Functions
