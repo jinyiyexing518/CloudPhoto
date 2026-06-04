@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-thumbnail-backfill",
+  "date": "2026-06-04",
+  "type": "feat",
+  "title": "feat: 历史照片缩略图回填",
+  "summary": "新增 backfillThumbnails 接口，为所有已上传但尚无缩略图的 JPEG/PNG/WebP 照片批量生成 400px WebP 缩略图；设置页加入「生成历史缩略图」按钮，显示处理/生成/跳过/失败数量",
+  "seq": 1780560141365
+}

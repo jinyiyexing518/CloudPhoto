@@ -464,6 +464,21 @@ export async function backfillPhotoMetadata(
   return response.json() as Promise<{ processed: number; updated: number; failed: number }>;
 }
 
+export async function backfillThumbnails(
+  groupId = "",
+): Promise<{ processed: number; generated: number; skipped: number; failed: number }> {
+  const url = `${API_BASE}/photos/backfill-thumbnails${groupId ? `?groupId=${encodeURIComponent(groupId)}` : ""}`;
+  const response = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: authHeaders(),
+    // Large libraries may take a while; give it 5 minutes
+  }, 300_000);
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "缩略图回填失败"));
+  }
+  return response.json() as Promise<{ processed: number; generated: number; skipped: number; failed: number }>;
+}
+
 export interface ChangelogEntry {
   id: string;
   date: string;

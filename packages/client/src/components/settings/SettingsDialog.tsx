@@ -9,6 +9,7 @@ import {
   updateManagedShareLink,
   ManagedShareLink,
   backfillPhotoMetadata,
+  backfillThumbnails,
 } from "../../services/photoApi";
 import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../features/share/shareLinksStore";
 import { copyText } from "../../features/share/clipboard";
@@ -100,10 +101,29 @@ export default function SettingsDialog({
   const [shareSearch, setShareSearch] = useState("");
   const [extendHours, setExtendHours] = useState("24");
 
-  // Backfill state
+  // Backfill (metadata) state
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{ processed: number; updated: number; failed: number } | null>(null);
   const [backfillError, setBackfillError] = useState("");
+
+  // Thumbnail backfill state
+  const [thumbBackfillLoading, setThumbBackfillLoading] = useState(false);
+  const [thumbBackfillResult, setThumbBackfillResult] = useState<{ processed: number; generated: number; skipped: number; failed: number } | null>(null);
+  const [thumbBackfillError, setThumbBackfillError] = useState("");
+
+  const handleThumbBackfill = async () => {
+    setThumbBackfillLoading(true);
+    setThumbBackfillResult(null);
+    setThumbBackfillError("");
+    try {
+      const result = await backfillThumbnails(currentGroupId ?? "");
+      setThumbBackfillResult(result);
+    } catch (err) {
+      setThumbBackfillError(err instanceof Error ? err.message : "缩略图回填失败");
+    } finally {
+      setThumbBackfillLoading(false);
+    }
+  ;
 
   const handleBackfill = async () => {
     setBackfillLoading(true);
@@ -429,6 +449,32 @@ export default function SettingsDialog({
                     <span className="settings-info-value">{canInstall ? "当前浏览器支持" : "当前浏览器可能不支持"}</span>
                   </div>
                 </div>
+              </div>
+              <div className="settings-form settings-card" style={{ gap: 10 }}>
+                <div className="settings-card-head">
+                  <h3>生成历史缩略图</h3>
+                </div>
+                <p className="add-admin-hint">
+                  为历史照片生成 400px WebP 缩略图（约 30-50 KB），时间线浏览速度大幅提升。已有缩略图的照片会自动跳过，原图不受影响。照片较多时可能需要几分钟。
+                </p>
+                <button
+                  type="button"
+                  className="settings-save-btn"
+                  onClick={() => void handleThumbBackfill()}
+                  disabled={thumbBackfillLoading}
+                >
+                  {thumbBackfillLoading ? "正在生成…" : "开始生成缩略图"}
+                </button>
+                {thumbBackfillResult && (
+                  <p className="add-admin-hint" style={{ color: "var(--color-success, #2e7d32)", marginTop: 4 }}>
+                    完成：处理 {thumbBackfillResult.processed} 张，生成 {thumbBackfillResult.generated} 张，跳过 {thumbBackfillResult.skipped} 张，失败 {thumbBackfillResult.failed} 张。
+                  </p>
+                )}
+                {thumbBackfillError && (
+                  <p className="add-admin-hint" style={{ color: "var(--color-error, #c62828)", marginTop: 4 }}>
+                    {thumbBackfillError}
+                  </p>
+                )}
               </div>
               <div className="settings-form settings-card" style={{ gap: 10 }}>
                 <div className="settings-card-head">
