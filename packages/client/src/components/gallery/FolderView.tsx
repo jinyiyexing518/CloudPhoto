@@ -731,6 +731,7 @@ function FolderContent({
   // Modal state
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [modalImageLoaded, setModalImageLoaded] = useState(false);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
   const [savingSubject, setSavingSubject] = useState(false);
@@ -846,6 +847,7 @@ function FolderContent({
     setVoiceError(null);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
+    setModalImageLoaded(false);
   }, [trackPhotoView]);
 
   // Keyboard navigation when modal is open
@@ -1447,13 +1449,27 @@ function FolderContent({
                   </span>
                 </>
               ) : (
-                <img
-                  src={selectedPhoto.url}
-                  alt={displayName(selectedPhoto)}
-                  className="modal-image"
-                  onClick={() => setShowOriginalPreview(true)}
-                  title="点击预览原图"
-                />
+                <>
+                  {/* Blurred thumbnail shown instantly while full-res original loads */}
+                  {!modalImageLoaded && selectedPhoto.thumbnailUrl && (
+                    <img
+                      src={selectedPhoto.thumbnailUrl}
+                      alt=""
+                      aria-hidden="true"
+                      className="modal-image modal-image--placeholder"
+                    />
+                  )}
+                  {/* Spinner only when there is no thumbnail to show */}
+                  {!modalImageLoaded && !selectedPhoto.thumbnailUrl && <div className="modal-image-spinner" />}
+                  <img
+                    src={selectedPhoto.url}
+                    alt={displayName(selectedPhoto)}
+                    className={`modal-image${modalImageLoaded ? " modal-image--fadein" : " modal-image--loading"}`}
+                    onClick={() => setShowOriginalPreview(true)}
+                    title="点击预览原图"
+                    onLoad={() => setModalImageLoaded(true)}
+                  />
+                </>
               )}
               {directPhotos.length > 1 && (
                 <div className="modal-nav-hint">← → 切换 · Esc 关闭</div>

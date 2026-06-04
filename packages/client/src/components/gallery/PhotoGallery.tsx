@@ -1417,11 +1417,21 @@ function PhotoGallery({
                 </>
               ) : (
                 <>
-                  {!modalImageLoaded && <div className="modal-image-spinner" />}
+                  {/* Blurred thumbnail shown instantly while full-res original loads */}
+                  {!modalImageLoaded && selectedPhoto.thumbnailUrl && (
+                    <img
+                      src={selectedPhoto.thumbnailUrl}
+                      alt=""
+                      aria-hidden="true"
+                      className="modal-image modal-image--placeholder"
+                    />
+                  )}
+                  {/* Spinner only when there is no thumbnail to show */}
+                  {!modalImageLoaded && !selectedPhoto.thumbnailUrl && <div className="modal-image-spinner" />}
                   <img
                     src={selectedPhoto.url}
                     alt={selectedPhoto.name}
-                    className={`modal-image${modalImageLoaded ? "" : " modal-image--loading"}`}
+                    className={`modal-image${modalImageLoaded ? " modal-image--fadein" : " modal-image--loading"}`}
                     onClick={() => setShowOriginalPreview(true)}
                     title="点击预览原图"
                     onLoad={(e) => {
