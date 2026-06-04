@@ -96,9 +96,11 @@ app.http("backfillThumbnails", {
           });
 
           // Update original blob metadata to point to thumbnail
+          // b64-encode because the path may contain non-ASCII (Chinese folder/file names)
+          const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
           await blockBlobClient.setMetadata({
             ...blob.metadata,
-            thumbnailName: thumbName,
+            thumbnailName: b64(thumbName),
           });
 
           generated++;

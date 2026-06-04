@@ -203,7 +203,8 @@ app.http("uploadPhoto", {
           ...(takenAt && { takenAt }),
           ...(isAnimated && { isAnimated: "1" }),
           // Store thumbnail name so listPhotos can build a SAS URL without scanning
-          ...(!skipThumb && { thumbnailName: thumbnailBlobName }),
+          // b64-encode because the path may contain non-ASCII (Chinese folder/file names)
+          ...(!skipThumb && { thumbnailName: b64(thumbnailBlobName) }),
         },
       });
 

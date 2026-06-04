@@ -113,8 +113,8 @@ app.http("listPhotos", {
           folder,
           groupId: blobGroupId,
           url: generateSasUrlWithKey(blob.name, delegationKey),
-          thumbnailUrl: getMeta(blob.metadata, "thumbnailName")
-            ? generateSasUrlWithKey(getMeta(blob.metadata, "thumbnailName")!, delegationKey)
+          thumbnailUrl: decodeMeta(getMeta(blob.metadata, "thumbnailName"))
+            ? generateSasUrlWithKey(decodeMeta(getMeta(blob.metadata, "thumbnailName"))!, delegationKey)
             : undefined,
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
