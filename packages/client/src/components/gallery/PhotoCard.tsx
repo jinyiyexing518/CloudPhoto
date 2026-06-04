@@ -37,6 +37,11 @@ function PhotoCard({
   const [videoDuration, setVideoDuration] = useState<string | null>(null);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  // GIF progressive loading: show static thumbnail immediately, upgrade to full GIF in background
+  const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() =>
+    isAnimated && !isMotionPhoto && photo.thumbnailUrl ? photo.thumbnailUrl : photo.url
+  );
+  const gifPreloadDone = useRef(false);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
@@ -72,6 +77,20 @@ function PhotoCard({
       setImgLoaded(true);
     }
   }, [isAnimated, gifPaused, photo.url]);
+
+  // GIF progressive load: once the static thumbnail is visible, fetch the full animated
+  // file in the background. When ready (browser-cached), swap src so animation starts.
+  useEffect(() => {
+    if (!isAnimated || isMotionPhoto || !photo.thumbnailUrl || gifPreloadDone.current) return;
+    const img = new Image();
+    img.onload = () => {
+      gifPreloadDone.current = true;
+      setGifDisplaySrc(photo.url);
+    };
+    img.src = photo.url;
+    return () => { img.onload = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAnimated, isMotionPhoto, photo.thumbnailUrl, photo.url]);
 
   // With preload="none" the video element needs a manual load() call once it enters
   // the viewport before metadata is available.
@@ -154,7 +173,7 @@ function PhotoCard({
               ref={videoThumbImgRef}
               src={photo.thumbnailUrl}
               alt={displayName}
-              decoding="async"
+              loading="lazy"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={() => { setVideoThumbFailed(true); setImgLoaded(false); }}
@@ -186,7 +205,7 @@ function PhotoCard({
           ) : isAnimated ? (
             <img
               ref={gifImgRef}
-              src={gifPaused ? BLANK_GIF : photo.url}
+              src={gifPaused ? BLANK_GIF : gifDisplaySrc}
               alt={displayName}
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}

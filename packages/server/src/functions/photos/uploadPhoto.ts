@@ -27,8 +27,8 @@ function getSharp(): typeof sharpT | null {
   }
 }
 
-/** MIME types for which we generate a 400 px WebP thumbnail. */
-const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+/** MIME types for which we generate a 400 px WebP thumbnail (first-frame for animated). */
+const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
 
 const ALLOWED_IMAGE_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif",
@@ -188,11 +188,12 @@ app.http("uploadPhoto", {
         }
       }
       // Animated check must happen before upload so we can conditionally skip thumbnail.
-      // Motion photos (animated JPEG) are handled like static images — sharp processes the JPEG
-      // portion and ignores the embedded video track, producing a valid WebP thumbnail.
-      // GIFs and animated WebPs are skipped because they need the full file to play.
+      // Motion photos (animated JPEG): sharp processes the JPEG portion, ignoring the video track.
+      // GIFs: sharp extracts the first frame → static WebP thumbnail used as gallery placeholder.
+      // Animated WebPs: same first-frame extraction.
+      // All produce a valid static thumbnail shown while the full animated file loads.
       const isMotionPhotoUpload = isAnimated && (mimeType === "image/jpeg" || mimeType === "image/jpg");
-      const skipThumb = !willGenerateThumb || (isAnimated && !isMotionPhotoUpload);
+      const skipThumb = !willGenerateThumb;
 
       await blockBlobClient.uploadData(buf, {
         blobHTTPHeaders: { blobContentType: contentType },

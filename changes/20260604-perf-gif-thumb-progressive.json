@@ -1,0 +1,1 @@
+{"id":"perf-gif-thumb-progressive","date":"2026-06-04","icon":"🎞️","title":"GIF 首帧即显、视频封面懒加载","desc":"服务器为 GIF 生成静态首帧 WebP 缩略图；客户端先显示缩略图，后台下载完整 GIF 再无缝切换；视频封面恢复懒加载，减少首屏并发请求","type":"improvement"}

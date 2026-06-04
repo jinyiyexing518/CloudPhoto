@@ -22,7 +22,7 @@ function getSharp(): typeof sharpT | null {
   }
 }
 
-const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
 
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
@@ -70,12 +70,10 @@ app.http("backfillThumbnails", {
         const mime = blob.properties.contentType ?? "";
         if (!THUMBNAIL_MIME.has(mime)) { skipped++; continue; }
 
-        // Skip animated images except motion photos (animated JPEG).
-        // Motion photos: sharp processes the JPEG portion fine, producing a valid thumbnail.
-        // GIFs and animated WebPs need the full file to play so are left as-is.
-        const isMotionPhotoBlob = getMeta(blob.metadata, "isAnimated") === "1"
-          && (mime === "image/jpeg" || mime === "image/jpg");
-        if (getMeta(blob.metadata, "isAnimated") === "1" && !isMotionPhotoBlob) { skipped++; continue; }
+        // All animated images in THUMBNAIL_MIME get a first-frame static WebP thumbnail:
+        // - Motion photos (animated JPEG): sharp processes JPEG portion, ignores video track.
+        // - GIFs: sharp extracts frame 0 → fast gallery placeholder while full GIF loads.
+        // - Animated WebPs: same first-frame extraction.
 
         const needsThumb = !getMeta(blob.metadata, "thumbnailName");
         const needsPreview = !getMeta(blob.metadata, "previewName");
