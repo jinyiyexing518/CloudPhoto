@@ -52,8 +52,11 @@ function PhotoCard({
 
   // With preload="none" the video element needs a manual load() call once it enters
   // the viewport before metadata is available.
+  // NOTE: deps include useVideoThumb so the observer is (re-)registered whenever we
+  // switch from the <img> thumbnail path to the <video> seek-fallback path (e.g. after
+  // the thumbnail image 404s and videoThumbFailed flips to true).
   useEffect(() => {
-    if (!isVideo) return;
+    if (!isVideo || useVideoThumb) return; // <img> is handling it; no <video> in DOM
     const el = videoRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -68,7 +71,7 @@ function PhotoCard({
     observer.observe(el);
     return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVideo]);
+  }, [isVideo, useVideoThumb]);
 
   const handleVideoMetadata = () => {
     const v = videoRef.current;
