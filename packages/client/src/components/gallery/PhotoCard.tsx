@@ -37,6 +37,8 @@ function PhotoCard({
   const [videoDuration, setVideoDuration] = useState<string | null>(null);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const videoThumbImgRef = useRef<HTMLImageElement>(null);
+  const gifImgRef = useRef<HTMLImageElement>(null);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   // Show static thumbnail for videos that already have one (generated client-side at upload).
   // Fall back to <video> seek approach if no thumbnail or if the thumbnail 404s.
@@ -49,6 +51,27 @@ function PhotoCard({
   const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
     photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // For video thumbnails served as <img>: if the image is already cached the browser
+  // may fire onLoad synchronously before React attaches the handler, so we check
+  // img.complete as a safety net whenever the thumbnail URL changes.
+  useEffect(() => {
+    const el = videoThumbImgRef.current;
+    if (useVideoThumb && el?.complete && el.naturalWidth > 0) {
+      setImgLoaded(true);
+    }
+  }, [useVideoThumb, photo.thumbnailUrl]);
+
+  // Same safety net for animated images (GIFs / motion photos). We also clear
+  // imgLoaded when the GIF src is swapped to BLANK_GIF so the skeleton doesn't
+  // re-appear; the blank GIF onLoad restores imgLoaded immediately anyway.
+  useEffect(() => {
+    if (!isAnimated || gifPaused) return;
+    const el = gifImgRef.current;
+    if (el?.complete && el.naturalWidth > 0) {
+      setImgLoaded(true);
+    }
+  }, [isAnimated, gifPaused, photo.url]);
 
   // With preload="none" the video element needs a manual load() call once it enters
   // the viewport before metadata is available.
@@ -128,9 +151,9 @@ function PhotoCard({
           {!imgLoaded && <div className="photo-skeleton" />}
           {useVideoThumb ? (
             <img
+              ref={videoThumbImgRef}
               src={photo.thumbnailUrl}
               alt={displayName}
-              loading="lazy"
               decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
@@ -149,10 +172,9 @@ function PhotoCard({
             />
           ) : isMotionPhoto ? (
             <img
+              ref={gifImgRef}
               src={photo.thumbnailUrl ?? photo.url}
               alt={displayName}
-              loading="lazy"
-              decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={(e) => {
@@ -163,10 +185,9 @@ function PhotoCard({
             />
           ) : isAnimated ? (
             <img
+              ref={gifImgRef}
               src={gifPaused ? BLANK_GIF : photo.url}
               alt={displayName}
-              loading="lazy"
-              decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
             />
