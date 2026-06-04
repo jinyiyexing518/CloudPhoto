@@ -23,10 +23,13 @@
 - **TCP BBR 拥塞控制** — 默认 TCP Cubic 算法在高延迟+丢包线路（中国→境外，RTT 80–150ms，随机丢包 1–3%）会将每次丢包误判为网络拥塞并将发送速率减半，在跨境线路上形成持续震荡；BBR（Bottleneck Bandwidth and Round-trip propagation time）由 Google 2016 年提出，通过实时测量"最大带宽–最小延迟"建立网络模型，始终在带宽上限附近平稳发送，对丢包不敏感，实测跨境吞吐提升 **2–5×**
 - **HTTP/2 多路复用** — 启用 Nginx HTTP/2，浏览器与 VM 间所有请求（20+ 张缩略图）共用单条 TLS 连接，消除反复握手开销；画廊初次加载延迟显著降低
 - **Nginx 代理缓冲** — `/media/` 路由启用 `proxy_buffering on`（32×256 KB 缓冲区），Nginx 以 Azure 骨干网速率从 Blob 全速拉取并暂存，再按客户端速率转发；解除 Blob 连接与慢速客户端的耦合，提升大文件传输效率
-- **渐进式原图加载** — 打开全屏查看器时立即展示画廊中已缓存的模糊缩略图占位，原图在背景静默下载完成后以 0.25s 淡入替换；感知等待时间从"空白 spinner"降为零
+- **渐进式预览加载** — 打开全屏查看器时立即展示已缓存的缩略图占位；2048px WebP 预览（~400KB）在背景静默下载完成后以 0.25s 淡入替换，无需等待 5–20MB 原图
 
 #### 流量优化
-- **渐进式加载（IntersectionObserver）** — 首屏仅渲染 40 张照片，滚动到底部时 sentinel 节点自动触发下一批加载，替代需要点击的"加载更多"按钮，首屏流量减少 **66%**
+- **2048px WebP 预览图** — 上传时服务端（sharp）同步生成 2048px WebP 预览；查看器加载预览而非原图（5–20MB→~400KB，流量减少 **95%+**）；下载仍用原图；历史照片通过「回填」端点批量补生成
+- **自适应查看器 URL**（`getViewerSrc`）— 根据 `window.innerWidth × devicePixelRatio × 0.85` 计算实际像素需求，在 thumbnail(400px) / preview(2048px) / original 三档自动选择；4K 大屏才回退原图
+- **视频封面体积压缩** — `setVideoThumbnail` 端点收到客户端 canvas 帧（最大 1920×1080 WebP，~500KB）后先用 sharp 缩至 400px 再存储，体积缩小 **10–15×**
+- **渐进式加载（IntersectionObserver）** — 首屏仅渲染 40 张照片，滚动到底部时 sentinel 节点自动触发下一批加载，首屏流量减少 **66%**
 - **视频按需加载** — 视频卡片改用 `preload="none"` + `IntersectionObserver`，进入视口才触发 `video.load()`，消除批量视频卡片的 metadata 预请求
 - **动图懒加载** — GIF/HEIC 动图从 `loading="eager"` 改为 `loading="lazy"`，仅在接近视口时才发起请求
 - **地址搜索服务端代理** — 新增 `/api/geocode/search` 代理接口，服务端携带正确 `User-Agent` 调用 Nominatim（否则返回 429），带 10 分钟内存缓存，解决国内直连被封锁问题

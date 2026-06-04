@@ -13,7 +13,7 @@
 | 拥塞控制 | TCP BBR | 跨境吞吐提升 2–5× |
 | 连接复用 | HTTP/2 多路复用 | 20+ 缩略图共用单条 TLS |
 | 上游缓冲 | Nginx proxy_buffering | 解耦慢客户端与 Blob 连接 |
-| 感知性能 | 渐进式原图加载 | 打开即见图，消除白屏 spinner |
+| 感知性能 | 渐进式预览加载 | 打开即见缩略图，0.25s 淡入 2048px 预览 |
 
 **TCP BBR 详解**
 - 背景：中国→境外线路存在 RTT 80–150ms、随机丢包 1–3% 的特性
@@ -32,15 +32,18 @@
 - 方案：`proxy_buffering on`（32×256KB），Nginx 以 Azure 骨干网速率全速拉取，再按客户端速率转发
 - 效果：Blob 连接更快释放，大文件传输效率提升
 
-**渐进式原图加载**
-- 实现：打开全屏查看器时立即渲染已缓存的模糊缩略图（`filter: blur(18px)`，`position: absolute` 铺满），原图以 `opacity: 0` 在背景加载，`onLoad` 后 0.25s fade-in 替换
-- 效果：打开即有内容，感知等待时间从"白屏"降为零
+**渐进式预览加载**
+- 实现：打开全屏查看器时立即渲染已缓存的缩略图占位（`position: absolute` 铺满），后台加载 2048px WebP 预览（~400KB），`onLoad` 后 0.25s fade-in 替换；`getViewerSrc()` 根据 `window.innerWidth × devicePixelRatio × 0.85` 自动在 thumbnail(400px) / preview(2048px) / original 三档选择，手机不加载原图
+- 效果：打开即有清晰缩略图，查看器实际传输量从 5–20MB 降至 ~400KB（节省 95%+）
 
 ---
 
 ### 流量优化
 
 - **IntersectionObserver 无限滚动** — 首屏仅渲染 40 张，sentinel 节点触发分批加载；首屏流量减少 **66%**
+- **2048px WebP 预览图** — 上传时服务端（sharp）同步生成 2048px WebP 预览；查看器加载预览而非原图，流量减少 **95%+**；历史照片通过「回填」端点批量补生成
+- **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px→thumbnail，≤2200px→preview，>2200px→original；手机避免加载多余像素
+- **视频封面体积压缩** — `setVideoThumbnail` 端点用 sharp 将 canvas 截帧（最大 1920×1080，~500KB）缩至 400px 再存储，体积缩小 **10–15×**
 - **视频按需加载** — `preload="none"` + IntersectionObserver，进入视口才调 `video.load()`；修复了 `useEffect` deps 遗漏 `useVideoThumb` 导致缩略图 404 后 Observer 永远不注册的 bug
 - **动图懒加载** — `loading="lazy"`，GIF/HEIC 接近视口才发请求
 - **地理编码服务端代理** — `/api/geocode/search` 携带合规 `User-Agent` 调用 Nominatim + 10 分钟内存缓存，解决国内直连 429
