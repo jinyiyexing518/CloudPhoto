@@ -34,6 +34,7 @@ app.http("backfillThumbnails", {
   authLevel: "anonymous",
   route: "photos/backfill-thumbnails",
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
     const payload = extractTokenFromHeader(request.headers.get("authorization") ?? "");
     if (!payload) {
       return { status: 401, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Unauthorized" }) };
@@ -48,13 +49,15 @@ app.http("backfillThumbnails", {
     if (groupId && !(await isGroupMember(groupId, payload.userId))) {
       return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Not a member" }) };
     }
+    // Max blobs to process per request — prevents 10 min Function timeout on large galleries.
+    // Client calls repeatedly until hasMore is false.
+    const limit = Math.min(parseInt(request.query.get("limit") ?? "30", 10), 100);
 
     const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
     const prefix = `${scope}/`;
 
-    try {
-      const containerClient = getBlobServiceClient().getContainerClient(containerName);
-      let processed = 0, generated = 0, skipped = 0, failed = 0;
+    const containerClient = getBlobServiceClient().getContainerClient(containerName);
+    let processed = 0, generated = 0, skipped = 0, failed = 0, remaining = 0;
 
       for await (const blob of containerClient.listBlobsFlat({ prefix, includeMetadata: true })) {
         // Skip soft-deleted and internal blobs
@@ -79,6 +82,8 @@ app.http("backfillThumbnails", {
         // Skip blobs that already have both thumbnail and preview
         if (!needsThumb && !needsPreview) { skipped++; continue; }
 
+        // Respect per-request limit — count remaining but don't download/process them
+        if (processed >= limit) { remaining++; continue; }
         processed++;
         try {
           // Derive blob names: same folder, _th_ prefix, .webp suffix
@@ -132,11 +137,11 @@ app.http("backfillThumbnails", {
       return {
         status: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ processed, generated, skipped, failed }),
+        body: JSON.stringify({ processed, generated, skipped, failed, hasMore: remaining > 0 }),
       };
     } catch (error) {
       context.error("backfillThumbnails error:", error);
-      return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "回填失败" }) };
+      return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "回填失败", detail: error instanceof Error ? error.message : String(error) }) };
     }
   },
 });

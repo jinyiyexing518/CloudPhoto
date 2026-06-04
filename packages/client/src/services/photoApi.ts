@@ -581,16 +581,30 @@ export async function backfillPhotoMetadata(
 export async function backfillThumbnails(
   groupId = "",
 ): Promise<{ processed: number; generated: number; skipped: number; failed: number }> {
-  const url = `${API_BASE}/photos/backfill-thumbnails${groupId ? `?groupId=${encodeURIComponent(groupId)}` : ""}`;
-  const response = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: authHeaders(),
-    // Large libraries may take a while; give it 5 minutes
-  }, 300_000);
-  if (!response.ok) {
-    throw new Error(await parseApiError(response, "缩略图回填失败"));
+  const totals = { processed: 0, generated: 0, skipped: 0, failed: 0 };
+  let hasMore = true;
+  while (hasMore) {
+    const qp = new URLSearchParams();
+    if (groupId) qp.set("groupId", groupId);
+    qp.set("limit", "30");
+    const url = `${API_BASE}/photos/backfill-thumbnails?${qp}`;
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: authHeaders(),
+    }, 120_000); // 2 min per batch of 30
+    if (!response.ok) {
+      throw new Error(await parseApiError(response, "缩略图回填失败"));
+    }
+    const result = await response.json() as {
+      processed: number; generated: number; skipped: number; failed: number; hasMore: boolean;
+    };
+    totals.processed += result.processed;
+    totals.generated += result.generated;
+    totals.skipped += result.skipped;
+    totals.failed += result.failed;
+    hasMore = result.hasMore;
   }
-  return response.json() as Promise<{ processed: number; generated: number; skipped: number; failed: number }>;
+  return totals;
 }
 
 export interface ChangelogEntry {
