@@ -2,7 +2,7 @@
 
 > 一款生产级全栈私有云相册，基于 **React 18 + Azure Functions v4 + Azure Blob Storage + Cosmos DB** 独立设计与实现，具备完整的用户认证、群组共享、多媒体管理、智能推荐与渐进式性能优化体系，累计实现 **85+ 功能迭代**，全程使用 GitHub Actions + OIDC 自动化部署至 Azure。
 
-**用户手册：** [USER_GUIDE.md](USER_GUIDE.md)
+**用户手册：** [USER_GUIDE.md](doc/USER_GUIDE.md)
 
 | 层 | 技术栈 | 托管 |
 |---|---|---|
@@ -56,7 +56,7 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 `azurewebsites.net` 和 `azurestaticapps.net` 在中国大陆访问不稳定；VM 作为境外中转，所有请求统一走 `cloudphotos.top`，用户无需翻墙。
 
-详细部署步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+详细部署步骤见 [DEPLOYMENT.md](doc/DEPLOYMENT.md)。
 
 本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`，开发与生产无需修改 URL——前端在构建时读取 `VITE_API_BASE`（默认为 `/api`）。
 
@@ -607,11 +607,11 @@ push 到 `main` 时自动运行三个 workflow：
 
 ## 项目亮点（简历版）
 
-详见 [HIGHLIGHTS.md](HIGHLIGHTS.md)
+详见 [HIGHLIGHTS.md](doc/HIGHLIGHTS.md)
 
 ---
 
 ## 更新日志
 
-详见 [CHANGELOG.md](CHANGELOG.md)
+详见 [CHANGELOG.md](doc/CHANGELOG.md)
 
