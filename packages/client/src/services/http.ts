@@ -13,6 +13,44 @@
 
 import { API_BASE } from "../utils/apiBase";
 
+const DIRECT_API_BASE = "https://cloudphoto-api.azurewebsites.net/api";
+
+function getFallbackApiUrl(input: RequestInfo): string | null {
+  if (typeof window === "undefined" || window.location.hostname !== "cloudphotos.top") return null;
+
+  const rewrite = (raw: string): string | null => {
+    if (raw.startsWith("/api/")) return `${DIRECT_API_BASE}${raw.slice(4)}`;
+    if (raw.startsWith("/api")) return `${DIRECT_API_BASE}${raw.slice(4)}`;
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.origin === window.location.origin && parsed.pathname.startsWith("/api")) {
+        return `${DIRECT_API_BASE}${parsed.pathname.slice(4)}${parsed.search}`;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  if (typeof input === "string") return rewrite(input);
+  if (input instanceof URL) return rewrite(input.toString());
+  if (typeof Request !== "undefined" && input instanceof Request) return rewrite(input.url);
+  return null;
+}
+
+async function fetchWithProxyFallback(
+  input: RequestInfo,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    const fallbackUrl = getFallbackApiUrl(input);
+    if (!fallbackUrl) throw error;
+    return fetch(fallbackUrl, init);
+  }
+}
+
 // ── Token storage keys ────────────────────────────────────────────────────
 const TOKEN_KEY = "cloudphoto_token";
 const REFRESH_TOKEN_KEY = "cloudphoto_refresh_token";
@@ -43,7 +81,7 @@ let _refreshPromise: Promise<string | null> | null = null;
 async function _doRefresh(): Promise<string | null> {
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
   if (!refreshToken) return null;
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
+  const res = await fetchWithProxyFallback(`${API_BASE}/auth/refresh`, {
     method: "POST",
     headers: { Authorization: `Bearer ${refreshToken}` },
   }).catch(() => null);
@@ -86,7 +124,7 @@ export function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
-  return fetch(input, { ...init, signal: controller.signal })
+  return fetchWithProxyFallback(input, { ...init, signal: controller.signal })
     .then(async (res) => {
       if (res.status === 401) {
         const newToken = await getRefreshedToken();
@@ -95,7 +133,7 @@ export function fetchWithTimeout(
             ...(init?.headers as Record<string, string> ?? {}),
             Authorization: `Bearer ${newToken}`,
           };
-          return fetch(input, { ...init, headers: retryHeaders });
+          return fetchWithProxyFallback(input, { ...init, headers: retryHeaders });
         }
         _onUnauthorized?.();
       }

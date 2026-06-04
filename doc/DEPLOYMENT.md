@@ -96,12 +96,17 @@ sudo bash ~/infra/setup.sh cloudphotos.top
 
 ### 部署后更新 GitHub Secret
 
-将 `VITE_API_BASE` 改为：
+将 `VITE_API_BASE` 设为 Azure Functions 直连地址：
 ```
-https://cloudphotos.top/api
+https://cloudphoto-api.azurewebsites.net/api
 ```
 
-然后手动触发前端 CI 重新构建，使 API 调用也走 VM 而非直连 `azurewebsites.net`。
+运行时行为：
+- 在 `cloudphotos.top` 下，前端优先走同源 `/api`（VM Nginx 反代）
+- 若 VM 代理发生网络级失败，前端自动回退到上面的 Azure Functions 直连地址
+- 直接访问 Azure Static Web Apps 域名时，也使用该直连地址
+
+因此前端 CI 只需保持 `VITE_API_BASE` 指向 Azure Functions 直连地址，无需再把 secret 改成 `https://cloudphotos.top/api`。
 
 ### SSL 证书维护
 

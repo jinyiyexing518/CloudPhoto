@@ -58,13 +58,14 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 详细部署步骤见 [DEPLOYMENT.md](doc/DEPLOYMENT.md)。
 
-本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`，开发与生产无需修改 URL——前端在构建时读取 `VITE_API_BASE`（默认为 `/api`）。
+本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境下，`cloudphotos.top` 运行时优先走同源 `/api`（VM Nginx 反代），若该代理发生网络级失败则自动回退直连 `cloudphoto-api.azurewebsites.net/api`；其他入口直接读取 `VITE_API_BASE`。
 
 ---
 
 ## 功能列表
 
 - **JWT 认证与自动刷新** — 2 小时访问令牌 + 30 天滚动刷新令牌；收到 401 时客户端静默刷新并重试原请求；并发 401 共享同一个刷新请求（互斥锁）
+- **代理故障自动回退** — 在 `cloudphotos.top` 下，登录和通用 API 请求优先走同源 `/api`；若 VM 反向代理出现网络级失败，前端自动回退直连 Azure Functions，避免短时代理故障导致登录页直接报“网络错误”
 - **认证限流** — 内存中按 IP 滑动窗口：登录 10 次/分，注册 5 次/分，刷新 20 次/分；超限返回 `429 + Retry-After: 60`
 - **委托密钥缓存** — Azure 用户委托密钥进程内缓存，有效期剩余 > 10 分钟时复用，省去每次列表请求的一次控制面调用
 - **角色系统** — 全局 `admin` / `viewer`；群组内 `admin` / `member`
