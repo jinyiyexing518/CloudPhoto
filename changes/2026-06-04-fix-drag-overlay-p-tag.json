@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-04-fix-drag-overlay-p-tag",
+  "date": "2026-06-04",
+  "title": "修复拖拽覆盖层标题标签未闭合",
+  "description": "修复 App.tsx 中拖拽上传覆盖层标题 <p> 标签缺少闭合标签导致 CI 构建失败的问题。",
+  "impact": "bugfix",
+  "breaking": false,
+  "seq": 1780539912338
+}
