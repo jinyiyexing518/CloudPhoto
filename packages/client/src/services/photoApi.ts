@@ -187,6 +187,8 @@ export interface Photo {
   folder?: string;
   groupId?: string;
   url: string;
+  /** SAS URL for the 400 px WebP thumbnail — present for JPEG/PNG/WebP uploads. */
+  thumbnailUrl?: string;
   size: number;
   lastModified: string;
   contentType: string;

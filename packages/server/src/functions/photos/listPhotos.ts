@@ -67,6 +67,7 @@ app.http("listPhotos", {
         folder: string | undefined;
         groupId: string | undefined;
         url: string;
+        thumbnailUrl: string | undefined;
         size: number | undefined;
         lastModified: Date | undefined;
         contentType: string | undefined;
@@ -98,6 +99,9 @@ app.http("listPhotos", {
         const folderRaw = folderSegs.join("/");
         // Skip voice memo storage folder — these are internal blobs, not gallery items
         if (folderRaw === "_voice") continue;
+        // Skip internal thumbnail blobs (filename starts with _th_)
+        const blobFilename = segs[segs.length - 1];
+        if (blobFilename.startsWith("_th_")) continue;
         const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
         const folder = folderRaw === "_" ? "" : folderRaw;
         const voiceMemoName = getMeta(blob.metadata, "voiceMemoName");
@@ -109,6 +113,9 @@ app.http("listPhotos", {
           folder,
           groupId: blobGroupId,
           url: generateSasUrlWithKey(blob.name, delegationKey),
+          thumbnailUrl: getMeta(blob.metadata, "thumbnailName")
+            ? generateSasUrlWithKey(getMeta(blob.metadata, "thumbnailName")!, delegationKey)
+            : undefined,
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,

@@ -1,5 +1,14 @@
 [
   {
+    "id": "2026-06-04-p0-thumbnails",
+    "date": "2026-06-04",
+    "title": "perf(P0): 上传时生成 400px WebP 缩略图，时间线缩略图流量减少 ~90%",
+    "type": "improvement",
+    "seq": 1780545068612,
+    "desc": "uploadPhoto 调用 sharp 将 JPEG/PNG/WebP 压缩为 400px WebP 缩略图（quality 75），保存为同目录 _th_* blob，元数据写入 thumbnailName；listPhotos 读取 thumbnailName 生成 SAS URL 返回 thumbnailUrl，并跳过 _th_ 开头的内部 blob；PhotoCard 优先使用 thumbnailUrl，onError 自动回退到原图，动图/视频/HEIC 不受影响。CI deploy-stage 在 Ubuntu 上 npm install --production，sharp Linux x64 原生二进制自动安装。",
+    "icon": "⚡"
+  },
+  {
     "id": "2026-06-04-shared-batch-ops-bar",
     "date": "2026-06-04",
     "title": "refactor: 提取 BatchOperationsBar 共享组件，消除时间线/文件夹视图重复代码",

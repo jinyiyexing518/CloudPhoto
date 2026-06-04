@@ -12,6 +12,10 @@ import {
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
 import exifr from "exifr";
+import sharp from "sharp";
+
+/** MIME types for which we generate a 400 px WebP thumbnail. */
+const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
 const ALLOWED_IMAGE_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif",
@@ -107,8 +111,19 @@ app.http("uploadPhoto", {
             .join("/")
         : "_";
       const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
-      const blobName = `${scope}/${safeFolderPath}/${Date.now()}-${safeName}`;
+      const ts = Date.now();
+      const blobName = `${scope}/${safeFolderPath}/${ts}-${safeName}`;
       const now = new Date().toISOString();
+
+      // Pre-compute thumbnail blob name so it can be stored in original's metadata.
+      // Thumbnails live at the same folder level but with a _th_ prefix + .webp suffix.
+      // listPhotos skips blobs whose filename starts with _th_.
+      const willGenerateThumb =
+        !ALLOWED_VIDEO_MIME.has(mimeType) &&
+        !ALLOWED_AUDIO_MIME.has(mimeType) &&
+        THUMBNAIL_MIME.has(mimeType);
+      // isAnimated is computed later; re-check after buf is available
+      const thumbnailBlobName = `${scope}/${safeFolderPath}/_th_${ts}-${safeName}.webp`;
 
       const blobServiceClient = getBlobServiceClient();
       const containerClient =
@@ -157,6 +172,9 @@ app.http("uploadPhoto", {
           } catch { /* best-effort */ }
         }
       }
+      // Animated check must happen before upload so we can conditionally skip thumbnail
+      const skipThumb = !willGenerateThumb || isAnimated;
+
       await blockBlobClient.uploadData(buf, {
         blobHTTPHeaders: { blobContentType: contentType },
         metadata: {
@@ -171,8 +189,29 @@ app.http("uploadPhoto", {
           ...(resolvedLon && { gpsLon: resolvedLon }),
           ...(takenAt && { takenAt }),
           ...(isAnimated && { isAnimated: "1" }),
+          // Store thumbnail name so listPhotos can build a SAS URL without scanning
+          ...(!skipThumb && { thumbnailName: thumbnailBlobName }),
         },
       });
+
+      // Generate 400 px WebP thumbnail — best-effort, failure is non-fatal
+      let thumbnailGenerated = false;
+      if (!skipThumb) {
+        try {
+          const thumbBuf = await sharp(buf)
+            .resize({ width: 400, withoutEnlargement: true })
+            .webp({ quality: 75 })
+            .toBuffer();
+          const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);
+          await thumbClient.uploadData(thumbBuf, {
+            blobHTTPHeaders: { blobContentType: "image/webp" },
+            metadata: { isThumb: "1" },
+          });
+          thumbnailGenerated = true;
+        } catch (e) {
+          context.warn("Thumbnail generation failed (non-fatal):", e);
+        }
+      }
 
       // Cache GPS coordinates in Cosmos for fast map queries
       const latNum = parseFloat(resolvedLat ?? "");
@@ -206,6 +245,7 @@ app.http("uploadPhoto", {
           folder: safeFolderPath === "_" ? "" : safeFolderPath,
           groupId: groupId || undefined,
           url: await generateSasUrl(blobName),
+          ...(thumbnailGenerated && { thumbnailUrl: await generateSasUrl(thumbnailBlobName) }),
           size: arrayBuffer.byteLength,
           contentType,
           createdBy: uploadedBy,

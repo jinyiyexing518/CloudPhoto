@@ -141,12 +141,18 @@ function PhotoCard({
             />
           ) : (
             <img
-              src={photo.url}
+              src={photo.thumbnailUrl ?? photo.url}
               alt={displayName}
               loading="lazy"
               decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
+              onError={(e) => {
+                // If thumbnail 404s (e.g. generation failed), fall back to full-res
+                if (photo.thumbnailUrl && e.currentTarget.src !== photo.url) {
+                  e.currentTarget.src = photo.url;
+                }
+              }}
             />
           )}
           {isVideo && <div className="photo-video-badge">▶{videoDuration ? ` ${videoDuration}` : ""}</div>}
