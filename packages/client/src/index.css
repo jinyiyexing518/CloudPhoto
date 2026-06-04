@@ -766,6 +766,11 @@ body {
   overflow: hidden;
   margin: 0 12px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  /* Cage Leaflet's internal z-indices (400-1000) inside this stacking context
+     so they don't bleed above dialogs / settings panels outside the map */
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
 }
 /* Lightweight dot marker - no photo URL = no extra network requests */
 .map-marker-pin {

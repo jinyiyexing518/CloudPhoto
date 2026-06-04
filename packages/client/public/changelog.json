@@ -18,6 +18,14 @@
     "seq": 1780539912338
   },
   {
+    "id": "2026-06-04-map-stacking-context",
+    "date": "2026-06-04",
+    "title": "fix: 记忆地图不再遮挡 Settings 等弹层",
+    "description": "memory-map-container 新增 position:relative / isolation:isolate / z-index:0，将 Leaflet 内部 z-index（400–1000）锁在独立 stacking context 中，防止地图图层盖过对话框、设置面板等全局弹层。",
+    "type": "fix",
+    "seq": 1780541074231
+  },
+  {
     "id": "2026-06-03-animated-detect-gps-display",
     "date": "2026-06-03",
     "icon": "✨",
