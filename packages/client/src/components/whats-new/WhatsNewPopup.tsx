@@ -9,9 +9,28 @@ function formatDate(dateStr: string): string {
 const IDLE_DELAY_MS = 5000;    // 5s 无操作后开始淡出
 const FADE_DURATION_MS = 4000; // 4s CSS 过渡时长
 
-/** Entries without a type are treated as features (backward-compatible) */
+/** Infer type from title prefix when the type field is absent */
+function inferTypeFromTitle(title: string): "feature" | "fix" | "improvement" {
+  const t = title.toLowerCase();
+  if (t.startsWith("fix:") || t.startsWith("修复") || /^\[?fix\]?[:\s]/i.test(t)) return "fix";
+  if (t.startsWith("perf:") || t.startsWith("chore:") || t.startsWith("优化") || t.startsWith("refactor:")) return "improvement";
+  return "feature";
+}
+
+/** Entries without a type are inferred from the title (backward-compatible) */
 function entryType(e: ChangelogEntry): "feature" | "fix" | "improvement" {
-  return e.type ?? "feature";
+  return (e.type as "feature" | "fix" | "improvement" | undefined) ?? inferTypeFromTitle(e.title ?? "");
+}
+
+/** Normalize runtime entry: handle both 'desc' and 'description'; add default icon */
+function normalize(e: ChangelogEntry & { description?: string; summary?: string }): ChangelogEntry {
+  const type = entryType(e);
+  return {
+    ...e,
+    type,
+    desc: e.desc ?? (e as { description?: string }).description ?? (e as { summary?: string }).summary ?? "",
+    icon: e.icon ?? (type === "fix" ? "🔧" : type === "improvement" ? "⚡" : "✨"),
+  };
 }
 
 function EntryItem({ entry, expandedId, setExpandedId }: {
@@ -61,8 +80,17 @@ export default function WhatsNewPopup() {
   // Fetch changelog entries from Cosmos DB via the API
   useEffect(() => {
     fetchChangelogs(7).then((data) => {
-      setEntries(data);
-      if (data.length > 0) setVisible(true);
+      // Normalize: map 'description'/'summary' → 'desc', infer type from title
+      const normalized = data.map(normalize);
+      // Sort: features/improvements first, then fixes; newest-first within each group
+      normalized.sort((a, b) => {
+        const ta = entryType(a) === "fix" ? 1 : 0;
+        const tb = entryType(b) === "fix" ? 1 : 0;
+        if (ta !== tb) return ta - tb;
+        return b.date.localeCompare(a.date);
+      });
+      setEntries(normalized);
+      if (normalized.length > 0) setVisible(true);
     });
   }, []);
 

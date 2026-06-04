@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-whats-new-feat-first",
+  "date": "2026-06-04",
+  "title": "feat: WhatsNew 弹窗 feature 优先、fix 默认折叠",
+  "description": "重构更新日志展示逻辑：feature/improvement 条目优先展示，fix 条目汇聚到底部可折叠区块（默认收起）。collect-changes.mjs 同步增加 normalize 步骤，统一 description→desc 字段映射、按标题前缀自动推断 type（fix:/perf:/chore: → fix/improvement，其余 → feature）、补全默认 icon（✨/⚡/🔧）。WhatsNewPopup 运行时也做同样归一化，兼容 Cosmos 旧数据。",
+  "type": "feat",
+  "seq": 1780542597161
+}

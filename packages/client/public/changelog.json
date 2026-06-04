@@ -1,473 +1,435 @@
 [
   {
-    "id": "2026-06-04-batch-toolbar-sync",
+    "id": "2026-06-04-whats-new-feat-first",
     "date": "2026-06-04",
-    "title": "文件夹批量工具栏显示文件大小；修复重要片段 tab 计数",
-    "description": "1. 文件夹视图批量选择工具栏新增已选文件总大小显示（与时间线视图保持一致）。2. 重要片段 tab 上的数字现在反映实际展示的照片数量（最多20张），而非后台候选池大小，避免数字误导。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780540903004
-  },
-  {
-    "id": "2026-06-04-fix-drag-overlay-p-tag",
-    "date": "2026-06-04",
-    "title": "修复拖拽覆盖层标题标签未闭合",
-    "description": "修复 App.tsx 中拖拽上传覆盖层标题 <p> 标签缺少闭合标签导致 CI 构建失败的问题。",
-    "impact": "bugfix",
-    "breaking": false,
-    "seq": 1780539912338
-  },
-  {
-    "id": "2026-06-04-map-stacking-context",
-    "date": "2026-06-04",
-    "title": "fix: 记忆地图不再遮挡 Settings 等弹层",
-    "description": "memory-map-container 新增 position:relative / isolation:isolate / z-index:0，将 Leaflet 内部 z-index（400–1000）锁在独立 stacking context 中，防止地图图层盖过对话框、设置面板等全局弹层。",
-    "type": "fix",
-    "seq": 1780541074231
-  },
-  {
-    "id": "2026-06-04-motion-video-larger-tail",
-    "date": "2026-06-04",
-    "title": "fix: 动态照片提取扫描窗口扩大到 8MB",
-    "description": "将 findMotionVideoByBinary 末尾扫描缓冲区从 256KB 增至 8MB，修复大视频（>256KB）因 JPEG EOI 不在扫描窗口内而无法提取的问题；新增 Strategy-2：用 ftyp 品牌名独立定位 MP4 起始位置，不再强依赖 EOI 紧跟 ftyp 的假设，支持更多手机型号。",
-    "type": "fix",
-    "seq": 1780541474745
+    "title": "feat: WhatsNew 弹窗 feature 优先、fix 默认折叠",
+    "type": "feat",
+    "seq": 1780542597161,
+    "desc": "重构更新日志展示逻辑：feature/improvement 条目优先展示，fix 条目汇聚到底部可折叠区块（默认收起）。collect-changes.mjs 同步增加 normalize 步骤，统一 description→desc 字段映射、按标题前缀自动推断 type（fix:/perf:/chore: → fix/improvement，其余 → feature）、补全默认 icon（✨/⚡/🔧）。WhatsNewPopup 运行时也做同样归一化，兼容 Cosmos 旧数据。",
+    "icon": "✨"
   },
   {
     "id": "2026-06-04-upload-gps-and-search-ux",
     "date": "2026-06-04",
     "title": "fix: 上传 GPS 丢失 + 地址搜索体验全面优化",
-    "description": "1) uploadPhoto 响应体新增 gpsLat/gpsLon/takenAt，解决新上传照片立即进入地图但 GPS 为空的问题。2) LocationSearchPanel 重写：400ms 防抖+请求 ID 防竞态、结果名称截短（只显示前两段）+副标题、直接输入坐标（39.90,116.39）即可使用、Enter 立即搜索/Esc 关闭。",
     "type": "fix",
-    "seq": 1780541790367
+    "seq": 1780541790367,
+    "desc": "1) uploadPhoto 响应体新增 gpsLat/gpsLon/takenAt，解决新上传照片立即进入地图但 GPS 为空的问题。2) LocationSearchPanel 重写：400ms 防抖+请求 ID 防竞态、结果名称截短（只显示前两段）+副标题、直接输入坐标（39.90,116.39）即可使用、Enter 立即搜索/Esc 关闭。",
+    "icon": "🔧"
+  },
+  {
+    "id": "2026-06-04-motion-video-larger-tail",
+    "date": "2026-06-04",
+    "title": "fix: 动态照片提取扫描窗口扩大到 8MB",
+    "type": "fix",
+    "seq": 1780541474745,
+    "desc": "将 findMotionVideoByBinary 末尾扫描缓冲区从 256KB 增至 8MB，修复大视频（>256KB）因 JPEG EOI 不在扫描窗口内而无法提取的问题；新增 Strategy-2：用 ftyp 品牌名独立定位 MP4 起始位置，不再强依赖 EOI 紧跟 ftyp 的假设，支持更多手机型号。",
+    "icon": "🔧"
   },
   {
     "id": "2026-06-04-upload-pause-svg-icons",
     "date": "2026-06-04",
     "title": "fix: 上传暂停/继续按钮改用 SVG 图标",
-    "description": "用内联 SVG 三角形和双竖线替换 Unicode ▶︎/⏸︎ 字符，解决部分浏览器将文字变体选择符渲染成 emoji 方框的问题。",
     "type": "fix",
-    "seq": 1780541168602
+    "seq": 1780541168602,
+    "desc": "用内联 SVG 三角形和双竖线替换 Unicode ▶︎/⏸︎ 字符，解决部分浏览器将文字变体选择符渲染成 emoji 方框的问题。",
+    "icon": "🔧"
   },
   {
-    "id": "2026-06-03-animated-detect-gps-display",
-    "date": "2026-06-03",
-    "icon": "✨",
-    "title": "动图检测支持 vivo/华为/小米/Apple，照片详情展示 GPS 位置",
-    "type": "feature",
-    "desc": "Added vivo (VivoLivePhoto), Huawei (HwMotionPhoto), and Apple Live Photo (apple_fi/Photos:Live) animated detection. Server now extracts EXIF GPS server-side as fallback using exifr. Photo detail modals now show GPS coordinates with a Google Maps link.",
-    "seq": 1780472229258
-  },
-  {
-    "id": "2026-06-03-animated-gif-pause",
-    "date": "2026-06-03",
-    "icon": "🎞️",
-    "title": "动图暂停/恢复修复 + 弹窗预览可点击",
+    "id": "2026-06-04-map-stacking-context",
+    "date": "2026-06-04",
+    "title": "fix: 记忆地图不再遮挡 Settings 等弹层",
     "type": "fix",
-    "desc": "修复动图卡片暂停跨域报错，改用 BLANK_GIF 方案；修复动图在弹窗中无法点击预览原图的问题",
-    "details": "原实现用 <canvas> 截帧检测跨域会抛出 SecurityError（Azure SAS URL 跨域）；改为 BLANK_GIF（1×1 透明 GIF Data URL）src 替换方案，暂停时显示半透明遮罩，恢复时 GIF 从第 0 帧重播。弹窗中动图 img 缺少 onClick 且 cursor 为 default，现已添加点击回调并改为 cursor: zoom-in。",
-    "seq": 1780472229268
+    "seq": 1780541074231,
+    "desc": "memory-map-container 新增 position:relative / isolation:isolate / z-index:0，将 Leaflet 内部 z-index（400–1000）锁在独立 stacking context 中，防止地图图层盖过对话框、设置面板等全局弹层。",
+    "icon": "🔧"
   },
   {
-    "id": "2026-06-03-backfill-metadata",
-    "date": "2026-06-03",
-    "icon": "📦",
-    "title": "历史照片元数据回填",
+    "id": "2026-06-04-batch-toolbar-sync",
+    "date": "2026-06-04",
+    "title": "文件夹批量工具栏显示文件大小；修复重要片段 tab 计数",
+    "seq": 1780540903004,
     "type": "feature",
-    "desc": "设置 → 应用 新增「历史照片回填」，对已上传但缺少拍摄时间或 GPS 的照片重新提取 EXIF 并写回",
-    "details": "新增 POST /api/photos/backfill 端点，逐一下载缺少 takenAt 或 gpsLat 的图片 blob，用 exifr 提取 EXIF；拍摄时间以 naive datetime（无 Z 后缀）存储，GPS 同时写入 Cosmos photoLocations；返回 { processed, updated, failed }。设置页面显示按钮、加载状态和完成统计。",
-    "seq": 1780472229276
+    "desc": "1. 文件夹视图批量选择工具栏新增已选文件总大小显示（与时间线视图保持一致）。2. 重要片段 tab 上的数字现在反映实际展示的照片数量（最多20张），而非后台候选池大小，避免数字误导。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-batch-edit-time-location",
+    "id": "2026-06-04-fix-drag-overlay-p-tag",
+    "date": "2026-06-04",
+    "title": "修复拖拽覆盖层标题标签未闭合",
+    "seq": 1780539912338,
+    "type": "fix",
+    "desc": "修复 App.tsx 中拖拽上传覆盖层标题 <p> 标签缺少闭合标签导致 CI 构建失败的问题。",
+    "icon": "🔧"
+  },
+  {
+    "id": "2026-06-03-photo-card-context-menu",
     "date": "2026-06-03",
-    "icon": "✏️",
-    "title": "批量修改拍摄时间和位置",
+    "title": "照片卡片右键快捷菜单",
+    "seq": 1780482425438,
     "type": "feature",
-    "desc": "批量选择模式下新增「修改时间」和「修改位置」操作，可一次性更新多张照片的元数据",
-    "details": "批量选中照片后工具栏出现两个新按钮：「修改时间」展开 datetime-local 时间选择器，「修改位置」展开纬度/经度输入框；点击「应用」后逐张调用 PATCH /api/photos/metadata，完成后显示 Toast 统计结果。新增 onGpsUpdate 回调确保 App 内存状态同步更新。",
-    "seq": 1780472229287
+    "desc": "在照片卡片上右键单击弹出快捷操作菜单，支持「预览」「收藏/取消收藏」「打开原图」「移动到…」「删除」等操作，无需点击进入模态框即可快速操作。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-batch-selection-size",
+    "id": "2026-06-03-nav-btn-tooltip",
     "date": "2026-06-03",
-    "title": "批量选中显示总文件大小",
-    "description": "批量选择模式下，已选张数旁同步显示选中照片的总文件大小（如「已选 12 张 · 34.5 MB」），帮助用户了解选中内容的占用空间。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480557357
-  },
-  {
-    "id": "2026-06-03-card-filename-tooltip",
-    "date": "2026-06-03",
-    "title": "照片卡片悬停显示文件名",
-    "description": "鼠标悬停在照片缩略图卡片上时，显示原始文件名 tooltip，方便快速查看完整文件名而无需打开预览。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480880296
-  },
-  {
-    "id": "2026-06-03-card-taken-date",
-    "date": "2026-06-03",
-    "title": "照片卡片显示拍摄日期",
-    "description": "照片卡片底部元信息区域：当拍摄日期（takenAt）与上传日期不同时，优先显示拍摄日期（📷 标识，紫色），方便区分扫描老照片等场景。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480162795
+    "title": "模态框导航按钮显示相邻照片名称 tooltip",
+    "seq": 1780482301493,
+    "type": "feature",
+    "desc": "模态框中「上一张」和「下一张」按钮 hover 时，tooltip 显示相邻照片的文件名，便于用户在翻看前了解下一张是什么。",
+    "icon": "✨"
   },
   {
     "id": "2026-06-03-ctrl-a-select-all",
     "date": "2026-06-03",
     "title": "批量模式 Ctrl+A 全选所有照片",
-    "description": "在批量选择模式下，按 Ctrl+A（Mac 为 ⌘+A）可快速全选当前视图所有照片，再次按下则取消全选。快捷键速查表已同步更新。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780482257565
+    "seq": 1780482257565,
+    "type": "feature",
+    "desc": "在批量选择模式下，按 Ctrl+A（Mac 为 ⌘+A）可快速全选当前视图所有照片，再次按下则取消全选。快捷键速查表已同步更新。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-date-group-select-all",
+    "id": "2026-06-03-modal-format-tag",
     "date": "2026-06-03",
-    "title": "批量模式下日期组头部「全选本日」按钮",
-    "description": "批量选择模式激活时，时间轴每个日期分组标题末尾出现「全选本日」/「取消全选」按钮，点击可快速选中或取消该日期下的所有照片，提升批量操作效率。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481246869
+    "title": "模态框显示照片文件格式标签",
+    "seq": 1780482175076,
+    "type": "feature",
+    "desc": "在照片模态框元数据区域显示文件格式徽标（如 JPG、PNG、WEBP、MP4、MOV 等），帮助用户快速识别照片类型，格式标签以紫色背景高亮显示。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-date-quick-filter",
+    "id": "2026-06-03-gallery-summary-bar",
     "date": "2026-06-03",
-    "title": "时间轴「今天/本周/本月」日期快速筛选",
-    "description": "时间轴工具栏新增「今天」「本周」「本月」快速筛选 chip，点击即可快速过滤到对应日期范围的照片，再次点击取消筛选，无需手动填写日期区间。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481155154
+    "title": "时间线顶部显示照片总数与日期组统计",
+    "seq": 1780482117695,
+    "type": "feature",
+    "desc": "时间线视图（非批量模式下）在照片列表顶部显示「共 N 张照片 · M 个日期」统计信息，帮助用户快速了解当前筛选结果规模。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-docs-chinese-readme",
+    "id": "2026-06-03-quick-filter-7days",
     "date": "2026-06-03",
-    "type": "improvement",
-    "title": "README 全中文改写 + 文档更新",
-    "summary": "README 完整改写为中文；USER_GUIDE 新增排序切换、回填、批量时间/位置章节；AI_REPRO_SPEC 新增规范；create-change.mjs 支持 --pipe 模式",
-    "seq": 1780473780049
+    "title": "近7天快速日期筛选按钮",
+    "seq": 1780481893076,
+    "type": "feature",
+    "desc": "时间线工具栏新增「🕖 近7天」快速筛选按钮，点击后仅显示最近7天内的照片，再次点击取消筛选。与「今天/本周/本月」按钮风格一致。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-download-size-label",
+    "id": "2026-06-03-heic-format-badge",
     "date": "2026-06-03",
-    "title": "下载按钮显示文件大小",
-    "description": "照片模态框「下载」按钮旁显示文件大小（如「⬇ 下载 (2.4 MB)」），让用户在点击前了解下载体积。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480780595
+    "title": "HEIC/HEIF 格式照片显示格式标签",
+    "seq": 1780481804824,
+    "type": "feature",
+    "desc": "HEIC/HEIF 格式的照片缩略图左下角显示「HEIC」紫色徽章，提示用户该照片为 iPhone 原始格式，部分浏览器可能无法直接预览。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-preload-adjacent-photos",
+    "date": "2026-06-03",
+    "title": "预加载相邻照片提升翻页速度",
+    "seq": 1780481738387,
+    "type": "feature",
+    "desc": "在照片预览模态框打开时，自动在后台预加载上一张和下一张照片图片，使切换时几乎无加载延迟，显著提升翻页流畅度。",
+    "icon": "✨"
   },
   {
     "id": "2026-06-03-drag-file-count",
     "date": "2026-06-03",
     "title": "拖拽上传时显示文件数量提示",
-    "description": "将文件拖拽到页面上时，全屏覆盖层标题实时显示「拖入 N 个文件」，让用户在松开前确认选中的文件数量。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481637391
-  },
-  {
-    "id": "2026-06-03-exif-timezone-fix",
-    "date": "2026-06-03",
-    "icon": "🕐",
-    "title": "拍摄时间时区修复（UTC+8 偏差 8 小时）",
-    "type": "fix",
-    "desc": "exifr 将 EXIF 日期时间内部视为 UTC，导致存储后 UTC+8 用户看到的时间偏差 8 小时；现已修复",
-    "details": "uploadPhoto.ts 和弹窗「修改拍摄时间」均改为不带 Z 后缀的 naive datetime 格式（如 2024-06-01T14:30:00），客户端直接按本地时间解析，不再有时区偏移。历史照片可通过「历史照片回填」功能重新提取并修正。",
-    "seq": 1780472229298
+    "seq": 1780481637391,
+    "type": "feature",
+    "desc": "将文件拖拽到页面上时，全屏覆盖层标题实时显示「拖入 N 个文件」，让用户在松开前确认选中的文件数量。",
+    "icon": "✨"
   },
   {
     "id": "2026-06-03-favorite-card-badge",
     "date": "2026-06-03",
     "title": "已收藏照片缩略图显示金色角标",
-    "description": "已收藏的照片在缩略图左上角显示一个金色「★」圆形角标，让用户在浏览网格时一眼辨识出收藏内容，无需逐一打开预览。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481488222
+    "seq": 1780481488222,
+    "type": "feature",
+    "desc": "已收藏的照片在缩略图左上角显示一个金色「★」圆形角标，让用户在浏览网格时一眼辨识出收藏内容，无需逐一打开预览。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-fix-changelog-sort-order",
+    "id": "2026-06-03-modal-image-loading-spinner",
     "date": "2026-06-03",
-    "icon": "🐛",
-    "title": "最近更新按日期倒序排列",
-    "type": "fix",
-    "desc": "collect-changes.mjs was sorting by filename alphabetically instead of by the date field inside each JSON. Old change files lack date prefixes in their names, causing scrambled order. Now sorts by entry.date descending.",
-    "seq": 1780472229318
+    "title": "照片模态框图片加载时显示旋转进度圈",
+    "seq": 1780481420053,
+    "type": "feature",
+    "desc": "照片预览模态框在图片加载完成之前显示旋转进度圈（spinner），图片加载完成后自动消失，避免出现长时间空白区域影响用户体验。",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-fix-pre-push-hook-windows",
+    "id": "2026-06-03-video-duration-badge",
     "date": "2026-06-03",
-    "icon": "🐛",
-    "title": "修复 pre-push hook 在 Windows 下 stdin 为空时不拦截的问题",
-    "type": "fix",
-    "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data.",
-    "seq": 1780472229335
+    "title": "视频卡片显示视频时长",
+    "seq": 1780481301409,
+    "type": "feature",
+    "desc": "视频照片的缩略图右下角播放徽章现在同时显示视频时长（如「▶ 1:24」），方便用户在浏览时快速了解视频长度。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-date-group-select-all",
+    "date": "2026-06-03",
+    "title": "批量模式下日期组头部「全选本日」按钮",
+    "seq": 1780481246869,
+    "type": "feature",
+    "desc": "批量选择模式激活时，时间轴每个日期分组标题末尾出现「全选本日」/「取消全选」按钮，点击可快速选中或取消该日期下的所有照片，提升批量操作效率。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-date-quick-filter",
+    "date": "2026-06-03",
+    "title": "时间轴「今天/本周/本月」日期快速筛选",
+    "seq": 1780481155154,
+    "type": "feature",
+    "desc": "时间轴工具栏新增「今天」「本周」「本月」快速筛选 chip，点击即可快速过滤到对应日期范围的照片，再次点击取消筛选，无需手动填写日期区间。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-keyboard-shortcut-help",
+    "date": "2026-06-03",
+    "title": "「?」快捷键显示键盘速查表",
+    "seq": 1780481101049,
+    "type": "feature",
+    "desc": "在照片预览模态框中按「?」键弹出键盘快捷键速查面板，列出 ←→ 切换、F 收藏、D 下载、Delete 删除、Esc 关闭等操作，方便用户快速学习所有快捷键。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-keyboard-download",
+    "date": "2026-06-03",
+    "title": "快捷键 D 下载当前照片",
+    "seq": 1780481001130,
+    "type": "feature",
+    "desc": "在照片预览模态框打开时，按 D 键可快速下载当前照片原图，无需鼠标点击，方便键盘党快速存档。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-card-filename-tooltip",
+    "date": "2026-06-03",
+    "title": "照片卡片悬停显示文件名",
+    "seq": 1780480880296,
+    "type": "feature",
+    "desc": "鼠标悬停在照片缩略图卡片上时，显示原始文件名 tooltip，方便快速查看完整文件名而无需打开预览。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-keyboard-delete",
+    "date": "2026-06-03",
+    "title": "键盘 Delete 键删除模态框当前照片",
+    "seq": 1780480832570,
+    "type": "feature",
+    "desc": "在照片预览模态框打开时，按 Delete 键可快速删除当前照片（弹出确认对话框），无需鼠标操作，提升键盘用户效率。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-download-size-label",
+    "date": "2026-06-03",
+    "title": "下载按钮显示文件大小",
+    "seq": 1780480780595,
+    "type": "feature",
+    "desc": "照片模态框「下载」按钮旁显示文件大小（如「⬇ 下载 (2.4 MB)」），让用户在点击前了解下载体积。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-keyboard-favorite",
+    "date": "2026-06-03",
+    "title": "快捷键 F 收藏/取消收藏照片",
+    "seq": 1780480707984,
+    "type": "feature",
+    "desc": "在照片预览模态框打开时，按 F 键可快速切换当前照片的收藏状态，无需鼠标点击收藏按钮，提升键盘操作效率。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-modal-image-dimensions",
+    "date": "2026-06-03",
+    "title": "照片模态框显示图片分辨率",
+    "seq": 1780480652624,
+    "type": "feature",
+    "desc": "照片预览模态框的文件大小旁显示图片原始分辨率（如「1.2 MB · 4032×3024」），帮助用户了解照片精度。分辨率在图片加载完成后自动读取。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-batch-selection-size",
+    "date": "2026-06-03",
+    "title": "批量选中显示总文件大小",
+    "seq": 1780480557357,
+    "type": "feature",
+    "desc": "批量选择模式下，已选张数旁同步显示选中照片的总文件大小（如「已选 12 张 · 34.5 MB」），帮助用户了解选中内容的占用空间。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-modal-fullscreen",
+    "date": "2026-06-03",
+    "title": "照片模态框全屏模式",
+    "seq": 1780480488784,
+    "type": "feature",
+    "desc": "在照片预览模态框中增加「⛶ 全屏」按钮，点击可将预览窗口扩展为全屏，再次点击退出。方便在大屏上细看照片细节。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-swipe-to-navigate",
+    "date": "2026-06-03",
+    "title": "触摸滑动切换照片",
+    "seq": 1780480387231,
+    "type": "feature",
+    "desc": "在移动端照片预览模态框中支持左右滑动手势（≥50px）切换上一张/下一张照片，与桌面端键盘左右键导航保持一致。时间线和文件夹视图均已支持。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-modal-copy-image",
+    "date": "2026-06-03",
+    "title": "模态框复制图片到剪贴板",
+    "seq": 1780480254254,
+    "type": "feature",
+    "desc": "在照片预览模态框增加「📋 复制」按钮，一键将图片复制到系统剪贴板，方便直接粘贴到微信、邮件等应用。仅对图片有效（视频不支持）。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-card-taken-date",
+    "date": "2026-06-03",
+    "title": "照片卡片显示拍摄日期",
+    "seq": 1780480162795,
+    "type": "feature",
+    "desc": "照片卡片底部元信息区域：当拍摄日期（takenAt）与上传日期不同时，优先显示拍摄日期（📷 标识，紫色），方便区分扫描老照片等场景。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-modal-photo-counter",
+    "date": "2026-06-03",
+    "title": "模态框照片序号显示",
+    "seq": 1780480064793,
+    "type": "feature",
+    "desc": "在照片预览模态框顶部中央显示「N / Total」序号，例如「5 / 120」，方便了解当前浏览位置。时间线和文件夹视图同步支持。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-paste-to-upload",
+    "date": "2026-06-03",
+    "title": "粘贴上传（Ctrl+V）",
+    "seq": 1780479932879,
+    "type": "feature",
+    "desc": "在任意界面按 Ctrl+V 粘贴图片即可上传，支持截图、从其他应用复制的图片。上传时跳过输入框内的粘贴操作。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-no-gps-filter",
+    "date": "2026-06-03",
+    "title": "无GPS快速筛选",
+    "seq": 1780479779925,
+    "type": "feature",
+    "desc": "在筛选栏增加「📍 无GPS」快速筛选按钮，一键找出所有缺少地理位置的照片，配合批量修改位置功能使用。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-grid-size-toggle",
+    "date": "2026-06-03",
+    "title": "缩略图尺寸切换（S/M/L）",
+    "seq": 1780479680053,
+    "type": "feature",
+    "desc": "在侧边工具栏筛选面板中增加网格密度切换按钮，支持小（S）/ 中（M）/ 大（L）三种缩略图尺寸，偏好自动保存到 localStorage。",
+    "icon": "✨"
   },
   {
     "id": "2026-06-03-folder-batch-time-gps",
     "date": "2026-06-03",
     "type": "feature",
     "title": "文件夹视图支持批量修改时间和位置",
-    "summary": "文件夹tab批量选择后新增「修改时间」和「修改位置」操作，与时间线保持一致；地点搜索增加本地缓存并将防抖时间由500ms降至200ms",
-    "seq": 1780479114298
+    "seq": 1780479114298,
+    "desc": "文件夹tab批量选择后新增「修改时间」和「修改位置」操作，与时间线保持一致；地点搜索增加本地缓存并将防抖时间由500ms降至200ms",
+    "icon": "✨"
   },
   {
-    "id": "2026-06-03-folder-delete-restore",
-    "date": "2026-06-03",
-    "type": "feature",
-    "title": "文件夹删除与恢复支持",
-    "summary": "FolderView支持整个文件夹删除（所有照片移入回收站），回收站按文件夹分组展示并支持一键恢复或彻底删除整个文件夹",
-    "seq": 1780478211332
-  },
-  {
-    "id": "2026-06-03-folder-pin-on-create",
-    "date": "2026-06-03",
-    "type": "improvement",
-    "title": "新建文件夹临时置顶",
-    "summary": "新创建的文件夹在当前会话中自动置顶显示，导航离开或刷新后恢复正常字母排序",
-    "seq": 1780475617638
-  },
-  {
-    "id": "2026-06-03-gallery-summary-bar",
-    "date": "2026-06-03",
-    "title": "时间线顶部显示照片总数与日期组统计",
-    "description": "时间线视图（非批量模式下）在照片列表顶部显示「共 N 张照片 · M 个日期」统计信息，帮助用户快速了解当前筛选结果规模。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780482117695
-  },
-  {
-    "id": "2026-06-03-gps-cosmos-sync-fix",
-    "date": "2026-06-03",
-    "icon": "🔧",
-    "title": "修复GPS地图缓存与照片生命周期同步",
-    "type": "fix",
-    "desc": "软删除时同步删除 Cosmos GPS 记录，避免垃圾桶照片出现在地图；恢复时重新写入 Cosmos",
-    "seq": 1780472229347
-  },
-  {
-    "id": "2026-06-03-gps-reverse-geocode",
-    "date": "2026-06-03",
-    "icon": "📍",
-    "title": "修复GPS NaN + 位置显示改为可读地址",
-    "type": "fix",
-    "desc": "EXIF 返回 NaN 坐标时不再写入；照片弹窗位置改为 Nominatim 反向地理编码的可读地址（省+市+区）",
-    "seq": 1780472229359
-  },
-  {
-    "id": "2026-06-03-grid-size-toggle",
-    "date": "2026-06-03",
-    "title": "缩略图尺寸切换（S/M/L）",
-    "description": "在侧边工具栏筛选面板中增加网格密度切换按钮，支持小（S）/ 中（M）/ 大（L）三种缩略图尺寸，偏好自动保存到 localStorage。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780479680053
-  },
-  {
-    "id": "2026-06-03-heic-format-badge",
-    "date": "2026-06-03",
-    "title": "HEIC/HEIF 格式照片显示格式标签",
-    "description": "HEIC/HEIF 格式的照片缩略图左下角显示「HEIC」紫色徽章，提示用户该照片为 iPhone 原始格式，部分浏览器可能无法直接预览。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481804824
-  },
-  {
-    "id": "2026-06-03-keyboard-delete",
-    "date": "2026-06-03",
-    "title": "键盘 Delete 键删除模态框当前照片",
-    "description": "在照片预览模态框打开时，按 Delete 键可快速删除当前照片（弹出确认对话框），无需鼠标操作，提升键盘用户效率。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480832570
-  },
-  {
-    "id": "2026-06-03-keyboard-download",
-    "date": "2026-06-03",
-    "title": "快捷键 D 下载当前照片",
-    "description": "在照片预览模态框打开时，按 D 键可快速下载当前照片原图，无需鼠标点击，方便键盘党快速存档。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481001130
-  },
-  {
-    "id": "2026-06-03-keyboard-favorite",
-    "date": "2026-06-03",
-    "title": "快捷键 F 收藏/取消收藏照片",
-    "description": "在照片预览模态框打开时，按 F 键可快速切换当前照片的收藏状态，无需鼠标点击收藏按钮，提升键盘操作效率。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480707984
-  },
-  {
-    "id": "2026-06-03-keyboard-shortcut-help",
-    "date": "2026-06-03",
-    "title": "「?」快捷键显示键盘速查表",
-    "description": "在照片预览模态框中按「?」键弹出键盘快捷键速查面板，列出 ←→ 切换、F 收藏、D 下载、Delete 删除、Esc 关闭等操作，方便用户快速学习所有快捷键。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481101049
-  },
-  {
-    "id": "2026-06-03-modal-copy-image",
-    "date": "2026-06-03",
-    "title": "模态框复制图片到剪贴板",
-    "description": "在照片预览模态框增加「📋 复制」按钮，一键将图片复制到系统剪贴板，方便直接粘贴到微信、邮件等应用。仅对图片有效（视频不支持）。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480254254
-  },
-  {
-    "id": "2026-06-03-modal-format-tag",
-    "date": "2026-06-03",
-    "title": "模态框显示照片文件格式标签",
-    "description": "在照片模态框元数据区域显示文件格式徽标（如 JPG、PNG、WEBP、MP4、MOV 等），帮助用户快速识别照片类型，格式标签以紫色背景高亮显示。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780482175076
-  },
-  {
-    "id": "2026-06-03-modal-fullscreen",
-    "date": "2026-06-03",
-    "title": "照片模态框全屏模式",
-    "description": "在照片预览模态框中增加「⛶ 全屏」按钮，点击可将预览窗口扩展为全屏，再次点击退出。方便在大屏上细看照片细节。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480488784
-  },
-  {
-    "id": "2026-06-03-modal-image-dimensions",
-    "date": "2026-06-03",
-    "title": "照片模态框显示图片分辨率",
-    "description": "照片预览模态框的文件大小旁显示图片原始分辨率（如「1.2 MB · 4032×3024」），帮助用户了解照片精度。分辨率在图片加载完成后自动读取。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480652624
-  },
-  {
-    "id": "2026-06-03-modal-image-loading-spinner",
-    "date": "2026-06-03",
-    "title": "照片模态框图片加载时显示旋转进度圈",
-    "description": "照片预览模态框在图片加载完成之前显示旋转进度圈（spinner），图片加载完成后自动消失，避免出现长时间空白区域影响用户体验。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481420053
-  },
-  {
-    "id": "2026-06-03-modal-photo-counter",
-    "date": "2026-06-03",
-    "title": "模态框照片序号显示",
-    "description": "在照片预览模态框顶部中央显示「N / Total」序号，例如「5 / 120」，方便了解当前浏览位置。时间线和文件夹视图同步支持。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780480064793
-  },
-  {
-    "id": "2026-06-03-moments-top20",
-    "date": "2026-06-03",
-    "type": "improvement",
-    "title": "重要片段限制展示 Top 20",
-    "summary": "重要片段视图固定只展示评分最高的前 20 张照片，提升加载速度与准确性，并隐藏「加载更多」按钮。",
-    "seq": 1780472777222
-  },
-  {
-    "id": "2026-06-03-motion-photo-preview",
-    "date": "2026-06-03",
-    "type": "feature",
-    "title": "动态照片原生预览",
-    "summary": "新增服务端 /api/photos/motion-video 接口，从 Google/Samsung 等动态 JPEG 中提取嵌入的 MP4 片段；弹窗点击「▶ 播放动态」按钮后加载并自动循环播放动态视频，GIF/动图不受影响。",
-    "seq": 1780474564705
-  },
-  {
-    "id": "2026-06-03-motion-photo-regex-fix",
+    "id": "2026-06-03-whats-new-scroll-fix",
     "date": "2026-06-03",
     "type": "fix",
-    "title": "修复动态照片视频播放",
-    "summary": "修复 Container:Item 正则表达式中 [^/]* 错误排除 video/mp4 的斜杠导致 Android 12+ 动态照片无法解析，同时将 XMP 扫描范围从 64KB 扩大到 128KB，并添加播放失败提示",
-    "seq": 1780476237641
+    "title": "最近更新弹窗可正常滚动",
+    "seq": 1780478815689,
+    "desc": "修复最近更新弹窗无法滚动、滑动穿透到后方照片的问题：将内容统一放入独立滚动容器并设置overscroll-behavior:contain",
+    "icon": "🔧"
   },
   {
     "id": "2026-06-03-motion-video-binary-fallback-changelog-sort",
     "date": "2026-06-03",
     "type": "fix",
     "title": "动态视频提取增强 & 最近更新排序修正",
-    "summary": "motionVideo: 修复Samsung Container:Length，支持MicroVideoOffset元素形式，新增二进制fallback（Huawei HwMotionPhoto等）。changelog排序：同一天按_ts倒序",
-    "seq": 1780478603447
+    "seq": 1780478603447,
+    "desc": "motionVideo: 修复Samsung Container:Length，支持MicroVideoOffset元素形式，新增二进制fallback（Huawei HwMotionPhoto等）。changelog排序：同一天按_ts倒序",
+    "icon": "🔧"
   },
   {
-    "id": "2026-06-03-nav-btn-tooltip",
+    "id": "2026-06-03-folder-delete-restore",
     "date": "2026-06-03",
-    "title": "模态框导航按钮显示相邻照片名称 tooltip",
-    "description": "模态框中「上一张」和「下一张」按钮 hover 时，tooltip 显示相邻照片的文件名，便于用户在翻看前了解下一张是什么。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780482301493
-  },
-  {
-    "id": "2026-06-03-no-gps-filter",
-    "date": "2026-06-03",
-    "title": "无GPS快速筛选",
-    "description": "在筛选栏增加「📍 无GPS」快速筛选按钮，一键找出所有缺少地理位置的照片，配合批量修改位置功能使用。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780479779925
-  },
-  {
-    "id": "2026-06-03-paste-to-upload",
-    "date": "2026-06-03",
-    "title": "粘贴上传（Ctrl+V）",
-    "description": "在任意界面按 Ctrl+V 粘贴图片即可上传，支持截图、从其他应用复制的图片。上传时跳过输入框内的粘贴操作。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780479932879
-  },
-  {
-    "id": "2026-06-03-perf-new-features",
-    "date": "2026-06-03",
-    "icon": "⚡",
-    "title": "新功能性能优化",
-    "desc": "防抖 localStorage 写入、移除 insights dep、AutoStory 文件夹计数 Memo、地图加载提示",
-    "details": "Moments 浏览记录写 localStorage 改为 1.5s 防抖；trackMomentView 移除 momentsInsightsMap dep 消除级联重渲染；AutoStory 文件夹照片数量改用 useMemo 预计算；MemoryMap 首次加载显示旋转提示。",
-    "type": "improvement",
-    "seq": 1780472229388
-  },
-  {
-    "id": "2026-06-03-photo-card-context-menu",
-    "date": "2026-06-03",
-    "title": "照片卡片右键快捷菜单",
-    "description": "在照片卡片上右键单击弹出快捷操作菜单，支持「预览」「收藏/取消收藏」「打开原图」「移动到…」「删除」等操作，无需点击进入模态框即可快速操作。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780482425438
-  },
-  {
-    "id": "2026-06-03-preload-adjacent-photos",
-    "date": "2026-06-03",
-    "title": "预加载相邻照片提升翻页速度",
-    "description": "在照片预览模态框打开时，自动在后台预加载上一张和下一张照片图片，使切换时几乎无加载延迟，显著提升翻页流畅度。",
-    "impact": "performance",
-    "breaking": false,
-    "seq": 1780481738387
-  },
-  {
-    "id": "2026-06-03-quick-filter-7days",
-    "date": "2026-06-03",
-    "title": "近7天快速日期筛选按钮",
-    "description": "时间线工具栏新增「🕖 近7天」快速筛选按钮，点击后仅显示最近7天内的照片，再次点击取消筛选。与「今天/本周/本月」按钮风格一致。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481893076
-  },
-  {
-    "id": "2026-06-03-sort-by-taken-at",
-    "date": "2026-06-03",
-    "icon": "📅",
-    "title": "按拍摄时间排序 + 支持编辑拍摄时间",
     "type": "feature",
-    "desc": "上传时自动从 EXIF 提取拍摄时间；照片列表按拍摄时间排序；详情弹窗支持手动编辑拍摄时间",
-    "seq": 1780472229397
+    "title": "文件夹删除与恢复支持",
+    "seq": 1780478211332,
+    "desc": "FolderView支持整个文件夹删除（所有照片移入回收站），回收站按文件夹分组展示并支持一键恢复或彻底删除整个文件夹",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-motion-photo-regex-fix",
+    "date": "2026-06-03",
+    "type": "fix",
+    "title": "修复动态照片视频播放",
+    "seq": 1780476237641,
+    "desc": "修复 Container:Item 正则表达式中 [^/]* 错误排除 video/mp4 的斜杠导致 Android 12+ 动态照片无法解析，同时将 XMP 扫描范围从 64KB 扩大到 128KB，并添加播放失败提示",
+    "icon": "🔧"
+  },
+  {
+    "id": "2026-06-03-video-metadata-takenAt-gps",
+    "date": "2026-06-03",
+    "type": "fix",
+    "title": "视频拍摄时间和位置提取",
+    "seq": 1780475928716,
+    "desc": "上传视频时从MP4/MOV容器解析拍摄时间(mvhd box)和GPS坐标(©xyz atom)，修复视频无法获取拍摄时间和位置的问题",
+    "icon": "🔧"
+  },
+  {
+    "id": "2026-06-03-folder-pin-on-create",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "新建文件夹临时置顶",
+    "seq": 1780475617638,
+    "desc": "新创建的文件夹在当前会话中自动置顶显示，导航离开或刷新后恢复正常字母排序",
+    "icon": "⚡"
+  },
+  {
+    "id": "2026-06-03-upload-live-photo-refresh",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "上传时文件夹实时刷新",
+    "seq": 1780475466142,
+    "desc": "每张图片上传完成后立即更新照片列表，无需等待全部上传完毕，文件夹内容随上传进度实时变化",
+    "icon": "⚡"
+  },
+  {
+    "id": "2026-06-03-motion-photo-preview",
+    "date": "2026-06-03",
+    "type": "feature",
+    "title": "动态照片原生预览",
+    "seq": 1780474564705,
+    "desc": "新增服务端 /api/photos/motion-video 接口，从 Google/Samsung 等动态 JPEG 中提取嵌入的 MP4 片段；弹窗点击「▶ 播放动态」按钮后加载并自动循环播放动态视频，GIF/动图不受影响。",
+    "icon": "✨"
+  },
+  {
+    "id": "2026-06-03-docs-chinese-readme",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "README 全中文改写 + 文档更新",
+    "seq": 1780473780049,
+    "desc": "README 完整改写为中文；USER_GUIDE 新增排序切换、回填、批量时间/位置章节；AI_REPRO_SPEC 新增规范；create-change.mjs 支持 --pipe 模式",
+    "icon": "⚡"
+  },
+  {
+    "id": "2026-06-03-moments-top20",
+    "date": "2026-06-03",
+    "type": "improvement",
+    "title": "重要片段限制展示 Top 20",
+    "seq": 1780472777222,
+    "desc": "重要片段视图固定只展示评分最高的前 20 张照片，提升加载速度与准确性，并隐藏「加载更多」按钮。",
+    "icon": "⚡"
   },
   {
     "id": "2026-06-03-sort-key-toggle",
@@ -480,216 +442,108 @@
     "seq": 1780472229414
   },
   {
-    "id": "2026-06-03-swipe-to-navigate",
+    "id": "2026-06-03-sort-by-taken-at",
     "date": "2026-06-03",
-    "title": "触摸滑动切换照片",
-    "description": "在移动端照片预览模态框中支持左右滑动手势（≥50px）切换上一张/下一张照片，与桌面端键盘左右键导航保持一致。时间线和文件夹视图均已支持。",
-    "impact": "mobile-ux",
-    "breaking": false,
-    "seq": 1780480387231
-  },
-  {
-    "id": "2026-06-03-upload-live-photo-refresh",
-    "date": "2026-06-03",
-    "type": "improvement",
-    "title": "上传时文件夹实时刷新",
-    "summary": "每张图片上传完成后立即更新照片列表，无需等待全部上传完毕，文件夹内容随上传进度实时变化",
-    "seq": 1780475466142
-  },
-  {
-    "id": "2026-06-03-video-duration-badge",
-    "date": "2026-06-03",
-    "title": "视频卡片显示视频时长",
-    "description": "视频照片的缩略图右下角播放徽章现在同时显示视频时长（如「▶ 1:24」），方便用户在浏览时快速了解视频长度。",
-    "impact": "user-experience",
-    "breaking": false,
-    "seq": 1780481301409
-  },
-  {
-    "id": "2026-06-03-video-metadata-takenAt-gps",
-    "date": "2026-06-03",
-    "type": "fix",
-    "title": "视频拍摄时间和位置提取",
-    "summary": "上传视频时从MP4/MOV容器解析拍摄时间(mvhd box)和GPS坐标(©xyz atom)，修复视频无法获取拍摄时间和位置的问题",
-    "seq": 1780475928716
-  },
-  {
-    "id": "2026-06-03-whats-new-scroll-fix",
-    "date": "2026-06-03",
-    "type": "fix",
-    "title": "最近更新弹窗可正常滚动",
-    "summary": "修复最近更新弹窗无法滚动、滑动穿透到后方照片的问题：将内容统一放入独立滚动容器并设置overscroll-behavior:contain",
-    "seq": 1780478815689
-  },
-  {
-    "id": "2026-06-02-auto-story",
-    "date": "2026-06-02",
-    "icon": "🎬",
-    "title": "自动故事",
-    "desc": "选择文件夹一键生成幻灯片，支持淡入淡出/滑动/缩放效果",
-    "details": "在「🎬 自动故事」标签选择照片来源和切换效果，点击「开始播放」进入全屏幻灯片。支持键盘操作（←→切换，Esc退出），顶部进度条可点击跳转。",
-    "type": "feature",
-    "seq": 1780472229002
-  },
-  {
-    "id": "2026-06-02-changelog-pipeline",
-    "date": "2026-06-02",
-    "icon": "🔧",
-    "title": "Changelog Pipeline 精简",
-    "desc": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
-    "details": "sync-changelog.mjs 直接读取 changes/*.json；collect-changes.mjs 只写 public/changelog.json；fetchChangelogs API 失败时 fallback 到静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗。",
-    "type": "fix",
-    "seq": 1780472229012
-  },
-  {
-    "id": "2026-06-02-delete-progress",
-    "date": "2026-06-02",
-    "icon": "🗑️",
-    "title": "删除与清空进度条",
-    "desc": "批量删除照片和清空回收站时显示实时进度条",
-    "details": "批量选中后执行删除，页面顶部会出现进度条（复用上传进度的样式），显示「删除中 X/总数」和百分比，逐张处理完成后自动消失。回收站「清空回收站」操作在对话框内显示内联进度块，清空过程中按钮禁用防止重复点击。",
-    "type": "improvement",
-    "seq": 1780472229021
-  },
-  {
-    "id": "2026-06-02-error-boundary-tab-crash",
-    "date": "2026-06-02",
-    "icon": "🛡️",
-    "title": "ErrorBoundary 防白屏",
-    "desc": "新增 ErrorBoundary 组件，切换 Tab 时渲染异常不再导致整页白屏",
-    "details": "新增 ErrorBoundary 类组件捕获 render 期间异常，App.tsx 主内容区用 key={activeTab} 包裹，切换 Tab 自动重置错误状态并显示友好提示卡片而非白屏。",
-    "type": "fix",
-    "seq": 1780472229042
-  },
-  {
-    "id": "2026-06-02-fab-position-fix",
-    "date": "2026-06-02",
-    "icon": "📌",
-    "title": "FAB 位置抖动修复",
-    "desc": "修复浮动操作栏在时间线/重要片段切换时芯片位置不一致，以及触摸滑动误触导致的抖动偏移问题。",
-    "details": "给 .workspace-fab-rail 设置固定宽度锁定左边缘；onPointerMove 添加 8px 拖动阈值防止滚动手势误触；从 localStorage 恢复位置时校验视口范围，超出则丢弃。",
-    "type": "fix",
-    "seq": 1780472229050
-  },
-  {
-    "id": "2026-06-02-group-dialog-portal-fix",
-    "date": "2026-06-02",
-    "icon": "👥",
-    "title": "修复群组对话框向上溢出",
-    "desc": "群组管理弹窗改用 createPortal 渲染到 body，修复 position:fixed 被 header 截断的问题",
-    "details": "GroupSwitcher 中的 CreateGroupDialog 和 GroupSettings 改用 createPortal 渲染到 document.body，绕过 app-header will-change:transform 导致 position:fixed 相对 header 定位的问题。",
-    "type": "fix",
-    "seq": 1780472229067
-  },
-  {
-    "id": "2026-06-02-memory-map-gps-fix",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "修复记忆地图 GPS 照片不显示",
-    "desc": "上传有位置照片后地图能自动对焦到拍摄地点",
-    "details": "两处修复：① 第二个 useEffect 在更新 marker 后新增 setView/fitBounds 调用，保证第一张 GPS 照片出现时地图从世界视图（zoom=2）自动缩放定位到拍摄地（zoom=5），而不是让 marker 缩在大地图里看不到；② 移除冗余的 geoCount state（初始值为 0 会导致第一帧短暂闪烁空状态提示），改为直接读取 geoPhotos.length 渲染 UI。",
-    "type": "fix",
-    "seq": 1780472229077
-  },
-  {
-    "id": "2026-06-02-memory-map-perf",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "记忆地图性能优化",
-    "desc": "增量标记更新、缓存 Leaflet、轻量 CSS 点标记、修复 GPS 更新不刷新、新增全览按钮",
-    "details": "重写 MemoryMap：Map<name,Marker> diff 增量更新避免全量重建；模块级 Leaflet 单例缓存；CSS 圆点替代 img src 图标消除 N 次额外请求；geoPhotoKey 序列化坐标修复 GPS 更新不触发 Effect 的 bug；新增全览按钮；地图高度缩小（42vh/移动端 32vh）；无 GPS 照片列表支持分页。",
-    "type": "improvement",
-    "seq": 1780472229106
-  },
-  {
-    "id": "2026-06-02-memory-map-video-thumb-fix",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "修复记忆地图渲染与视频封面",
-    "desc": "地图不显示、GPS 对话框视频无封面、重要片段浏览量被清零三个问题同步修复",
-    "details": "记忆地图改用静态 import leaflet CSS 修复不渲染问题；修复 Vite CJS 互操作；GPS 编辑对话框改用 MediaThumb 支持视频封面；重要片段服务端返回空数据时不再覆盖本地浏览记录。",
-    "type": "fix",
-    "seq": 1780472229116
-  },
-  {
-    "id": "2026-06-02-memory-map",
-    "date": "2026-06-02",
-    "icon": "🗺️",
-    "title": "记忆地图",
-    "desc": "含 GPS 信息的照片在世界地图上展示拍摄地点",
-    "details": "在「🗺️ 记忆地图」标签查看所有含位置信息的照片分布。上传时自动读取图片 EXIF GPS 数据并存储。点击地图上的照片图标可查看详情并跳转到时间线。",
-    "type": "feature",
-    "seq": 1780472229123
-  },
-  {
-    "id": "2026-06-02-modal-centering",
-    "date": "2026-06-02",
-    "icon": "📱",
-    "title": "详情弹窗垂直居中",
-    "desc": "点击照片/视频打开详情页时，弹窗在移动端垂直居中显示",
-    "details": "此前移动端详情弹窗总是出现在页面顶部，用户需要滚动才能看到完整内容。现在改用 margin: auto 在 flex 容器中居中，内容适合屏幕时自动居中；内容超出屏幕高度时从顶部开始可滚动，两种情况均处理正确。",
-    "type": "fix",
-    "seq": 1780472229147
-  },
-  {
-    "id": "2026-06-02-moments-video-thumb",
-    "date": "2026-06-02",
-    "icon": "🎞️",
-    "title": "重要片段支持视频封面",
-    "desc": "「重要片段」视图中视频文件现在正确显示封面帧和播放标识",
-    "details": "之前重要片段（Moments）中的视频会显示为空白或损坏图片。现已统一使用 MediaThumb 组件，视频自动定位封面帧，右下角显示 ▶ 标识，与时间线和垃圾桶视图行为一致。",
-    "type": "improvement",
-    "seq": 1780472229155
-  },
-  {
-    "id": "2026-06-02-on-this-day",
-    "date": "2026-06-02",
     "icon": "📅",
-    "title": "历史上的今天",
-    "desc": "时间线顶部自动显示往年同一天拍摄的照片",
-    "details": "每次进入时间线，若往年同月同日有照片，会在顶部出现「历史上的今天」卡片，按年份分组展示缩略图，点击跳转到对应照片。",
+    "title": "按拍摄时间排序 + 支持编辑拍摄时间",
     "type": "feature",
-    "seq": 1780472229163
+    "desc": "上传时自动从 EXIF 提取拍摄时间；照片列表按拍摄时间排序；详情弹窗支持手动编辑拍摄时间",
+    "seq": 1780472229397
   },
   {
-    "id": "2026-06-02-scroll-top-fix",
-    "date": "2026-06-02",
-    "icon": "⬆️",
-    "title": "返回顶部按钮位置优化",
-    "desc": "返回顶部按钮不再与右侧悬浮菜单冲突，位置始终稳定",
-    "details": "之前按钮与右下角 WorkspaceFab 在同一侧，展开操作菜单后按钮被遮挡。现调整至左下角，并使用系统安全区距离自动适配 iOS 底部横条，无论界面如何调整位置都不会偏移。",
+    "id": "2026-06-03-perf-new-features",
+    "date": "2026-06-03",
+    "icon": "⚡",
+    "title": "新功能性能优化",
+    "desc": "防抖 localStorage 写入、移除 insights dep、AutoStory 文件夹计数 Memo、地图加载提示",
+    "details": "Moments 浏览记录写 localStorage 改为 1.5s 防抖；trackMomentView 移除 momentsInsightsMap dep 消除级联重渲染；AutoStory 文件夹照片数量改用 useMemo 预计算；MemoryMap 首次加载显示旋转提示。",
+    "type": "improvement",
+    "seq": 1780472229388
+  },
+  {
+    "id": "2026-06-03-gps-reverse-geocode",
+    "date": "2026-06-03",
+    "icon": "📍",
+    "title": "修复GPS NaN + 位置显示改为可读地址",
     "type": "fix",
-    "seq": 1780472229180
+    "desc": "EXIF 返回 NaN 坐标时不再写入；照片弹窗位置改为 Nominatim 反向地理编码的可读地址（省+市+区）",
+    "seq": 1780472229359
   },
   {
-    "id": "2026-06-02-time-capsule",
-    "date": "2026-06-02",
-    "icon": "💌",
-    "title": "时光胶囊",
-    "desc": "将照片锁定到未来某天，到期后解锁查看",
-    "details": "在「💌 时光胶囊」标签新建胶囊：选择照片、设定解锁日期，胶囊将锁定显示倒计时；到期后自动解锁，可点击打开浏览封存的照片。数据存储在本地。",
-    "type": "feature",
-    "seq": 1780472229190
-  },
-  {
-    "id": "2026-06-02-timeline-tremble-fix",
-    "date": "2026-06-02",
-    "icon": "🛠️",
-    "title": "修复时间线颤抖问题",
-    "desc": "消除滚动时界面莫名颤抖、组件偏移的现象",
-    "details": "三处根因修复：① 去掉 header 3秒空闲自动弹出的 idle timer，header 现在只在向上滚动或靠近顶部时才重新显示；② 进度条改为直接操作 DOM ref，不再每帧触发 React setState 重渲整棵组件树；③ content-visibility 的 contain-intrinsic-size 加上 auto 关键字，浏览器复用已测量的真实高度，避免日期分组高度估算出错造成滚动偏移。同步清理 index.css 中重复的 .scroll-progress-bar 定义。",
+    "id": "2026-06-03-gps-cosmos-sync-fix",
+    "date": "2026-06-03",
+    "icon": "🔧",
+    "title": "修复GPS地图缓存与照片生命周期同步",
     "type": "fix",
-    "seq": 1780472229198
+    "desc": "软删除时同步删除 Cosmos GPS 记录，避免垃圾桶照片出现在地图；恢复时重新写入 Cosmos",
+    "seq": 1780472229347
   },
   {
-    "id": "2026-06-02-upload-pause-speed-retry",
-    "date": "2026-06-02",
-    "icon": "⬆️",
-    "title": "上传增强：速度显示、暂停/继续、断网重试",
-    "desc": "上传照片时可暂停/继续，显示实时速度，断网后自动恢复",
-    "details": "三项改进：① 上传进度条新增实时速度（如 2.1 MB/s），基于 EMA 平滑避免闪烁；② 新增暂停⏸/继续▶按钮，点击后当前文件传完再暂停，恢复后从下一文件继续；③ 每个文件最多自动重试 3 次，断网时等待 online 事件后自动续传，恢复网络后无需手动操作。XHR 上传在浏览器后台标签页中照常继续，不会因切换网页而中断。",
+    "id": "2026-06-03-fix-pre-push-hook-windows",
+    "date": "2026-06-03",
+    "icon": "🐛",
+    "title": "修复 pre-push hook 在 Windows 下 stdin 为空时不拦截的问题",
+    "type": "fix",
+    "desc": "On Windows, git does not properly pipe stdin to the Node.js hook process, causing check-changes.mjs to receive empty stdin and skip the check. Added fallback to diff origin/main..HEAD directly when stdin has no data.",
+    "seq": 1780472229335
+  },
+  {
+    "id": "2026-06-03-fix-changelog-sort-order",
+    "date": "2026-06-03",
+    "icon": "🐛",
+    "title": "最近更新按日期倒序排列",
+    "type": "fix",
+    "desc": "collect-changes.mjs was sorting by filename alphabetically instead of by the date field inside each JSON. Old change files lack date prefixes in their names, causing scrambled order. Now sorts by entry.date descending.",
+    "seq": 1780472229318
+  },
+  {
+    "id": "2026-06-03-exif-timezone-fix",
+    "date": "2026-06-03",
+    "icon": "🕐",
+    "title": "拍摄时间时区修复（UTC+8 偏差 8 小时）",
+    "type": "fix",
+    "desc": "exifr 将 EXIF 日期时间内部视为 UTC，导致存储后 UTC+8 用户看到的时间偏差 8 小时；现已修复",
+    "details": "uploadPhoto.ts 和弹窗「修改拍摄时间」均改为不带 Z 后缀的 naive datetime 格式（如 2024-06-01T14:30:00），客户端直接按本地时间解析，不再有时区偏移。历史照片可通过「历史照片回填」功能重新提取并修正。",
+    "seq": 1780472229298
+  },
+  {
+    "id": "2026-06-03-batch-edit-time-location",
+    "date": "2026-06-03",
+    "icon": "✏️",
+    "title": "批量修改拍摄时间和位置",
     "type": "feature",
-    "seq": 1780472229205
+    "desc": "批量选择模式下新增「修改时间」和「修改位置」操作，可一次性更新多张照片的元数据",
+    "details": "批量选中照片后工具栏出现两个新按钮：「修改时间」展开 datetime-local 时间选择器，「修改位置」展开纬度/经度输入框；点击「应用」后逐张调用 PATCH /api/photos/metadata，完成后显示 Toast 统计结果。新增 onGpsUpdate 回调确保 App 内存状态同步更新。",
+    "seq": 1780472229287
+  },
+  {
+    "id": "2026-06-03-backfill-metadata",
+    "date": "2026-06-03",
+    "icon": "📦",
+    "title": "历史照片元数据回填",
+    "type": "feature",
+    "desc": "设置 → 应用 新增「历史照片回填」，对已上传但缺少拍摄时间或 GPS 的照片重新提取 EXIF 并写回",
+    "details": "新增 POST /api/photos/backfill 端点，逐一下载缺少 takenAt 或 gpsLat 的图片 blob，用 exifr 提取 EXIF；拍摄时间以 naive datetime（无 Z 后缀）存储，GPS 同时写入 Cosmos photoLocations；返回 { processed, updated, failed }。设置页面显示按钮、加载状态和完成统计。",
+    "seq": 1780472229276
+  },
+  {
+    "id": "2026-06-03-animated-gif-pause",
+    "date": "2026-06-03",
+    "icon": "🎞️",
+    "title": "动图暂停/恢复修复 + 弹窗预览可点击",
+    "type": "fix",
+    "desc": "修复动图卡片暂停跨域报错，改用 BLANK_GIF 方案；修复动图在弹窗中无法点击预览原图的问题",
+    "details": "原实现用 <canvas> 截帧检测跨域会抛出 SecurityError（Azure SAS URL 跨域）；改为 BLANK_GIF（1×1 透明 GIF Data URL）src 替换方案，暂停时显示半透明遮罩，恢复时 GIF 从第 0 帧重播。弹窗中动图 img 缺少 onClick 且 cursor 为 default，现已添加点击回调并改为 cursor: zoom-in。",
+    "seq": 1780472229268
+  },
+  {
+    "id": "2026-06-03-animated-detect-gps-display",
+    "date": "2026-06-03",
+    "icon": "✨",
+    "title": "动图检测支持 vivo/华为/小米/Apple，照片详情展示 GPS 位置",
+    "type": "feature",
+    "desc": "Added vivo (VivoLivePhoto), Huawei (HwMotionPhoto), and Apple Live Photo (apple_fi/Photos:Live) animated detection. Server now extracts EXIF GPS server-side as fallback using exifr. Photo detail modals now show GPS coordinates with a Google Maps link.",
+    "seq": 1780472229258
   },
   {
     "id": "2026-06-02-video-thumbnail-crop",
@@ -702,6 +556,176 @@
     "seq": 1780472229215
   },
   {
+    "id": "2026-06-02-upload-pause-speed-retry",
+    "date": "2026-06-02",
+    "icon": "⬆️",
+    "title": "上传增强：速度显示、暂停/继续、断网重试",
+    "desc": "上传照片时可暂停/继续，显示实时速度，断网后自动恢复",
+    "details": "三项改进：① 上传进度条新增实时速度（如 2.1 MB/s），基于 EMA 平滑避免闪烁；② 新增暂停⏸/继续▶按钮，点击后当前文件传完再暂停，恢复后从下一文件继续；③ 每个文件最多自动重试 3 次，断网时等待 online 事件后自动续传，恢复网络后无需手动操作。XHR 上传在浏览器后台标签页中照常继续，不会因切换网页而中断。",
+    "type": "feature",
+    "seq": 1780472229205
+  },
+  {
+    "id": "2026-06-02-timeline-tremble-fix",
+    "date": "2026-06-02",
+    "icon": "🛠️",
+    "title": "修复时间线颤抖问题",
+    "desc": "消除滚动时界面莫名颤抖、组件偏移的现象",
+    "details": "三处根因修复：① 去掉 header 3秒空闲自动弹出的 idle timer，header 现在只在向上滚动或靠近顶部时才重新显示；② 进度条改为直接操作 DOM ref，不再每帧触发 React setState 重渲整棵组件树；③ content-visibility 的 contain-intrinsic-size 加上 auto 关键字，浏览器复用已测量的真实高度，避免日期分组高度估算出错造成滚动偏移。同步清理 index.css 中重复的 .scroll-progress-bar 定义。",
+    "type": "fix",
+    "seq": 1780472229198
+  },
+  {
+    "id": "2026-06-02-time-capsule",
+    "date": "2026-06-02",
+    "icon": "💌",
+    "title": "时光胶囊",
+    "desc": "将照片锁定到未来某天，到期后解锁查看",
+    "details": "在「💌 时光胶囊」标签新建胶囊：选择照片、设定解锁日期，胶囊将锁定显示倒计时；到期后自动解锁，可点击打开浏览封存的照片。数据存储在本地。",
+    "type": "feature",
+    "seq": 1780472229190
+  },
+  {
+    "id": "2026-06-02-scroll-top-fix",
+    "date": "2026-06-02",
+    "icon": "⬆️",
+    "title": "返回顶部按钮位置优化",
+    "desc": "返回顶部按钮不再与右侧悬浮菜单冲突，位置始终稳定",
+    "details": "之前按钮与右下角 WorkspaceFab 在同一侧，展开操作菜单后按钮被遮挡。现调整至左下角，并使用系统安全区距离自动适配 iOS 底部横条，无论界面如何调整位置都不会偏移。",
+    "type": "fix",
+    "seq": 1780472229180
+  },
+  {
+    "id": "2026-06-02-on-this-day",
+    "date": "2026-06-02",
+    "icon": "📅",
+    "title": "历史上的今天",
+    "desc": "时间线顶部自动显示往年同一天拍摄的照片",
+    "details": "每次进入时间线，若往年同月同日有照片，会在顶部出现「历史上的今天」卡片，按年份分组展示缩略图，点击跳转到对应照片。",
+    "type": "feature",
+    "seq": 1780472229163
+  },
+  {
+    "id": "2026-06-02-moments-video-thumb",
+    "date": "2026-06-02",
+    "icon": "🎞️",
+    "title": "重要片段支持视频封面",
+    "desc": "「重要片段」视图中视频文件现在正确显示封面帧和播放标识",
+    "details": "之前重要片段（Moments）中的视频会显示为空白或损坏图片。现已统一使用 MediaThumb 组件，视频自动定位封面帧，右下角显示 ▶ 标识，与时间线和垃圾桶视图行为一致。",
+    "type": "improvement",
+    "seq": 1780472229155
+  },
+  {
+    "id": "2026-06-02-modal-centering",
+    "date": "2026-06-02",
+    "icon": "📱",
+    "title": "详情弹窗垂直居中",
+    "desc": "点击照片/视频打开详情页时，弹窗在移动端垂直居中显示",
+    "details": "此前移动端详情弹窗总是出现在页面顶部，用户需要滚动才能看到完整内容。现在改用 margin: auto 在 flex 容器中居中，内容适合屏幕时自动居中；内容超出屏幕高度时从顶部开始可滚动，两种情况均处理正确。",
+    "type": "fix",
+    "seq": 1780472229147
+  },
+  {
+    "id": "2026-06-02-memory-map",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "记忆地图",
+    "desc": "含 GPS 信息的照片在世界地图上展示拍摄地点",
+    "details": "在「🗺️ 记忆地图」标签查看所有含位置信息的照片分布。上传时自动读取图片 EXIF GPS 数据并存储。点击地图上的照片图标可查看详情并跳转到时间线。",
+    "type": "feature",
+    "seq": 1780472229123
+  },
+  {
+    "id": "2026-06-02-memory-map-video-thumb-fix",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "修复记忆地图渲染与视频封面",
+    "desc": "地图不显示、GPS 对话框视频无封面、重要片段浏览量被清零三个问题同步修复",
+    "details": "记忆地图改用静态 import leaflet CSS 修复不渲染问题；修复 Vite CJS 互操作；GPS 编辑对话框改用 MediaThumb 支持视频封面；重要片段服务端返回空数据时不再覆盖本地浏览记录。",
+    "type": "fix",
+    "seq": 1780472229116
+  },
+  {
+    "id": "2026-06-02-memory-map-perf",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "记忆地图性能优化",
+    "desc": "增量标记更新、缓存 Leaflet、轻量 CSS 点标记、修复 GPS 更新不刷新、新增全览按钮",
+    "details": "重写 MemoryMap：Map<name,Marker> diff 增量更新避免全量重建；模块级 Leaflet 单例缓存；CSS 圆点替代 img src 图标消除 N 次额外请求；geoPhotoKey 序列化坐标修复 GPS 更新不触发 Effect 的 bug；新增全览按钮；地图高度缩小（42vh/移动端 32vh）；无 GPS 照片列表支持分页。",
+    "type": "improvement",
+    "seq": 1780472229106
+  },
+  {
+    "id": "2026-06-02-memory-map-gps-fix",
+    "date": "2026-06-02",
+    "icon": "🗺️",
+    "title": "修复记忆地图 GPS 照片不显示",
+    "desc": "上传有位置照片后地图能自动对焦到拍摄地点",
+    "details": "两处修复：① 第二个 useEffect 在更新 marker 后新增 setView/fitBounds 调用，保证第一张 GPS 照片出现时地图从世界视图（zoom=2）自动缩放定位到拍摄地（zoom=5），而不是让 marker 缩在大地图里看不到；② 移除冗余的 geoCount state（初始值为 0 会导致第一帧短暂闪烁空状态提示），改为直接读取 geoPhotos.length 渲染 UI。",
+    "type": "fix",
+    "seq": 1780472229077
+  },
+  {
+    "id": "2026-06-02-group-dialog-portal-fix",
+    "date": "2026-06-02",
+    "icon": "👥",
+    "title": "修复群组对话框向上溢出",
+    "desc": "群组管理弹窗改用 createPortal 渲染到 body，修复 position:fixed 被 header 截断的问题",
+    "details": "GroupSwitcher 中的 CreateGroupDialog 和 GroupSettings 改用 createPortal 渲染到 document.body，绕过 app-header will-change:transform 导致 position:fixed 相对 header 定位的问题。",
+    "type": "fix",
+    "seq": 1780472229067
+  },
+  {
+    "id": "2026-06-02-fab-position-fix",
+    "date": "2026-06-02",
+    "icon": "📌",
+    "title": "FAB 位置抖动修复",
+    "desc": "修复浮动操作栏在时间线/重要片段切换时芯片位置不一致，以及触摸滑动误触导致的抖动偏移问题。",
+    "details": "给 .workspace-fab-rail 设置固定宽度锁定左边缘；onPointerMove 添加 8px 拖动阈值防止滚动手势误触；从 localStorage 恢复位置时校验视口范围，超出则丢弃。",
+    "type": "fix",
+    "seq": 1780472229050
+  },
+  {
+    "id": "2026-06-02-error-boundary-tab-crash",
+    "date": "2026-06-02",
+    "icon": "🛡️",
+    "title": "ErrorBoundary 防白屏",
+    "desc": "新增 ErrorBoundary 组件，切换 Tab 时渲染异常不再导致整页白屏",
+    "details": "新增 ErrorBoundary 类组件捕获 render 期间异常，App.tsx 主内容区用 key={activeTab} 包裹，切换 Tab 自动重置错误状态并显示友好提示卡片而非白屏。",
+    "type": "fix",
+    "seq": 1780472229042
+  },
+  {
+    "id": "2026-06-02-delete-progress",
+    "date": "2026-06-02",
+    "icon": "🗑️",
+    "title": "删除与清空进度条",
+    "desc": "批量删除照片和清空回收站时显示实时进度条",
+    "details": "批量选中后执行删除，页面顶部会出现进度条（复用上传进度的样式），显示「删除中 X/总数」和百分比，逐张处理完成后自动消失。回收站「清空回收站」操作在对话框内显示内联进度块，清空过程中按钮禁用防止重复点击。",
+    "type": "improvement",
+    "seq": 1780472229021
+  },
+  {
+    "id": "2026-06-02-changelog-pipeline",
+    "date": "2026-06-02",
+    "icon": "🔧",
+    "title": "Changelog Pipeline 精简",
+    "desc": "移除 data/changelog.json 中间文件，sync-changelog.mjs 直接读取 changes/ 目录同步 Cosmos DB，GitHub Actions 触发路径改为 changes/**。",
+    "details": "sync-changelog.mjs 直接读取 changes/*.json；collect-changes.mjs 只写 public/changelog.json；fetchChangelogs API 失败时 fallback 到静态文件，本地开发无需启动 func server 也能看到 WhatsNew 弹窗。",
+    "type": "fix",
+    "seq": 1780472229012
+  },
+  {
+    "id": "2026-06-02-auto-story",
+    "date": "2026-06-02",
+    "icon": "🎬",
+    "title": "自动故事",
+    "desc": "选择文件夹一键生成幻灯片，支持淡入淡出/滑动/缩放效果",
+    "details": "在「🎬 自动故事」标签选择照片来源和切换效果，点击「开始播放」进入全屏幻灯片。支持键盘操作（←→切换，Esc退出），顶部进度条可点击跳转。",
+    "type": "feature",
+    "seq": 1780472229002
+  },
+  {
     "id": "2026-06-01-dialog-centering",
     "date": "2026-06-01",
     "icon": "📐",
@@ -710,26 +734,6 @@
     "details": "之前删除确认弹窗在部分场景（尤其是有 CSS transform 的父元素内）会出现在视口底部或偏移位置。现在改用 React createPortal 直接渲染到 document.body，始终固定居中。",
     "type": "fix",
     "seq": 1780472228994
-  },
-  {
-    "id": "2026-05-30-folder-persist",
-    "date": "2026-05-30",
-    "icon": "📁",
-    "title": "文件夹路径记忆",
-    "desc": "刷新页面后自动回到上次浏览的文件夹位置",
-    "details": "此前刷新页面会重置到文件夹根目录，需要重新点击进入。现在使用惰性 useState 初始器在组件挂载时直接从 localStorage 读取上次路径，刷新后立即恢复，无需任何额外操作。",
-    "type": "feature",
-    "seq": 1780472228967
-  },
-  {
-    "id": "2026-05-30-video-upload",
-    "date": "2026-05-30",
-    "icon": "🎬",
-    "title": "视频上传",
-    "desc": "现在可以上传视频文件，与照片一同保存在相册中",
-    "details": "支持格式：MP4 / MOV / WebM / AVI / MPEG / 3GPP，单文件最大 200 MB（图片仍为 20 MB）。视频卡片右下角显示 ▶ 标识，点击可在详情弹窗中直接播放。缩略图自动定位到视频约 10% 时长处的代表性帧。",
-    "type": "feature",
-    "seq": 1780472228977
   },
   {
     "id": "2026-05-30-voice-memo",
@@ -742,11 +746,32 @@
     "seq": 1780472228985
   },
   {
+    "id": "2026-05-30-video-upload",
+    "date": "2026-05-30",
+    "icon": "🎬",
+    "title": "视频上传",
+    "desc": "现在可以上传视频文件，与照片一同保存在相册中",
+    "details": "支持格式：MP4 / MOV / WebM / AVI / MPEG / 3GPP，单文件最大 200 MB（图片仍为 20 MB）。视频卡片右下角显示 ▶ 标识，点击可在详情弹窗中直接播放。缩略图自动定位到视频约 10% 时长处的代表性帧。",
+    "type": "feature",
+    "seq": 1780472228977
+  },
+  {
+    "id": "2026-05-30-folder-persist",
+    "date": "2026-05-30",
+    "icon": "📁",
+    "title": "文件夹路径记忆",
+    "desc": "刷新页面后自动回到上次浏览的文件夹位置",
+    "details": "此前刷新页面会重置到文件夹根目录，需要重新点击进入。现在使用惰性 useState 初始器在组件挂载时直接从 localStorage 读取上次路径，刷新后立即恢复，无需任何额外操作。",
+    "type": "feature",
+    "seq": 1780472228967
+  },
+  {
     "id": "2025-06-03-time-location-edit-ux",
     "date": "2025-06-03",
     "type": "improvement",
     "title": "拍摄时间和位置编辑体验优化",
-    "summary": "拍摄时间改为弹出式优雅对话框（日期+时间分开输入，支持今天/昨天快捷），位置编辑支持地名搜索（Nominatim），批量位置设置也改用地名搜索替代手动经纬度输入",
-    "seq": 1780477414167
+    "seq": 1780477414167,
+    "desc": "拍摄时间改为弹出式优雅对话框（日期+时间分开输入，支持今天/昨天快捷），位置编辑支持地名搜索（Nominatim），批量位置设置也改用地名搜索替代手动经纬度输入",
+    "icon": "⚡"
   }
 ]
