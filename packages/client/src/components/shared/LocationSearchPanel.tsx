@@ -114,9 +114,6 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
           onKeyDown={handleKeyDown}
           disabled={saving}
         />
-        <button className="location-search-close" onClick={onClose} disabled={saving} title="关闭">
-          ✕
-        </button>
       </div>
 
       {/* Coordinate direct-use shortcut */}
@@ -144,13 +141,15 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
         <ul className="location-search-results">
           {results.map((r, i) => {
             const { primary, secondary } = splitDisplayName(r.displayName);
+            // Prefer server-provided shortName; fall back to local split
+            const mainLabel = r.shortName && r.shortName !== r.displayName ? r.shortName : primary;
             return (
               <li
                 key={i}
                 className="location-search-result"
                 onClick={() => !saving && onSelect(String(r.lat), String(r.lon))}
               >
-                <span className="location-result-name" title={r.displayName}>{primary}</span>
+                <span className="location-result-name" title={r.displayName}>{mainLabel}</span>
                 {secondary && (
                   <span className="location-result-secondary">{secondary}</span>
                 )}

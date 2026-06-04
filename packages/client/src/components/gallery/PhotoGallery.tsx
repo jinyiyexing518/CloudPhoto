@@ -1735,7 +1735,7 @@ function PhotoGallery({
                               className="modal-edit-btn"
                               title="在 Google 地图中查看"
                             >🗺</a>
-                            <button className="modal-edit-btn" title="修改位置" onClick={() => setEditingGps((v) => !v)}>✏</button>
+                            <button className="modal-edit-btn" title={editingGps ? "关闭位置搜索" : "修改位置"} onClick={() => setEditingGps((v) => !v)}>{editingGps ? "✕" : "✏"}</button>
                           </span>
                           {editingGps && (
                             <LocationSearchPanel
@@ -1753,7 +1753,7 @@ function PhotoGallery({
                         <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <em className="modal-empty">未记录</em>
-                            <button className="modal-edit-btn" title="添加位置" onClick={() => setEditingGps((v) => !v)}>+ 添加</button>
+                            <button className="modal-edit-btn" title={editingGps ? "关闭位置搜索" : "添加位置"} onClick={() => setEditingGps((v) => !v)}>{editingGps ? "✕" : "+ 添加"}</button>
                           </span>
                           {editingGps && (
                             <LocationSearchPanel

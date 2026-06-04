@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-geocode-proxy",
+  "date": "2026-06-04",
+  "title": "fix: 地址搜索改走服务端代理，修复国内访问失败和双关闭按钮",
+  "description": "新建 /api/geocode/search 后端代理接口，服务端调 Nominatim 并携带正确 User-Agent 和 10 分钟缓存，彻底解决国内访问 Nominatim 被拦截问题；搜索结果增加 shortName 字段，UI 展示更简洁；同步移除 LocationSearchPanel 内部多余关闭按钮，改为父组件按钮在编辑中显示为 ✕，消除双关闭按钮问题",
+  "type": "fix",
+  "seq": 1780543025651
+}
