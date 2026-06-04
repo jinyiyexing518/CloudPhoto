@@ -269,10 +269,9 @@ function proxyBlobUrl(url: string): string {
 function proxyPhoto(photo: Photo): Photo {
   return {
     ...photo,
-    // Only proxy thumbnails through the VM — thumbnails are small and benefit from
-    // the Singapore CDN hop. Original images and videos go direct to blob storage
-    // (East Asia) which is faster for large files from China mainland.
+    url: proxyBlobUrl(photo.url),
     thumbnailUrl: photo.thumbnailUrl ? proxyBlobUrl(photo.thumbnailUrl) : undefined,
+    voiceMemoUrl: photo.voiceMemoUrl ? proxyBlobUrl(photo.voiceMemoUrl) : undefined,
   };
 }
 // ───────────────────────────────────────────────────────────────────────────
