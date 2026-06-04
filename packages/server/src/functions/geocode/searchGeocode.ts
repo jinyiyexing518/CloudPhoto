@@ -140,7 +140,7 @@ app.http("searchGeocode", {
         if (sub && sub !== city) parts.push(sub);
         if (!parts.length && stateOrProv) parts.push(stateOrProv);
 
-        return parts.join(" · ") || item.display_name?.split(",")[0] ?? "";
+        return (parts.join(" · ") || item.display_name?.split(",")[0]) ?? "";
       }
 
       const results = raw

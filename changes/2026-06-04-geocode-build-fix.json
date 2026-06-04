@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-geocode-build-fix",
+  "date": "2026-06-04",
+  "title": "fix: 修复 geocode 函数 TS5076 编译错误导致 backend deploy 失败",
+  "description": "searchGeocode.ts 中 || 与 ?? 混用未加括号导致 TypeScript strict 模式报 TS5076 错误，CI build 失败；同时补充 index.ts 中缺失的 import 注册",
+  "type": "fix",
+  "seq": 1780543379002
+}
