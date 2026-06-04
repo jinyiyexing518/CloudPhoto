@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-fix-sharp-lazy-load",
+  "date": "2026-06-04",
+  "title": "fix: sharp 改用懒加载 require，修复登录失败",
+  "description": "static import sharp 在顶层执行，native binary 未就绪时整个 index.ts 初始化失败，导致所有函数（包括登录）不可用；改为 require() 懒加载（首次上传时才执行），binary 加载失败仅导致缩略图跳过，不影响其他功能。",
+  "type": "fix",
+  "seq": 1780547594403
+}

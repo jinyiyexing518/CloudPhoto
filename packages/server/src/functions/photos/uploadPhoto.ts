@@ -12,7 +12,20 @@ import {
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
 import exifr from "exifr";
-import sharp from "sharp";
+// sharp is loaded lazily via require() so a missing/incompatible native binary
+// does not crash the entire function app on startup (would break login, etc.).
+import type sharpT from "sharp";
+let sharpFn: typeof sharpT | null = null;
+function getSharp(): typeof sharpT | null {
+  if (sharpFn !== null) return sharpFn;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    sharpFn = require("sharp") as typeof sharpT;
+    return sharpFn;
+  } catch {
+    return null;
+  }
+}
 
 /** MIME types for which we generate a 400 px WebP thumbnail. */
 const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
@@ -198,16 +211,19 @@ app.http("uploadPhoto", {
       let thumbnailGenerated = false;
       if (!skipThumb) {
         try {
-          const thumbBuf = await sharp(buf)
-            .resize({ width: 400, withoutEnlargement: true })
-            .webp({ quality: 75 })
-            .toBuffer();
-          const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);
-          await thumbClient.uploadData(thumbBuf, {
-            blobHTTPHeaders: { blobContentType: "image/webp" },
-            metadata: { isThumb: "1" },
-          });
-          thumbnailGenerated = true;
+          const sharpFn = getSharp();
+          if (sharpFn) {
+            const thumbBuf = await sharpFn(buf)
+              .resize({ width: 400, withoutEnlargement: true })
+              .webp({ quality: 75 })
+              .toBuffer();
+            const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);
+            await thumbClient.uploadData(thumbBuf, {
+              blobHTTPHeaders: { blobContentType: "image/webp" },
+              metadata: { isThumb: "1" },
+            });
+            thumbnailGenerated = true;
+          }
         } catch (e) {
           context.warn("Thumbnail generation failed (non-fatal):", e);
         }
