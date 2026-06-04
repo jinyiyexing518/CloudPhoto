@@ -1373,8 +1373,18 @@ function AppContent() {
                     onClick={handleToggleUploadPause}
                     title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
                   >
-                    {/* \uFE0E = variation-selector-15: force text (not emoji) rendering */}
-                    {uploadPaused ? "▶︎" : "⏸︎"}
+                    {uploadPaused ? (
+                      /* Play triangle */
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                        <polygon points="3,1 13,7 3,13" />
+                      </svg>
+                    ) : (
+                      /* Pause two bars */
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                        <rect x="2" y="1" width="4" height="12" rx="1" />
+                        <rect x="8" y="1" width="4" height="12" rx="1" />
+                      </svg>
+                    )}
                   </button>
                   <span className="transfer-banner-pct">
                     {Math.round((uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%

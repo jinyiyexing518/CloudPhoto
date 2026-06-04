@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-upload-pause-svg-icons",
+  "date": "2026-06-04",
+  "title": "fix: 上传暂停/继续按钮改用 SVG 图标",
+  "description": "用内联 SVG 三角形和双竖线替换 Unicode ▶︎/⏸︎ 字符，解决部分浏览器将文字变体选择符渲染成 emoji 方框的问题。",
+  "type": "fix",
+  "seq": 1780541168602
+}
