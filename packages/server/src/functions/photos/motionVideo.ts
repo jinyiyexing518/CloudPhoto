@@ -34,12 +34,16 @@ function findMotionVideoRange(
     }
   }
 
-  // ---- vivo VivoLivePhoto:LivePhotoOffset (offset from EOF, same semantics as MicroVideoOffset) ----
-  // Attribute form: VivoLivePhoto:LivePhotoOffset="123456"
-  // Element form:   <VivoLivePhoto:LivePhotoOffset>123456</VivoLivePhoto:LivePhotoOffset>
+  // ---- vivo VivoLivePhoto:LivePhotoOffset / LivePhotoLength ----
+  // Semantics: value = byte count of embedded video measured from EOF
+  // Covers:
+  //   - double quotes:   VivoLivePhoto:LivePhotoOffset="123456"
+  //   - single quotes:   VivoLivePhoto:LivePhotoOffset='123456'
+  //   - element form:    <VivoLivePhoto:LivePhotoOffset>123456</...>
+  //   - Length variant:  VivoLivePhoto:LivePhotoLength="123456"
   const vivoMatch =
-    headerText.match(/LivePhotoOffset[=\s]*"(\d+)"/) ||
-    headerText.match(/LivePhotoOffset[^>]*>(\d+)</);
+    headerText.match(/LivePhoto(?:Offset|Length)[=\s]*["'](\d+)["']/) ||
+    headerText.match(/LivePhoto(?:Offset|Length)[^>]*>(\d+)</);
   if (vivoMatch) {
     const length = parseInt(vivoMatch[1], 10);
     const offset = totalSize - length;
@@ -103,10 +107,42 @@ const KNOWN_VIDEO_BRANDS = new Set([
 ]);
 
 /**
+ * Front-embedded detection: some phones (newer vivo OriginOS) prepend the
+ * MP4 video BEFORE the JPEG rather than appending it after.
+ * File layout: [MP4 video bytes][JPEG bytes]
+ *
+ * Detection: if bytes 4–8 of the header == "ftyp" (standard MP4 box), scan
+ * forward for the JPEG SOI marker (FF D8 FF E0/E1/E2) to find the boundary.
+ * Returns { offset: 0, length: jpegStart }.
+ */
+function findFrontEmbeddedVideoRange(
+  headerBuf: Buffer,
+): { offset: number; length: number } | null {
+  if (headerBuf.length < 12) return null;
+  if (headerBuf.toString("ascii", 4, 8) !== "ftyp") return null;
+  // Validate brand is a plausible video brand
+  const brand = headerBuf.toString("ascii", 8, 12);
+  if (!KNOWN_VIDEO_BRANDS.has(brand) && !/^[A-Za-z0-9 ]{4}$/.test(brand)) return null;
+  // Scan for JPEG SOI: FF D8 FF E0/E1/E2
+  for (let i = 8; i < headerBuf.length - 3; i++) {
+    if (
+      headerBuf[i] === 0xff &&
+      headerBuf[i + 1] === 0xd8 &&
+      headerBuf[i + 2] === 0xff &&
+      headerBuf[i + 3] >= 0xe0 &&
+      headerBuf[i + 3] <= 0xef
+    ) {
+      if (i > 1000) return { offset: 0, length: i };
+    }
+  }
+  return null;
+}
+
+/**
  * Binary fallback: locate the embedded MP4 inside a motion JPEG.
  *
  * Strategy 1 – EOI→ftyp:
- *   Find JPEG EOI (FF D9), then look for MP4 ftyp box within 64 bytes.
+ *   Find JPEG EOI (FF D9), then look for MP4 ftyp box within 512 bytes.
  *   Handles Huawei HwMotionPhoto and phones with small EOI→MP4 gaps.
  *
  * Strategy 2 – standalone ftyp scan:
@@ -248,7 +284,13 @@ app.http("motionVideo", {
       let range = findMotionVideoRange(headerText, totalSize);
       context.log(`[motionVideo] ${blobName}: XMP range=${range ? `offset=${range.offset} len=${range.length}` : "null"}`);
 
-      // Step 3 (fallback): binary scan of the last 8 MB for JPEG EOI → ftyp.
+      // Step 3a (fallback): front-embedded video (video BEFORE JPEG, e.g. newer vivo OriginOS)
+      if (!range) {
+        range = findFrontEmbeddedVideoRange(headerBuf);
+        context.log(`[motionVideo] ${blobName}: front-embedded range=${range ? `offset=${range.offset} len=${range.length}` : "null"}`);
+      }
+
+      // Step 3b (fallback): binary scan of the last 8 MB for JPEG EOI → ftyp.
       // 256 KB was too small — many phones embed videos > 256 KB so the JPEG
       // EOI marker fell before the tail window.  8 MB covers virtually all
       // motion-photo video tracks in the wild.

@@ -10,6 +10,7 @@
 | 后端 | Azure Functions v4 · Node.js 24 · TypeScript | Azure Functions (Consumption) |
 | 存储 | Azure Blob Storage（用户委托 SAS，无账户密钥） | East Asia |
 | 数据库 | Azure Cosmos DB NoSQL（托管身份，无连接字符串） | East Asia |
+| 反向代理 | Nginx · Let's Encrypt SSL（中国大陆入口） | Azure VM B1s · Southeast Asia |
 | CI/CD | GitHub Actions + OIDC 无密码部署 | GitHub |
 
 ---
@@ -78,6 +79,7 @@
 - **邮件邀请流程** — 群组成员添加通过邮件邀请链接完成，7 天有效，未接受前不会加入群组，防止未授权加入
 - **软删除 + 回收站** — Blob 元数据 `deletedAt` 标记软删除，支持按原路径恢复；彻底删除才真正调 Blob Delete API
 - **分离部署 Workflow** — 前后端独立 GitHub Actions，`packages/server/**` 变更只触发后端部署，`packages/client/**` 变更只触发前端部署
+- **新加坡 VM 反向代理** — Azure VM B1s（Southeast Asia）运行 Nginx，将 `cloudphotos.top` 的前端和 `/api/` 流量分别代理到 Azure Static Web App 和 Azure Functions，让中国大陆用户无需翻墙直接访问；Let's Encrypt 自动续签 SSL；infra 脚本一键部署（见 `infra/`）
 
 ---
 
@@ -157,6 +159,8 @@
 
 ## 架构
 
+### 直连模式（国际访问）
+
 ```text
 brave-sand-053b07a00.7.azurestaticapps.net   ← Azure Static Web Apps（前端）
         │
@@ -176,6 +180,25 @@ cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4（后端）
         └── Azure Blob Storage (photostorage / photos)
                 └── 时效用户委托 SAS（2小时，无密钥）
 ```
+
+### VM 反向代理模式（中国大陆访问）
+
+```text
+用户浏览器
+    │
+    │  https://cloudphotos.top
+    ▼
+172.188.17.176  ← Azure VM B1s · Southeast Asia（新加坡）
+Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
+    │
+    ├── /api/*  ──►  cloudphoto-api.azurewebsites.net/api/*
+    │
+    └── /*      ──►  brave-sand-053b07a00.7.azurestaticapps.net
+```
+
+`azurewebsites.net` 和 `azurestaticapps.net` 在中国大陆访问不稳定；VM 作为境外中转，所有请求统一走 `cloudphotos.top`，用户无需翻墙。
+
+详细部署步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`，开发与生产无需修改 URL——前端在构建时读取 `VITE_API_BASE`（默认为 `/api`）。
 

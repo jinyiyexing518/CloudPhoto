@@ -1,0 +1,8 @@
+{
+  "id": "2026-06-04-infra-vm-proxy-vivo-fix",
+  "date": "2026-06-04",
+  "type": "feat",
+  "title": "新加坡 VM 反向代理 + vivo 动态照片修复",
+  "summary": "新增 infra/ 目录，含 Nginx 反向代理配置和一键部署脚本，通过新加坡 Azure VM 让中国大陆用户无需翻墙访问 cloudphotos.top；同步修复 vivo 动态照片提取（支持单引号/LivePhotoLength/前置视频格式）",
+  "seq": 1780556864825
+}

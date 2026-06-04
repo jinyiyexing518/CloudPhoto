@@ -4951,6 +4951,8 @@ body {
 .location-coord-text { font-size: 0.84rem; color: #0369a1; flex: 1; }
 .location-coord-text strong { font-variant-numeric: tabular-nums; }
 .location-coord-confirm { font-size: 0.74rem; color: #7dd3fc; white-space: nowrap; }
+
+.location-result-name {
   font-size: 0.85rem;
   color: #111827;
   line-height: 1.3;
