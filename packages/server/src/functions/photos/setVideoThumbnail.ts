@@ -11,7 +11,18 @@ import {
   generateSasUrlWithKey,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
-import { getSharp } from "../../utils/image/sharpLoader";
+import type sharpT from "sharp";
+let _sharp: typeof sharpT | null = null;
+function getSharp(): typeof sharpT | null {
+  if (_sharp !== null) return _sharp;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _sharp = require("sharp") as typeof sharpT;
+    return _sharp;
+  } catch {
+    return null;
+  }
+}
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 
@@ -58,11 +69,13 @@ app.http("setVideoThumbnail", {
 
       // Resize thumbnail to 400px wide before storing — client sends raw canvas
       // frames which can be 1920×1080 WebP (~500KB); we need ~50KB like image thumbs.
-      const sharpFn = await getSharp();
-      const resizedBuf = await sharpFn(Buffer.from(body))
-        .resize({ width: 400, withoutEnlargement: true })
-        .webp({ quality: 75 })
-        .toBuffer();
+      const sharpFn = getSharp();
+      const resizedBuf = sharpFn
+        ? await sharpFn(Buffer.from(body))
+            .resize({ width: 400, withoutEnlargement: true })
+            .webp({ quality: 75 })
+            .toBuffer()
+        : Buffer.from(body); // sharp unavailable — store as-is (fallback)
 
       // Store the thumbnail blob
       const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);

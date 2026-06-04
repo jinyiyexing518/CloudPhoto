@@ -68,6 +68,7 @@ app.http("listPhotos", {
         groupId: string | undefined;
         url: string;
         thumbnailUrl: string | undefined;
+        previewUrl: string | undefined;
         size: number | undefined;
         lastModified: Date | undefined;
         contentType: string | undefined;
