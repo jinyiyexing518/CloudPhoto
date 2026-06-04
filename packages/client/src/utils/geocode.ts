@@ -1,7 +1,7 @@
 /** Module-level Promise cache so duplicate calls share the same in-flight request. */
 const cache = new Map<string, Promise<string | null>>();
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
+import { API_BASE } from "./apiBase";
 
 /** Retrieve the stored auth token (mirrors authHeaders() in photoApi.ts) */
 function getToken(): string | null {

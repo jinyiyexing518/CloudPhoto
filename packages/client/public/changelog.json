@@ -1,5 +1,14 @@
 [
   {
+    "id": "2026-06-04-smart-api-base",
+    "date": "2026-06-04",
+    "type": "perf",
+    "title": "perf(client): 运行时按域名选择 API 地址",
+    "seq": 1780558821031,
+    "desc": "从 cloudphotos.top 访问时使用相对路径 /api（走 Nginx 代理），从 SWA 直连时使用直连 Azure Functions URL，两个入口均无额外跳跃",
+    "icon": "✨"
+  },
+  {
     "id": "2026-06-04-infra-vm-proxy-vivo-fix",
     "date": "2026-06-04",
     "type": "feat",

@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
+import { API_BASE } from "../utils/apiBase";
 
 const TOKEN_KEY = "cloudphoto_token";
 const REFRESH_TOKEN_KEY = "cloudphoto_refresh_token";

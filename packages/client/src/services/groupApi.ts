@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
+import { API_BASE } from "../utils/apiBase";
 
 function getToken(): string | null {
   return localStorage.getItem("cloudphoto_token");
