@@ -1650,7 +1650,7 @@ function AppContent() {
               />
             )}
 
-            <ErrorBoundary key={activeTab} label={activeTab}>
+            <ErrorBoundary label="main">
             {loading ? (
           <div className="loading">
             <div className="loading-spinner" />
@@ -1670,56 +1670,65 @@ function AppContent() {
               <button className="empty-gallery-btn" onClick={() => switchTab("folder")}>去上传照片</button>
             </div>
           </div>
-        ) : activeTab === "timeline" && filteredPhotos.length === 0 ? (
-          <div className="empty-gallery empty-gallery--actionable">
-            <div className="empty-gallery-icon">🔎</div>
-            <p className="empty-gallery-title">当前筛选没有匹配照片</p>
-            <p className="empty-gallery-sub">可以一键清空筛选，或者去文件夹视图继续上传和整理。</p>
-            <div className="empty-gallery-actions">
-              {timelineHasActiveFilters && (
-                <button className="empty-gallery-btn" onClick={() => setFilters(emptyFilter)}>
-                  清空筛选
-                </button>
-              )}
-              <button className="empty-gallery-btn empty-gallery-btn--secondary" onClick={() => switchTab("folder")}>
-                去文件夹视图
-              </button>
-            </div>
-          </div>
-            ) : activeTab === "timeline" ? (
-              <>
-                {todayUploads.length > 0 && activeTab === "timeline" && !filters.dateFrom && (
-                  <div className="today-uploads-notice">
-                    <span>📸 今天上传了 <strong>{todayUploads.length}</strong> 张</span>
-                    <button
-                      className="today-uploads-jump"
-                      onClick={() => applyQuickDateFilter(activeDateChip === "today" ? null : "today")}
-                    >{activeDateChip === "today" ? "取消筛选" : "仅查看今日"}</button>
+        ) : (
+          <>
+            {/* ── Timeline panel ── kept mounted so thumbnail imgLoaded state and browser-cached
+                images survive tab switches. Only hidden via CSS, never unmounted. */}
+            <div style={{ display: activeTab === "timeline" ? "" : "none" }}>
+              {activeTab === "timeline" && filteredPhotos.length === 0 ? (
+                <div className="empty-gallery empty-gallery--actionable">
+                  <div className="empty-gallery-icon">🔎</div>
+                  <p className="empty-gallery-title">当前筛选没有匹配照片</p>
+                  <p className="empty-gallery-sub">可以一键清空筛选，或者去文件夹视图继续上传和整理。</p>
+                  <div className="empty-gallery-actions">
+                    {timelineHasActiveFilters && (
+                      <button className="empty-gallery-btn" onClick={() => setFilters(emptyFilter)}>
+                        清空筛选
+                      </button>
+                    )}
+                    <button className="empty-gallery-btn empty-gallery-btn--secondary" onClick={() => switchTab("folder")}>
+                      去文件夹视图
+                    </button>
                   </div>
-                )}
-                <OnThisDayCard photos={photos} onJumpToPhoto={jumpToTimelinePhoto} />
-              <PhotoGallery
-                photos={filteredPhotos}
-                onDelete={handleDelete}
-                onBatchDelete={handleBatchDeleteWithProgress}
-                onSubjectUpdate={handleSubjectUpdate}
-                onTakenAtUpdate={handleTakenAtUpdate}
-                onGpsUpdate={handleGpsUpdate}
-                onRenamePhoto={handleRenamePhoto}
-                onToggleFavorite={handleToggleFavorite}
-                onMovePhoto={handleMovePhoto}
-                onDownloadStateChange={setDownloading}
-                onShareCreated={handleMomentShareCreated}
-                userName={user?.displayName}
-                showImportantMoments={false}
-                reverseOrder={photoSortAsc}
-                sortKey={photoSortKey}
-                gridSize={gridSize}
-                focusPhotoName={timelineFocusPhotoName ?? undefined}
-                focusRequestKey={timelineFocusRequestKey}
-              />
-              </>
-            ) : activeTab === "moments" ? (
+                </div>
+              ) : (
+                <>
+                  {todayUploads.length > 0 && !filters.dateFrom && (
+                    <div className="today-uploads-notice">
+                      <span>📸 今天上传了 <strong>{todayUploads.length}</strong> 张</span>
+                      <button
+                        className="today-uploads-jump"
+                        onClick={() => applyQuickDateFilter(activeDateChip === "today" ? null : "today")}
+                      >{activeDateChip === "today" ? "取消筛选" : "仅查看今日"}</button>
+                    </div>
+                  )}
+                  <OnThisDayCard photos={photos} onJumpToPhoto={jumpToTimelinePhoto} />
+                  <PhotoGallery
+                    photos={filteredPhotos}
+                    onDelete={handleDelete}
+                    onBatchDelete={handleBatchDeleteWithProgress}
+                    onSubjectUpdate={handleSubjectUpdate}
+                    onTakenAtUpdate={handleTakenAtUpdate}
+                    onGpsUpdate={handleGpsUpdate}
+                    onRenamePhoto={handleRenamePhoto}
+                    onToggleFavorite={handleToggleFavorite}
+                    onMovePhoto={handleMovePhoto}
+                    onDownloadStateChange={setDownloading}
+                    onShareCreated={handleMomentShareCreated}
+                    userName={user?.displayName}
+                    showImportantMoments={false}
+                    reverseOrder={photoSortAsc}
+                    sortKey={photoSortKey}
+                    gridSize={gridSize}
+                    focusPhotoName={timelineFocusPhotoName ?? undefined}
+                    focusRequestKey={timelineFocusRequestKey}
+                  />
+                </>
+              )}
+            </div>
+
+            {/* ── Moments panel ── kept mounted */}
+            <div style={{ display: activeTab === "moments" ? "" : "none" }}>
               <PhotoGallery
                 photos={importantPhotos}
                 onDelete={handleDelete}
@@ -1740,7 +1749,10 @@ function AppContent() {
                 onMomentsCountChange={setMomentsDisplayCount}
                 gridSize={gridSize}
               />
-            ) : activeTab === "folder" ? (
+            </div>
+
+            {/* ── Folder panel ── kept mounted */}
+            <div style={{ display: activeTab === "folder" ? "" : "none" }}>
               <Suspense fallback={null}><FolderView
                 key={currentGroupId || "personal"}
                 photos={photos}
@@ -1760,7 +1772,9 @@ function AppContent() {
                 currentGroupId={currentGroupId || undefined}
                 contextKey={currentGroupId || "personal"}
               /></Suspense>
-            ) : null}
+            </div>
+
+            {/* ── Map / Capsule / Story: lazy-conditional (heavier bundles, visited less often) */}
             {activeTab === "map" && (
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
                 <MemoryMap
@@ -1783,6 +1797,8 @@ function AppContent() {
                 <AutoStory photos={photos} />
               </Suspense>
             )}
+          </>
+        )}
             </ErrorBoundary>
           </div>
 

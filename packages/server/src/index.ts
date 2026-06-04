@@ -8,6 +8,7 @@ import "./functions/photos/updatePhotoMetadata";
 import "./functions/photos/movePhoto";
 import "./functions/photos/renameFolder";
 import "./functions/photos/downloadPhoto";
+import "./functions/photos/motionVideo";
 import "./functions/photos/getPhotoLocations";
 import "./functions/share/createShareLink";
 import "./functions/share/openShareLink";
