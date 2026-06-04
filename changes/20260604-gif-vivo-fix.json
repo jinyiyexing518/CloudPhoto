@@ -1,0 +1,1 @@
+{"id":"gif-vivo-fix","date":"2026-06-04","icon":"🎞️","title":"动图在 Vivo / Android 上可以正常播放","desc":"移除 loading=lazy 和 decoding=async 修复 Android WebView GIF 只显示第一帧的问题","type":"fix"}

@@ -1,0 +1,1 @@
+{"id":"refactor-service-split","date":"2026-06-04","icon":"🏗️","title":"服务层重构 · 目录整理","desc":"前端 photoApi.ts 拆分为 http / authApi / uploadApi / shareApi 四个模块，features/share 迁移至 services/share","type":"improvement"}

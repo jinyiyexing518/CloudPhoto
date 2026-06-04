@@ -1,0 +1,1 @@
+{"id":"tab-caching","date":"2026-06-04","icon":"⚡","title":"Tab 切换缓存","desc":"时间线、瞬间、文件夹 Tab 切换不再重新加载，通过 display:none 保持挂载","type":"improvement"}

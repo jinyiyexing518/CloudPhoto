@@ -1,0 +1,1 @@
+{"id":"motion-video-404-fix","date":"2026-06-04","icon":"🎬","title":"动态视频 404 修复","desc":"补全 motionVideo 函数注册，修复 GET /api/photos/motion-video 404 错误","type":"fix"}
