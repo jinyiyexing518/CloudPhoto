@@ -185,8 +185,12 @@ app.http("uploadPhoto", {
           } catch { /* best-effort */ }
         }
       }
-      // Animated check must happen before upload so we can conditionally skip thumbnail
-      const skipThumb = !willGenerateThumb || isAnimated;
+      // Animated check must happen before upload so we can conditionally skip thumbnail.
+      // Motion photos (animated JPEG) are handled like static images — sharp processes the JPEG
+      // portion and ignores the embedded video track, producing a valid WebP thumbnail.
+      // GIFs and animated WebPs are skipped because they need the full file to play.
+      const isMotionPhotoUpload = isAnimated && (mimeType === "image/jpeg" || mimeType === "image/jpg");
+      const skipThumb = !willGenerateThumb || (isAnimated && !isMotionPhotoUpload);
 
       await blockBlobClient.uploadData(buf, {
         blobHTTPHeaders: { blobContentType: contentType },

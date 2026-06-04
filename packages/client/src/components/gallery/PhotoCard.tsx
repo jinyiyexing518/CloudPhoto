@@ -130,6 +130,20 @@ function PhotoCard({
               onLoadedMetadata={handleVideoMetadata}
               onSeeked={handleVideoSeeked}
             />
+          ) : isMotionPhoto ? (
+            <img
+              src={photo.thumbnailUrl ?? photo.url}
+              alt={displayName}
+              loading="lazy"
+              decoding="async"
+              className={imgLoaded ? "img-loaded" : "img-loading"}
+              onLoad={() => setImgLoaded(true)}
+              onError={(e) => {
+                if (photo.thumbnailUrl && e.currentTarget.src !== photo.url) {
+                  e.currentTarget.src = photo.url;
+                }
+              }}
+            />
           ) : isAnimated ? (
             <img
               src={gifPaused ? BLANK_GIF : photo.url}

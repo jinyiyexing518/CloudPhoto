@@ -67,8 +67,12 @@ app.http("backfillThumbnails", {
         const mime = blob.properties.contentType ?? "";
         if (!THUMBNAIL_MIME.has(mime)) { skipped++; continue; }
 
-        // Skip animated images (GIFs and detected animated blobs)
-        if (getMeta(blob.metadata, "isAnimated") === "1") { skipped++; continue; }
+        // Skip animated images except motion photos (animated JPEG).
+        // Motion photos: sharp processes the JPEG portion fine, producing a valid thumbnail.
+        // GIFs and animated WebPs need the full file to play so are left as-is.
+        const isMotionPhotoBlob = getMeta(blob.metadata, "isAnimated") === "1"
+          && (mime === "image/jpeg" || mime === "image/jpg");
+        if (getMeta(blob.metadata, "isAnimated") === "1" && !isMotionPhotoBlob) { skipped++; continue; }
 
         // Skip blobs that already have a thumbnail
         if (getMeta(blob.metadata, "thumbnailName")) { skipped++; continue; }
