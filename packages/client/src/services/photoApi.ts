@@ -250,11 +250,37 @@ export interface PhotoLocation {
   contentType?: string;
 }
 
+// ── Blob URL proxy (cloudphotos.top only) ──────────────────────────────────
+// On cloudphotos.top, rewrite direct blob SAS URLs to /media/{path}?{sasParams}
+// so all photo/video traffic flows through the Singapore VM instead of the
+// browser connecting to blob storage (East Asia) directly. The VM → blob path
+// uses the Azure private backbone which is faster from China than the public route.
+function proxyBlobUrl(url: string): string {
+  if (typeof window === "undefined" || window.location.hostname !== "cloudphotos.top") return url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.endsWith(".blob.core.windows.net")) return url;
+    // pathname = /{container}/{blobPath}  →  strip leading /{container}/
+    const blobPath = parsed.pathname.split("/").slice(2).join("/");
+    return "/media/" + blobPath + parsed.search;
+  } catch { return url; }
+}
+
+function proxyPhoto(photo: Photo): Photo {
+  return {
+    ...photo,
+    url: proxyBlobUrl(photo.url),
+    thumbnailUrl: photo.thumbnailUrl ? proxyBlobUrl(photo.thumbnailUrl) : undefined,
+    voiceMemoUrl: photo.voiceMemoUrl ? proxyBlobUrl(photo.voiceMemoUrl) : undefined,
+  };
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 export async function listPhotos(groupId = ""): Promise<Photo[]> {
   const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
   const response = await fetchWithTimeout(url, { headers: authHeaders() });
   if (!response.ok) throw new Error("Failed to fetch photos");
-  return response.json() as Promise<Photo[]>;
+  return (await response.json() as Photo[]).map(proxyPhoto);
 }
 
 /**
@@ -301,7 +327,7 @@ export async function uploadPhoto(
     const msg = await response.json().catch(() => ({ error: "Upload failed" }));
     throw new Error((msg as { error?: string }).error ?? `上传失败: ${file.name}`);
   }
-  return response.json() as Promise<Photo>;
+  return proxyPhoto(await response.json() as Photo);
 }
 
 export function uploadPhotoWithProgress(
@@ -338,7 +364,7 @@ export function uploadPhotoWithProgress(
 
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        try { resolve(JSON.parse(xhr.responseText) as Photo); }
+        try { resolve(proxyPhoto(JSON.parse(xhr.responseText) as Photo)); }
         catch { reject(new Error(`上传失败: ${file.name}`)); }
       } else {
         try {
@@ -420,7 +446,7 @@ export async function setVideoThumbnail(blobName: string, thumbnail: Blob): Prom
     );
     if (!res.ok) return null;
     const json = await res.json() as { thumbnailUrl?: string };
-    return json.thumbnailUrl ?? null;
+    return json.thumbnailUrl ? proxyBlobUrl(json.thumbnailUrl) : null;
   } catch {
     return null;
   }
@@ -622,7 +648,7 @@ export async function listTrashPhotos(groupId = ""): Promise<Photo[]> {
     : `${API_BASE}/photos/trash`;
   const response = await fetchWithTimeout(url, { headers: authHeaders() });
   if (!response.ok) throw new Error("Failed to fetch trash");
-  return response.json() as Promise<Photo[]>;
+  return (await response.json() as Photo[]).map(proxyPhoto);
 }
 
 export async function restorePhoto(name: string): Promise<void> {
