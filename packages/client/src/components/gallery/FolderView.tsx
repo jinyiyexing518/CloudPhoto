@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import {
   Photo,
   updatePhotoSubject,
@@ -779,6 +779,14 @@ function FolderContent({
   };
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
+  const selectedTotalSize = useMemo(() => {
+    const bytes = directPhotos.filter((p) => selected.has(p.name)).reduce((sum, p) => sum + (p.size ?? 0), 0);
+    if (bytes === 0) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }, [selected, directPhotos]);
+
   useEffect(() => {
     onDownloadStateChange?.(downloading);
     return () => onDownloadStateChange?.(false);
@@ -1216,7 +1224,7 @@ function FolderContent({
               {allSelected ? "取消全选" : "全选"}
             </button>
           )}
-          {selectMode && <span className="batch-count">已选 {selected.size} 张</span>}
+          {selectMode && <span className="batch-count">已选 {selected.size} 张{selectedTotalSize ? ` · ${selectedTotalSize}` : ""}</span>}
           {selectMode && selected.size > 0 && (
             <>
               <button className="batch-select-btn" onClick={() => void handleBatchRename()}>重命名 ({selected.size})</button>

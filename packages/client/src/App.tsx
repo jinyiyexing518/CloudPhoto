@@ -211,6 +211,7 @@ function AppContent() {
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
+  const [momentsDisplayCount, setMomentsDisplayCount] = useState<number | null>(null);
   const [managedShareLinks, setManagedShareLinks] = useState<ManagedShareLink[]>([]);
   const [managedShareLinksCount, setManagedShareLinksCount] = useState(0);
   const [managedShareViewsTotal, setManagedShareViewsTotal] = useState(0);
@@ -1456,7 +1457,7 @@ function AppContent() {
             onClick={(e) => { switchTab("moments"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
           >
             <span>⭐ 重要片段</span>
-            <span className="view-tab-count">{importantPhotos.length}</span>
+            <span className="view-tab-count">{momentsDisplayCount ?? Math.min(importantPhotos.length, 20)}</span>
           </button>
           <button
             className={`view-tab${activeTab === "map" ? " active" : ""}`}
@@ -1711,6 +1712,7 @@ function AppContent() {
                 showImportantMoments={false}
                 momentsMode
                 momentsShareViews={momentsShareViews}
+                onMomentsCountChange={setMomentsDisplayCount}
                 gridSize={gridSize}
               />
             ) : activeTab === "folder" ? (

@@ -49,6 +49,8 @@ interface Props {
   sortKey?: "taken" | "uploaded";
   /** Thumbnail grid density */
   gridSize?: "sm" | "md" | "lg";
+  /** Called with the number of moments cards currently shown (after filter + cap) */
+  onMomentsCountChange?: (count: number) => void;
 }
 
 interface DateGroup {
@@ -260,6 +262,7 @@ function PhotoGallery({
   onMovePhoto,
   onBatchDelete,
   onDownloadStateChange,
+  onMomentsCountChange,
   onShareCreated,
   userName,
   showMemoryHighlights = true,
@@ -599,6 +602,11 @@ function PhotoGallery({
 
     return ranked.slice(0, MOMENTS_MAX).map((item, index) => ({ ...item, rank: index + 1 }));
   }, [flatPhotos, getMomentScore, momentsFilters, momentsInsightsMap, momentsShareViews, visibleCount]);
+
+  // Report actual displayed moments count to parent (for tab badge)
+  useEffect(() => {
+    if (momentsMode) onMomentsCountChange?.(momentCards.length);
+  }, [momentCards.length, momentsMode, onMomentsCountChange]);
 
   const modalPhotos = useMemo(
     () => (momentsMode ? momentCards.map((item) => item.photo) : flatPhotos),
