@@ -210,13 +210,33 @@ export interface Photo {
 /**
  * Fetch the embedded motion video from a Google/Samsung/etc. motion JPEG.
  * Returns a Blob URL (remember to call URL.revokeObjectURL when done), or null on failure.
+/**
+ * Result of a motion video extraction attempt.
+ * - `url`: blob URL to play (caller must revoke when done)
+ * - `error`: human-readable reason why extraction failed
+ * - `reason`: machine-readable code, e.g. "apple-live-photo"
  */
-export async function fetchMotionVideoBlob(photoName: string): Promise<string | null> {
+export interface MotionVideoResult {
+  url: string | null;
+  error: string | null;
+  reason: string | null;
+}
+
+export async function fetchMotionVideoBlob(photoName: string): Promise<MotionVideoResult> {
   const url = `${API_BASE}/photos/motion-video?name=${encodeURIComponent(photoName)}`;
   const res = await fetchWithTimeout(url, { headers: authHeaders() }, 30000).catch(() => null);
-  if (!res?.ok) return null;
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+  if (!res) return { url: null, error: "网络请求失败，请重试", reason: "network-error" };
+  if (res.ok) {
+    const blob = await res.blob();
+    return { url: URL.createObjectURL(blob), error: null, reason: null };
+  }
+  // Parse structured error from server
+  try {
+    const body = await res.json() as { error?: string; reason?: string };
+    return { url: null, error: body.error ?? "动态视频提取失败", reason: body.reason ?? null };
+  } catch {
+    return { url: null, error: "动态视频提取失败", reason: null };
+  }
 }
 
 /** Lightweight GPS-only record from the fast Cosmos cache */

@@ -1,5 +1,14 @@
 [
   {
+    "id": "2026-06-04-motion-video-diagnostics",
+    "date": "2026-06-04",
+    "title": "fix: 动态照片提取-诊断日志+Apple Live Photo 专项处理",
+    "type": "fix",
+    "seq": 1780542762564,
+    "desc": "1) 服务端新增详细 context.log（文件大小、检测到的 XMP 标记、XMP range、binary range），便于在 Azure 日志里排查提取失败原因。2) 提前检测 Apple Live Photo JPEG（apple_fi/Photos:Live XMP 标记），返回专属 422+reason=apple-live-photo，提示用户改用 HEIC 格式上传。3) fetchMotionVideoBlob 改返回 MotionVideoResult 结构体，携带 error/reason 字段；客户端直接展示服务端返回的具体错误信息。",
+    "icon": "🔧"
+  },
+  {
     "id": "2026-06-04-whats-new-feat-first",
     "date": "2026-06-04",
     "title": "feat: WhatsNew 弹窗 feature 优先、fix 默认折叠",

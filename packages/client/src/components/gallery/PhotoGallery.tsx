@@ -1410,9 +1410,11 @@ function PhotoGallery({
                           disabled={motionVideoLoading}
                           onClick={async () => {
                             setMotionVideoLoading(true);
-                            const url = await fetchMotionVideoBlob(selectedPhoto.name);
-                            if (!url) showToast("未找到嵌入的动态视频，此格式可能暂不支持", "error");
-                            setMotionVideoUrl(url);
+                            const result = await fetchMotionVideoBlob(selectedPhoto.name);
+                            if (!result.url) {
+                              showToast(result.error ?? "动态视频提取失败", "error");
+                            }
+                            setMotionVideoUrl(result.url);
                             setMotionVideoLoading(false);
                           }}
                           title="播放动态视频"

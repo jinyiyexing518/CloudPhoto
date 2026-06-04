@@ -192,7 +192,30 @@ app.http("motionVideo", {
       const headerBuf = Buffer.concat(headerChunks);
       const headerText = headerBuf.toString("latin1");
 
+      // Detect Apple Live Photo JPEG early — the video is a *separate* .mov file
+      // and is NOT embedded in the JPEG itself.  Return a clear error rather than
+      // wasting time scanning for a video that isn't there.
+      const isAppleLivePhoto =
+        headerText.includes("apple_fi") || headerText.includes("Photos:Live");
+      if (isAppleLivePhoto) {
+        context.log(`[motionVideo] ${blobName}: detected Apple Live Photo JPEG — video not embedded`);
+        return {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            error: "Apple 实况照片（Live Photo）的视频部分是独立文件，无法从 JPEG 中提取。请以 HEIC 格式上传以保留动态效果。",
+            reason: "apple-live-photo",
+          }),
+        };
+      }
+
+      // Detect which XMP markers are present (for diagnostic logging)
+      const xmpMarkers = ["MotionPhoto", "MicroVideo", "GCamera", "HwMotionPhoto", "VivoLivePhoto"]
+        .filter((m) => headerText.includes(m));
+      context.log(`[motionVideo] ${blobName}: size=${totalSize}, xmpMarkers=[${xmpMarkers.join(",")}]`);
+
       let range = findMotionVideoRange(headerText, totalSize);
+      context.log(`[motionVideo] ${blobName}: XMP range=${range ? `offset=${range.offset} len=${range.length}` : "null"}`);
 
       // Step 3 (fallback): binary scan of the last 8 MB for JPEG EOI → ftyp.
       // 256 KB was too small — many phones embed videos > 256 KB so the JPEG
@@ -214,6 +237,7 @@ app.http("motionVideo", {
           tailBuf = Buffer.concat(tailChunks);
         }
         range = findMotionVideoByBinary(tailBuf, totalSize);
+        context.log(`[motionVideo] ${blobName}: binary range=${range ? `offset=${range.offset} len=${range.length}` : "null"}`);
       }
 
       if (!range) {
