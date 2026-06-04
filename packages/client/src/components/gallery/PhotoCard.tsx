@@ -37,17 +37,7 @@ function PhotoCard({
   const [videoDuration, setVideoDuration] = useState<string | null>(null);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  // GIF progressive loading: show static thumbnail immediately, upgrade to full GIF in background
-  const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() =>
-    isAnimated && !isMotionPhoto && photo.thumbnailUrl ? photo.thumbnailUrl : photo.url
-  );
-  const gifPreloadDone = useRef(false);
-  const videoThumbImgRef = useRef<HTMLImageElement>(null);
-  const gifImgRef = useRef<HTMLImageElement>(null);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
-  // Show static thumbnail for videos that already have one (generated client-side at upload).
-  // Fall back to <video> seek approach if no thumbnail or if the thumbnail 404s.
-  const useVideoThumb = isVideo && !!photo.thumbnailUrl && !videoThumbFailed;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
   // Motion photo = animated JPEG (Android/Google Motion Photo) — browser can't play the video part
@@ -55,6 +45,16 @@ function PhotoCard({
     (photo.contentType === "image/jpeg" || photo.contentType === "image/jpg");
   const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
     photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
+  // GIF progressive loading: show static thumbnail immediately, upgrade to full GIF in background
+  const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() =>
+    isAnimated && !isMotionPhoto && photo.thumbnailUrl ? photo.thumbnailUrl : photo.url
+  );
+  const gifPreloadDone = useRef(false);
+  const videoThumbImgRef = useRef<HTMLImageElement>(null);
+  const gifImgRef = useRef<HTMLImageElement>(null);
+  // Show static thumbnail for videos that already have one (generated client-side at upload).
+  // Fall back to <video> seek approach if no thumbnail or if the thumbnail 404s.
+  const useVideoThumb = isVideo && !!photo.thumbnailUrl && !videoThumbFailed;
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // For video thumbnails served as <img>: if the image is already cached the browser
