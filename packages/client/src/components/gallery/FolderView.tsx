@@ -15,8 +15,8 @@ import {
   fetchMotionVideoBlob,
   getViewerSrc,
 } from "../../services/photoApi";
-import { addRecentShareLink } from "../../features/share/shareLinksStore";
-import { copyText } from "../../features/share/clipboard";
+import { addRecentShareLink } from "../../services/share/shareLinksStore";
+import { copyText } from "../../services/share/clipboard";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";

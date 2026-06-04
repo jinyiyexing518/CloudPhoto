@@ -1,5 +1,19 @@
 # 更新日志
 
+### v1.8.0 — 服务层重构 · 性能优化 · Tab 缓存 · 动图修复
+
+**Bug 修复**
+- **🎞️ 动图在 Vivo / Android 上无法播放** — 移除 `isAnimated` 和 `isMotionPhoto` 路径上的 `loading="lazy"` 与 `decoding="async"`；部分 Android WebView 异步解码导致 GIF 只渲染第一帧，Funtouch OS 在 `opacity:0` 时不加载懒图
+- **🖼️ 视频封面图 UI 卡在 loading 状态** — 移除 `useVideoThumb` 路径的 `loading="lazy"`；添加 `videoThumbImgRef` + `useEffect` 处理 `img.complete` 竞态（图片在 React 绑定 onLoad 前从缓存完成加载）
+- **🎬 动态视频返回 404** — `motionVideo.ts` 函数从未被 `server/src/index.ts` 导入，补全 `import "./functions/photos/motionVideo"`
+
+**新功能 / 优化**
+- **⚡ Tab 切换缓存** — 时间线、瞬间、文件夹三个主要 Tab 改为 `display:none` 隐藏而非卸载，切换回来不再重新加载缩略图；移除 `key={activeTab}` 避免 ErrorBoundary 重置整棵树
+- **🏗️ 前端服务层拆分** — `photoApi.ts`（899 行 God File）拆分为四个职责单一的模块：`http.ts`（HTTP 工具）、`authApi.ts`（认证）、`uploadApi.ts`（上传）、`shareApi.ts`（分享链接）；`photoApi.ts` 保留为兼容性 barrel，所有现有 import 无需修改
+- **📁 目录整理** — `features/share/` → `services/share/`；`scripts/migrate-photo-locations.mjs` → `scripts/migrations/`
+
+---
+
 - **⭐ 重要片段最多展示 Top 20** — 重要片段视图按评分排序后固定只展示前 20 张，提升加载速度与准确性；「加载更多」按钮在此模式下隐藏
 
 ### v1.7.0 — EXIF 时区修复 · 排序方式切换 · 历史回填 · 批量编辑

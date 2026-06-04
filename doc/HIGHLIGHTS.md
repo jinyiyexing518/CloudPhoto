@@ -58,6 +58,7 @@
   - 我们的方案：Workbox `CacheFirst` + `matchOptions: { ignoreSearch: true }` — Service Worker 以路径为缓存键，忽略 SAS 参数；效果等同于个人 CDN  
   - 效果：重复访问 **0 字节**；600 条目 / 7 天 / `purgeOnQuotaError` 自动淘汰；SW 全模式注册（非 PWA 普通浏览器同样受益）
 - **nginx 浏览器缓存头** — `Cache-Control: public, max-age=3600, stale-while-revalidate=7200`，覆盖 Azure Blob 默认 `no-cache`；无 SW 的浏览器在 SAS 有效期内命中 HTTP 缓存
+- **Tab 切换零重载** — 时间线/瞬间/文件夹三个主 Tab 通过 `display:none` 保持挂载，切换回来无需重新拉取数据或重渲缩略图；Map/TimeCapsule/Story 等重型 Tab 仍按需挂载（懒加载 bundle）
 - **骨架屏** — 每张卡片渲染前展示闪光骨架，消除 CLS
 - **防抖搜索** — 300ms 防抖，避免每次击键触发全列表重渲
 - **useMemo 隔离大计算** — 时间线分组、片段评分、可见切片均按依赖变化重算
@@ -116,4 +117,5 @@
 - **monorepo（yarn workspaces）** — 统一 `yarn.lock`
 - **Pre-push 变更日志强制** — git hook 要求每次推送附带 `changes/*.json`
 - **`collect-changes.mjs`** — 自动生成 `changelog.json`，驱动前端 What's New 弹窗
+- **前端服务层分域拆分** — `photoApi.ts` God File（899 行）拆为 `http.ts`（HTTP 工具）、`authApi.ts`（认证）、`uploadApi.ts`（上传）、`shareApi.ts`（分享）四个模块；`photoApi.ts` 保留为 barrel，零破坏性
 - **后端按领域分层** — `utils/blob/`、`cosmos/`、`auth/`、`email/`

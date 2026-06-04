@@ -11,8 +11,8 @@ import {
   backfillPhotoMetadata,
   backfillThumbnails,
 } from "../../services/photoApi";
-import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../features/share/shareLinksStore";
-import { copyText } from "../../features/share/clipboard";
+import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../services/share/shareLinksStore";
+import { copyText } from "../../services/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 
