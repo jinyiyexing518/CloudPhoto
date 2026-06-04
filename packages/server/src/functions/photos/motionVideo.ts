@@ -59,24 +59,44 @@ function findMotionVideoRange(
 }
 
 /**
- * Binary fallback: search the trailing bytes of the file for an MP4 ftyp atom
- * that immediately follows the JPEG EOI marker (0xFF 0xD9).
- * This handles phones (e.g. Huawei HwMotionPhoto) that append the video
- * after the JPEG without recording an explicit offset in XMP.
+ * Known MP4/QuickTime ftyp major brands — used to validate a found ftyp box.
+ * All are 4 ASCII bytes (padded with space when < 4 chars).
+ */
+const KNOWN_VIDEO_BRANDS = new Set([
+  "isom", "iso2", "iso3", "iso4", "iso5",
+  "mp41", "mp42", "avc1", "M4V ", "M4P ",
+  "qt  ",                                    // Apple QuickTime
+  "3gp4", "3gp5", "3gp6", "3gp7",
+  "3g2a", "3g2b", "3g2c",
+  "mmp4", "f4v ", "isop", "hevc", "hvc1",
+]);
+
+/**
+ * Binary fallback: locate the embedded MP4 inside a motion JPEG.
+ *
+ * Strategy 1 – EOI→ftyp:
+ *   Find JPEG EOI (FF D9), then look for MP4 ftyp box within 64 bytes.
+ *   Handles Huawei HwMotionPhoto and phones with small EOI→MP4 gaps.
+ *
+ * Strategy 2 – standalone ftyp scan:
+ *   Search the tail buffer for any ftyp box whose major brand is a known
+ *   video brand.  This catches phones where the JPEG EOI is BEFORE the
+ *   tail window (i.e. the embedded video is > tailSize bytes).
  */
 function findMotionVideoByBinary(
   trailingBuf: Buffer,
   totalSize: number,
 ): { offset: number; length: number } | null {
-  // Scan for JPEG EOI (FF D9), then expect MP4 ftyp box right after
+  const tailStartOffset = totalSize - trailingBuf.length;
+
+  // ── Strategy 1: JPEG EOI (FF D9) → ftyp within 64 bytes ─────────────────
   for (let i = 0; i < trailingBuf.length - 8; i++) {
     if (trailingBuf[i] === 0xff && trailingBuf[i + 1] === 0xd9) {
-      const mp4Start = i + 2;
-      if (mp4Start + 8 <= trailingBuf.length) {
-        // Check for ftyp atom: [4-byte size][ftyp]
-        const atomType = trailingBuf.toString("ascii", mp4Start + 4, mp4Start + 8);
+      const searchEnd = Math.min(i + 66, trailingBuf.length - 8);
+      for (let j = i + 2; j < searchEnd; j++) {
+        const atomType = trailingBuf.toString("ascii", j + 4, j + 8);
         if (atomType === "ftyp") {
-          const fileOffset = totalSize - trailingBuf.length + mp4Start;
+          const fileOffset = tailStartOffset + j;
           const length = totalSize - fileOffset;
           if (fileOffset > 1000 && length > 0) {
             return { offset: fileOffset, length };
@@ -85,6 +105,26 @@ function findMotionVideoByBinary(
       }
     }
   }
+
+  // ── Strategy 2: find any valid ftyp box with a known video brand ─────────
+  // Useful when the JPEG EOI is before the tail window (large embedded video).
+  for (let i = 0; i < trailingBuf.length - 12; i++) {
+    const atomType = trailingBuf.toString("ascii", i + 4, i + 8);
+    if (atomType !== "ftyp") continue;
+    // Validate box size: ftyp header is typically 16–32 bytes, never > 256
+    const boxSize = trailingBuf.readUInt32BE(i);
+    if (boxSize < 8 || boxSize > 256) continue;
+    // Validate major brand
+    const brand = trailingBuf.toString("ascii", i + 8, i + 12);
+    if (!KNOWN_VIDEO_BRANDS.has(brand) && !/^[A-Za-z0-9 ]{4}$/.test(brand)) continue;
+    const fileOffset = tailStartOffset + i;
+    // Video must start in the second quarter of the file or later
+    if (fileOffset > totalSize / 4 && fileOffset < totalSize) {
+      const length = totalSize - fileOffset;
+      return { offset: fileOffset, length };
+    }
+  }
+
   return null;
 }
 
@@ -154,11 +194,12 @@ app.http("motionVideo", {
 
       let range = findMotionVideoRange(headerText, totalSize);
 
-      // Step 3 (fallback): binary scan of the last 256 KB for JPEG EOI → ftyp.
-      // This handles formats like Huawei HwMotionPhoto that don't encode an explicit
-      // XMP offset but simply append the MP4 after the JPEG EOI marker.
+      // Step 3 (fallback): binary scan of the last 8 MB for JPEG EOI → ftyp.
+      // 256 KB was too small — many phones embed videos > 256 KB so the JPEG
+      // EOI marker fell before the tail window.  8 MB covers virtually all
+      // motion-photo video tracks in the wild.
       if (!range) {
-        const tailSize = Math.min(262144, totalSize);
+        const tailSize = Math.min(8 * 1024 * 1024, totalSize);
         let tailBuf: Buffer;
         if (tailSize <= headerCount) {
           // The tail is fully covered by the already-downloaded header

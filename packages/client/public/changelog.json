@@ -26,6 +26,14 @@
     "seq": 1780541074231
   },
   {
+    "id": "2026-06-04-motion-video-larger-tail",
+    "date": "2026-06-04",
+    "title": "fix: 动态照片提取扫描窗口扩大到 8MB",
+    "description": "将 findMotionVideoByBinary 末尾扫描缓冲区从 256KB 增至 8MB，修复大视频（>256KB）因 JPEG EOI 不在扫描窗口内而无法提取的问题；新增 Strategy-2：用 ftyp 品牌名独立定位 MP4 起始位置，不再强依赖 EOI 紧跟 ftyp 的假设，支持更多手机型号。",
+    "type": "fix",
+    "seq": 1780541474745
+  },
+  {
     "id": "2026-06-04-upload-pause-svg-icons",
     "date": "2026-06-04",
     "title": "fix: 上传暂停/继续按钮改用 SVG 图标",
