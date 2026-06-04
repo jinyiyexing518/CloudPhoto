@@ -457,7 +457,7 @@ export async function backfillPhotoMetadata(
   const response = await fetchWithTimeout(url, {
     method: "POST",
     headers: authHeaders(),
-  });
+  }, 300_000);
   if (!response.ok) {
     throw new Error(await parseApiError(response, "回填历史照片元数据失败"));
   }
