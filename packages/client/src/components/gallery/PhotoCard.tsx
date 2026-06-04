@@ -35,8 +35,12 @@ function PhotoCard({
   const [imgLoaded, setImgLoaded] = useState(false);
   const [gifPaused, setGifPaused] = useState(false);
   const [videoDuration, setVideoDuration] = useState<string | null>(null);
+  const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
+  // Show static thumbnail for videos that already have one (generated client-side at upload).
+  // Fall back to <video> seek approach if no thumbnail or if the thumbnail 404s.
+  const useVideoThumb = isVideo && !!photo.thumbnailUrl && !videoThumbFailed;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
   // Motion photo = animated JPEG (Android/Google Motion Photo) — browser can't play the video part
@@ -119,7 +123,17 @@ function PhotoCard({
         )}
         <div className="photo-thumbnail" onClick={onSelect ?? onClick}>
           {!imgLoaded && <div className="photo-skeleton" />}
-          {isVideo ? (
+          {useVideoThumb ? (
+            <img
+              src={photo.thumbnailUrl}
+              alt={displayName}
+              loading="lazy"
+              decoding="async"
+              className={imgLoaded ? "img-loaded" : "img-loading"}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => { setVideoThumbFailed(true); setImgLoaded(false); }}
+            />
+          ) : isVideo ? (
             <video
               ref={videoRef}
               src={photo.url}

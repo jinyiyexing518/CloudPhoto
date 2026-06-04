@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
-import { listPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, Photo, ManagedShareLink } from "./services/photoApi";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
 import { FilterState, emptyFilter, GridSize } from "./components/gallery/FilterBar";
@@ -921,6 +921,21 @@ function AppContent() {
             );
             // Immediately add the uploaded photo so the folder view refreshes live
             setPhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
+
+            // For videos: extract a thumbnail frame client-side and persist it.
+            // Fire-and-forget — failure is non-fatal, card falls back to <video> seek.
+            if (valid[i].type.startsWith("video/")) {
+              extractVideoThumbnail(valid[i]).then(async (thumb) => {
+                if (!thumb) return;
+                const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumb);
+                if (thumbnailUrl) {
+                  setPhotos(prev => prev.map(p =>
+                    p.name === uploadedPhoto.name ? { ...p, thumbnailUrl } : p,
+                  ));
+                }
+              }).catch(() => { /* best-effort */ });
+            }
+
             lastErr = undefined;
             break; // success — exit retry loop
           } catch (e) {

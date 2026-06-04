@@ -360,6 +360,72 @@ export function uploadPhotoWithProgress(
   });
 }
 
+/**
+ * Extract a thumbnail frame from a video File using an off-screen <video> + canvas.
+ * Seeks to min(2 s, 10 % of duration) — same logic as PhotoCard's preview.
+ * Returns a 400 px-wide WebP Blob, or null if extraction fails / times out.
+ */
+export function extractVideoThumbnail(file: File): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    const objectUrl = URL.createObjectURL(file);
+    video.src = objectUrl;
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+
+    const drawFrame = () => {
+      try {
+        const scale = Math.min(1, 400 / (video.videoWidth || 400));
+        const w = Math.round((video.videoWidth || 400) * scale);
+        const h = Math.round((video.videoHeight || 300) * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { cleanup(); resolve(null); return; }
+        ctx.drawImage(video, 0, 0, w, h);
+        canvas.toBlob((blob) => { cleanup(); resolve(blob); }, "image/webp", 0.75);
+      } catch { cleanup(); resolve(null); }
+    };
+
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(2, video.duration * 0.1);
+    };
+    video.onseeked = drawFrame;
+    // If the video is very short (<0.1 s), onseeked may not fire — fall back to loadeddata
+    video.onloadeddata = () => {
+      if (video.currentTime > 0) return; // onseeked already handled it
+      drawFrame();
+    };
+    video.onerror = () => { cleanup(); resolve(null); };
+    // Hard timeout so we never stall the upload loop
+    setTimeout(() => { cleanup(); resolve(null); }, 15_000);
+  });
+}
+
+/** Upload a client-extracted video thumbnail frame to the server. Returns the fresh SAS URL. */
+export async function setVideoThumbnail(blobName: string, thumbnail: Blob): Promise<string | null> {
+  try {
+    const params = new URLSearchParams({ blobName });
+    const res = await fetchWithTimeout(
+      `${API_BASE}/photos/set-thumbnail?${params}`,
+      {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "image/webp" }),
+        body: thumbnail,
+      },
+      30_000,
+    );
+    if (!res.ok) return null;
+    const json = await res.json() as { thumbnailUrl?: string };
+    return json.thumbnailUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function updatePhotoSubject(
   name: string,
   subject: string,
