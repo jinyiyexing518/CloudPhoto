@@ -1,0 +1,1 @@
+{"id":"perf-nginx-gzip-api","date":"2026-06-05","icon":"📦","title":"Nginx 开启 gzip 压缩 API 响应，照片列表流量减少 90%","desc":"listPhotos 接口返回所有照片的 JSON（含 SAS URL），未压缩时 1000 张照片约 1MB，3000 张约 3MB。Nginx 层加入 gzip（level 5），application/json 响应压缩率约 90%，手机打开 app 首屏流量从几 MB 降至 ~200KB","type":"fix"}
