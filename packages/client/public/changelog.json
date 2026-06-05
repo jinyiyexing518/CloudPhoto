@@ -1,5 +1,14 @@
 [
   {
+    "id": "2026-06-05-fix-thumbnail-leaks",
+    "date": "2026-06-05",
+    "icon": "🚰",
+    "title": "堵死列表页加载原图的流量漏洞",
+    "type": "fix",
+    "desc": "MediaThumb去掉video preload; 重要时刻/地图/故事集全部改用thumbnailUrl/previewUrl",
+    "seq": 1780651438351
+  },
+  {
     "id": "2026-06-05-fix-phone-animated",
     "date": "2026-06-05",
     "icon": "📱",
