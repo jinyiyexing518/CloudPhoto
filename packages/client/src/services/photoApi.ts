@@ -82,7 +82,12 @@ export function getViewerSrc(photo: Photo): string {
   const dpr = window.devicePixelRatio || 1;
   const physicalViewerPx = Math.round(window.innerWidth * dpr * VIEWER_DPR_SCALE);
   if (physicalViewerPx <= VIEWER_THUMB_THRESHOLD_PX && photo.thumbnailUrl) return photo.thumbnailUrl;
-  if (physicalViewerPx <= VIEWER_PREVIEW_THRESHOLD_PX && photo.previewUrl) return photo.previewUrl;
+  if (physicalViewerPx <= VIEWER_PREVIEW_THRESHOLD_PX) {
+    // On mobile-sized viewports, never fall through to the full original when
+    // previewUrl is missing — that could mean downloading a 10-20 MB raw file.
+    // Prefer previewUrl → thumbnailUrl (already cached as gallery thumb) → full url.
+    return photo.previewUrl ?? photo.thumbnailUrl ?? photo.url;
+  }
   return photo.url;
 }
 

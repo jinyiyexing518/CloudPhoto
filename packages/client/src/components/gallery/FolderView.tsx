@@ -1447,7 +1447,7 @@ function FolderContent({
                     className="modal-image modal-video"
                     controls
                     playsInline
-                    preload="metadata"
+                    preload="none"
                     onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}

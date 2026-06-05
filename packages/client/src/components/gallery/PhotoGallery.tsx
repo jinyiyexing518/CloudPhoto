@@ -816,7 +816,10 @@ function PhotoGallery({
     const toPreload = [selectedIdx - 1, selectedIdx + 1]
       .filter((i) => i >= 0 && i < modalPhotos.length)
       .map((i) => modalPhotos[i])
-      .filter((p) => p && !p.contentType?.startsWith("video/"));
+      // Skip videos (streamed on demand) and animated files (GIF/WebP/motion photo)
+      // — animated files are shown thumbnail-first in the viewer so no benefit here,
+      // and the full file can be several MB we'd download before the user even navigates.
+      .filter((p) => p && !p.contentType?.startsWith("video/") && !p.isAnimated && p.contentType !== "image/gif");
     toPreload.forEach((p) => {
       const src = getViewerSrc(p);
       if (adjacentPreloadedRef.current.has(src)) return; // already fetched this session
@@ -1408,7 +1411,7 @@ function PhotoGallery({
                     className="modal-image modal-video"
                     controls
                     playsInline
-                    preload="metadata"
+                    preload="none"
                     onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}
