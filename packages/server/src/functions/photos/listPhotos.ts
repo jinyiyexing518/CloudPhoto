@@ -154,7 +154,11 @@ app.http("listPhotos", {
         status: 200,
         headers: {
           "Content-Type": "application/json",
-          "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+          // no-store: the client has its own SWR cache (_photoListCache) so we
+          // don't want the browser to cache the list independently.  A browser-
+          // cached empty response (from a cold-start glitch) would silently hide
+          // all photos until the 30 s max-age expired.
+          "Cache-Control": "no-store",
         },
         body: jsonBody,
       };

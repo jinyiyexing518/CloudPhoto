@@ -1,0 +1,1 @@
+{"id":"fix-swr-empty-cache-bug","date":"2026-06-05","icon":"🐛","title":"修复照片列表消失 bug","desc":"[] 是 truthy 值导致空缓存被当作有效数据静默显示；服务端移除 max-age 防止浏览器缓存空列表；错误提示始终显示","type":"fix"}

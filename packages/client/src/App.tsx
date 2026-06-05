@@ -524,9 +524,13 @@ function AppContent() {
     // Cancel any in-flight previous request
     fetchAbortRef.current?.abort();
     fetchAbortRef.current = new AbortController();
-    // SWR: show stale cached data instantly — no spinner for repeat loads
+    // SWR: show non-empty stale data instantly while the fresh fetch runs.
+    // Note: [] (empty array) is truthy but we must not treat it as valid stale
+    // data — an empty cache entry caused by a cold-start glitch would silently
+    // hide all photos if we showed it here.
     const stale = getCachedPhotos(currentGroupId);
-    if (stale) { setPhotos(stale); setLoading(false); }
+    const hasStale = stale !== null && stale.length > 0;
+    if (hasStale) { setPhotos(stale!); setLoading(false); }
     else { setLoading(true); }
     setLoadError(false);
     try {
@@ -534,10 +538,10 @@ function AppContent() {
       setPhotos(data);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
-      if (!stale) {
-        showToast("加载照片失败，请检查网络或服务器状态", "error");
-        setLoadError(true);
-      }
+      // Always show the error — even when stale data is shown the user needs to
+      // know the refresh failed (otherwise they'd silently see outdated photos).
+      showToast("加载照片失败，请检查网络或服务器状态", "error");
+      if (!hasStale) setLoadError(true);
     } finally {
       setLoading(false);
     }
