@@ -1,0 +1,1 @@
+{"id":"feat-clear-cache-button","date":"2026-06-05","icon":"🔄","title":"设置 → 诊断 → 清除缓存并强制更新","desc":"一键注销 Service Worker、清除 Cache API 缓存并强制重载，解决 PWA 缓存导致看不到最新改动的问题","type":"improvement"}
