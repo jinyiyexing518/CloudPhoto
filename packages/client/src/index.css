@@ -4481,6 +4481,9 @@ body {
   align-items: center;
   justify-content: center;
   width: 100%;
+  background: #000;  /* dark bg so videos without a poster don't show white flash */
+  min-height: 180px;
+  border-radius: 6px;
 }
 /* Buffering / loading overlay — shown via React state on play/waiting */
 .modal-video-spinner {

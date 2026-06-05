@@ -858,7 +858,27 @@ function FolderContent({
   }, [trackPhotoView]);
 
   // Progressive GIF loading in the viewer is intentionally removed — see PhotoGallery.tsx.
-  void gifViewerSrc; void setGifViewerSrc; void gifViewerPreloadRef;
+  // Re-enabled with thumbnail + loading badge (blank white looks broken to users).
+  useEffect(() => {
+    if (gifViewerPreloadRef.current) { gifViewerPreloadRef.current.onload = null; gifViewerPreloadRef.current = null; }
+    if (!selectedPhoto) return;
+    const isViewerGif = (
+      selectedPhoto.contentType === "image/gif" ||
+      (selectedPhoto.isAnimated &&
+        selectedPhoto.contentType !== "image/jpeg" &&
+        selectedPhoto.contentType !== "image/jpg")
+    );
+    if (!isViewerGif || !selectedPhoto.thumbnailUrl) return;
+    setGifViewerSrc(selectedPhoto.thumbnailUrl);
+    const img = new Image();
+    gifViewerPreloadRef.current = img;
+    const done = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
+    img.onload = done;
+    img.onerror = done;
+    img.src = selectedPhoto.url;
+    return () => { img.onload = null; img.onerror = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -1465,8 +1485,8 @@ function FolderContent({
                     )
                   ) : (
                     <img
-                      key={selectedPhoto.url}
-                      src={selectedPhoto.url}
+                      key={gifViewerSrc || selectedPhoto.url}
+                      src={gifViewerSrc || selectedPhoto.url}
                       alt={displayName(selectedPhoto)}
                       className="modal-image modal-image--gif"
                       onClick={() => setShowOriginalPreview(true)}
@@ -1476,7 +1496,9 @@ function FolderContent({
                   <span className="modal-gif-badge">
                     {(selectedPhoto.contentType === "image/jpeg" || selectedPhoto.contentType === "image/jpg") && selectedPhoto.isAnimated
                       ? (motionVideoUrl ? "动态照片 ▶ 播放中" : "动态照片 📱")
-                      : "动图 ▶ 循环播放"}
+                      : gifViewerSrc && gifViewerSrc !== selectedPhoto.url && selectedPhoto.thumbnailUrl
+                        ? "🎥 加载动图中…"
+                        : "动图 ▶ 循环播放"}
                   </span>
                 </>
               ) : (
