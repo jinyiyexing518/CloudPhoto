@@ -91,17 +91,30 @@ function PhotoCard({
     }
   }, [isAnimated, gifPaused, photo.url]);
 
-  // GIF progressive load: once the static thumbnail is visible, fetch the full animated
-  // file in the background. When ready (browser-cached), swap src so animation starts.
+  // GIF progressive load: wait until the card is actually visible in viewport,
+  // THEN fetch the full animated file in the background. Firing immediately on
+  // mount would download every GIF on the page in parallel (could be 5-10 MB
+  // per GIF), wasting mobile data even for GIFs the user never scrolls to.
   useEffect(() => {
     if (!isAnimated || isMotionPhoto || !photo.thumbnailUrl || gifPreloadDone.current) return;
-    const img = new Image();
-    img.onload = () => {
-      gifPreloadDone.current = true;
-      setGifDisplaySrc(photo.url);
-    };
-    img.src = photo.url;
-    return () => { img.onload = null; };
+    const el = gifImgRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        observer.disconnect();
+        if (gifPreloadDone.current) return;
+        const img = new Image();
+        img.onload = () => {
+          gifPreloadDone.current = true;
+          setGifDisplaySrc(photo.url);
+        };
+        img.src = photo.url;
+      },
+      { rootMargin: "100px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAnimated, isMotionPhoto, photo.thumbnailUrl, photo.url]);
 

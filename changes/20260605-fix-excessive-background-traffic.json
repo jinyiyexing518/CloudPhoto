@@ -1,0 +1,1 @@
+{"id":"fix-excessive-background-traffic","date":"2026-06-05","icon":"📶","title":"修复后台偷跑流量：视频按需加载 + GIF 按需加载","desc":"preload=auto 会在打开查看器时立即后台缓冲数MB视频；改回 metadata 仅加载时长/尺寸信息。GIF 卡片改用 IntersectionObserver，仅进入视口才下载完整动图（之前一渲染就立即下载）。相邻照片预加载新增去重缓存，前后翻页不重复下载同一张图","type":"fix"}

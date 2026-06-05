@@ -807,6 +807,9 @@ function PhotoGallery({
     });
   }, [selectedPhoto?.gpsLat, selectedPhoto?.gpsLon]);
 
+  // Dedupe set: avoid re-downloading the same URL when user navigates back-and-forth
+  const adjacentPreloadedRef = useRef(new Set<string>());
+
   // Preload adjacent photos for faster navigation
   useEffect(() => {
     if (selectedIdx === null) return;
@@ -815,10 +818,11 @@ function PhotoGallery({
       .map((i) => modalPhotos[i])
       .filter((p) => p && !p.contentType?.startsWith("video/"));
     toPreload.forEach((p) => {
+      const src = getViewerSrc(p);
+      if (adjacentPreloadedRef.current.has(src)) return; // already fetched this session
+      adjacentPreloadedRef.current.add(src);
       const img = new Image();
-      // Use thumbnailUrl/previewUrl (same as viewer picks) — NOT the full original.
-      // p.url can be 10-20 MB; getViewerSrc() picks ~50 KB thumb or ~400 KB preview.
-      img.src = getViewerSrc(p);
+      img.src = src;
     });
   }, [selectedIdx, modalPhotos]);
 
@@ -1404,7 +1408,7 @@ function PhotoGallery({
                     className="modal-image modal-video"
                     controls
                     playsInline
-                    preload="auto"
+                    preload="metadata"
                     onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}
