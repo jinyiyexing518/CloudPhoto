@@ -257,6 +257,15 @@ function PhotoCard({
               playsInline
               onLoadedMetadata={handleVideoMetadata}
               onSeeked={handleVideoSeeked}
+              onError={() => {
+                // Range-fetched partial blob couldn't be decoded (non-faststart MP4).
+                // Fall back to the full video URL so metadata + seek still works.
+                if (videoBlobRef.current) {
+                  URL.revokeObjectURL(videoBlobRef.current);
+                  videoBlobRef.current = null;
+                  setVideoThumbSrc(photo.url);
+                }
+              }}
             />
           ) : isMotionPhoto ? (
             <img

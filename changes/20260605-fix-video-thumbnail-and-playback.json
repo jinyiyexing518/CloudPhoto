@@ -1,0 +1,1 @@
+{"id":"fix-video-thumbnail-and-playback","date":"2026-06-05","icon":"🎬","title":"修复视频封面+播放两个核心问题","desc":"非faststart视频Range请求解码失败时回退到全量加载；移除poster（防止静态封面掩盖播放中状态）；改用canplaythrough替代canplay（减少iOS误判）","type":"fix"}

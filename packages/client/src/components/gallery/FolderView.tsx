@@ -1427,11 +1427,10 @@ function FolderContent({
                     controls
                     playsInline
                     preload="metadata"
-                    poster={selectedPhoto.thumbnailUrl ?? undefined}
                     onPlay={() => setVideoBuffering(true)}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}
-                    onCanPlay={() => setVideoBuffering(false)}
+                    onCanPlayThrough={() => setVideoBuffering(false)}
                   />
                   {videoBuffering && (
                     <div className="modal-video-spinner">
