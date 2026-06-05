@@ -306,7 +306,7 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
                     onClick={() => openEditFor(p)}
                     title={displayName(p)}
                   >
-                    <MediaThumb url={p.url} contentType={p.contentType} alt="" className="memory-map-nogps-thumb" />
+                    <MediaThumb url={p.url} thumbnailUrl={p.thumbnailUrl} contentType={p.contentType} alt="" className="memory-map-nogps-thumb" />
                     <span className="memory-map-nogps-name">{displayName(p)}</span>
                     <span className="memory-map-nogps-badge">📍</span>
                   </button>
@@ -327,7 +327,7 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
           <div className="memory-map-detail-card" onClick={(e) => e.stopPropagation()}>
             <button className="memory-map-detail-close" onClick={() => setSelectedName(null)}>✕</button>
             {selected.photo ? (
-              <img src={selected.photo.url} alt={displayName(selected)} className="memory-map-detail-img" loading="lazy" />
+              <img src={selected.photo.previewUrl ?? selected.photo.thumbnailUrl ?? selected.photo.url} alt={displayName(selected)} className="memory-map-detail-img" loading="lazy" />
             ) : (
               <div className="memory-map-detail-img memory-map-detail-img--placeholder">📷</div>
             )}
@@ -370,7 +370,7 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
             </div>
 
             <div className="map-gps-photo-row">
-              <MediaThumb url={editTarget.url} contentType={editTarget.contentType} alt="" className="map-gps-photo-thumb" />
+              <MediaThumb url={editTarget.url} thumbnailUrl={editTarget.thumbnailUrl} contentType={editTarget.contentType} alt="" className="map-gps-photo-thumb" />
               <span className="map-gps-photo-name">{displayName(editTarget)}</span>
             </div>
 

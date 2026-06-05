@@ -141,7 +141,7 @@ export default function AutoStory({ photos }: Props) {
       <div className="story-preview-grid">
         {storyPhotos.slice(0, 12).map((p, i) => (
           <div key={p.name} className="story-preview-thumb">
-            <img src={p.url} alt={p.originalName ?? ""} loading="lazy" />
+            <img src={p.thumbnailUrl ?? p.url} alt={p.originalName ?? ""} loading="lazy" />
             <span className="story-preview-num">{i + 1}</span>
           </div>
         ))}
@@ -156,13 +156,13 @@ export default function AutoStory({ photos }: Props) {
           {/* Background blur layer */}
           <div
             className="story-player-bg"
-            style={{ backgroundImage: `url(${currentPhoto.url})` }}
+            style={{ backgroundImage: `url(${currentPhoto.thumbnailUrl ?? currentPhoto.url})` }}
           />
 
           {/* Main photo */}
           <div className={`story-player-img-wrap ${animClass}`} key={currentIndex}>
             <img
-              src={currentPhoto.url}
+              src={currentPhoto.previewUrl ?? currentPhoto.url}
               alt={currentPhoto.originalName ?? ""}
               className="story-player-img"
             />

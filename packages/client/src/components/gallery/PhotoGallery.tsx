@@ -1294,7 +1294,7 @@ function PhotoGallery({
                 <article key={photo.name} className="moments-card" onClick={() => openModal(photo)}>
                   <div className="moments-rank">{rankBadge} #{rank}</div>
                   <div className="media-thumb-wrap">
-                    <MediaThumb url={photo.url} alt={display} contentType={photo.contentType} className="moments-thumb" />
+                    <MediaThumb url={photo.url} thumbnailUrl={photo.thumbnailUrl} alt={display} contentType={photo.contentType} className="moments-thumb" />
                   </div>
                   <div className="moments-card-body">
                     <div className="moments-title-row">
