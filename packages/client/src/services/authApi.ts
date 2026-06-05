@@ -40,10 +40,13 @@ export async function loginApi(
     },
     30_000,
   ).catch((e: unknown) => {
+    const isOnProxy = typeof window !== "undefined" && window.location.hostname === "cloudphotos.top";
     throw new Error(
       e instanceof Error && e.name === "AbortError"
         ? "登录响应超时，服务器可能正在启动，请稍后重试"
-        : "网络错误",
+        : isOnProxy
+          ? "代理服务器不可用，请稍后重试"
+          : "网络错误",
     );
   });
   if (!res.ok) {

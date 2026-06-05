@@ -42,13 +42,28 @@ async function fetchWithProxyFallback(
   input: RequestInfo,
   init?: RequestInit,
 ): Promise<Response> {
+  let res: Response;
   try {
-    return await fetch(input, init);
-  } catch (error) {
+    res = await fetch(input, init);
+  } catch (networkError) {
+    // Primary fetch failed (VM down, DNS failure, connection refused)
     const fallbackUrl = getFallbackApiUrl(input);
-    if (!fallbackUrl) throw error;
+    if (!fallbackUrl) throw networkError;
     return fetch(fallbackUrl, init);
   }
+  // Also fall back when Nginx returns a gateway error (proxy up, Azure Functions down)
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    const fallbackUrl = getFallbackApiUrl(input);
+    if (fallbackUrl) {
+      try {
+        return await fetch(fallbackUrl, init);
+      } catch {
+        // Fallback also failed — return the original gateway response
+        return res;
+      }
+    }
+  }
+  return res;
 }
 
 // ── Token storage keys ────────────────────────────────────────────────────

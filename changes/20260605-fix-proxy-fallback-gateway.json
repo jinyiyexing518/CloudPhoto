@@ -1,0 +1,1 @@
+{"id":"fix-proxy-fallback-gateway","date":"2026-06-05","icon":"🔌","title":"修复代理 502/503/504 回退 + 错误提示","desc":"fetchWithProxyFallback 新增对 Nginx 网关错误（502/503/504）的自动回退；登录失败时区分「代理不可用」与「网络错误」","type":"fix"}
