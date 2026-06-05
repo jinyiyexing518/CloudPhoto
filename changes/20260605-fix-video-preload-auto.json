@@ -1,0 +1,1 @@
+{"id":"fix-video-preload-auto","date":"2026-06-05","icon":"▶️","title":"视频查看器改用 preload=auto 解决非 faststart 延迟播放","desc":"preload=auto 让浏览器主动预取文件头尾，找到 moov 原子后立即可播；Nginx 明确声明 Accept-Ranges: bytes","type":"fix"}
