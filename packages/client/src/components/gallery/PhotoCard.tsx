@@ -45,7 +45,6 @@ function PhotoCard({
   const [videoDuration, setVideoDuration] = useState<string | null>(null);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const videoFallbackUsed = useRef(false); // guard: only fall back once per card lifecycle
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
@@ -92,11 +91,16 @@ function PhotoCard({
   }, [isAnimated, gifPaused, photo.url]);
 
   // GIF progressive load: wait until the card is actually visible in viewport,
-  // THEN fetch the full animated file in the background. Firing immediately on
-  // mount would download every GIF on the page in parallel (could be 5-10 MB
-  // per GIF), wasting mobile data even for GIFs the user never scrolls to.
+  // THEN fetch the full animated file in the background.
+  //
+  // IMPORTANT: only fire for traditional GIFs (image/gif).
+  // Phone animated photos — animated WebP, HEIC live photos, short-video
+  // formats from Vivo/Xiaomi/Oppo — can be 2-20 MB per file.  Preloading
+  // every visible one simultaneously would burn 20-200 MB of mobile data
+  // just for gallery cards.  For these formats the gallery shows the static
+  // thumbnail; the full animation is visible when the user opens the viewer.
   useEffect(() => {
-    if (!isAnimated || isMotionPhoto || !photo.thumbnailUrl || gifPreloadDone.current) return;
+    if (!isGif || !isAnimated || isMotionPhoto || !photo.thumbnailUrl || gifPreloadDone.current) return;
     const el = gifImgRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -144,7 +148,14 @@ function PhotoCard({
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
         observer.disconnect();
-        // Try Range fetch first; fall back to full-URL load on any failure
+        // Range-fetch first 512 KB to extract a thumbnail frame.
+        // IMPORTANT: .load() is only called when the blob was successfully
+        // created.  Calling it unconditionally (e.g. in .finally()) would
+        // trigger a full video download when:
+        //   a) the Range fetch fails (network error) — src stays as photo.url
+        //   b) the fallback path below — src is reset to photo.url
+        // For non-faststart MP4 a full download means the browser streams the
+        // entire file (10-200 MB) looking for the moov atom at the end.
         void fetch(photo.url, { headers: { Range: `bytes=0-${VIDEO_THUMB_RANGE_BYTES}` } })
           .then(async (res) => {
             if (res.status === 206 || res.ok) {
@@ -152,13 +163,13 @@ function PhotoCard({
               const url = URL.createObjectURL(blob);
               videoBlobRef.current = url;
               setVideoThumbSrc(url);
+              // rAF: wait for React to commit the updated src before load()
+              requestAnimationFrame(() => { videoRef.current?.load(); });
             }
+            // Range not supported or error status: leave src as photo.url but
+            // do NOT call load() — that would download the full video.
           })
-          .catch(() => { /* fallback: videoThumbSrc stays as photo.url */ })
-          .finally(() => {
-            // rAF: wait for React to commit the updated src to the DOM before load()
-            requestAnimationFrame(() => { videoRef.current?.load(); });
-          });
+          .catch(() => { /* network error: show placeholder, no download */ });
       },
       { rootMargin: VIDEO_THUMB_PRELOAD_MARGIN },
     );
@@ -272,16 +283,19 @@ function PhotoCard({
               onLoadedMetadata={handleVideoMetadata}
               onSeeked={handleVideoSeeked}
               onError={() => {
-                // Range-fetched partial blob couldn't be decoded (non-faststart MP4).
-                // Fall back to the full video URL so metadata + seek still works.
-                // Guard: only do this once to avoid infinite error loops.
-                if (!videoFallbackUsed.current && videoBlobRef.current) {
-                  videoFallbackUsed.current = true;
+                // The 512 KB partial blob couldn't be decoded — typically a
+                // non-faststart MP4 where the moov atom is at the END of the
+                // file and is not included in our range slice.
+                // Do NOT fall back to loading the full video URL: that would
+                // silently download the entire file (10-200 MB) just to
+                // capture one gallery thumbnail, burning mobile data.
+                // The thumbnail will be generated next time the user opens
+                // the viewer and plays the video (saved server-side after that).
+                if (videoBlobRef.current) {
                   URL.revokeObjectURL(videoBlobRef.current);
                   videoBlobRef.current = null;
-                  setVideoThumbSrc(photo.url);
-                  requestAnimationFrame(() => { videoRef.current?.load(); });
                 }
+                // imgLoaded stays false → skeleton placeholder remains
               }}
             />
           ) : isMotionPhoto ? (

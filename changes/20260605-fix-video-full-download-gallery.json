@@ -1,0 +1,1 @@
+{"id":"fix-video-full-download-gallery","date":"2026-06-05","icon":"🚫","title":"修复视频缩略图导致完整视频下载的严重流量 bug","desc":"两个 bug 同时导致完整视频被静默下载：1) .finally() 无论 Range 请求成功与否都调用 .load()，Range 失败时 src 仍是完整视频 URL；2) onError fallback 重置 src 为完整 URL 再调用 .load()，非 faststart 视频触发全量下载。同时限制动图预加载仅对 image/gif，手机动图（WebP/HEIC，单文件 2-20MB）在相册中只展示静态缩略图","type":"fix"}
