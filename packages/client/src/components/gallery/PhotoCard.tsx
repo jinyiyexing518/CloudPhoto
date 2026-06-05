@@ -355,7 +355,7 @@ function PhotoCard({
               </>
             ) : (
               <>
-                <span className="gif-animated-badge">GIF</span>
+                <span className="gif-animated-badge">{isGif ? "GIF" : "动图"}</span>
                 <button className="gif-pause-corner-btn" onClick={toggleGifPause} title="暂停动图">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />

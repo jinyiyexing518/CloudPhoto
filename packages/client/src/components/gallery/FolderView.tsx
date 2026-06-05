@@ -870,23 +870,34 @@ function FolderContent({
   // Progressive GIF loading in the viewer is intentionally removed — see PhotoGallery.tsx.
   // Re-enabled with thumbnail + loading badge (blank white looks broken to users).
   useEffect(() => {
-    if (gifViewerPreloadRef.current) { gifViewerPreloadRef.current.onload = null; gifViewerPreloadRef.current = null; }
+    if (gifViewerPreloadRef.current) {
+      gifViewerPreloadRef.current.onload = null;
+      gifViewerPreloadRef.current.onerror = null;
+      gifViewerPreloadRef.current.src = "";
+      gifViewerPreloadRef.current = null;
+    }
     if (!selectedPhoto) return;
-    const isViewerGif = (
-      selectedPhoto.contentType === "image/gif" ||
-      (selectedPhoto.isAnimated &&
-        selectedPhoto.contentType !== "image/jpeg" &&
-        selectedPhoto.contentType !== "image/jpg")
-    );
-    if (!isViewerGif || !selectedPhoto.thumbnailUrl) return;
+    const isGifFormat = selectedPhoto.contentType === "image/gif";
+    const isOtherAnimated = selectedPhoto.isAnimated &&
+      selectedPhoto.contentType !== "image/jpeg" &&
+      selectedPhoto.contentType !== "image/jpg" &&
+      !isGifFormat;
+    if (!isGifFormat && !isOtherAnimated) return;
+    if (!selectedPhoto.thumbnailUrl) return;
     setGifViewerSrc(selectedPhoto.thumbnailUrl);
-    const img = new Image();
-    gifViewerPreloadRef.current = img;
-    const done = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
-    img.onload = done;
-    img.onerror = done;
-    img.src = selectedPhoto.url;
-    return () => { img.onload = null; img.onerror = null; };
+    if (isGifFormat) {
+      const img = new Image();
+      gifViewerPreloadRef.current = img;
+      const done = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
+      img.onload = done;
+      img.onerror = done;
+      img.src = selectedPhoto.url;
+      return () => { img.onload = null; img.onerror = null; img.src = ""; };
+    } else {
+      // Non-GIF animated (phone 动图: animated WebP/HEIF/AVIF): stream directly
+      const t = window.setTimeout(() => setGifViewerSrc(selectedPhoto.url), 0);
+      return () => window.clearTimeout(t);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 

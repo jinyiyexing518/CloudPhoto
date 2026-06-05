@@ -722,23 +722,43 @@ function PhotoGallery({
   // full GIF when ready.  Without this, large GIFs show a blank white area for
   // several seconds which looks identical to "broken" to the user.
   useEffect(() => {
-    if (gifViewerPreloadRef.current) { gifViewerPreloadRef.current.onload = null; gifViewerPreloadRef.current = null; }
+    // Abort any in-progress preload from the previous photo
+    if (gifViewerPreloadRef.current) {
+      gifViewerPreloadRef.current.onload = null;
+      gifViewerPreloadRef.current.onerror = null;
+      gifViewerPreloadRef.current.src = ""; // cancel network request
+      gifViewerPreloadRef.current = null;
+    }
     if (!selectedPhoto) return;
-    const isViewerGif = (
-      selectedPhoto.contentType === "image/gif" ||
-      (selectedPhoto.isAnimated &&
-        selectedPhoto.contentType !== "image/jpeg" &&
-        selectedPhoto.contentType !== "image/jpg")
-    );
-    if (!isViewerGif || !selectedPhoto.thumbnailUrl) return;
-    setGifViewerSrc(selectedPhoto.thumbnailUrl);
-    const img = new Image();
-    gifViewerPreloadRef.current = img;
-    const done = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
-    img.onload = done;
-    img.onerror = done; // fallback: show full URL even if preload fails
-    img.src = selectedPhoto.url;
-    return () => { img.onload = null; img.onerror = null; };
+    const isGifFormat = selectedPhoto.contentType === "image/gif";
+    // Non-JPEG animated: animated WebP / HEIF / AVIF from phone cameras
+    const isOtherAnimated = selectedPhoto.isAnimated &&
+      selectedPhoto.contentType !== "image/jpeg" &&
+      selectedPhoto.contentType !== "image/jpg" &&
+      !isGifFormat;
+    if (!isGifFormat && !isOtherAnimated) return;
+    if (!selectedPhoto.thumbnailUrl) return;
+    setGifViewerSrc(selectedPhoto.thumbnailUrl); // instant visual feedback
+    if (isGifFormat) {
+      // GIF: preload-then-swap to avoid partial-frame artifacts
+      const img = new Image();
+      gifViewerPreloadRef.current = img;
+      const done = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
+      img.onload = done;
+      img.onerror = done;
+      img.src = selectedPhoto.url;
+      return () => {
+        img.onload = null;
+        img.onerror = null;
+        img.src = ""; // abort download if user navigates away before load completes
+      };
+    } else {
+      // Non-GIF animated (phone 动图: animated WebP/HEIF/AVIF):
+      // stream directly — browser renders frames as they arrive.
+      // No Image() preload needed; navigating away replaces the src.
+      const t = window.setTimeout(() => setGifViewerSrc(selectedPhoto.url), 0);
+      return () => window.clearTimeout(t);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
