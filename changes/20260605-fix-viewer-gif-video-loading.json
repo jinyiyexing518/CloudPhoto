@@ -1,0 +1,1 @@
+{"id":"fix-viewer-gif-video-loading","date":"2026-06-05","icon":"🎬","title":"查看器 GIF 渐进加载 + 视频封面即显","desc":"GIF 查看器先显示缩略图，后台加载完整动图再切换；视频查看器添加缩略图作为 poster，preload=auto 提前缓冲；Nginx 对视频关闭 proxy_buffering 启用真正流式播放","type":"fix"}

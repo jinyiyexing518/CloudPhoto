@@ -755,6 +755,9 @@ function FolderContent({
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // Progressive GIF loading in viewer: show thumbnail immediately, upgrade to full GIF silently
+  const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
+  const gifViewerPreloadRef = useRef<HTMLImageElement | null>(null);
   const [shareHours, setShareHours] = useState("24");
   const [showSharePanel, setShowSharePanel] = useState(false);
   const [showMovePanel, setShowMovePanel] = useState(false);
@@ -849,7 +852,29 @@ function FolderContent({
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
     setModalImageLoaded(false);
+    setGifViewerSrc("");
   }, [trackPhotoView]);
+
+  // Progressive GIF loading in viewer: start with thumbnail, upgrade to full GIF in background
+  useEffect(() => {
+    if (gifViewerPreloadRef.current) { gifViewerPreloadRef.current.onload = null; gifViewerPreloadRef.current = null; }
+    if (!selectedPhoto) return;
+    const isViewerGif = (
+      selectedPhoto.contentType === "image/gif" ||
+      (selectedPhoto.isAnimated &&
+        selectedPhoto.contentType !== "image/jpeg" &&
+        selectedPhoto.contentType !== "image/jpg")
+    );
+    if (!isViewerGif) return;
+    setGifViewerSrc(selectedPhoto.thumbnailUrl ?? selectedPhoto.url);
+    if (!selectedPhoto.thumbnailUrl) return;
+    const img = new Image();
+    gifViewerPreloadRef.current = img;
+    img.onload = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
+    img.src = selectedPhoto.url;
+    return () => { img.onload = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -989,6 +1014,7 @@ function FolderContent({
     setShowSharePanel(false);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
+    setGifViewerSrc("");
   };
 
   const saveSubject = async () => {
@@ -1388,7 +1414,13 @@ function FolderContent({
                 </button>
               )}
               {selectedPhoto.contentType?.startsWith("video/") ? (
-                <video className="modal-image modal-video" controls playsInline>
+                <video
+                  className="modal-image modal-video"
+                  controls
+                  playsInline
+                  preload="auto"
+                  poster={selectedPhoto.thumbnailUrl}
+                >
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
                 </video>
               ) : selectedPhoto.contentType === "image/gif" || selectedPhoto.isAnimated ? (
@@ -1435,8 +1467,8 @@ function FolderContent({
                     )
                   ) : (
                     <img
-                      key={selectedPhoto.url}
-                      src={selectedPhoto.url}
+                      key={gifViewerSrc || selectedPhoto.url}
+                      src={gifViewerSrc || selectedPhoto.url}
                       alt={displayName(selectedPhoto)}
                       className="modal-image modal-image--gif"
                       onClick={() => setShowOriginalPreview(true)}

@@ -302,6 +302,9 @@ function PhotoGallery({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
+  // Progressive GIF loading in the viewer: show thumbnail immediately, upgrade to full GIF silently
+  const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
+  const gifViewerPreloadRef = useRef<HTMLImageElement | null>(null);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
@@ -702,7 +705,31 @@ function PhotoGallery({
     setMotionVideoLoading(false);
     setImageDimensions(null);
     setModalImageLoaded(false);
+    setGifViewerSrc("");
   }, [modalPhotos, trackMomentView]);
+
+  // Progressive GIF loading in the viewer: start with thumbnail, upgrade to full GIF in background
+  useEffect(() => {
+    if (gifViewerPreloadRef.current) { gifViewerPreloadRef.current.onload = null; gifViewerPreloadRef.current = null; }
+    if (!selectedPhoto) return;
+    const isViewerGif = (
+      selectedPhoto.contentType === "image/gif" ||
+      (selectedPhoto.isAnimated &&
+        selectedPhoto.contentType !== "image/jpeg" &&
+        selectedPhoto.contentType !== "image/jpg")
+    );
+    if (!isViewerGif) return;
+    // Show thumbnail (or full URL if no thumbnail) immediately
+    setGifViewerSrc(selectedPhoto.thumbnailUrl ?? selectedPhoto.url);
+    if (!selectedPhoto.thumbnailUrl) return;
+    // Silently pre-fetch the full GIF; swap when the browser has it ready
+    const img = new Image();
+    gifViewerPreloadRef.current = img;
+    img.onload = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
+    img.src = selectedPhoto.url;
+    return () => { img.onload = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -801,6 +828,7 @@ function PhotoGallery({
     setVoiceError(null);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
+    setGifViewerSrc("");
   };
 
   const saveSubject = async () => {
@@ -1356,7 +1384,13 @@ function PhotoGallery({
               }}
             >
               {selectedPhoto.contentType?.startsWith("video/") ? (
-                <video className="modal-image modal-video" controls playsInline>
+                <video
+                  className="modal-image modal-video"
+                  controls
+                  playsInline
+                  preload="auto"
+                  poster={selectedPhoto.thumbnailUrl}
+                >
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
                 </video>
               ) : selectedPhoto.contentType === "image/gif" || selectedPhoto.isAnimated ? (
@@ -1403,8 +1437,8 @@ function PhotoGallery({
                     )
                   ) : (
                     <img
-                      key={selectedPhoto.url}
-                      src={selectedPhoto.url}
+                      key={gifViewerSrc || selectedPhoto.url}
+                      src={gifViewerSrc || selectedPhoto.url}
                       alt={selectedPhoto.name}
                       className="modal-image modal-image--gif"
                       onClick={() => setShowOriginalPreview(true)}
