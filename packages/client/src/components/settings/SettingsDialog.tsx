@@ -711,26 +711,23 @@ export default function SettingsDialog({
                 </div>
                 <div style={{ padding: "12px 16px 4px", borderTop: "1px solid #f1f5f9", marginTop: 8 }}>
                   <button
-                    className="settings-danger-btn"
-                    style={{ width: "100%", background: "#0078d4", color: "#fff", border: "none" }}
+                    type="button"
+                    className="settings-save-btn"
                     onClick={async () => {
-                      // 1. Unregister service workers
                       if ("serviceWorker" in navigator) {
                         const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
                         await Promise.all(regs.map((r) => r.unregister()));
                       }
-                      // 2. Clear all Cache API caches
                       if ("caches" in window) {
                         const keys = await window.caches.keys().catch(() => [] as string[]);
                         await Promise.all(keys.map((k) => window.caches.delete(k)));
                       }
-                      // 3. Hard reload — browser re-fetches everything from server
                       window.location.reload();
                     }}
                   >
                     🔄 清除缓存并强制更新
                   </button>
-                  <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0", textAlign: "center" }}>
+                  <p className="add-admin-hint" style={{ marginTop: 4 }}>
                     感觉没有变化时点击，会注销 Service Worker 并重新加载
                   </p>
                 </div>

@@ -1406,7 +1406,6 @@ function PhotoGallery({
                     onPlay={() => setVideoBuffering(true)}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}
-                    onCanPlayThrough={() => setVideoBuffering(false)}
                   />
                   {videoBuffering && (
                     <div className="modal-video-spinner">

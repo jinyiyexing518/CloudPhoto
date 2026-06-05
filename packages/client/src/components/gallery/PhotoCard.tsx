@@ -45,6 +45,7 @@ function PhotoCard({
   const [videoDuration, setVideoDuration] = useState<string | null>(null);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const videoFallbackUsed = useRef(false); // guard: only fall back once per card lifecycle
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
@@ -260,10 +261,13 @@ function PhotoCard({
               onError={() => {
                 // Range-fetched partial blob couldn't be decoded (non-faststart MP4).
                 // Fall back to the full video URL so metadata + seek still works.
-                if (videoBlobRef.current) {
+                // Guard: only do this once to avoid infinite error loops.
+                if (!videoFallbackUsed.current && videoBlobRef.current) {
+                  videoFallbackUsed.current = true;
                   URL.revokeObjectURL(videoBlobRef.current);
                   videoBlobRef.current = null;
                   setVideoThumbSrc(photo.url);
+                  requestAnimationFrame(() => { videoRef.current?.load(); });
                 }
               }}
             />

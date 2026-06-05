@@ -1,0 +1,1 @@
+{"id":"fix-video-loading-and-ui","date":"2026-06-05","icon":"🎬","title":"视频loading修复 + 按钮样式统一","desc":"canPlayThrough改回onPlaying（大文件慢网不触发前者）；非faststart回退加载+guard；清除缓存按钮改用原生样式","type":"fix"}
