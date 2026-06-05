@@ -708,28 +708,12 @@ function PhotoGallery({
     setGifViewerSrc("");
   }, [modalPhotos, trackMomentView]);
 
-  // Progressive GIF loading in the viewer: start with thumbnail, upgrade to full GIF in background
-  useEffect(() => {
-    if (gifViewerPreloadRef.current) { gifViewerPreloadRef.current.onload = null; gifViewerPreloadRef.current = null; }
-    if (!selectedPhoto) return;
-    const isViewerGif = (
-      selectedPhoto.contentType === "image/gif" ||
-      (selectedPhoto.isAnimated &&
-        selectedPhoto.contentType !== "image/jpeg" &&
-        selectedPhoto.contentType !== "image/jpg")
-    );
-    if (!isViewerGif) return;
-    // Show thumbnail (or full URL if no thumbnail) immediately
-    setGifViewerSrc(selectedPhoto.thumbnailUrl ?? selectedPhoto.url);
-    if (!selectedPhoto.thumbnailUrl) return;
-    // Silently pre-fetch the full GIF; swap when the browser has it ready
-    const img = new Image();
-    gifViewerPreloadRef.current = img;
-    img.onload = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
-    img.src = selectedPhoto.url;
-    return () => { img.onload = null; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
+  // Progressive GIF loading in the viewer is intentionally removed.
+  // Showing the static thumbnail first made users think animation was broken.
+  // The viewer shows selectedPhoto.url directly; the browser streams the GIF
+  // and animation starts as soon as the first frames arrive.
+  // (Gallery cards still do progressive loading via gifDisplaySrc in PhotoCard.)
+  void gifViewerSrc; void setGifViewerSrc; void gifViewerPreloadRef;
 
   // Keyboard navigation when modal is open
   useEffect(() => {
@@ -1405,6 +1389,7 @@ function PhotoGallery({
                         src={motionVideoUrl}
                         className="modal-image modal-video"
                         autoPlay
+                        muted
                         loop
                         playsInline
                         controls
@@ -1439,8 +1424,8 @@ function PhotoGallery({
                     )
                   ) : (
                     <img
-                      key={gifViewerSrc || selectedPhoto.url}
-                      src={gifViewerSrc || selectedPhoto.url}
+                      key={selectedPhoto.url}
+                      src={selectedPhoto.url}
                       alt={selectedPhoto.name}
                       className="modal-image modal-image--gif"
                       onClick={() => setShowOriginalPreview(true)}

@@ -1,0 +1,1 @@
+{"id":"fix-animated-viewer-playback","date":"2026-06-05","icon":"🎞️","title":"修复动态图片无法播放","desc":"GIF查看器不再先显示静态缩略图（会误导用户以为无法播放），改为直接显示完整动图；动态照片视频添加 muted 让 autoPlay 在移动端生效","type":"fix"}
