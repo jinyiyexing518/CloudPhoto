@@ -143,21 +143,28 @@ export async function movePhotoToFolder(name: string, toFolder: string, movedBy?
 }
 
 export async function downloadPhotoApi(name: string, filename: string): Promise<void> {
-  let response: Response | null = null; let lastError: Error | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      response = await fetchWithTimeout(`${API_BASE}/photos/download?name=${encodeURIComponent(name)}`, { headers: authHeaders() }, 60_000);
-      if (response.ok || response.status < 500 || attempt === 1) break;
-    } catch (e: unknown) {
-      lastError = e instanceof Error ? e : new Error("网络错误");
-      if (attempt === 1) throw new Error(lastError.name === "AbortError" ? "下载超时" : "网络错误");
-    }
-  }
-  if (!response) throw new Error(lastError?.name === "AbortError" ? "下载超时" : "网络错误");
-  if (!response.ok) throw new Error("Download failed");
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob); const a = document.createElement("a");
-  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  // Ask the server for a short-lived SAS URL with Content-Disposition: attachment.
+  // The server only looks up metadata (~100ms), not the file body.
+  const res = await fetchWithTimeout(
+    `${API_BASE}/photos/download?name=${encodeURIComponent(name)}`,
+    { headers: authHeaders() },
+    15_000,
+  );
+  if (!res.ok) throw new Error("Download failed");
+  const { url } = await res.json() as { url: string };
+
+  // Convert to proxy URL so China mainland users download via Nginx → Azure Blob
+  // instead of connecting to blob.core.windows.net directly.
+  const downloadUrl = proxyBlobUrl(url);
+
+  // Trigger the browser's native download — no file data passes through JS memory.
+  // The download bar appears immediately; user can navigate away while it runs.
+  const a = document.createElement("a");
+  a.href = downloadUrl;
+  a.download = filename;   // hint for same-origin; Content-Disposition handles cross-origin
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 // ── Trash ──────────────────────────────────────────────────────────────────

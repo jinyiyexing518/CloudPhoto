@@ -4,7 +4,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
+import { getBlobServiceClient, containerName, generateDownloadSasUrl } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 
 app.http("downloadPhoto", {
@@ -36,35 +36,25 @@ app.http("downloadPhoto", {
     }
 
     try {
-      const blobServiceClient = getBlobServiceClient();
-      const containerClient =
-        blobServiceClient.getContainerClient(containerName);
+      const containerClient = getBlobServiceClient().getContainerClient(containerName);
       const blobClient = containerClient.getBlobClient(blobName);
 
+      // Fetch only properties (not the file content) to get the original filename
       const props = await blobClient.getProperties();
-      const downloadResponse = await blobClient.download();
-
       const originalName = props.metadata?.originalName
         ? Buffer.from(props.metadata.originalName, "base64").toString("utf8")
         : blobName.split("/").pop() ?? "photo";
 
-      const contentType = props.contentType ?? "application/octet-stream";
-
-      // Buffer the stream (images are typically < 20 MB)
-      const chunks: Buffer[] = [];
-      for await (const chunk of downloadResponse.readableStreamBody!) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as ArrayBuffer));
-      }
-      const body = Buffer.concat(chunks);
+      // Generate a short-lived SAS URL that instructs the browser to download
+      // the file as an attachment (Content-Disposition: attachment; filename=...).
+      // Returning only the URL — not the file body — means the server uses almost
+      // no memory and responds in ~100ms instead of streaming 100MB+.
+      const url = await generateDownloadSasUrl(blobName, originalName, 1);
 
       return {
         status: 200,
-        body,
-        headers: {
-          "Content-Type": contentType,
-          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(originalName)}`,
-          "Cache-Control": "private, max-age=3600",
-        },
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, filename: originalName }),
       };
     } catch (error) {
       context.error("Download error:", error);

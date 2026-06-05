@@ -1,0 +1,1 @@
+{"id":"fix-download-native","date":"2026-06-05","icon":"⬇️","title":"下载不再卡顿，立即触发浏览器下载","desc":"服务器改为返回带 Content-Disposition 的 SAS URL，客户端用原生 <a> 触发浏览器下载，文件不经 JS 内存，点击即可离开页面","type":"fix"}

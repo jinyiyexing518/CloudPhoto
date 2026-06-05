@@ -97,3 +97,34 @@ export async function generateSasUrl(blobName: string, expiryHours = 2): Promise
   const key = await getUserDelegationKey(expiryHours);
   return generateSasUrlWithKey(blobName, key, expiryHours);
 }
+
+/**
+ * Generate a SAS URL that forces the browser to download the blob with
+ * the given filename (Content-Disposition: attachment).
+ * Used by the download endpoint so the file is served natively by the browser
+ * without buffering in JavaScript memory.
+ */
+export async function generateDownloadSasUrl(
+  blobName: string,
+  filename: string,
+  expiryHours = 1,
+): Promise<string> {
+  const key = await getUserDelegationKey(expiryHours);
+  const nowMs = Date.now();
+  const sasParams = generateBlobSASQueryParameters(
+    {
+      containerName,
+      blobName,
+      permissions: BlobSASPermissions.parse("r"),
+      startsOn: new Date(nowMs - 5 * 60 * 1000),
+      expiresOn: new Date(nowMs + expiryHours * 3600 * 1000),
+      // rscd — instructs Azure Blob to respond with Content-Disposition: attachment
+      // so browsers download the file instead of displaying it inline
+      contentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    },
+    key,
+    accountName,
+  );
+  const encodedPath = blobName.split("/").map(encodeURIComponent).join("/");
+  return `https://${accountName}.blob.core.windows.net/${containerName}/${encodedPath}?${sasParams}`;
+}
