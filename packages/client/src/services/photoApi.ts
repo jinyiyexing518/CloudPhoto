@@ -98,12 +98,24 @@ export async function fetchMotionVideoBlob(photoName: string): Promise<MotionVid
   } catch { return { url: null, error: "动态视频提取失败", reason: null }; }
 }
 
+// ── Photo list SWR cache ──────────────────────────────────────────────────
+// Stores the last-fetched list per groupId so the UI can render stale data
+// instantly on repeat visits while the fresh fetch runs in the background.
+const _photoListCache = new Map<string, Photo[]>();
+
+/** Returns the last-fetched photo list for a group (may be stale). */
+export function getCachedPhotos(groupId = ""): Photo[] | null {
+  return _photoListCache.get(groupId) ?? null;
+}
+
 // ── Photo list ────────────────────────────────────────────────────────────
 export async function listPhotos(groupId = ""): Promise<Photo[]> {
   const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
   const response = await fetchWithTimeout(url, { headers: authHeaders() });
   if (!response.ok) throw new Error("Failed to fetch photos");
-  return (await response.json() as Photo[]).map(proxyPhoto);
+  const photos = (await response.json() as Photo[]).map(proxyPhoto);
+  _photoListCache.set(groupId, photos);   // update SWR cache
+  return photos;
 }
 
 export async function fetchPhotoLocations(groupId = ""): Promise<PhotoLocation[]> {

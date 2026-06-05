@@ -805,7 +805,9 @@ function PhotoGallery({
       .filter((p) => p && !p.contentType?.startsWith("video/"));
     toPreload.forEach((p) => {
       const img = new Image();
-      img.src = p.url;
+      // Use thumbnailUrl/previewUrl (same as viewer picks) — NOT the full original.
+      // p.url can be 10-20 MB; getViewerSrc() picks ~50 KB thumb or ~400 KB preview.
+      img.src = getViewerSrc(p);
     });
   }, [selectedIdx, modalPhotos]);
 

@@ -1,0 +1,1 @@
+{"id":"perf-swr-cache-gzip","date":"2026-06-05","icon":"⚡","title":"照片列表 SWR 缓存 + gzip 压缩 + 邻图预加载优化","desc":"首次重复访问立即显示缓存照片（SWR）；Tab 切换回来自动后台刷新；服务端 listPhotos 加 gzip 压缩（-65%体积）和 Cache-Control 头；邻图预加载从全分辨率改为 preview/thumbnail URL","type":"improvement"}
