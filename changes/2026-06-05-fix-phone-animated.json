@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-05-fix-phone-animated",
+  "date": "2026-06-05",
+  "icon": "📱",
+  "title": "正确处理手机动图（WebP/HEIF）流量与显示",
+  "type": "fix",
+  "desc": "非GIF动图改为流式加载；GIF下载中断切图后取消；gallery徽章显示\"动图\"",
+  "seq": 1780650959900
+}
