@@ -300,6 +300,7 @@ function PhotoGallery({
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
@@ -705,6 +706,7 @@ function PhotoGallery({
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
     setVideoBuffering(false);
+    setVideoError(false);
     setImageDimensions(null);
     setModalImageLoaded(false);
     setGifViewerSrc("");
@@ -1403,14 +1405,25 @@ function PhotoGallery({
                     controls
                     playsInline
                     preload="metadata"
-                    onPlay={() => setVideoBuffering(true)}
+                    onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}
+                    onError={() => { setVideoBuffering(false); setVideoError(true); }}
                   />
-                  {videoBuffering && (
+                  {videoBuffering && !videoError && (
                     <div className="modal-video-spinner">
                       <div className="modal-video-spinner-ring" />
                       <span>加载中…</span>
+                    </div>
+                  )}
+                  {videoError && (
+                    <div className="modal-video-spinner" style={{ gap: 8 }}>
+                      <span style={{ fontSize: 28 }}>⚠️</span>
+                      <span style={{ fontSize: 13 }}>视频加载失败</span>
+                      <button
+                        style={{ marginTop: 4, padding: "4px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13 }}
+                        onClick={() => { setVideoError(false); setVideoBuffering(false); }}
+                      >重试</button>
                     </div>
                   )}
                 </div>

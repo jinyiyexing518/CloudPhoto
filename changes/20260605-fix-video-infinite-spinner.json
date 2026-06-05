@@ -1,0 +1,1 @@
+{"id":"fix-video-infinite-spinner","date":"2026-06-05","icon":"▶️","title":"修复视频无限 loading + 增加失败重试","desc":"onError 处理器停止死循环 spinner；视频加载失败显示警告和重试按钮而非永久旋转","type":"fix"}
