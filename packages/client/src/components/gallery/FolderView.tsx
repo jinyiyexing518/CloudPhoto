@@ -1416,14 +1416,13 @@ function FolderContent({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <video
                   key={selectedPhoto.url}
+                  src={selectedPhoto.url}
                   className="modal-image modal-video"
                   controls
                   playsInline
                   preload="metadata"
-                  poster={selectedPhoto.thumbnailUrl}
-                >
-                  <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
-                </video>
+                  poster={selectedPhoto.thumbnailUrl ?? undefined}
+                />
               ) : selectedPhoto.contentType === "image/gif" || selectedPhoto.isAnimated ? (
                 <>
                   {/* Motion JPEG (Google/Samsung/etc.): show video player if available */}

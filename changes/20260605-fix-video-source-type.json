@@ -1,0 +1,1 @@
+{"id":"fix-video-source-type","date":"2026-06-05","icon":"▶️","title":"修复视频无法播放：移除 type 属性","desc":"<source type=contentType> 会让 Chrome/Android 拒绝播放 video/quicktime 或 video/x-msvideo 文件；改为直接在 <video src> 上设置，让浏览器自动检测格式","type":"fix"}
