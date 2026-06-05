@@ -1,0 +1,1 @@
+{"id":"fix-gzip-preload-metadata","date":"2026-06-05","icon":"🎬","title":"修复缩略图不显示 + 视频加载慢","desc":"移除 gzip（Azure Functions Windows 会把 Buffer body 当 UTF-8 处理导致 JSON 损坏）；添加 preload=metadata 让浏览器预加载视频元数据","type":"fix"}

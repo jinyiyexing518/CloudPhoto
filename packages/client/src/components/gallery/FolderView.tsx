@@ -1419,6 +1419,7 @@ function FolderContent({
                   className="modal-image modal-video"
                   controls
                   playsInline
+                  preload="metadata"
                   poster={selectedPhoto.thumbnailUrl}
                 >
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />

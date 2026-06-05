@@ -4,7 +4,6 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { gzipSync } from "zlib";
 import {
   getBlobServiceClient,
   containerName,
@@ -146,27 +145,17 @@ app.http("listPhotos", {
       });
 
       const jsonBody = JSON.stringify(photos);
-      const sharedHeaders = {
-        "Content-Type": "application/json; charset=utf-8",
-        // Allow browser to serve the cached list for 30 s and revalidate in
-        // background for up to 60 s.  SAS URLs are valid for 2 h so caching
-        // for 30 s is safe and avoids redundant API calls on quick tab switches.
-        "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
-      };
-
-      // Gzip if the client supports it (saves ~65% on the JSON payload)
-      const acceptEncoding = request.headers.get("accept-encoding") ?? "";
-      if (acceptEncoding.includes("gzip")) {
-        return {
-          status: 200,
-          body: gzipSync(jsonBody),
-          headers: { ...sharedHeaders, "Content-Encoding": "gzip", "Vary": "Accept-Encoding" },
-        };
-      }
-
+      // Cache-Control: allow the browser to serve the cached list for 30 s and
+      // revalidate in the background for up to 60 s.  SAS URLs are valid for 2 h
+      // so caching for 30 s is safe and avoids redundant calls on quick tab switches.
+      // Note: gzip encoding is deliberately omitted — Azure Functions on Windows may
+      // corrupt binary Buffer bodies by re-encoding them as UTF-8 text.
       return {
         status: 200,
-        headers: sharedHeaders,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+        },
         body: jsonBody,
       };
     } catch (error) {
