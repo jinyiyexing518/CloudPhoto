@@ -85,6 +85,26 @@ sudo bash ~/infra/setup.sh cloudphotos.top
 5. 部署完整反向代理配置（见 `infra/nginx.conf`）
 6. 启用 systemd certbot.timer 自动续签（每日两次检查）
 
+### ⚠️ Nginx 配置变更必须手动部署到 VM
+
+**Git 仓库里修改 `infra/nginx.conf` 不会自动应用到 VM，没有 Pipeline。**  
+每次修改后，需要手动 SSH 部署：
+
+```powershell
+# 1. 上传最新配置
+scp -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
+    -o StrictHostKeyChecking=no `
+    D:\Project\ProjectCode\MySource\CloudPhoto\infra\nginx.conf `
+    azureuser@20.195.27.151:/tmp/nginx_latest.conf
+
+# 2. 应用配置并重载
+ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
+    -o StrictHostKeyChecking=no azureuser@20.195.27.151 `
+    "sudo cp /tmp/nginx_latest.conf /etc/nginx/sites-available/cloudphoto && sudo nginx -t && sudo systemctl reload nginx && echo OK"
+```
+
+---
+
 ### Nginx 配置说明（`infra/nginx.conf`）
 
 | Location | 代理目标 | 特殊配置 |
