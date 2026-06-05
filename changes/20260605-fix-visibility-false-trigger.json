@@ -1,0 +1,1 @@
+{"id":"fix-visibility-false-trigger","date":"2026-06-05","icon":"🔄","title":"修复关闭更新弹窗后触发刷新","desc":"visibilitychange 只在用户真正切走再回来时刷新，不再被移动端关闭弹窗的误触发","type":"fix"}

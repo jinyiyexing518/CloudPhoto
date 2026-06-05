@@ -549,11 +549,22 @@ function AppContent() {
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
 
-  // Background refresh when user returns to the app (other-device uploads, etc.)
+  // Background refresh when user genuinely returns to the app after switching away.
+  // Only fires if the document was actually hidden first — prevents false triggers
+  // from mobile browsers that fire visibilitychange during modal interactions
+  // (e.g. closing the WhatsNew popup) even though the user never left the app.
   useEffect(() => {
-    const onVisible = () => { if (!document.hidden) void fetchPhotos(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    let wasHidden = false;
+    const onVisibility = () => {
+      if (document.hidden) {
+        wasHidden = true;
+      } else if (wasHidden) {
+        wasHidden = false;
+        void fetchPhotos();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [fetchPhotos]);
 
   // Reset all active filters when the user switches groups (B5 / F9)
