@@ -81,7 +81,7 @@ interface MomentCardData {
   engagement: number;
 }
 
-const PAGE_SIZE = 40;
+const PAGE_SIZE = 24;
 const MOMENTS_MAX = 20;
 const MOMENT_SCORE_FAVORITE_WEIGHT = 120;
 const MOMENT_SCORE_SUBJECT_WEIGHT = 20;

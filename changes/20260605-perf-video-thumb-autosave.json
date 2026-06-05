@@ -1,0 +1,1 @@
+{"id":"perf-video-thumb-autosave","date":"2026-06-05","icon":"📹","title":"视频封面自动保存 + 分页优化","desc":"首次在画廊中提取视频帧后自动上传为服务器缩略图，下次加载直接用小图；每页从 40 减至 24 张减少首屏并发","type":"improvement"}

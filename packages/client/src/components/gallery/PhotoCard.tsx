@@ -4,6 +4,10 @@ import { memo, useEffect, useRef, useState } from "react";
 const BLANK_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
+import { setVideoThumbnail } from "../../services/uploadApi";
+
+// Per-session dedup: avoid re-uploading a thumbnail for the same video twice
+const _thumbnailedInSession = new Set<string>();
 
 interface Props {
   photo: Photo;
@@ -128,7 +132,26 @@ function PhotoCard({
       setVideoDuration(`${m}:${String(s).padStart(2, "0")}`);
     }
   };
-  const handleVideoSeeked = () => setImgLoaded(true);
+  const handleVideoSeeked = () => {
+    setImgLoaded(true);
+    // Auto-save the extracted frame as the server thumbnail (fire-and-forget).
+    // After this, future page loads use the fast <img> path instead of downloading the video.
+    const v = videoRef.current;
+    if (!v || _thumbnailedInSession.has(photo.name)) return;
+    _thumbnailedInSession.add(photo.name);
+    try {
+      const scale = Math.min(1, 400 / (v.videoWidth || 400));
+      const w = Math.round((v.videoWidth || 400) * scale);
+      const h = Math.round((v.videoHeight || 300) * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")?.drawImage(v, 0, 0, w, h);
+      canvas.toBlob((blob) => {
+        if (blob) void setVideoThumbnail(photo.name, blob);
+      }, "image/webp", 0.75);
+    } catch { /* best-effort */ }
+  };
 
   // Toggle play/pause for animated images. Uses src-swap instead of canvas
   // to avoid cross-origin (CORS) security errors on Azure SAS URLs.
