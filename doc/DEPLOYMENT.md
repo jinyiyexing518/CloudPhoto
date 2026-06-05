@@ -41,7 +41,7 @@
 
 ### 前提条件
 
-1. Azure VM（Southeast Asia · Singapore）— Standard B1s，Ubuntu 22.04 LTS，SSH 公钥认证
+1. Azure VM（Southeast Asia · Singapore）— Standard B2s，Ubuntu 24.04 LTS，SSH 公钥认证（`cloudphoto-vm-key.pem`）
 2. 已购买域名（本项目使用 `cloudphotos.top`，阿里云注册）
 3. 域名 DNS A 记录指向 VM 公网 IP
 
@@ -49,8 +49,8 @@
 
 | 记录类型 | 主机记录 | 记录值 |
 |---------|---------|--------|
-| A | `@` | `172.188.17.176` |
-| A | `www` | `172.188.17.176` |
+| A | `@` | `20.195.27.151` |
+| A | `www` | `20.195.27.151` |
 
 > ⚠️ 需完成域名实名认证，否则 DNS 不生效（`.top` 等国际域名在阿里云均需实名）
 

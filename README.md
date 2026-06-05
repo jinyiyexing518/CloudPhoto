@@ -11,7 +11,7 @@
 | 算法库 | `@cloudphoto/algorithm` — 带宽 / 渲染 / 分页 / 优先级算法（纯 TS，无平台依赖）| monorepo 内部包 |
 | 存储 | Azure Blob Storage（用户委托 SAS，无账户密钥） | East Asia |
 | 数据库 | Azure Cosmos DB NoSQL（托管身份，无连接字符串） | East Asia |
-| 反向代理 | Nginx 1.24 · HTTP/2 · Let's Encrypt SSL · TCP BBR 拥塞控制（中国大陆入口） | Azure VM B1s · Southeast Asia |
+| 反向代理 | Nginx 1.24 · HTTP/2 · Let's Encrypt SSL · TCP BBR 拥塞控制（中国大陆入口） | Azure VM B2s · Southeast Asia |
 | CI/CD | GitHub Actions + OIDC 无密码部署 | GitHub |
 
 ---
