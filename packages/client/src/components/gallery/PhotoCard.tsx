@@ -149,7 +149,16 @@ function PhotoCard({
       { rootMargin: VIDEO_THUMB_PRELOAD_MARGIN },
     );
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      // Revoke the partial blob URL now that the card is unmounting or the
+      // photo URL has changed.  This is the correct place to release the
+      // memory — NOT inside handleVideoSeeked which fires before unmount.
+      if (videoBlobRef.current) {
+        URL.revokeObjectURL(videoBlobRef.current);
+        videoBlobRef.current = null;
+      }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVideo, useVideoThumb, photo.url]);
 

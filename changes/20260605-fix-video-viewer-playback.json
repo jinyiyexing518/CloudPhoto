@@ -1,0 +1,1 @@
+{"id":"fix-video-viewer-playback","date":"2026-06-05","icon":"▶️","title":"修复视频播放无法播放的问题","desc":"移除 preload=auto（iOS Safari 会拦截导致无法播放），加 key={url} 确保切换视频时元素重新挂载，修复 blob URL 生命周期（不再在 handleVideoSeeked 提前撤销）","type":"fix"}

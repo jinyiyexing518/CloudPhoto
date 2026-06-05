@@ -1387,10 +1387,10 @@ function PhotoGallery({
             >
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <video
+                  key={selectedPhoto.url}
                   className="modal-image modal-video"
                   controls
                   playsInline
-                  preload="auto"
                   poster={selectedPhoto.thumbnailUrl}
                 >
                   <source src={selectedPhoto.url} type={selectedPhoto.contentType} />
