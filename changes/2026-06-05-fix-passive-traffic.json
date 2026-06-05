@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-05-fix-passive-traffic",
+  "date": "2026-06-05",
+  "icon": "🚦",
+  "title": "消除用户未交互时的被动流量",
+  "type": "fix",
+  "desc": "video preload=none; getViewerSrc手机端回退thumbnailUrl; 相邻预加载跳过动图",
+  "seq": 1780650416637
+}

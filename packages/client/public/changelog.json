@@ -1,5 +1,230 @@
 [
   {
+    "id": "2026-06-05-fix-passive-traffic",
+    "date": "2026-06-05",
+    "icon": "🚦",
+    "title": "消除用户未交互时的被动流量",
+    "type": "fix",
+    "desc": "video preload=none; getViewerSrc手机端回退thumbnailUrl; 相邻预加载跳过动图",
+    "seq": 1780650416637
+  },
+  {
+    "id": "algorithm-package",
+    "date": "2026-06-05",
+    "icon": "🧮",
+    "title": "新增 Algorithm 算法包",
+    "desc": "packages/algorithm 集中沉淀优化算法：Range Request 策略、照片重要性评分、分页配置、查看器分级阈值、媒体常量",
+    "type": "improvement"
+  },
+  {
+    "id": "feat-clear-cache-button",
+    "date": "2026-06-05",
+    "icon": "🔄",
+    "title": "设置 → 诊断 → 清除缓存并强制更新",
+    "desc": "一键注销 Service Worker、清除 Cache API 缓存并强制重载，解决 PWA 缓存导致看不到最新改动的问题",
+    "type": "improvement"
+  },
+  {
+    "id": "feat-folder-photo-preview",
+    "date": "2026-06-05",
+    "icon": "📁",
+    "title": "文件夹首次只显示 6 张，减少首屏加载",
+    "desc": "每个文件夹最多显示 6 张预览图，点击「查看剩余 N 张」展开全部；多选模式自动展开；切换文件夹自动收起；时间线保持无限滚动不变",
+    "type": "improvement"
+  },
+  {
+    "id": "fix-animated-viewer-playback",
+    "date": "2026-06-05",
+    "icon": "🎞️",
+    "title": "修复动态图片无法播放",
+    "desc": "GIF查看器不再先显示静态缩略图（会误导用户以为无法播放），改为直接显示完整动图；动态照片视频添加 muted 让 autoPlay 在移动端生效",
+    "type": "fix"
+  },
+  {
+    "id": "fix-download-native",
+    "date": "2026-06-05",
+    "icon": "⬇️",
+    "title": "下载不再卡顿，立即触发浏览器下载",
+    "desc": "服务器改为返回带 Content-Disposition 的 SAS URL，客户端用原生 <a> 触发浏览器下载，文件不经 JS 内存，点击即可离开页面",
+    "type": "fix"
+  },
+  {
+    "id": "fix-excessive-background-traffic",
+    "date": "2026-06-05",
+    "icon": "📶",
+    "title": "修复后台偷跑流量：视频按需加载 + GIF 按需加载",
+    "desc": "preload=auto 会在打开查看器时立即后台缓冲数MB视频；改回 metadata 仅加载时长/尺寸信息。GIF 卡片改用 IntersectionObserver，仅进入视口才下载完整动图（之前一渲染就立即下载）。相邻照片预加载新增去重缓存，前后翻页不重复下载同一张图",
+    "type": "fix"
+  },
+  {
+    "id": "fix-folder-lazy-mount",
+    "date": "2026-06-05",
+    "icon": "🗂️",
+    "title": "修复 FolderView 首屏崩溃",
+    "desc": "FolderView 改为首次访问文件夹 Tab 时才挂载，避免应用启动时立即加载 lazy chunk 导致「main渲染出错」",
+    "type": "fix"
+  },
+  {
+    "id": "fix-gif-video-viewer-ux",
+    "date": "2026-06-05",
+    "icon": "🎞️",
+    "title": "修复动图/视频查看器空白问题",
+    "desc": "重新启用 GIF 查看器的缩略图占位 + 加载中提示；视频无封面时显示深色背景防止白色闪烁；GIF 加载完成前显示「加载动图中…」",
+    "type": "fix"
+  },
+  {
+    "id": "fix-gzip-preload-metadata",
+    "date": "2026-06-05",
+    "icon": "🎬",
+    "title": "修复缩略图不显示 + 视频加载慢",
+    "desc": "移除 gzip（Azure Functions Windows 会把 Buffer body 当 UTF-8 处理导致 JSON 损坏）；添加 preload=metadata 让浏览器预加载视频元数据",
+    "type": "fix"
+  },
+  {
+    "id": "fix-location-search-logic",
+    "date": "2026-06-05",
+    "icon": "📍",
+    "title": "修复地址搜索逻辑：改回顺序执行",
+    "desc": "并行竞速有逻辑 bug（Nominatim 挂起无超时 + proxy 失败时 Promise.allSettled 永远不触发）；改回简单的顺序执行：先直连 Nominatim（和地图原来一样的 URL），失败则 fallback 到服务端 proxy",
+    "type": "fix"
+  },
+  {
+    "id": "fix-location-search-parallel",
+    "date": "2026-06-05",
+    "icon": "📍",
+    "title": "地址搜索速度修复 + MemoryMap 统一组件",
+    "desc": "searchLocation 改为并行竞速（直连 Nominatim + 服务端代理同时发起），首结果时间从 18s 降至 1-2s；MemoryMap 改用 LocationSearchPanel 共享同一套搜索组件",
+    "type": "fix"
+  },
+  {
+    "id": "fix-proxy-fallback-gateway",
+    "date": "2026-06-05",
+    "icon": "🔌",
+    "title": "修复代理 502/503/504 回退 + 错误提示",
+    "desc": "fetchWithProxyFallback 新增对 Nginx 网关错误（502/503/504）的自动回退；登录失败时区分「代理不可用」与「网络错误」",
+    "type": "fix"
+  },
+  {
+    "id": "fix-swr-empty-cache-bug",
+    "date": "2026-06-05",
+    "icon": "🐛",
+    "title": "修复照片列表消失 bug",
+    "desc": "[] 是 truthy 值导致空缓存被当作有效数据静默显示；服务端移除 max-age 防止浏览器缓存空列表；错误提示始终显示",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-full-download-gallery",
+    "date": "2026-06-05",
+    "icon": "🚫",
+    "title": "修复视频缩略图导致完整视频下载的严重流量 bug",
+    "desc": "两个 bug 同时导致完整视频被静默下载：1) .finally() 无论 Range 请求成功与否都调用 .load()，Range 失败时 src 仍是完整视频 URL；2) onError fallback 重置 src 为完整 URL 再调用 .load()，非 faststart 视频触发全量下载。同时限制动图预加载仅对 image/gif，手机动图（WebP/HEIC，单文件 2-20MB）在相册中只展示静态缩略图",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-infinite-spinner",
+    "date": "2026-06-05",
+    "icon": "▶️",
+    "title": "修复视频无限 loading + 增加失败重试",
+    "desc": "onError 处理器停止死循环 spinner；视频加载失败显示警告和重试按钮而非永久旋转",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-loading-and-ui",
+    "date": "2026-06-05",
+    "icon": "🎬",
+    "title": "视频loading修复 + 按钮样式统一",
+    "desc": "canPlayThrough改回onPlaying（大文件慢网不触发前者）；非faststart回退加载+guard；清除缓存按钮改用原生样式",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-loading-indicator",
+    "date": "2026-06-05",
+    "icon": "⏳",
+    "title": "视频加载中 loading 提示",
+    "desc": "点击播放后立即显示转圈 loading；缓冲时持续显示；开始播放后消失；再次卡顿时再显示",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-preload-auto",
+    "date": "2026-06-05",
+    "icon": "▶️",
+    "title": "视频查看器改用 preload=auto 解决非 faststart 延迟播放",
+    "desc": "preload=auto 让浏览器主动预取文件头尾，找到 moov 原子后立即可播；Nginx 明确声明 Accept-Ranges: bytes",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-source-type",
+    "date": "2026-06-05",
+    "icon": "▶️",
+    "title": "修复视频无法播放：移除 type 属性",
+    "desc": "<source type=contentType> 会让 Chrome/Android 拒绝播放 video/quicktime 或 video/x-msvideo 文件；改为直接在 <video src> 上设置，让浏览器自动检测格式",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-thumbnail-and-playback",
+    "date": "2026-06-05",
+    "icon": "🎬",
+    "title": "修复视频封面+播放两个核心问题",
+    "desc": "非faststart视频Range请求解码失败时回退到全量加载；移除poster（防止静态封面掩盖播放中状态）；改用canplaythrough替代canplay（减少iOS误判）",
+    "type": "fix"
+  },
+  {
+    "id": "fix-video-viewer-playback",
+    "date": "2026-06-05",
+    "icon": "▶️",
+    "title": "修复视频播放无法播放的问题",
+    "desc": "移除 preload=auto（iOS Safari 会拦截导致无法播放），加 key={url} 确保切换视频时元素重新挂载，修复 blob URL 生命周期（不再在 handleVideoSeeked 提前撤销）",
+    "type": "fix"
+  },
+  {
+    "id": "fix-viewer-gif-video-loading",
+    "date": "2026-06-05",
+    "icon": "🎬",
+    "title": "查看器 GIF 渐进加载 + 视频封面即显",
+    "desc": "GIF 查看器先显示缩略图，后台加载完整动图再切换；视频查看器添加缩略图作为 poster，preload=auto 提前缓冲；Nginx 对视频关闭 proxy_buffering 启用真正流式播放",
+    "type": "fix"
+  },
+  {
+    "id": "fix-visibility-false-trigger",
+    "date": "2026-06-05",
+    "icon": "🔄",
+    "title": "修复关闭更新弹窗后触发刷新",
+    "desc": "visibilitychange 只在用户真正切走再回来时刷新，不再被移动端关闭弹窗的误触发",
+    "type": "fix"
+  },
+  {
+    "id": "perf-nginx-gzip-api",
+    "date": "2026-06-05",
+    "icon": "📦",
+    "title": "Nginx 开启 gzip 压缩 API 响应，照片列表流量减少 90%",
+    "desc": "listPhotos 接口返回所有照片的 JSON（含 SAS URL），未压缩时 1000 张照片约 1MB，3000 张约 3MB。Nginx 层加入 gzip（level 5），application/json 响应压缩率约 90%，手机打开 app 首屏流量从几 MB 降至 ~200KB",
+    "type": "fix"
+  },
+  {
+    "id": "perf-swr-cache-gzip",
+    "date": "2026-06-05",
+    "icon": "⚡",
+    "title": "照片列表 SWR 缓存 + gzip 压缩 + 邻图预加载优化",
+    "desc": "首次重复访问立即显示缓存照片（SWR）；Tab 切换回来自动后台刷新；服务端 listPhotos 加 gzip 压缩（-65%体积）和 Cache-Control 头；邻图预加载从全分辨率改为 preview/thumbnail URL",
+    "type": "improvement"
+  },
+  {
+    "id": "perf-video-range-request",
+    "date": "2026-06-05",
+    "icon": "📡",
+    "title": "视频封面改用 Range Request 流式获取",
+    "desc": "只请求视频前 512KB（HTTP 206），faststart MP4 可直接解码元数据并截帧，峰值下载量从 100MB+ 降至 512KB；非 faststart 视频自动回退到完整加载",
+    "type": "improvement"
+  },
+  {
+    "id": "perf-video-thumb-autosave",
+    "date": "2026-06-05",
+    "icon": "📹",
+    "title": "视频封面自动保存 + 分页优化",
+    "desc": "首次在画廊中提取视频帧后自动上传为服务器缩略图，下次加载直接用小图；每页从 40 减至 24 张减少首屏并发",
+    "type": "improvement"
+  },
+  {
     "id": "2026-06-04-cloudphotos-api-fallback",
     "date": "2026-06-04",
     "icon": "??",
