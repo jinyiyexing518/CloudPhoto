@@ -1,0 +1,1 @@
+{"id":"fix-location-search-logic","date":"2026-06-05","icon":"📍","title":"修复地址搜索逻辑：改回顺序执行","desc":"并行竞速有逻辑 bug（Nominatim 挂起无超时 + proxy 失败时 Promise.allSettled 永远不触发）；改回简单的顺序执行：先直连 Nominatim（和地图原来一样的 URL），失败则 fallback 到服务端 proxy","type":"fix"}
