@@ -61,7 +61,7 @@ export default function OnThisDayCard({ photos, onJumpToPhoto }: Props) {
               title={`${yrsAgo} 年前 · ${p.originalName ?? p.name}`}
             >
               <img
-                src={p.url}
+                src={p.thumbnailUrl ?? p.url}
                 alt={p.originalName ?? "照片"}
                 loading="lazy"
               />

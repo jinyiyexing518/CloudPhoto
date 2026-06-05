@@ -303,6 +303,7 @@ function PhotoCard({
               ref={gifImgRef}
               src={photo.thumbnailUrl ?? photo.url}
               alt={displayName}
+              loading="lazy"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={(e) => {
@@ -316,6 +317,7 @@ function PhotoCard({
               ref={gifImgRef}
               src={gifPaused ? BLANK_GIF : gifDisplaySrc}
               alt={displayName}
+              loading="lazy"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
             />
