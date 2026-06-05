@@ -54,6 +54,10 @@ function PhotoCard({
     isAnimated && !isMotionPhoto && photo.thumbnailUrl ? photo.thumbnailUrl : photo.url
   );
   const gifPreloadDone = useRef(false);
+  // Range-fetch src for videos: starts as full URL, replaced with a 512 KB partial blob URL
+  // once the card enters the viewport. Falls back to full URL if Range is not supported.
+  const [videoThumbSrc, setVideoThumbSrc] = useState<string>(() => photo.url);
+  const videoBlobRef = useRef<string | null>(null);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
   // Show static thumbnail for videos that already have one (generated client-side at upload).
@@ -96,8 +100,21 @@ function PhotoCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAnimated, isMotionPhoto, photo.thumbnailUrl, photo.url]);
 
+  // Reset Range-fetch state whenever the SAS URL renews
+  useEffect(() => {
+    if (videoBlobRef.current) {
+      URL.revokeObjectURL(videoBlobRef.current);
+      videoBlobRef.current = null;
+    }
+    setVideoThumbSrc(photo.url);
+  }, [photo.url]);
+
   // With preload="none" the video element needs a manual load() call once it enters
   // the viewport before metadata is available.
+  // Uses HTTP Range: bytes=0-524287 (512 KB) so only the first slice of the file is
+  // fetched. For faststart-encoded MP4s (moov at start — default on iOS/Android) this
+  // is sufficient to decode metadata + extract the first frame, cutting download size
+  // from 10-200 MB (full video) to a maximum of 512 KB per card.
   // NOTE: deps include useVideoThumb so the observer is (re-)registered whenever we
   // switch from the <img> thumbnail path to the <video> seek-fallback path (e.g. after
   // the thumbnail image 404s and videoThumbFailed flips to true).
@@ -107,17 +124,30 @@ function PhotoCard({
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
-          el.load(); // triggers metadata fetch only when card is visible
-          observer.disconnect();
-        }
+        if (!entries[0]?.isIntersecting) return;
+        observer.disconnect();
+        // Try Range fetch first; fall back to full-URL load on any failure
+        void fetch(photo.url, { headers: { Range: "bytes=0-524287" } })
+          .then(async (res) => {
+            if (res.status === 206 || res.ok) {
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              videoBlobRef.current = url;
+              setVideoThumbSrc(url);
+            }
+          })
+          .catch(() => { /* fallback: videoThumbSrc stays as photo.url */ })
+          .finally(() => {
+            // rAF: wait for React to commit the updated src to the DOM before load()
+            requestAnimationFrame(() => { videoRef.current?.load(); });
+          });
       },
       { rootMargin: "100px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVideo, useVideoThumb]);
+  }, [isVideo, useVideoThumb, photo.url]);
 
   const handleVideoMetadata = () => {
     const v = videoRef.current;
@@ -133,8 +163,11 @@ function PhotoCard({
     }
   };
   const handleVideoSeeked = () => {
-    setImgLoaded(true);
-    // Auto-save the extracted frame as the server thumbnail (fire-and-forget).
+    setImgLoaded(true);    // Partial blob URL no longer needed after frame is drawn — free the memory
+    if (videoBlobRef.current) {
+      URL.revokeObjectURL(videoBlobRef.current);
+      videoBlobRef.current = null;
+    }    // Auto-save the extracted frame as the server thumbnail (fire-and-forget).
     // After this, future page loads use the fast <img> path instead of downloading the video.
     const v = videoRef.current;
     if (!v || _thumbnailedInSession.has(photo.name)) return;
@@ -204,7 +237,7 @@ function PhotoCard({
           ) : isVideo ? (
             <video
               ref={videoRef}
-              src={photo.url}
+              src={videoThumbSrc}
               className={imgLoaded ? "img-loaded" : "img-loading"}
               preload="none"
               muted

@@ -1,0 +1,1 @@
+{"id":"perf-video-range-request","date":"2026-06-05","icon":"📡","title":"视频封面改用 Range Request 流式获取","desc":"只请求视频前 512KB（HTTP 206），faststart MP4 可直接解码元数据并截帧，峰值下载量从 100MB+ 降至 512KB；非 faststart 视频自动回退到完整加载","type":"improvement"}
