@@ -228,6 +228,10 @@ function AppContent() {
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  // Deferred mount: FolderView is lazy-loaded, so we only mount it on the user's first visit
+  // to the folder tab. Once mounted it stays mounted (tab-caching). Avoids a failed dynamic
+  // import error ("main渲染失败") on app startup when the network/VM is briefly unavailable.
+  const [folderMounted, setFolderMounted] = useState(() => activeTab === "folder");
   const [dragFileCount, setDragFileCount] = useState(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
@@ -410,6 +414,11 @@ function AppContent() {
     window.addEventListener("resize", updateViewTabAffordance);
     return () => window.removeEventListener("resize", updateViewTabAffordance);
   }, [activeTab, filteredPhotos.length, folderCount, importantPhotos.length]);
+
+  // Mount FolderView on first folder-tab visit (deferred to avoid eager lazy-chunk load)
+  useEffect(() => {
+    if (activeTab === "folder") setFolderMounted(true);
+  }, [activeTab]);
 
   const missingSubjectCount = useMemo(
     () => photos.filter((photo) => !photo.subject?.trim()).length,
@@ -1751,7 +1760,8 @@ function AppContent() {
               />
             </div>
 
-            {/* ── Folder panel ── kept mounted */}
+            {/* ── Folder panel ── mounted on first visit, then kept mounted */}
+            {(folderMounted || activeTab === "folder") && (
             <div style={{ display: activeTab === "folder" ? "" : "none" }}>
               <Suspense fallback={null}><FolderView
                 key={currentGroupId || "personal"}
@@ -1773,6 +1783,7 @@ function AppContent() {
                 contextKey={currentGroupId || "personal"}
               /></Suspense>
             </div>
+            )}
 
             {/* ── Map / Capsule / Story: lazy-conditional (heavier bundles, visited less often) */}
             {activeTab === "map" && (

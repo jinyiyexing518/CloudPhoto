@@ -1,0 +1,1 @@
+{"id":"fix-folder-lazy-mount","date":"2026-06-05","icon":"🗂️","title":"修复 FolderView 首屏崩溃","desc":"FolderView 改为首次访问文件夹 Tab 时才挂载，避免应用启动时立即加载 lazy chunk 导致「main渲染出错」","type":"fix"}
