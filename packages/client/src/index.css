@@ -2598,6 +2598,25 @@ body {
   overflow: hidden;
 }
 
+/* "查看剩余 N 张" expand button rendered below the photo grid */
+.folder-show-more-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 16px;
+  background: #f0f7ff;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s;
+}
+.folder-show-more-btn:hover { background: #dbeafe; }
+.folder-show-more-btn:active { background: #bfdbfe; }
+
 .folder-section-header {
   display: flex;
   align-items: center;

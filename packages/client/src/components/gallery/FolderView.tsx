@@ -634,6 +634,7 @@ export default function FolderView({
       ) : (
         /* Inside a folder */
         <FolderContent
+          key={currentPath}
           currentPath={currentPath}
           subFolders={displaySubFolders}
           directPhotos={photos.filter((p) => (p.folder?.trim() ?? "") === currentPath)}
@@ -728,6 +729,10 @@ function FolderContent({
   const touchStartX = useRef<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadSubject, setUploadSubject] = useState("");
+  // Limit initial photo count to FOLDER_PHOTO_PREVIEW; expand on demand.
+  // select-mode always shows all photos so multi-select works correctly.
+  const FOLDER_PHOTO_PREVIEW = 6;
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
 
   // Modal state
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -778,6 +783,9 @@ function FolderContent({
 
   // Batch selection
   const [selectMode, setSelectMode] = useState(false);
+  // select-mode always shows all photos so the full list is selectable
+  const displayedPhotos = (showAllPhotos || selectMode) ? directPhotos : directPhotos.slice(0, FOLDER_PHOTO_PREVIEW);
+  const hiddenCount = directPhotos.length - FOLDER_PHOTO_PREVIEW;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchMoveTo, setBatchMoveTo] = useState(MOVE_UNSELECTED);
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); setBatchMoveTo(MOVE_UNSELECTED); };
@@ -1326,8 +1334,8 @@ function FolderContent({
           );
         })}
 
-        {/* Photos */}
-        {directPhotos.map((photo) => (
+        {/* Photos — limited to FOLDER_PHOTO_PREVIEW unless expanded */}
+        {displayedPhotos.map((photo) => (
           <PhotoCard
             key={photo.name}
             photo={photo}
@@ -1386,6 +1394,16 @@ function FolderContent({
           </div>
         )}
       </div>
+
+      {/* Show-more row: visible when photos are capped and not in select mode */}
+      {!showAllPhotos && !selectMode && hiddenCount > 0 && (
+        <button
+          className="folder-show-more-btn"
+          onClick={() => setShowAllPhotos(true)}
+        >
+          查看剩余 {hiddenCount} 张照片
+        </button>
+      )}
 
       {/* ── Modal ── */}
       {selectedPhoto && (
