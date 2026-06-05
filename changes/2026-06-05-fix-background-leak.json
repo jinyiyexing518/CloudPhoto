@@ -1,0 +1,9 @@
+{
+  "id": "2026-06-05-fix-background-leak",
+  "date": "2026-06-05",
+  "icon": "🛑",
+  "title": "阻止切换标签后仍持续消耗流量的后台下载",
+  "type": "fix",
+  "desc": "OnThisDayCard改用thumbnailUrl; 动图/动态照片img加loading=lazy防止hidden容器内加载",
+  "seq": 1780652280290
+}
