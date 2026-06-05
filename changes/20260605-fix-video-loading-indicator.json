@@ -1,0 +1,1 @@
+{"id":"fix-video-loading-indicator","date":"2026-06-05","icon":"⏳","title":"视频加载中 loading 提示","desc":"点击播放后立即显示转圈 loading；缓冲时持续显示；开始播放后消失；再次卡顿时再显示","type":"fix"}

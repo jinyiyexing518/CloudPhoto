@@ -299,6 +299,7 @@ function PhotoGallery({
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
+  const [videoBuffering, setVideoBuffering] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
@@ -703,6 +704,7 @@ function PhotoGallery({
     setDownloading(false);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
+    setVideoBuffering(false);
     setImageDimensions(null);
     setModalImageLoaded(false);
     setGifViewerSrc("");
@@ -1370,15 +1372,27 @@ function PhotoGallery({
               }}
             >
               {selectedPhoto.contentType?.startsWith("video/") ? (
-                <video
-                  key={selectedPhoto.url}
-                  src={selectedPhoto.url}
-                  className="modal-image modal-video"
-                  controls
-                  playsInline
-                  preload="metadata"
-                  poster={selectedPhoto.thumbnailUrl ?? undefined}
-                />
+                <div className="modal-video-wrap">
+                  <video
+                    key={selectedPhoto.url}
+                    src={selectedPhoto.url}
+                    className="modal-image modal-video"
+                    controls
+                    playsInline
+                    preload="metadata"
+                    poster={selectedPhoto.thumbnailUrl ?? undefined}
+                    onPlay={() => setVideoBuffering(true)}
+                    onPlaying={() => setVideoBuffering(false)}
+                    onWaiting={() => setVideoBuffering(true)}
+                    onCanPlay={() => setVideoBuffering(false)}
+                  />
+                  {videoBuffering && (
+                    <div className="modal-video-spinner">
+                      <div className="modal-video-spinner-ring" />
+                      <span>加载中…</span>
+                    </div>
+                  )}
+                </div>
               ) : selectedPhoto.contentType === "image/gif" || selectedPhoto.isAnimated ? (
                 <>
                   {/* Motion JPEG (Google/Samsung/etc.): show video player if available */}
