@@ -1,11 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import path from "path";
 
 const appVersion = process.env.npm_package_version ?? "0.0.0";
 const buildTime = new Date().toISOString();
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Map @cloudphoto/algorithm to the TypeScript source so Vite
+      // bundles it directly (tree-shaken, no separate build step needed).
+      "@cloudphoto/algorithm": path.resolve(__dirname, "../algorithm/src/index.ts"),
+    },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __APP_BUILD_TIME__: JSON.stringify(buildTime),

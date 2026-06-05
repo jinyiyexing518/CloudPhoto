@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { listPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, Photo, ManagedShareLink } from "./services/photoApi";
+import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
 import { FilterState, emptyFilter, GridSize } from "./components/gallery/FilterBar";
@@ -386,13 +387,11 @@ function AppContent() {
   );
 
   const importantPhotos = useMemo(() => {
-    const scored = [...photos].map((p) => {
-      const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
-      const recencyDays = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60 * 24));
-      const score = (p.favorite ? 120 : 0) + (p.subject ? 20 : 0) + Math.max(0, 40 - recencyDays);
-      return { p, score };
-    });
-    return scored.sort((a, b) => b.score - a.score).map((x) => x.p).slice(0, 120);
+    return [...photos]
+      .map((p) => ({ p, score: scorePhotoImportance(p) }))
+      .sort((a, b) => b.score - a.score)
+      .map((x) => x.p)
+      .slice(0, MOMENTS_MAX_PHOTOS);
   }, [photos]);
 
   const folderCount = useMemo(

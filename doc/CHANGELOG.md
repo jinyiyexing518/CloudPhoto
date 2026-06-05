@@ -1,5 +1,24 @@
 # 更新日志
 
+### v1.9.0 — Algorithm Package · 流量优化深化 · 下载体验重构
+
+**新功能**
+- **🧮 `packages/algorithm` 算法包** — 新增 monorepo 内部包 `@cloudphoto/algorithm`，集中沉淀所有优化算法与魔法常量：`bandwidth.ts`（Range Request 策略）、`priority.ts`（照片重要性评分）、`pagination.ts`（分页配置）、`render.ts`（查看器分级阈值）、`media.ts`（THUMBNAIL_MIME、BLANK_GIF、WebP 质量）；前端通过 Vite alias + TypeScript paths 直接引用源码，Vite tree-shake 后 bundle 不增大
+
+**流量优化**
+- **📡 HTTP Range Request 截帧**（`VIDEO_THUMB_RANGE_BYTES = 524 287`）— 视频封面提取改为只下载前 512 KB（faststart MP4 moov 原子范围），下载量从 10-200 MB → **最多 512 KB**（-99%+）；非 faststart 视频自动回退全量
+- **📹 视频封面一次生成永久复用** — 首次截帧后自动调用 `setVideoThumbnail` 持久化到服务器，后续 gallery 加载走 `<img>` 快速路径，不再触发视频下载
+- **🎞️ GIF 服务端首帧缩略图** — sharp 为 GIF 生成静态首帧 WebP；gallery 卡片先显示缩略图，后台异步预加载完整动图，加载完成无缝切换
+
+**下载体验**
+- **⬇️ 原生浏览器下载，零 JS 内存** — 服务端 download 端点改为生成含 `Content-Disposition: attachment` 的短时 SAS URL（~100ms），客户端用 `<a>` 触发原生下载；文件不过 JS heap，用户点击后立即可离开页面；服务器内存占用：**0 bytes**（原：整个文件大小）
+
+**工程优化**
+- **分页规模调整** — `DEFAULT_PAGE_SIZE: 40 → 24`，首屏请求数减少 40%，与常见 2/3/4/6 列网格对齐
+- **前端服务层分域拆分** — `photoApi.ts` 拆为 `http` / `authApi` / `uploadApi` / `shareApi` 四个职责单一模块
+
+---
+
 ### v1.8.0 — 服务层重构 · 性能优化 · Tab 缓存 · 动图修复
 
 **Bug 修复**

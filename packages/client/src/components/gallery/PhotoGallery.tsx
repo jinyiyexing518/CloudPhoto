@@ -17,6 +17,7 @@ import {
   fetchMotionVideoBlob,
   getViewerSrc,
 } from "../../services/photoApi";
+import { DEFAULT_PAGE_SIZE, SCROLL_SENTINEL_MARGIN } from "@cloudphoto/algorithm";
 import { addRecentShareLink } from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
 import PhotoCard from "./PhotoCard";
@@ -81,7 +82,7 @@ interface MomentCardData {
   engagement: number;
 }
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const MOMENTS_MAX = 20;
 const MOMENT_SCORE_FAVORITE_WEIGHT = 120;
 const MOMENT_SCORE_SUBJECT_WEIGHT = 20;
@@ -432,7 +433,7 @@ function PhotoGallery({
           setVisibleCount((v) => v + PAGE_SIZE);
         }
       },
-      { rootMargin: "200px" },
+      { rootMargin: SCROLL_SENTINEL_MARGIN },
     );
     observer.observe(el);
     return () => observer.disconnect();

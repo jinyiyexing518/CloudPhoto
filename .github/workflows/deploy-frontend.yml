@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "packages/algorithm/**"
       - "packages/client/**"
       - ".github/workflows/deploy-frontend.yml"
   pull_request:

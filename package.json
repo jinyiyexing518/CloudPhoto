@@ -2,6 +2,7 @@
   "name": "cloudphoto",
   "private": true,
   "workspaces": [
+    "packages/algorithm",
     "packages/client",
     "packages/server"
   ],

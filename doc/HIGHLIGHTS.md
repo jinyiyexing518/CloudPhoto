@@ -58,11 +58,31 @@
   - 我们的方案：Workbox `CacheFirst` + `matchOptions: { ignoreSearch: true }` — Service Worker 以路径为缓存键，忽略 SAS 参数；效果等同于个人 CDN  
   - 效果：重复访问 **0 字节**；600 条目 / 7 天 / `purgeOnQuotaError` 自动淘汰；SW 全模式注册（非 PWA 普通浏览器同样受益）
 - **nginx 浏览器缓存头** — `Cache-Control: public, max-age=3600, stale-while-revalidate=7200`，覆盖 Azure Blob 默认 `no-cache`；无 SW 的浏览器在 SAS 有效期内命中 HTTP 缓存
+- **HTTP Range Request 视频截帧**（`bandwidth.ts`）— 视频封面改为 `Range: bytes=0-524287`（512 KB）替代全量下载；iOS/Android 默认 faststart MP4 的 moov 原子在文件开头，512KB 足以解码元数据 + 截第一帧；首次访问 10 个视频：从 **1-2 GB → 5 MB**（-99.5%）
+- **视频封面一次生成永久复用**（`bandwidth.ts`）— 首次 gallery 浏览时 canvas 截帧后自动 POST 到 `/api/photos/set-thumbnail`，后续所有访问走 `<img src={thumbnailUrl}>` 快速路径；session-level `Set` 防重复上传
+- **原生浏览器下载，零 JS 内存**（`render.ts`）— 服务端 download 端点改为返回含 `Content-Disposition: attachment` 的 SAS URL（~100ms 元数据查询），客户端 `<a>` 触发原生下载，文件不经 JS heap；用户点击后立即可离开页面
 - **Tab 切换零重载** — 时间线/瞬间/文件夹三个主 Tab 通过 `display:none` 保持挂载，切换回来无需重新拉取数据或重渲缩略图；Map/TimeCapsule/Story 等重型 Tab 仍按需挂载（懒加载 bundle）
+- **GIF 渐进式加载** — 服务端 sharp 为 GIF 生成静态首帧 WebP 缩略图；客户端先显示首帧（秒出），后台 `new Image()` 静默预加载完整动图，完成后无缝切换；动图播放前视觉效果与普通图片一致
 - **骨架屏** — 每张卡片渲染前展示闪光骨架，消除 CLS
 - **防抖搜索** — 300ms 防抖，避免每次击键触发全列表重渲
 - **useMemo 隔离大计算** — 时间线分组、片段评分、可见切片均按依赖变化重算
 - **用户委托密钥缓存** — 有效期 > 10 分钟时复用，节省 Azure 控制面调用
+
+---
+
+## 🧮 Algorithm Package（`packages/algorithm`）
+
+独立的纯 TypeScript 算法库，无 React/Azure 依赖，可被前端 bundle（Vite tree-shake）直接引用。
+
+| 模块 | 核心内容 | 使用位置 |
+|------|---------|---------|
+| `bandwidth.ts` | Range Request 策略（`VIDEO_THUMB_RANGE_BYTES = 524 287`）、预加载边距 | `PhotoCard.tsx` |
+| `priority.ts` | 照片重要性评分函数（收藏×120、标签×20、时效性 0-40）、`MOMENTS_MAX_PHOTOS` | `App.tsx` |
+| `pagination.ts` | `DEFAULT_PAGE_SIZE = 24`、`SCROLL_SENTINEL_MARGIN = "200px"` | `PhotoGallery.tsx` |
+| `render.ts` | 查看器图片分级阈值（thumb ≤ 450px / preview ≤ 2200px / original）、`VIEWER_DPR_SCALE` | `photoApi.ts` |
+| `media.ts` | `THUMBNAIL_MIME` 集合、`BLANK_GIF` 占位符、WebP 质量常量 | `PhotoCard.tsx` |
+
+**设计原则**：纯函数 + 常量，无副作用，所有数值均有注释说明选取依据；新增优化算法时在此包统一沉淀，避免魔法数字散落各组件。
 
 ---
 

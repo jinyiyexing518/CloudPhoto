@@ -17,6 +17,11 @@ import { API_BASE } from "../utils/apiBase";
 import { fetchWithTimeout, authHeaders, parseApiError } from "./http";
 import type { MomentInsight } from "./shareApi";
 import { ManagedMomentsUnavailableError } from "./shareApi";
+import {
+  VIEWER_THUMB_THRESHOLD_PX,
+  VIEWER_PREVIEW_THRESHOLD_PX,
+  VIEWER_DPR_SCALE,
+} from "@cloudphoto/algorithm";
 
 // ── Re-exports for backward compatibility ─────────────────────────────────
 export {
@@ -75,9 +80,9 @@ export function proxyPhoto(photo: Photo): Photo {
 
 export function getViewerSrc(photo: Photo): string {
   const dpr = window.devicePixelRatio || 1;
-  const physicalViewerPx = Math.round(window.innerWidth * dpr * 0.85);
-  if (physicalViewerPx <= 450 && photo.thumbnailUrl) return photo.thumbnailUrl;
-  if (physicalViewerPx <= 2200 && photo.previewUrl) return photo.previewUrl;
+  const physicalViewerPx = Math.round(window.innerWidth * dpr * VIEWER_DPR_SCALE);
+  if (physicalViewerPx <= VIEWER_THUMB_THRESHOLD_PX && photo.thumbnailUrl) return photo.thumbnailUrl;
+  if (physicalViewerPx <= VIEWER_PREVIEW_THRESHOLD_PX && photo.previewUrl) return photo.previewUrl;
   return photo.url;
 }
 

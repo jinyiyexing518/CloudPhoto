@@ -1,10 +1,14 @@
 import { memo, useEffect, useRef, useState } from "react";
-
-// 1×1 transparent GIF — used as src placeholder when animation is paused
-const BLANK_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { setVideoThumbnail } from "../../services/uploadApi";
+import {
+  BLANK_GIF,
+  VIDEO_THUMB_RANGE_BYTES,
+  VIDEO_THUMB_MAX_WIDTH,
+  VIDEO_THUMB_PRELOAD_MARGIN,
+  THUMB_QUALITY_FRACTION,
+} from "@cloudphoto/algorithm";
 
 // Per-session dedup: avoid re-uploading a thumbnail for the same video twice
 const _thumbnailedInSession = new Set<string>();
@@ -127,7 +131,7 @@ function PhotoCard({
         if (!entries[0]?.isIntersecting) return;
         observer.disconnect();
         // Try Range fetch first; fall back to full-URL load on any failure
-        void fetch(photo.url, { headers: { Range: "bytes=0-524287" } })
+        void fetch(photo.url, { headers: { Range: `bytes=0-${VIDEO_THUMB_RANGE_BYTES}` } })
           .then(async (res) => {
             if (res.status === 206 || res.ok) {
               const blob = await res.blob();
@@ -142,7 +146,7 @@ function PhotoCard({
             requestAnimationFrame(() => { videoRef.current?.load(); });
           });
       },
-      { rootMargin: "100px" },
+      { rootMargin: VIDEO_THUMB_PRELOAD_MARGIN },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -173,8 +177,8 @@ function PhotoCard({
     if (!v || _thumbnailedInSession.has(photo.name)) return;
     _thumbnailedInSession.add(photo.name);
     try {
-      const scale = Math.min(1, 400 / (v.videoWidth || 400));
-      const w = Math.round((v.videoWidth || 400) * scale);
+      const scale = Math.min(1, VIDEO_THUMB_MAX_WIDTH / (v.videoWidth || VIDEO_THUMB_MAX_WIDTH));
+      const w = Math.round((v.videoWidth || VIDEO_THUMB_MAX_WIDTH) * scale);
       const h = Math.round((v.videoHeight || 300) * scale);
       const canvas = document.createElement("canvas");
       canvas.width = w;
@@ -182,7 +186,7 @@ function PhotoCard({
       canvas.getContext("2d")?.drawImage(v, 0, 0, w, h);
       canvas.toBlob((blob) => {
         if (blob) void setVideoThumbnail(photo.name, blob);
-      }, "image/webp", 0.75);
+      }, "image/webp", THUMB_QUALITY_FRACTION);
     } catch { /* best-effort */ }
   };
 
