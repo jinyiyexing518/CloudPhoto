@@ -4,6 +4,7 @@ import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Photo, PhotoLocation, fetchPhotoLocations, updatePhotoGps } from "../../services/photoApi";
 import MediaThumb from "../shared/MediaThumb";
+import LocationSearchPanel from "../shared/LocationSearchPanel";
 
 // Module-level Leaflet cache - avoids re-importing on every effect run
 let cachedLeaflet: typeof import("leaflet") | null = null;
@@ -44,12 +45,6 @@ interface GeoPin {
   photo?: Photo;
 }
 
-interface NominatimResult {
-  lat: string;
-  lon: string;
-  display_name: string;
-}
-
 export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpdate }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
@@ -70,9 +65,7 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
 
   // Manual GPS editing
   const [editTarget, setEditTarget] = useState<Photo | null>(null);
-  const [addressQuery, setAddressQuery] = useState("");
-  const [geocodeResults, setGeocodeResults] = useState<NominatimResult[]>([]);
-  const [geocoding, setGeocoding] = useState(false);
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
   const [manualLat, setManualLat] = useState("");
   const [manualLon, setManualLon] = useState("");
   const [saving, setSaving] = useState(false);
@@ -226,34 +219,14 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
 
   const openEditFor = (photo: Photo) => {
     setEditTarget(photo);
-    setAddressQuery("");
-    setGeocodeResults([]);
+    setShowLocationSearch(false);
     setManualLat(photo.gpsLat ?? "");
     setManualLon(photo.gpsLon ?? "");
   };
 
-  const doGeocode = async () => {
-    if (!addressQuery.trim()) return;
-    setGeocoding(true);
-    setGeocodeResults([]);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressQuery)}&format=json&limit=5`,
-        { headers: { "Accept-Language": "zh-CN,zh;q=0.9" } },
-      );
-      const data = (await res.json()) as NominatimResult[];
-      setGeocodeResults(data);
-    } catch {
-      setGeocodeResults([]);
-    } finally {
-      setGeocoding(false);
-    }
-  };
-
   const closeEdit = () => {
     setEditTarget(null);
-    setAddressQuery("");
-    setGeocodeResults([]);
+    setShowLocationSearch(false);
     setManualLat("");
     setManualLon("");
   };
@@ -401,41 +374,21 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
               <span className="map-gps-photo-name">{displayName(editTarget)}</span>
             </div>
 
-            <div className="map-gps-section-label">搜索地址</div>
-            <div className="map-gps-search-row">
-              <input
-                className="map-gps-input"
-                placeholder="输入地址、城市或地名…"
-                value={addressQuery}
-                onChange={(e) => setAddressQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void doGeocode()}
-              />
-              <button
-                className="map-gps-search-btn"
-                onClick={() => void doGeocode()}
-                disabled={geocoding || !addressQuery.trim()}
-              >{geocoding ? "…" : "搜索"}</button>
+            {/* Shared LocationSearchPanel — same component + search logic as PhotoGallery/FolderView */}
+            <div className="map-gps-section-label">
+              搜索地址
+              {!showLocationSearch && (
+                <button className="map-gps-search-toggle" onClick={() => setShowLocationSearch(true)}>
+                  搜索 →
+                </button>
+              )}
             </div>
-            {geocodeResults.length > 0 && (
-              <ul className="map-gps-results">
-                {geocodeResults.map((r, i) => (
-                  <li key={i}>
-                    <button
-                      className="map-gps-result-item"
-                      onClick={() => void saveGps(r.lat, r.lon)}
-                      disabled={saving}
-                    >
-                      <span className="map-gps-result-name">{r.display_name}</span>
-                      <span className="map-gps-result-coords">
-                        {parseFloat(r.lat).toFixed(4)}, {parseFloat(r.lon).toFixed(4)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {geocodeResults.length === 0 && addressQuery && !geocoding && (
-              <p className="map-gps-no-result">未找到结果，请尝试不同关键词</p>
+            {showLocationSearch && (
+              <LocationSearchPanel
+                saving={saving}
+                onSelect={(lat, lon) => void saveGps(lat, lon)}
+                onClose={() => setShowLocationSearch(false)}
+              />
             )}
 
             <div className="map-gps-divider">或手动输入坐标</div>

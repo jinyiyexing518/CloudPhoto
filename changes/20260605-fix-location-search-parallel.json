@@ -1,0 +1,1 @@
+{"id":"fix-location-search-parallel","date":"2026-06-05","icon":"📍","title":"地址搜索速度修复 + MemoryMap 统一组件","desc":"searchLocation 改为并行竞速（直连 Nominatim + 服务端代理同时发起），首结果时间从 18s 降至 1-2s；MemoryMap 改用 LocationSearchPanel 共享同一套搜索组件","type":"fix"}

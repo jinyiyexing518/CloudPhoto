@@ -60,61 +60,112 @@ export interface LocationSearchResult {
 /** Session-level cache so repeated queries don't re-hit the backend */
 const searchCache = new Map<string, LocationSearchResult[]>();
 
+// ── Internal fetch helpers ────────────────────────────────────────────────
+
 /**
- * Search for places by name via the CloudPhoto backend proxy
- * (which calls Nominatim server-side with proper User-Agent and caching).
- * Falls back to direct Nominatim if the proxy returns an error.
+ * Direct Nominatim fetch — same approach used by MemoryMap.
+ * Fast (1-2 s), no server dependency, but shortName is a simple split.
  */
-export async function searchLocation(query: string): Promise<LocationSearchResult[]> {
-  const q = query.trim();
-  if (q.length < 2) return [];
-  if (searchCache.has(q)) return searchCache.get(q)!;
-
-  const token = getToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  try {
-    const resp = await fetch(
-      `${API_BASE}/geocode/search?q=${encodeURIComponent(q)}`,
-      { headers, signal: AbortSignal.timeout(10000) },
-    );
-    if (resp.ok) {
-      const data = await resp.json() as Array<{ displayName?: string; shortName?: string; lat?: number; lon?: number }>;
-      const results: LocationSearchResult[] = data
-        .filter((r) => r.lat != null && r.lon != null)
-        .map((r) => ({
-          displayName: r.displayName ?? "",
-          shortName: r.shortName ?? r.displayName?.split(",")[0] ?? "",
-          lat: r.lat!,
-          lon: r.lon!,
-        }));
-      searchCache.set(q, results);
-      return results;
-    }
-  } catch { /* fall through to direct Nominatim */ }
-
-  // Direct fallback (may fail in some regions, but better than nothing)
+async function fetchFromNominatim(q: string): Promise<LocationSearchResult[] | null> {
   try {
     const resp = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&accept-language=zh-CN,zh`,
-      { signal: AbortSignal.timeout(8000) },
+      { headers: { "Accept-Language": "zh-CN,zh;q=0.9" } },
     );
-    if (!resp.ok) return [];
+    if (!resp.ok) return null;
     const data = await resp.json() as Array<{ display_name?: string; lat?: string; lon?: string }>;
     const results: LocationSearchResult[] = data
       .filter((r) => r.display_name && r.lat && r.lon)
       .map((r) => ({
         displayName: r.display_name!,
-        shortName: r.display_name!.split(", ")[0],
+        shortName: r.display_name!.split(", ").slice(0, 2).join(", "),
         lat: parseFloat(r.lat!),
         lon: parseFloat(r.lon!),
       }));
-    searchCache.set(q, results);
-    return results;
+    return results.length > 0 ? results : null;
   } catch {
-    return [];
+    return null;
   }
+}
+
+/**
+ * Server proxy fetch — Nominatim-ToS-compliant User-Agent, 10-min cache,
+ * and a richer shortName built from structured address fields.
+ * Slower on Azure Functions cold start (~10-20 s) but faster when warm.
+ */
+async function fetchFromProxy(q: string, token: string): Promise<LocationSearchResult[] | null> {
+  try {
+    const resp = await fetch(
+      `${API_BASE}/geocode/search?q=${encodeURIComponent(q)}`,
+      { headers: { "Authorization": `Bearer ${token}` } },
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json() as Array<{ displayName?: string; shortName?: string; lat?: number; lon?: number }>;
+    const results: LocationSearchResult[] = data
+      .filter((r) => r.lat != null && r.lon != null)
+      .map((r) => ({
+        displayName: r.displayName ?? "",
+        shortName: r.shortName ?? r.displayName?.split(",")[0] ?? "",
+        lat: r.lat!,
+        lon: r.lon!,
+      }));
+    return results.length > 0 ? results : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Search for places by name.
+ *
+ * Fires direct Nominatim AND the CloudPhoto server proxy in **parallel** —
+ * whichever returns a non-empty result first wins.  This gives MemoryMap-class
+ * speed (direct Nominatim ≈ 1-2 s) while using the server proxy's richer
+ * shortNames when Azure Functions is already warm.
+ *
+ * The previous serial approach (proxy → 10 s timeout → Nominatim) caused an
+ * 18 s worst-case wait on Azure Functions cold start, making the search appear
+ * broken.
+ */
+export function searchLocation(query: string): Promise<LocationSearchResult[]> {
+  const q = query.trim();
+  if (q.length < 2) return Promise.resolve([]);
+  if (searchCache.has(q)) return Promise.resolve(searchCache.get(q)!);
+
+  const token = getToken();
+  const nominatimP = fetchFromNominatim(q);
+  const proxyP = token ? fetchFromProxy(q, token) : Promise.resolve(null);
+
+  return new Promise<LocationSearchResult[]>((resolve) => {
+    let settled = false;
+
+    const finish = (r: LocationSearchResult[] | null) => {
+      if (!settled && r && r.length > 0) {
+        settled = true;
+        searchCache.set(q, r);
+        resolve(r);
+      }
+    };
+
+    void nominatimP.then(finish);
+    void proxyP.then((r) => {
+      // Always update cache with the richer proxy results (even if Nominatim won)
+      if (r && r.length > 0) searchCache.set(q, r);
+      finish(r);
+    });
+
+    // Guarantee resolution when both return empty/null
+    void Promise.allSettled([nominatimP, proxyP]).then(([n, p]) => {
+      if (!settled) {
+        settled = true;
+        const nr = n.status === "fulfilled" ? n.value ?? [] : [];
+        const pr = p.status === "fulfilled" ? p.value ?? [] : [];
+        const result = pr.length > 0 ? pr : nr;
+        searchCache.set(q, result);
+        resolve(result);
+      }
+    });
+  });
 }
 
 /**
