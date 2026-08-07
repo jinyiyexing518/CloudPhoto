@@ -31,6 +31,7 @@ import {
 } from "./photoListCache";
 import {
   canPublishPhotoList,
+  privatePhotoListCacheKey,
 } from "./photoLoadingPolicy";
 import {
   getPreferredMediaUrl,
@@ -162,16 +163,9 @@ function assertAuthorizationOwner(expectedOwner: string) {
   return snapshot;
 }
 
-// A cache key is never created without a JWT-derived user+role owner. Admin
-// personal lists can contain other users' photos, so user id alone is unsafe.
-function photoListCacheKey(groupId: string, cacheScope: string): string | null {
-  if (!cacheScope) return null;
-  return `auth:${cacheScope}:group:${groupId || "personal"}`;
-}
-
 /** Returns the in-memory photo list for a user/group (may be stale). */
 export function getCachedPhotos(groupId = "", cacheScope = ""): Photo[] | null {
-  const key = photoListCacheKey(groupId, cacheScope);
+  const key = privatePhotoListCacheKey(groupId, cacheScope);
   if (!key || getAuthorizationSnapshot()?.cacheOwner !== cacheScope) {
     if (cacheScope) signalAuthIdentityChange();
     return null;
@@ -185,7 +179,7 @@ export async function getPersistedPhotos(
   cacheScope = "",
   isCurrent?: () => boolean,
 ): Promise<Photo[] | null> {
-  const key = photoListCacheKey(groupId, cacheScope);
+  const key = privatePhotoListCacheKey(groupId, cacheScope);
   if (!key) return null;
   assertAuthorizationOwner(cacheScope);
   const cacheGeneration = getPrivatePhotoCacheGeneration();
@@ -245,7 +239,7 @@ export async function listPhotos(groupId = "", options: ListPhotosOptions = {}):
     throw new AuthorizationDriftError();
   }
   const photos = rawPhotos.map(proxyPhoto);
-  const key = photoListCacheKey(groupId, expectedOwner);
+  const key = privatePhotoListCacheKey(groupId, expectedOwner);
   if (key) {
     writeMemoryPhotoListCache(key, photos);
     void writePhotoListCache(key, photos, cacheGeneration);

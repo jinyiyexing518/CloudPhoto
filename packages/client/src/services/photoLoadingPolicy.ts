@@ -14,6 +14,16 @@ export function authCacheOwner(userId: string, role: AuthRole): string {
   return `${encodeURIComponent(userId)}:${role}`;
 }
 
+// Admin personal lists can include other users' photos, so role is part of the
+// owner and group is part of every in-memory and persistent list-cache key.
+export function privatePhotoListCacheKey(
+  groupId: string,
+  cacheOwner: string,
+): string | null {
+  if (!cacheOwner) return null;
+  return `auth:${cacheOwner}:group:${groupId || "personal"}`;
+}
+
 export function decodeAuthorizationSnapshot(token: string | null): AuthorizationSnapshot | null {
   if (!token) return null;
   try {

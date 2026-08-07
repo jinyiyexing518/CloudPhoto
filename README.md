@@ -64,7 +64,7 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 媒体也使用双线路：客户端对同一张原图执行两个无响应体的 `HEAD` 探测，在 Blob 直连和 `/media` 代理中缓存 30 分钟内最快的线路；胜出后立即取消另一探测。图片、视频、语音、动图预载、剪贴板复制和下载预检共用有限次换线逻辑，失败不会在直连/代理间循环。海外用户通常直连 Blob，避免所有流量绕行 VM；大陆网络则可自动选择 Nginx 代理。
 
-照片列表使用按 `userId + groupId` 隔离的一小时 SWR 缓存：冷启动只发起一次列表请求；刷新页面时可先绘制最近的非空列表，再后台刷新，刷新失败仍显示错误提示。内存和 Cache Storage 各最多保留 24 个列表，过期项会清除。PWA 仅缓存可验证的 `200 GET` 媒体响应，Range/HEAD 和跨域 opaque 响应绕过缓存；注销、自动注销或账号切换只清除私有照片列表及 `photo-media-v1`，不删除应用壳/precache。
+照片列表使用按 `userId + role + groupId` 隔离的一小时 SWR 缓存：冷启动只发起一次列表请求；刷新页面时可先绘制最近的非空列表，再后台刷新，刷新失败仍显示错误提示。内存和 Cache Storage 各最多保留 24 个列表，过期项会清除。PWA 仅缓存可验证的 `200 GET` 媒体响应，Range/HEAD 和跨域 opaque 响应绕过缓存；注销、自动注销、账号切换或角色变化会保守清除全部私有照片列表及媒体 runtime cache，因为忽略 SAS query 的媒体 key 无法可靠反推所属用户；应用壳/precache 不受影响。
 
 Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutable`，短于 2 小时 SAS；Nginx CORS 仅回显 `cloudphotos.top` 受信域和实际 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`，不会接受任意 `*.azurestaticapps.net`。
 

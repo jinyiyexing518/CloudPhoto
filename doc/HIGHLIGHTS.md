@@ -56,7 +56,7 @@
   - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），每 2h 轮换 → URL 变化 → 浏览器缓存失效，每次访问重新下载全部图片（200 张 ≈ 90MB/次）  
   - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  
   - 我们的方案：Workbox `CacheFirst` + `matchOptions: { ignoreSearch: true }`；只接收可验证的 `200 GET`，opaque、Range 和 HEAD 不进入缓存，避免把过期 SAS 的 403/状态 0 固化
-  - 结构边界：600 条目 / 7 天 / `purgeOnQuotaError`；注销、自动注销或切号清除私有 `photo-media-v1`，不清应用壳/precache
+  - 结构边界：600 条目 / 7 天 / `purgeOnQuotaError`；该 7 天仅是当前授权身份下私有 Cache Storage 的容量/淘汰上限，不是共享 CDN freshness。注销、自动注销、切号或角色变化会清除全部私有媒体 runtime cache（忽略 SAS query 的 key 无法可靠映射用户），不清应用壳/precache
 - **nginx 浏览器缓存头** — `Cache-Control: private, max-age=3600, immutable`，freshness 短于 2h SAS，不提供越过授权期的 stale window
 - **HTTP Range Request 视频截帧**（`bandwidth.ts`）— 视频封面改为 `Range: bytes=0-524287`（512 KB）替代全量下载；iOS/Android 默认 faststart MP4 的 moov 原子在文件开头，512KB 足以解码元数据 + 截第一帧；首次访问 10 个视频：从 **1-2 GB → 5 MB**（-99.5%）
 - **视频封面一次生成复用**（`bandwidth.ts`）— 首次 gallery 浏览时 canvas 截帧后自动 POST 到 `/api/photos/set-thumbnail`；derivative 上传成功后才以 ETag 条件合并 `thumbnailName`，session-level `Set` 防重复上传

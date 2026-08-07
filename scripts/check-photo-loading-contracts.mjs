@@ -59,6 +59,8 @@ requireText(auth, "replacementIdentity?.cacheOwner === userCacheOwner(currentUse
 requireText(auth, "subscribeAuthIdentityChanges", "same-tab refresh identity sync");
 requireText(auth, "Never clear replacement credentials", "new-tab credential safety");
 requireText(loadingPolicy, 'return `${encodeURIComponent(userId)}:${role}`', "role-scoped cache owner");
+requireText(loadingPolicy, 'return `auth:${cacheOwner}:group:${groupId || "personal"}`', "group-scoped list cache key");
+requireText(photoApi, "privatePhotoListCacheKey(groupId, cacheScope)", "shared private list cache key");
 requireText(photoApi, "authHeadersForSnapshot(authorization)", "request authorization snapshot");
 requireText(photoApi, "canPublishPhotoList({", "stale list write guard");
 requireText(photoApi, "signalAuthIdentityChange()", "identity drift synchronization");
@@ -148,16 +150,35 @@ const directImageConstructors = clientSources
   .filter((path) => readFileSync(path, "utf8").includes("new Image()"));
 assert.deepEqual(directImageConstructors, [], "programmatic image loads must use shared fallback");
 
-// Private browser freshness remains below the two-hour SAS lifetime.
-for (const [name, source] of [
-  ["upload", upload],
-  ["backfill", backfill],
-  ["video thumbnail", setVideoThumb],
-  ["nginx media", nginx],
-]) {
-  requireText(source, "private, max-age=3600, immutable", `${name} cache control`);
-  assert(!source.includes("public, max-age=604800"), `${name} still has public 7-day caching`);
+// Every private Blob writer and the Nginx media response stay browser-private,
+// fresh for no longer than one hour, and never extend authorization with stale.
+const assertPrivateMediaCacheControl = (value, label) => {
+  const directives = value.toLowerCase().split(",").map((part) => part.trim());
+  assert(directives.includes("private"), `${label} must be private`);
+  assert(!directives.includes("public"), `${label} must not be public`);
+  assert(!directives.some((part) => part.startsWith("stale-")), `${label} must not permit stale reuse`);
+  const maxAge = directives
+    .map((part) => /^max-age=(\d+)$/.exec(part)?.[1])
+    .find(Boolean);
+  assert(maxAge, `${label} must declare max-age`);
+  assert(Number(maxAge) <= 3600, `${label} max-age exceeds one hour`);
+};
+const serverSources = walk(join(root, "packages/server/src"))
+  .filter((path) => path.endsWith(".ts"))
+  .map((path) => [path, readFileSync(path, "utf8")]);
+const blobCacheControls = serverSources.flatMap(([path, source]) =>
+  [...source.matchAll(/blobCacheControl:\s*"([^"]+)"/g)]
+    .map((match) => ({ path, value: match[1] }))
+);
+assert.equal(blobCacheControls.length, 6, "all six private original/derivative Blob writes must be classified");
+for (const { path, value } of blobCacheControls) {
+  assertPrivateMediaCacheControl(value, path);
 }
+const nginxMediaCacheControl = /add_header Cache-Control "([^"]*max-age[^"]*)" always;/.exec(nginx)?.[1];
+assert(nginxMediaCacheControl, "Nginx media Cache-Control must apply to 200/206/HEAD responses");
+assertPrivateMediaCacheControl(nginxMediaCacheControl, "nginx media");
+assert(!nginx.includes("stale-while-revalidate"), "Nginx media must not extend SAS authorization with stale");
+assert(!nginx.includes("proxy_cache_use_stale"), "Nginx media must not serve stale private content");
 
 // Derivative metadata is published after upload and guarded by ETag.
 assert(upload.indexOf("thumbClient.uploadData") < upload.indexOf('setValue("thumbnailName"'));
@@ -177,6 +198,7 @@ const swaOrigin = "https://brave-sand-053b07a00.7.azurestaticapps.net";
 requireText(nginx, `"${swaOrigin}" $http_origin;`, "exact SWA origin");
 assert(!nginx.includes("*.azurestaticapps.net"), "wildcard SWA origin is forbidden");
 requireText(nginx, "proxy_set_header      Range             $http_range;", "Range forwarding");
+requireText(nginx, "proxy_set_header      If-Range          $http_if_range;", "If-Range forwarding");
 requireText(nginx, 'Access-Control-Expose-Headers "Accept-Ranges, Content-Length, Content-Range"', "Range exposure");
 
 const allowedOrigin = (origin) => (
@@ -193,6 +215,7 @@ console.log("photo-loading contracts: PASS");
 console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=60000");
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
 console.log("evidence range-sw-cache=false range-body-requires-206=true cache-statuses=200 private-list-max=24 private-max-age-s=3600");
-console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 logout-private-caches=3 logout-write-drain=true");
+console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 private-blob-writes=6");
+console.log("evidence logout-private-caches=3 logout-write-drain=true app-shell-preserved=true private-max-age-s=3600 stale=false");
 console.log("evidence auth-owner=user+role hedge-safe-methods-only=true health-transient-ttl-ms=5000 unsafe-replay=false");
 console.log("evidence direct-fetch-files=4 media-fetch-bypasses=0 xhr-files=1 opaque-cache=false");

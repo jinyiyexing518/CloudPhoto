@@ -73,6 +73,21 @@ const viewer = policy.decodeAuthorizationSnapshot(jwt({
 }));
 assert(admin && viewer);
 assert.notEqual(admin.cacheOwner, viewer.cacheOwner, "role downgrade must change cache owner");
+assert.notEqual(
+  policy.privatePhotoListCacheKey("", admin.cacheOwner),
+  policy.privatePhotoListCacheKey("", viewer.cacheOwner),
+  "role changes must isolate personal list caches",
+);
+assert.notEqual(
+  policy.privatePhotoListCacheKey("", viewer.cacheOwner),
+  policy.privatePhotoListCacheKey("group-a", viewer.cacheOwner),
+  "personal and group list caches must be isolated",
+);
+assert.notEqual(
+  policy.privatePhotoListCacheKey("group-a", viewer.cacheOwner),
+  policy.privatePhotoListCacheKey("group-b", viewer.cacheOwner),
+  "groups must not share list caches",
+);
 assert.equal(
   policy.canPublishPhotoList({
     expectedOwner: admin.cacheOwner,
@@ -226,6 +241,8 @@ assert(
 
 const responses = new Map();
 const delays = [];
+const availableCacheNames = new Set(["workbox-precache-v2"]);
+const deletedCacheNames = [];
 const fakeCache = {
   async keys() {
     return [...responses.keys()].map((url) => new Request(url));
@@ -253,11 +270,14 @@ globalThis.window = {
     hostname: "www.cloudphotos.top",
   },
   caches: {
-    async open() {
+    async open(name) {
+      availableCacheNames.add(name);
       return fakeCache;
     },
-    async delete() {
-      responses.clear();
+    async delete(name) {
+      deletedCacheNames.push(name);
+      availableCacheNames.delete(name);
+      if (name === "cloudphoto-photo-lists-v1") responses.clear();
       return true;
     },
   },
@@ -583,9 +603,96 @@ assert.equal(
   "a mutation clear must drain and remove stale writes",
 );
 
+const adminOwner = policy.authCacheOwner("same-user", "admin");
+const viewerOwner = policy.authCacheOwner("same-user", "viewer");
+const otherOwner = policy.authCacheOwner("other-user", "viewer");
+await listCache.preparePrivatePhotoCachesForOwner(adminOwner);
+const adminGeneration = listCache.getPrivatePhotoCacheGeneration();
+await listCache.writePhotoListCache(
+  policy.privatePhotoListCacheKey("group-a", adminOwner),
+  [{ version: "admin-list" }],
+  adminGeneration,
+);
+availableCacheNames.add("photo-media-v1");
+availableCacheNames.add("cf-media-v1");
+await listCache.preparePrivatePhotoCachesForOwner(viewerOwner);
+assert.equal(
+  await listCache.readPhotoListCache(policy.privatePhotoListCacheKey("group-a", adminOwner)),
+  null,
+  "role downgrade must remove the previous list cache",
+);
+assert(!availableCacheNames.has("photo-media-v1"), "role downgrade must remove Workbox media");
+assert(!availableCacheNames.has("cf-media-v1"), "role downgrade must remove legacy media");
+assert(availableCacheNames.has("workbox-precache-v2"), "role downgrade must preserve app shell");
+
+const viewerGeneration = listCache.getPrivatePhotoCacheGeneration();
+await listCache.writePhotoListCache(
+  policy.privatePhotoListCacheKey("", viewerOwner),
+  [{ version: "viewer-list" }],
+  viewerGeneration,
+);
+availableCacheNames.add("photo-media-v1");
+await listCache.preparePrivatePhotoCachesForOwner(otherOwner);
+assert.equal(
+  await listCache.readPhotoListCache(policy.privatePhotoListCacheKey("", viewerOwner)),
+  null,
+  "account switch must remove the previous list cache",
+);
+assert(!availableCacheNames.has("photo-media-v1"), "account switch must remove private media");
+assert(availableCacheNames.has("workbox-precache-v2"), "account switch must preserve app shell");
+
+const logoutGeneration = listCache.getPrivatePhotoCacheGeneration();
+await listCache.writePhotoListCache(
+  policy.privatePhotoListCacheKey("", otherOwner),
+  [{ version: "other-list" }],
+  logoutGeneration,
+);
+availableCacheNames.add("photo-media-v1");
+await listCache.clearPrivatePhotoCaches();
+assert.equal(
+  await listCache.readPhotoListCache(policy.privatePhotoListCacheKey("", otherOwner)),
+  null,
+  "logout must remove the authenticated list cache",
+);
+assert(!availableCacheNames.has("photo-media-v1"), "logout must remove private media");
+assert(availableCacheNames.has("workbox-precache-v2"), "logout must preserve app shell");
+assert.deepEqual(
+  [...new Set(deletedCacheNames)].sort(),
+  ["cf-media-v1", "cloudphoto-photo-lists-v1", "photo-media-v1"],
+  "private cleanup must never broaden to app-shell caches",
+);
+
+const cacheControlSources = await Promise.all([
+  "packages/server/src/functions/photos/uploadPhoto.ts",
+  "packages/server/src/functions/photos/backfillThumbnails.ts",
+  "packages/server/src/functions/photos/setVideoThumbnail.ts",
+].map(async (path) => [path, await readFile(join(root, path), "utf8")]));
+const cacheControlValues = cacheControlSources.flatMap(([path, source]) =>
+  [...source.matchAll(/blobCacheControl:\s*"([^"]+)"/g)]
+    .map((match) => ({ path, value: match[1] }))
+);
+const nginxSource = await readFile(join(root, "infra/nginx.conf"), "utf8");
+const nginxCacheControl = /add_header Cache-Control "([^"]*max-age[^"]*)" always;/.exec(nginxSource)?.[1];
+assert(nginxCacheControl, "Nginx cache policy must cover 200/206/HEAD");
+cacheControlValues.push({ path: "infra/nginx.conf", value: nginxCacheControl });
+assert.equal(cacheControlValues.length, 7, "six Blob writes and one Nginx response policy are required");
+for (const { path, value } of cacheControlValues) {
+  const directives = value.toLowerCase().split(",").map((part) => part.trim());
+  const maxAge = Number(directives.find((part) => part.startsWith("max-age="))?.split("=")[1]);
+  assert(directives.includes("private"), `${path} must be private`);
+  assert(!directives.includes("public"), `${path} must not be public`);
+  assert(!directives.some((part) => part.startsWith("stale-")), `${path} must not allow stale reuse`);
+  assert(Number.isFinite(maxAge) && maxAge <= 3600, `${path} freshness must fit inside the SAS lifetime`);
+}
+assert(nginxSource.includes("proxy_set_header      Range             $http_range;"));
+assert(nginxSource.includes("proxy_set_header      If-Range          $http_if_range;"));
+assert(nginxSource.includes("add_header Accept-Ranges bytes always;"));
+
 console.log("photo-loading behavior: PASS");
-console.log("evidence auth-role-isolation=true stale-publish-blocked=true ordered-cache-writes=true");
+console.log("evidence auth-user-role-group-isolation=true stale-publish-blocked=true ordered-cache-writes=true");
 console.log("evidence slow-primary-survives=true fallback-wins=true caller-cancel=true unsafe-replay=false");
 console.log("evidence health-explicit-ttl-ms=300000 health-transient-ttl-ms=5000");
 console.log("evidence cold-list-miss=true persisted-first-paint=true focus-visibility-requests=1");
 console.log("evidence media-primary-fail-alternate-pass=true range-sw-cache=false opaque-cache=false");
+console.log("evidence private-cache-max-age-s=3600 public=false stale=false range-forwarded=true");
+console.log("evidence role-account-logout-private-cache-miss=true app-shell-preserved=true");
