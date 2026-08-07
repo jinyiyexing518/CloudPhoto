@@ -46,6 +46,26 @@ export function isSafeReplayMethod(method: string): boolean {
   return ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
+export const MEDIA_CACHEABLE_RESPONSE_STATUSES = [200] as const;
+
+export function isMediaRequestCacheEligible(input: {
+  method: string;
+  hasRange: boolean;
+  isMediaUrl: boolean;
+}): boolean {
+  return input.method.toUpperCase() === "GET"
+    && !input.hasRange
+    && input.isMediaUrl;
+}
+
+export function shouldRefreshPhotoList(
+  lastRefreshAt: number,
+  now = Date.now(),
+  minimumIntervalMs = 60_000,
+): boolean {
+  return now - lastRefreshAt >= minimumIntervalMs;
+}
+
 export type ProxyProbeResult = "proxy" | "not-proxy" | "transient";
 
 export const PROXY_PROBE_STABLE_TTL_MS = 5 * 60 * 1000;

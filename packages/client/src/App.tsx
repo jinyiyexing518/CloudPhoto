@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, authCacheOwner, isAuthorizationDriftError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
+import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
@@ -613,7 +614,7 @@ function AppContent() {
   useEffect(() => {
     let wasHidden = false;
     const refreshIfStale = () => {
-      if (Date.now() - lastPhotoRefreshRef.current >= 60_000) {
+      if (shouldRefreshPhotoList(lastPhotoRefreshRef.current)) {
         void fetchPhotos();
       }
     };

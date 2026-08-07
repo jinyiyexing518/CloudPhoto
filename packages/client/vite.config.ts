@@ -87,6 +87,8 @@ export default defineConfig({
                 maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
                 purgeOnQuotaError: true,   // auto-evict oldest if storage quota exceeded
               },
+              // Cross-origin Blob responses must be CORS-visible 200s. Opaque
+              // status 0 can hide an expired/403 SAS response and is never cached.
               cacheableResponse: { statuses: [200] },
             },
           },

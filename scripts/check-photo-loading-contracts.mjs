@@ -31,7 +31,7 @@ const trash = read("packages/server/src/functions/trash/listTrash.ts");
 // Cold list + persisted paint + one shared focus/visibility throttle.
 assert.equal((app.match(/\blistPhotos\(currentGroupId,/g) ?? []).length, 1);
 assert(app.indexOf("await getPersistedPhotos") < app.indexOf("await listPhotos"));
-requireText(app, "Date.now() - lastPhotoRefreshRef.current >= 60_000", "refresh gate");
+requireText(app, "shouldRefreshPhotoList(lastPhotoRefreshRef.current)", "refresh gate");
 requireText(app, 'window.addEventListener("focus", refreshIfStale)', "focus gate");
 requireText(app, "refreshIfStale();", "visibility gate");
 requireText(app, "if (controller.signal.aborted) return;", "superseded abort");
@@ -88,7 +88,9 @@ requireText(loadingPolicy, 'return "transient"', "transient health classificatio
 requireText(vite, 'request.method === "GET"', "media request method");
 requireText(vite, '!request.headers.has("range")', "Range exclusion");
 requireText(vite, "cacheableResponse: { statuses: [200] }", "opaque exclusion");
+requireText(loadingPolicy, "MEDIA_CACHEABLE_RESPONSE_STATUSES = [200]", "opaque exclusion");
 assert(!vite.includes("statuses: [0, 200]"), "opaque status 0 must not be cached");
+assert(!loadingPolicy.includes("[0, 200]"), "behavior policy must also reject opaque status 0");
 requireText(vite, 'cacheName: "photo-media-v1"', "private media cache name");
 requireText(photoCard, "if (res.status === 206)", "bounded video Range body");
 assert(!photoCard.includes("res.status === 206 || res.ok"), "Range fallback must not buffer a full video");
@@ -114,6 +116,33 @@ const walk = (directory) => readdirSync(directory).flatMap((name) => {
 });
 const clientSources = walk(join(root, "packages/client/src"))
   .filter((path) => /\.[jt]sx?$/.test(path));
+const directFetchFiles = clientSources
+  .filter((path) => /\bfetch\s*\(/.test(readFileSync(path, "utf8")))
+  .sort();
+assert.deepEqual(directFetchFiles, [
+  join(root, "packages/client/src/services/http.ts"),
+  join(root, "packages/client/src/services/mediaRoute.ts"),
+  join(root, "packages/client/src/services/photoApi.ts"),
+  join(root, "packages/client/src/utils/geocode.ts"),
+].sort(), "new direct fetch call sites require media/API classification");
+const xhrFiles = clientSources
+  .filter((path) => readFileSync(path, "utf8").includes("new XMLHttpRequest"))
+  .sort();
+assert.deepEqual(
+  xhrFiles,
+  [join(root, "packages/client/src/services/uploadApi.ts")],
+  "XHR is reserved for the shared upload transport",
+);
+const directMediaTransportPattern =
+  /(?:\bfetch\s*\(|\bxhr\.open\s*\()[^\n]*(?:thumbnailUrl|previewUrl|voiceMemoUrl|selectedPhoto\.url|photo\.url)/;
+const directMediaTransportFiles = clientSources
+  .filter((path) => path !== join(root, "packages/client/src/services/mediaRoute.ts"))
+  .filter((path) => directMediaTransportPattern.test(readFileSync(path, "utf8")));
+assert.deepEqual(
+  directMediaTransportFiles,
+  [],
+  "Photo/media URL fetch and XHR must use shared mediaRoute helpers",
+);
 const directImageConstructors = clientSources
   .filter((path) => path !== join(root, "packages/client/src/services/mediaRoute.ts"))
   .filter((path) => readFileSync(path, "utf8").includes("new Image()"));
@@ -166,3 +195,4 @@ console.log("evidence media-route-candidates=2 primary-failure-alternate-success
 console.log("evidence range-sw-cache=false range-body-requires-206=true cache-statuses=200 private-list-max=24 private-max-age-s=3600");
 console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 logout-private-caches=3 logout-write-drain=true");
 console.log("evidence auth-owner=user+role hedge-safe-methods-only=true health-transient-ttl-ms=5000 unsafe-replay=false");
+console.log("evidence direct-fetch-files=4 media-fetch-bypasses=0 xhr-files=1 opaque-cache=false");

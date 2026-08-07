@@ -110,6 +110,39 @@ assert.equal(policy.isSafeReplayMethod("GET"), true);
 for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
   assert.equal(policy.isSafeReplayMethod(method), false, `${method} must not replay`);
 }
+assert.deepEqual(
+  [...policy.MEDIA_CACHEABLE_RESPONSE_STATUSES],
+  [200],
+  "opaque status 0 must not enter the media cache",
+);
+assert.equal(policy.isMediaRequestCacheEligible({
+  method: "GET",
+  hasRange: false,
+  isMediaUrl: true,
+}), true);
+assert.equal(policy.isMediaRequestCacheEligible({
+  method: "GET",
+  hasRange: true,
+  isMediaUrl: true,
+}), false, "Range requests must bypass the service-worker media cache");
+assert.equal(policy.isMediaRequestCacheEligible({
+  method: "HEAD",
+  hasRange: false,
+  isMediaUrl: true,
+}), false, "HEAD probes must bypass the service-worker media cache");
+
+{
+  let lastRefreshAt = 0;
+  let requests = 0;
+  const now = 60_000;
+  for (const _event of ["visibility", "focus"]) {
+    if (policy.shouldRefreshPhotoList(lastRefreshAt, now)) {
+      requests += 1;
+      lastRefreshAt = now;
+    }
+  }
+  assert.equal(requests, 1, "focus and visibility must share one refresh gate");
+}
 
 assert.equal(
   policy.classifyProxyProbe({
@@ -477,8 +510,35 @@ const http = await import(httpUrl);
   assert.equal(xhrAbortCalls, 1, "caller abort must stop the active XHR");
 }
 
+{
+  localStorage.removeItem("cloudphoto_media_route_v1");
+  const mediaRoute = await importTypeScript(
+    "packages/client/src/services/mediaRoute.ts",
+    (source) => source.replaceAll("import.meta.env", "({})"),
+  );
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (calls.length === 1) throw new TypeError("primary unavailable");
+    return new Response("alternate", { status: 200 });
+  };
+  const response = await mediaRoute.fetchMediaWithFallback(
+    "https://photostorage.blob.core.windows.net/photos/example.jpg?sig=old",
+  );
+  assert.equal(await response.text(), "alternate");
+  assert.equal(calls.length, 2);
+  assert(calls[0].includes("blob.core.windows.net"));
+  assert(calls[1].includes("cloudphotos.top/media/"));
+}
+
 const listCache = await importTypeScript(
   "packages/client/src/services/photoListCache.ts",
+);
+assert.equal(
+  await listCache.readPhotoListCache("cold-start"),
+  null,
+  "the first visit must report a real cache miss",
 );
 const generation = listCache.getPrivatePhotoCacheGeneration();
 const olderWrite = listCache.writePhotoListCache(
@@ -498,6 +558,16 @@ assert.deepEqual(
   "later Cache Storage writes must win regardless of put latency",
 );
 assert.deepEqual(delays, [25, 0], "writes should execute in call order");
+await listCache.writePhotoListCache(
+  "persisted-refresh",
+  [{ version: "cached-first-paint" }],
+  generation,
+);
+assert.deepEqual(
+  await listCache.readPhotoListCache("persisted-refresh"),
+  [{ version: "cached-first-paint" }],
+  "a refresh must restore its persisted list before network revalidation",
+);
 
 const staleGeneration = listCache.getPrivatePhotoCacheGeneration();
 const staleWrite = listCache.writePhotoListCache(
@@ -517,3 +587,5 @@ console.log("photo-loading behavior: PASS");
 console.log("evidence auth-role-isolation=true stale-publish-blocked=true ordered-cache-writes=true");
 console.log("evidence slow-primary-survives=true fallback-wins=true caller-cancel=true unsafe-replay=false");
 console.log("evidence health-explicit-ttl-ms=300000 health-transient-ttl-ms=5000");
+console.log("evidence cold-list-miss=true persisted-first-paint=true focus-visibility-requests=1");
+console.log("evidence media-primary-fail-alternate-pass=true range-sw-cache=false opaque-cache=false");
