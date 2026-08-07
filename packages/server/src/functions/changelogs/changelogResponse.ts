@@ -32,8 +32,9 @@ export function toChangelogEntries(
       const dateCmp = b.date.localeCompare(a.date);
       if (dateCmp !== 0) return dateCmp;
       if (a.seq != null && b.seq != null) return b.seq - a.seq;
-      if (a.seq != null) return 1;
-      if (b.seq != null) return -1;
+      // Entries with a stable sequence sort ahead of legacy same-day entries.
+      if (a.seq != null) return -1;
+      if (b.seq != null) return 1;
       const tsCmp = (b._ts ?? 0) - (a._ts ?? 0);
       if (tsCmp !== 0) return tsCmp;
       return b.id.localeCompare(a.id);

@@ -42,6 +42,22 @@ test("maps the internal description alias to the public desc shape", () => {
 test("preserves date, sequence, timestamp, and id ordering", () => {
   const entries = toChangelogEntries([
     {
+      id: "legacy-mixed",
+      date: "2026-08-08",
+      icon: "fix",
+      title: "Legacy mixed",
+      description: "Legacy",
+      _ts: 999,
+    },
+    {
+      id: "sequenced-mixed",
+      date: "2026-08-08",
+      icon: "fix",
+      title: "Sequenced mixed",
+      description: "Sequenced",
+      seq: 1,
+    },
+    {
       id: "legacy-a",
       date: "2026-08-06",
       icon: "fix",
@@ -94,6 +110,8 @@ test("preserves date, sequence, timestamp, and id ordering", () => {
   assert.deepEqual(
     entries.map((entry) => entry.id),
     [
+      "sequenced-mixed",
+      "legacy-mixed",
       "newer-seq",
       "older-seq",
       "legacy-b",
