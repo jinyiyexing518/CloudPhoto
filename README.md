@@ -554,15 +554,22 @@ az role assignment create --assignee $MI_PRINCIPAL \
 
 ## CI/CD（GitHub Actions）
 
-push 到 `main` 时自动运行三个 workflow：
+push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 workflow 持续检查生产环境：
 
 | Workflow | 文件 | 触发条件 |
 |----------|------|----------|
-| 部署后端 | `.github/workflows/deploy-backend.yml` | `packages/server/**` 变更 |
-| 部署前端 | `.github/workflows/deploy-frontend.yml` | `packages/client/**` 或 `changes/**` 变更 |
+| 部署后端 | `.github/workflows/deploy-backend.yml` | `packages/server/**` 或 `packages/algorithm/**` 变更 |
+| 部署前端 | `.github/workflows/deploy-frontend.yml` | `packages/client/**`、`packages/algorithm/**` 或 PR 变更 |
 | 同步更新日志 | `.github/workflows/sync-changelog.yml` | `changes/**` 变更 |
+| 生产健康检查 | `.github/workflows/production-health.yml` | 每 30 分钟、手动触发、前端或后端部署完成 |
 
-所有 workflow 均使用 **OIDC 认证**（无存储的 Azure 密码/密钥）。
+部署和更新日志同步 workflow 使用 **OIDC 认证**（无存储的 Azure 密码/密钥）；生产健康检查仅需仓库只读权限。
+
+### 生产健康检查
+
+`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 检查首页返回 Cloud Photo HTML、未登录 `/api/auth/me` 返回 401，以及 `/api/changelogs` 返回 200 JSON 数组。每个请求 10 秒超时，失败后最多重试 8 次、间隔 15 秒，以覆盖前后端部署传播竞态；若触发它的部署失败，workflow 会直接失败而不会将线上状态误报为健康。
+
+默认入口为 `https://cloudphotos.top`。可通过 `PRODUCTION_BASE_URL` 覆盖整体入口，或分别使用 `PRODUCTION_HOME_URL`、`PRODUCTION_AUTH_ME_URL` 和 `PRODUCTION_CHANGELOGS_URL` 覆盖单个检查地址。
 
 ### 所需 GitHub Secrets
 
@@ -616,4 +623,3 @@ push 到 `main` 时自动运行三个 workflow：
 ## 更新日志
 
 详见 [CHANGELOG.md](doc/CHANGELOG.md)
-

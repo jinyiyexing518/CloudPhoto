@@ -13,6 +13,7 @@ interface ChangelogEntry {
   title: string;
   desc: string;
   details?: string;
+  type?: "feature" | "fix" | "improvement";
   seq?: number;
   _ts?: number;
 }
