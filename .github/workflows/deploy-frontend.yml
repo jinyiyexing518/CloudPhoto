@@ -6,6 +6,7 @@ on:
     paths:
       - "packages/algorithm/**"
       - "packages/client/**"
+      - "scripts/check-static-cache-config.mjs"
       - ".github/workflows/deploy-frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened, closed]
@@ -40,6 +41,9 @@ jobs:
         env:
           # Full URL of the Azure Function App, e.g. https://cloudphoto-api.azurewebsites.net/api
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+
+      - name: Verify static cache contract
+        run: yarn check:static-cache packages/client/public/staticwebapp.config.json packages/client/dist/staticwebapp.config.json
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1

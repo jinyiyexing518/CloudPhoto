@@ -591,6 +591,14 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 - **`changelog.json`（静态兜底）：** 部署前端时 CI 自动运行 `node scripts/collect-changes.mjs` 重新生成，打包进静态资源
 - **新增 change 文件：** 在 `changes/` 目录创建 `YYYY-MM-DD-id.json`，commit + push，其余全部自动完成
 
+### 前端缓存策略
+
+- Vite 生成的 `/assets/*` 内容哈希文件缓存一年并标记 `immutable`
+- SPA shell、Service Worker 和注册入口每次重验证，确保 PWA 能发现新版本
+- manifest、静态图标与 `changelog.json` 使用短缓存并重验证
+- `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
+- `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖
+
 ---
 
 ## PWA 安装指南

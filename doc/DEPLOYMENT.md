@@ -110,9 +110,11 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 | Location | 代理目标 | 特殊配置 |
 |----------|---------|---------|
 | `/api/` | `cloudphoto-api.azurewebsites.net/api/` | `client_max_body_size 210m`，超时 600s（视频上传） |
-| `/` | `brave-sand-053b07a00.7.azurestaticapps.net` | WebSocket Upgrade 透传 |
+| `/` | `brave-sand-053b07a00.7.azurestaticapps.net` | 透传 SWA 响应头，包括 `Cache-Control` |
 
 两个 location 均设置 `proxy_set_header Host <upstream-host>`（SNI 必须）和 `proxy_ssl_server_name on`。
+
+前端缓存规则由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
 
 ### 部署后更新 GitHub Secret
 

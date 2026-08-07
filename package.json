@@ -10,6 +10,7 @@
     "build": "yarn build:client && yarn build:server",
     "build:client": "yarn workspace cloudphoto-client build",
     "build:server": "yarn workspace cloudphoto-server build",
+    "check:static-cache": "node scripts/check-static-cache-config.mjs",
     "dev:client": "yarn workspace cloudphoto-client dev",
     "dev:server": "yarn workspace cloudphoto-server start",
     "change": "node scripts/create-change.mjs",
