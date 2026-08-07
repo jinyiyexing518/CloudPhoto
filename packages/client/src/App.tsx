@@ -98,6 +98,43 @@ const IS_ANDROID = /android/.test(_ua);
 type ViewTab = "timeline" | "folder" | "moments" | "map" | "capsule" | "story";
 type SettingsEntryTab = "profile" | "security" | "trash" | "diagnostics" | "app";
 type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
+type QuickDateFilter = "today" | "last7Days" | "thisWeek" | "thisMonth";
+
+const QUICK_DATE_FILTER_OPTIONS: ReadonlyArray<{ key: QuickDateFilter; label: string; title: string }> = [
+  { key: "today", label: "📅 今天", title: "今天（本地自然日）" },
+  { key: "last7Days", label: "🕖 近7天", title: "近7天（含今天）" },
+  { key: "thisWeek", label: "🗓 本周", title: "本周（周一至周日）" },
+  { key: "thisMonth", label: "📆 本月", title: "本月（月初至月末）" },
+];
+
+function formatLocalDate(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function getQuickDateRanges(referenceDate = new Date()): Record<QuickDateFilter, { dateFrom: string; dateTo: string }> {
+  const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  const mondayOffset = (today.getDay() + 6) % 7;
+
+  return {
+    today: {
+      dateFrom: formatLocalDate(today),
+      dateTo: formatLocalDate(today),
+    },
+    last7Days: {
+      dateFrom: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)),
+      dateTo: formatLocalDate(today),
+    },
+    thisWeek: {
+      dateFrom: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - mondayOffset)),
+      dateTo: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6 - mondayOffset)),
+    },
+    thisMonth: {
+      dateFrom: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1)),
+      dateTo: formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+    },
+  };
+}
 
 interface HomeDiagnosticsSnapshot {
   localMomentsCount: number;
@@ -447,29 +484,22 @@ function AppContent() {
     return count;
   }, [filters]);
 
-  const activeDateChip = useMemo(() => {
-    const now = new Date().toISOString().slice(0, 10);
-    const week = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const month = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    if (filters.dateFrom === now && filters.dateTo === now) return "today";
-    if (filters.dateFrom === week && filters.dateTo === now) return "week";
-    if (filters.dateFrom === month && filters.dateTo === now) return "month";
-    return null;
-  }, [filters.dateFrom, filters.dateTo]);
+  const quickDateRanges = getQuickDateRanges();
+  const activeQuickDateFilter = QUICK_DATE_FILTER_OPTIONS.find(({ key }) => {
+    const range = quickDateRanges[key];
+    return filters.dateFrom === range.dateFrom && filters.dateTo === range.dateTo;
+  })?.key ?? null;
 
-  const applyQuickDateFilter = useCallback((period: "today" | "week" | "month" | null) => {
-    const now = new Date().toISOString().slice(0, 10);
-    if (period === "today") {
-      setFilters((f) => ({ ...f, dateFrom: now, dateTo: now }));
-    } else if (period === "week") {
-      const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      setFilters((f) => ({ ...f, dateFrom: from, dateTo: now }));
-    } else if (period === "month") {
-      const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      setFilters((f) => ({ ...f, dateFrom: from, dateTo: now }));
-    } else {
-      setFilters((f) => ({ ...f, dateFrom: "", dateTo: "" }));
-    }
+  const toggleQuickDateFilter = useCallback((period: QuickDateFilter) => {
+    setFilters((current) => {
+      const range = getQuickDateRanges()[period];
+      const isActive = current.dateFrom === range.dateFrom && current.dateTo === range.dateTo;
+      return {
+        ...current,
+        dateFrom: isActive ? "" : range.dateFrom,
+        dateTo: isActive ? "" : range.dateTo,
+      };
+    });
   }, []);
 
   const recentUploads = useMemo(() => {
@@ -1167,16 +1197,15 @@ function AppContent() {
   };
 
   const jumpToRecentUploads = () => {
-    const today = new Date();
-    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     const targetPhoto = [...recentUploads].sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())[0];
     if (!targetPhoto) {
       switchTab("timeline");
       return;
     }
+    const recentRange = getQuickDateRanges().last7Days;
     jumpToTimelinePhoto(targetPhoto.name, {
-      dateFrom: sevenDaysAgo.toISOString().slice(0, 10),
-      dateTo: today.toISOString().slice(0, 10),
+      dateFrom: recentRange.dateFrom,
+      dateTo: recentRange.dateTo,
     });
   };
 
@@ -1542,18 +1571,15 @@ function AppContent() {
           </div>
           {activeTab === "timeline" && (  
             <div className="quick-date-chips">
-              <button
-                className={`quick-chip${activeDateChip === "today" ? " active" : ""}`}
-                onClick={() => applyQuickDateFilter(activeDateChip === "today" ? null : "today")}
-              >今日</button>
-              <button
-                className={`quick-chip${activeDateChip === "week" ? " active" : ""}`}
-                onClick={() => applyQuickDateFilter(activeDateChip === "week" ? null : "week")}
-              >本周</button>
-              <button
-                className={`quick-chip${activeDateChip === "month" ? " active" : ""}`}
-                onClick={() => applyQuickDateFilter(activeDateChip === "month" ? null : "month")}
-              >本月</button>
+              {QUICK_DATE_FILTER_OPTIONS.map(({ key, label, title }) => (
+                <button
+                  key={key}
+                  className={`quick-chip${activeQuickDateFilter === key ? " active" : ""}`}
+                  onClick={() => toggleQuickDateFilter(key)}
+                  aria-pressed={activeQuickDateFilter === key}
+                  title={title}
+                >{label}</button>
+              ))}
               <button
                 className={`quick-chip${filters.favoriteOnly ? " active" : ""}`}
                 onClick={() => setFilters((f) => ({ ...f, favoriteOnly: !f.favoriteOnly }))}
@@ -1598,31 +1624,6 @@ function AppContent() {
                 onClick={() => setPhotoSortAsc((v) => !v)}
                 title={photoSortAsc ? "当前：时间正序" : "当前：时间倒序"}
               >{photoSortAsc ? "↑ 最早" : "↓ 最新"}</button>
-              {/* Date quick-filter chips */}
-              {(() => {
-                const today = new Date();
-                const fmt = (d: Date) => d.toISOString().slice(0, 10);
-                const todayStr = fmt(today);
-                const weekStart = fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay()));
-                const monthStart = fmt(new Date(today.getFullYear(), today.getMonth(), 1));
-                const isTodayActive = filters.dateFrom === todayStr && filters.dateTo === todayStr;
-                const isWeekActive = filters.dateFrom === weekStart && filters.dateTo === todayStr;
-                const isMonthActive = filters.dateFrom === monthStart && filters.dateTo === todayStr;
-                const applyOrClear = (from: string, to: string, active: boolean) =>
-                  setFilters((f) => active ? { ...f, dateFrom: "", dateTo: "" } : { ...f, dateFrom: from, dateTo: to });
-                return (
-                  <>
-                    <button className={`quick-chip${isTodayActive ? " active" : ""}`} onClick={() => applyOrClear(todayStr, todayStr, isTodayActive)} title="仅显示今天">📅 今天</button>
-                    <button className={`quick-chip${isWeekActive ? " active" : ""}`} onClick={() => applyOrClear(weekStart, todayStr, isWeekActive)} title="仅显示本周">🗓 本周</button>
-                    <button className={`quick-chip${isMonthActive ? " active" : ""}`} onClick={() => applyOrClear(monthStart, todayStr, isMonthActive)} title="仅显示本月">📆 本月</button>
-                    {(() => {
-                      const sevenDaysAgo = fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6));
-                      const is7DaysActive = filters.dateFrom === sevenDaysAgo && filters.dateTo === todayStr;
-                      return <button className={`quick-chip${is7DaysActive ? " active" : ""}`} onClick={() => applyOrClear(sevenDaysAgo, todayStr, is7DaysActive)} title="最近7天">🕖 近7天</button>;
-                    })()}
-                  </>
-                );
-              })()}
             </div>
           )}
         </div>{/* /view-tabs-shell */}
@@ -1728,13 +1729,13 @@ function AppContent() {
                 </div>
               ) : (
                 <>
-                  {todayUploads.length > 0 && !filters.dateFrom && (
+                  {todayUploads.length > 0 && !filters.dateFrom && !filters.dateTo && (
                     <div className="today-uploads-notice">
                       <span>📸 今天上传了 <strong>{todayUploads.length}</strong> 张</span>
                       <button
                         className="today-uploads-jump"
-                        onClick={() => applyQuickDateFilter(activeDateChip === "today" ? null : "today")}
-                      >{activeDateChip === "today" ? "取消筛选" : "仅查看今日"}</button>
+                        onClick={() => toggleQuickDateFilter("today")}
+                      >仅查看今日</button>
                     </div>
                   )}
                   <OnThisDayCard photos={photos} onJumpToPhoto={jumpToTimelinePhoto} />
