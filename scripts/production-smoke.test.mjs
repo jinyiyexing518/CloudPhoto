@@ -171,3 +171,61 @@ test("retries and fails when either changelog response is not an array", async (
     }
   );
 });
+
+test("runs all checks concurrently and reports an isolated failure in order", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let completed = 0;
+
+  const fetchImpl = async (url) => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    inFlight -= 1;
+    completed += 1;
+
+    if (url.endsWith("/azure/api/changelogs")) {
+      throw new Error("controlled failure");
+    }
+    if (url.endsWith("/api/auth/me")) {
+      return new Response('{"error":"Unauthorized"}', { status: 401 });
+    }
+    if (url.endsWith("/api/changelogs")) {
+      return Response.json([]);
+    }
+    return new Response("<!doctype html><title>Cloud Photo</title>", {
+      headers: { "content-type": "text/html" },
+    });
+  };
+
+  const messages = logger();
+  const passed = await runSmoke({
+    env: testEnvironment("https://example.test"),
+    fetchImpl,
+    logger: messages,
+    attempts: 1,
+    requestTimeoutMs: 1_000,
+  });
+
+  assert.equal(passed, false);
+  assert.equal(maxInFlight, 6);
+  assert.equal(completed, 6);
+  assert.deepEqual(
+    messages.output
+      .filter((message) => /^(PASS|FAIL) /.test(message))
+      .map((message) => message.match(/^(?:PASS|FAIL) (\S+ \S+):/)[1]),
+    [
+      "primary homepage",
+      "azure homepage",
+      "primary auth/me",
+      "azure auth/me",
+      "primary changelogs",
+      "azure changelogs",
+    ]
+  );
+  assert.match(messages.output[5], /^FAIL azure changelogs:/);
+  assert.match(
+    messages.output.at(-1),
+    /Production smoke checks failed after 1 attempts:/
+  );
+});

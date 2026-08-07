@@ -10,6 +10,7 @@ import {
   ChangelogQueryRow,
   toChangelogEntries,
 } from "./changelogResponse";
+import { parseChangelogDays } from "./changelogRequest";
 
 app.http("getChangelogs", {
   methods: ["GET"],
@@ -20,8 +21,7 @@ app.http("getChangelogs", {
     context: InvocationContext
   ): Promise<HttpResponseInit> => {
     try {
-      const daysParam = req.query.get("days");
-      const days = daysParam ? Math.min(parseInt(daysParam, 10), 365) : 30;
+      const days = parseChangelogDays(req.query.get("days"));
 
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);

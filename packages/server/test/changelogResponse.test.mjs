@@ -103,3 +103,53 @@ test("preserves date, sequence, timestamp, and id ordering", () => {
     ]
   );
 });
+
+test("orders mixed sequenced and legacy entries on the same day", () => {
+  const entries = toChangelogEntries([
+    {
+      id: "legacy-a",
+      date: "2026-08-07",
+      icon: "fix",
+      title: "Legacy A",
+      description: "Legacy A",
+      _ts: 20,
+    },
+    {
+      id: "seq-low",
+      date: "2026-08-07",
+      icon: "fix",
+      title: "Sequence low",
+      description: "Sequence low",
+      seq: 10,
+    },
+    {
+      id: "legacy-b",
+      date: "2026-08-07",
+      icon: "fix",
+      title: "Legacy B",
+      description: "Legacy B",
+      _ts: 20,
+    },
+    {
+      id: "seq-high",
+      date: "2026-08-07",
+      icon: "fix",
+      title: "Sequence high",
+      description: "Sequence high",
+      seq: 20,
+    },
+    {
+      id: "legacy-newest",
+      date: "2026-08-07",
+      icon: "fix",
+      title: "Legacy newest",
+      description: "Legacy newest",
+      _ts: 30,
+    },
+  ]);
+
+  assert.deepEqual(
+    entries.map((entry) => entry.id),
+    ["seq-high", "seq-low", "legacy-newest", "legacy-b", "legacy-a"]
+  );
+});

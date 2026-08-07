@@ -134,23 +134,38 @@ export async function runSmoke({
   const checks = createChecks(env);
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const failures = [];
+    const results = await Promise.all(
+      checks.map(async (check) => {
+        const startedAt = performance.now();
+        try {
+          await runCheck(check, fetchImpl, requestTimeoutMs);
+          return {
+            check,
+            elapsedMs: Math.round(performance.now() - startedAt),
+            passed: true,
+          };
+        } catch (error) {
+          return {
+            check,
+            elapsedMs: Math.round(performance.now() - startedAt),
+            passed: false,
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+      })
+    );
 
-    for (const check of checks) {
-      const startedAt = performance.now();
-      try {
-        await runCheck(check, fetchImpl, requestTimeoutMs);
-        const elapsedMs = Math.round(performance.now() - startedAt);
+    const failures = [];
+    for (const result of results) {
+      const { check, elapsedMs } = result;
+      if (result.passed) {
         logger.log(
           `PASS ${check.target} ${check.name}: ${check.url} (${elapsedMs}ms)`
         );
-      } catch (error) {
-        const elapsedMs = Math.round(performance.now() - startedAt);
-        const message =
-          error instanceof Error ? error.message : String(error);
-        failures.push(`${check.target} ${check.name}: ${message}`);
+      } else {
+        failures.push(`${check.target} ${check.name}: ${result.message}`);
         logger.error(
-          `FAIL ${check.target} ${check.name}: ${check.url} (${elapsedMs}ms; ${message})`
+          `FAIL ${check.target} ${check.name}: ${check.url} (${elapsedMs}ms; ${result.message})`
         );
       }
     }
