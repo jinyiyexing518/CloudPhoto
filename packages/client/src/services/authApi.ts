@@ -5,7 +5,7 @@
  * so token refresh and auto-logout are handled transparently.
  */
 
-import { API_BASE } from "../utils/apiBase";
+import { API_BASE, isProxySiteHost } from "../utils/apiBase";
 import { fetchWithTimeout, authHeaders } from "./http";
 
 // ── Domain types ──────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ export async function loginApi(
     },
     30_000,
   ).catch((e: unknown) => {
-    const isOnProxy = typeof window !== "undefined" && window.location.hostname === "cloudphotos.top";
+    const isOnProxy = typeof window !== "undefined" && isProxySiteHost(window.location.hostname);
     throw new Error(
       e instanceof Error && e.name === "AbortError"
         ? "登录响应超时，服务器可能正在启动，请稍后重试"
@@ -93,7 +93,7 @@ export async function addAdminApi(data: {
   email?: string;
   username?: string;
 }): Promise<void> {
-  const res = await fetch(`${API_BASE}/auth/admins`, {
+  const res = await fetchWithTimeout(`${API_BASE}/auth/admins`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(data),

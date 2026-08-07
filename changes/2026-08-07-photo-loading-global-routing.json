@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-07-photo-loading-global-routing",
+  "date": "2026-08-07",
+  "icon": "⚡",
+  "title": "优化照片加载速度、流量与全球访问",
+  "type": "improvement",
+  "desc": "照片列表跨刷新快速绘制并抑制聚焦重复请求；媒体自动选择 Blob 直连或 Nginx 代理，图片、视频、复制和下载失败时有限次换线。",
+  "details": "PWA 媒体缓存只接收非 Range 的可验证 200 GET，并在注销/切号时清除；Blob 与 Nginx 的浏览器 HTTP freshness 限为一小时。缩略图仅在 derivative 存在后以 ETag 合并元数据，历史回填、回收站字段、Nginx Range 与精确 CORS allowlist 同步更新。",
+  "seq": 1786088379482
+}

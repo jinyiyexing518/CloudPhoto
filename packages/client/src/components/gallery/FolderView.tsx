@@ -17,6 +17,10 @@ import {
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
+import {
+  fallbackMediaSource,
+  preloadImageWithFallback,
+} from "../../services/mediaRoute";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";
@@ -761,10 +765,10 @@ function FolderContent({
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [videoRetryKey, setVideoRetryKey] = useState(0);
   const [sharing, setSharing] = useState(false);
   // Progressive GIF loading in viewer: show thumbnail immediately, upgrade to full GIF silently
   const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
-  const gifViewerPreloadRef = useRef<HTMLImageElement | null>(null);
   const [shareHours, setShareHours] = useState("24");
   const [showSharePanel, setShowSharePanel] = useState(false);
   const [showMovePanel, setShowMovePanel] = useState(false);
@@ -863,6 +867,7 @@ function FolderContent({
     setMotionVideoLoading(false);
     setVideoBuffering(false);
     setVideoError(false);
+    setVideoRetryKey(0);
     setModalImageLoaded(false);
     setGifViewerSrc("");
   }, [trackPhotoView]);
@@ -870,12 +875,6 @@ function FolderContent({
   // Progressive GIF loading in the viewer is intentionally removed — see PhotoGallery.tsx.
   // Re-enabled with thumbnail + loading badge (blank white looks broken to users).
   useEffect(() => {
-    if (gifViewerPreloadRef.current) {
-      gifViewerPreloadRef.current.onload = null;
-      gifViewerPreloadRef.current.onerror = null;
-      gifViewerPreloadRef.current.src = "";
-      gifViewerPreloadRef.current = null;
-    }
     if (!selectedPhoto) return;
     const isGifFormat = selectedPhoto.contentType === "image/gif";
     const isOtherAnimated = selectedPhoto.isAnimated &&
@@ -886,13 +885,15 @@ function FolderContent({
     if (!selectedPhoto.thumbnailUrl) return;
     setGifViewerSrc(selectedPhoto.thumbnailUrl);
     if (isGifFormat) {
-      const img = new Image();
-      gifViewerPreloadRef.current = img;
-      const done = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
-      img.onload = done;
-      img.onerror = done;
-      img.src = selectedPhoto.url;
-      return () => { img.onload = null; img.onerror = null; img.src = ""; };
+      const controller = new AbortController();
+      void preloadImageWithFallback([selectedPhoto.url], controller.signal)
+        .then(setGifViewerSrc)
+        .catch((error: unknown) => {
+          if (!(error instanceof Error && error.name === "AbortError")) {
+            setGifViewerSrc(selectedPhoto.url);
+          }
+        });
+      return () => controller.abort();
     } else {
       // Non-GIF animated (phone 动图: animated WebP/HEIF/AVIF): stream directly
       const t = window.setTimeout(() => setGifViewerSrc(selectedPhoto.url), 0);
@@ -1041,6 +1042,7 @@ function FolderContent({
     setMotionVideoLoading(false);
     setVideoBuffering(false);
     setVideoError(false);
+    setVideoRetryKey(0);
     setGifViewerSrc("");
   };
 
@@ -1453,7 +1455,7 @@ function FolderContent({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
                   <video
-                    key={selectedPhoto.url}
+                    key={`${selectedPhoto.url}:${videoRetryKey}`}
                     src={selectedPhoto.url}
                     className="modal-image modal-video"
                     controls
@@ -1462,7 +1464,16 @@ function FolderContent({
                     onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}
-                    onError={() => { setVideoBuffering(false); setVideoError(true); }}
+                    onError={(event) => {
+                      if (fallbackMediaSource(event.currentTarget, [selectedPhoto.url])) {
+                        setVideoError(false);
+                        setVideoBuffering(true);
+                        event.currentTarget.load();
+                      } else {
+                        setVideoBuffering(false);
+                        setVideoError(true);
+                      }
+                    }}
                   />
                   {videoBuffering && !videoError && (
                     <div className="modal-video-spinner">
@@ -1476,7 +1487,11 @@ function FolderContent({
                       <span style={{ fontSize: 13 }}>视频加载失败</span>
                       <button
                         style={{ marginTop: 4, padding: "4px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13 }}
-                        onClick={() => { setVideoError(false); setVideoBuffering(false); }}
+                        onClick={() => {
+                          setVideoError(false);
+                          setVideoBuffering(false);
+                          setVideoRetryKey((key) => key + 1);
+                        }}
                       >重试</button>
                     </div>
                   )}
@@ -1500,11 +1515,18 @@ function FolderContent({
                       <>
                         <img
                           key={selectedPhoto.url}
-                          src={selectedPhoto.url}
+                          src={selectedPhoto.previewUrl ?? selectedPhoto.thumbnailUrl ?? selectedPhoto.url}
                           alt={displayName(selectedPhoto)}
                           className="modal-image modal-image--gif"
                           onClick={() => setShowOriginalPreview(true)}
                           title="点击预览原图"
+                          onError={(event) => {
+                            fallbackMediaSource(event.currentTarget, [
+                              selectedPhoto.previewUrl,
+                              selectedPhoto.thumbnailUrl,
+                              selectedPhoto.url,
+                            ]);
+                          }}
                         />
                         <button
                           className="motion-play-btn"
@@ -1532,6 +1554,9 @@ function FolderContent({
                       className="modal-image modal-image--gif"
                       onClick={() => setShowOriginalPreview(true)}
                       title="点击预览原图"
+                      onError={(event) => {
+                        fallbackMediaSource(event.currentTarget, [gifViewerSrc, selectedPhoto.url]);
+                      }}
                     />
                   )}
                   <span className="modal-gif-badge">
@@ -1551,6 +1576,9 @@ function FolderContent({
                       alt=""
                       aria-hidden="true"
                       className="modal-image modal-image--placeholder"
+                      onError={(event) => {
+                        fallbackMediaSource(event.currentTarget, [selectedPhoto.thumbnailUrl]);
+                      }}
                     />
                   )}
                   {/* Spinner only when there is no thumbnail to show */}
@@ -1562,6 +1590,14 @@ function FolderContent({
                     onClick={() => setShowOriginalPreview(true)}
                     title="点击预览原图"
                     onLoad={() => setModalImageLoaded(true)}
+                    onError={(event) => {
+                      fallbackMediaSource(event.currentTarget, [
+                        getViewerSrc(selectedPhoto),
+                        selectedPhoto.previewUrl,
+                        selectedPhoto.thumbnailUrl,
+                        selectedPhoto.url,
+                      ]);
+                    }}
                   />
                 </>
               )}
@@ -1674,7 +1710,14 @@ function FolderContent({
                 <div className="modal-panel-box">
                   {selectedPhoto.voiceMemoUrl ? (
                     <div className="modal-voice-section">
-                      <audio controls src={selectedPhoto.voiceMemoUrl} className="modal-voice-player" />
+                      <audio
+                        controls
+                        src={selectedPhoto.voiceMemoUrl}
+                        className="modal-voice-player"
+                        onError={(event) => {
+                          fallbackMediaSource(event.currentTarget, [selectedPhoto.voiceMemoUrl]);
+                        }}
+                      />
                       <button className="modal-action-btn modal-action-btn--danger" onClick={() => void deleteVoiceMemo()}>
                         🗑 删除备注
                       </button>
@@ -1860,7 +1903,14 @@ function FolderContent({
             <a className="modal-preview-open" href={selectedPhoto.url} target="_blank" rel="noreferrer">
               在新窗口打开原图
             </a>
-            <img src={selectedPhoto.url} alt={displayName(selectedPhoto)} className="modal-preview-image" />
+            <img
+              src={selectedPhoto.url}
+              alt={displayName(selectedPhoto)}
+              className="modal-preview-image"
+              onError={(event) => {
+                fallbackMediaSource(event.currentTarget, [selectedPhoto.url]);
+              }}
+            />
           </div>
         </div>
       )}
@@ -1908,4 +1958,3 @@ function formatDate(value: string | Date): string {
     hour: "2-digit", minute: "2-digit",
   });
 }
-

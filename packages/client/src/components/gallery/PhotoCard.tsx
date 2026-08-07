@@ -9,6 +9,10 @@ import {
   VIDEO_THUMB_PRELOAD_MARGIN,
   THUMB_QUALITY_FRACTION,
 } from "@cloudphoto/algorithm";
+import {
+  fallbackMediaSource,
+  fetchMediaWithFallback,
+} from "../../services/mediaRoute";
 
 // Per-session dedup: avoid re-uploading a thumbnail for the same video twice
 const _thumbnailedInSession = new Set<string>();
@@ -39,12 +43,6 @@ function PhotoCard({
   onDragStart,
   onDragEnd,
 }: Props) {
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const [gifPaused, setGifPaused] = useState(false);
-  const [videoDuration, setVideoDuration] = useState<string | null>(null);
-  const [videoThumbFailed, setVideoThumbFailed] = useState(false);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
@@ -53,11 +51,25 @@ function PhotoCard({
     (photo.contentType === "image/jpeg" || photo.contentType === "image/jpg");
   const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
     photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
-  // GIF progressive loading: show static thumbnail immediately, upgrade to full GIF in background
-  const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() =>
-    isAnimated && !isMotionPhoto && photo.thumbnailUrl ? photo.thumbnailUrl : photo.url
-  );
-  const gifPreloadDone = useRef(false);
+  const lowDataImageSources = photo.thumbnailUrl || photo.previewUrl
+    ? [photo.thumbnailUrl, photo.previewUrl]
+    : isHeic
+      ? []
+      : [photo.url];
+  const lowDataImageSrc = lowDataImageSources[0] ?? BLANK_GIF;
+  const staticAnimatedSrc = photo.thumbnailUrl ?? photo.previewUrl ?? BLANK_GIF;
+  const videoPosterSources = [photo.thumbnailUrl, photo.previewUrl];
+  const videoPosterSrc = photo.thumbnailUrl ?? photo.previewUrl;
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  // GIF originals can be many MB. Keep the static thumbnail until the user
+  // explicitly presses play instead of downloading every visible GIF.
+  const [gifPaused, setGifPaused] = useState(isGif);
+  const [videoDuration, setVideoDuration] = useState<string | null>(null);
+  const [videoThumbFailed, setVideoThumbFailed] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
   // Range-fetch src for videos: starts as full URL, replaced with a 512 KB partial blob URL
   // once the card enters the viewport. Falls back to full URL if Range is not supported.
   const [videoThumbSrc, setVideoThumbSrc] = useState<string>(() => photo.url);
@@ -66,7 +78,7 @@ function PhotoCard({
   const gifImgRef = useRef<HTMLImageElement>(null);
   // Show static thumbnail for videos that already have one (generated client-side at upload).
   // Fall back to <video> seek approach if no thumbnail or if the thumbnail 404s.
-  const useVideoThumb = isVideo && !!photo.thumbnailUrl && !videoThumbFailed;
+  const useVideoThumb = isVideo && !!videoPosterSrc && !videoThumbFailed;
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // For video thumbnails served as <img>: if the image is already cached the browser
@@ -77,50 +89,21 @@ function PhotoCard({
     if (useVideoThumb && el?.complete && el.naturalWidth > 0) {
       setImgLoaded(true);
     }
-  }, [useVideoThumb, photo.thumbnailUrl]);
+  }, [useVideoThumb, videoPosterSrc]);
 
-  // Same safety net for animated images (GIFs / motion photos). We also clear
-  // imgLoaded when the GIF src is swapped to BLANK_GIF so the skeleton doesn't
-  // re-appear; the blank GIF onLoad restores imgLoaded immediately anyway.
+  // Same safety net for animated images (GIFs / motion photos).
   useEffect(() => {
-    if (!isAnimated || gifPaused) return;
+    if (!isAnimated) return;
     const el = gifImgRef.current;
     if (el?.complete && el.naturalWidth > 0) {
       setImgLoaded(true);
     }
   }, [isAnimated, gifPaused, photo.url]);
 
-  // GIF progressive load: wait until the card is actually visible in viewport,
-  // THEN fetch the full animated file in the background.
-  //
-  // IMPORTANT: only fire for traditional GIFs (image/gif).
-  // Phone animated photos — animated WebP, HEIC live photos, short-video
-  // formats from Vivo/Xiaomi/Oppo — can be 2-20 MB per file.  Preloading
-  // every visible one simultaneously would burn 20-200 MB of mobile data
-  // just for gallery cards.  For these formats the gallery shows the static
-  // thumbnail; the full animation is visible when the user opens the viewer.
   useEffect(() => {
-    if (!isGif || !isAnimated || isMotionPhoto || !photo.thumbnailUrl || gifPreloadDone.current) return;
-    const el = gifImgRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries[0]?.isIntersecting) return;
-        observer.disconnect();
-        if (gifPreloadDone.current) return;
-        const img = new Image();
-        img.onload = () => {
-          gifPreloadDone.current = true;
-          setGifDisplaySrc(photo.url);
-        };
-        img.src = photo.url;
-      },
-      { rootMargin: "100px" },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAnimated, isMotionPhoto, photo.thumbnailUrl, photo.url]);
+    if (!isGif) return;
+    setGifDisplaySrc(gifPaused ? staticAnimatedSrc : photo.url);
+  }, [gifPaused, isGif, photo.url, staticAnimatedSrc]);
 
   // Reset Range-fetch state whenever the SAS URL renews
   useEffect(() => {
@@ -156,15 +139,17 @@ function PhotoCard({
         //   b) the fallback path below — src is reset to photo.url
         // For non-faststart MP4 a full download means the browser streams the
         // entire file (10-200 MB) looking for the moov atom at the end.
-        void fetch(photo.url, { headers: { Range: `bytes=0-${VIDEO_THUMB_RANGE_BYTES}` } })
+        void fetchMediaWithFallback(photo.url, { headers: { Range: `bytes=0-${VIDEO_THUMB_RANGE_BYTES}` } })
           .then(async (res) => {
-            if (res.status === 206 || res.ok) {
+            if (res.status === 206) {
               const blob = await res.blob();
               const url = URL.createObjectURL(blob);
               videoBlobRef.current = url;
               setVideoThumbSrc(url);
               // rAF: wait for React to commit the updated src before load()
               requestAnimationFrame(() => { videoRef.current?.load(); });
+            } else {
+              await res.body?.cancel();
             }
             // Range not supported or error status: leave src as photo.url but
             // do NOT call load() — that would download the full video.
@@ -224,11 +209,12 @@ function PhotoCard({
     } catch { /* best-effort */ }
   };
 
-  // Toggle play/pause for animated images. Uses src-swap instead of canvas
+  // Toggle play/pause for GIFs. Uses src-swap instead of canvas
   // to avoid cross-origin (CORS) security errors on Azure SAS URLs.
   const toggleGifPause = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setGifPaused(prev => !prev);
+    setImgLoaded(false);
+    setGifPaused((paused) => !paused);
   };
   const basename = photo.name.split("/").pop() ?? photo.name;
   const displayName = photo.originalName || basename.replace(/^\d+-/, "");
@@ -265,12 +251,17 @@ function PhotoCard({
           {useVideoThumb ? (
             <img
               ref={videoThumbImgRef}
-              src={photo.thumbnailUrl}
+              src={videoPosterSrc}
               alt={displayName}
               loading="lazy"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
-              onError={() => { setVideoThumbFailed(true); setImgLoaded(false); }}
+              onError={(e) => {
+                if (!fallbackMediaSource(e.currentTarget, videoPosterSources)) {
+                  setVideoThumbFailed(true);
+                  setImgLoaded(false);
+                }
+              }}
             />
           ) : isVideo ? (
             <video
@@ -301,39 +292,42 @@ function PhotoCard({
           ) : isMotionPhoto ? (
             <img
               ref={gifImgRef}
-              src={photo.thumbnailUrl ?? photo.url}
+              src={lowDataImageSrc}
               alt={displayName}
               loading="lazy"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={(e) => {
-                if (photo.thumbnailUrl && e.currentTarget.src !== photo.url) {
-                  e.currentTarget.src = photo.url;
-                }
+                if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
               }}
             />
           ) : isAnimated ? (
             <img
               ref={gifImgRef}
-              src={gifPaused ? BLANK_GIF : gifDisplaySrc}
+              src={isGif ? gifDisplaySrc : staticAnimatedSrc}
               alt={displayName}
               loading="lazy"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
+              onError={(e) => {
+                const sources = isGif && !gifPaused
+                  ? [photo.url]
+                  : [photo.thumbnailUrl, photo.previewUrl];
+                if (!fallbackMediaSource(e.currentTarget, sources)) setImgLoaded(false);
+              }}
             />
           ) : (
             <img
-              src={photo.thumbnailUrl ?? photo.url}
+              src={lowDataImageSrc}
               alt={displayName}
               loading="lazy"
               decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={(e) => {
-                // If thumbnail 404s (e.g. generation failed), fall back to full-res
-                if (photo.thumbnailUrl && e.currentTarget.src !== photo.url) {
-                  e.currentTarget.src = photo.url;
-                }
+                // A broken derivative may try the preview and alternate route,
+                // but never silently downloads a 20 MB original as fallback.
+                if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
               }}
             />
           )}
@@ -343,7 +337,7 @@ function PhotoCard({
           {isAnimated && isMotionPhoto && (
             <div className="photo-video-badge">动态照片 📱</div>
           )}
-          {isAnimated && !isMotionPhoto && (
+          {isGif && (
             gifPaused ? (
               <>
                 <div className="photo-gif-paused-overlay" />
@@ -365,6 +359,9 @@ function PhotoCard({
                 </button>
               </>
             )
+          )}
+          {isAnimated && !isMotionPhoto && !isGif && (
+            <span className="gif-animated-badge">动图</span>
           )}
         </div>
         <div className="photo-info">

@@ -53,25 +53,16 @@ export async function createPhotoShareLink(
   name: string,
   hours = 24,
 ): Promise<{ url: string; expiresAt: string; shareId?: string; directUrl?: string }> {
-  let response: Response | null = null;
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      response = await fetchWithTimeout(
-        `${API_BASE}/photos/share?name=${encodeURIComponent(name)}&hours=${encodeURIComponent(String(hours))}`,
-        { headers: authHeaders() },
-      );
-      if (response.ok || response.status < 500 || attempt === 1) break;
-    } catch (e: unknown) {
-      lastError = e instanceof Error ? e : new Error("网络错误");
-      if (attempt === 1) {
-        throw new Error(lastError.name === "AbortError" ? "创建分享链接超时" : "网络错误");
-      }
-    }
-  }
-  if (!response) {
-    throw new Error(lastError?.name === "AbortError" ? "创建分享链接超时" : "网络错误");
-  }
+  const response = await fetchWithTimeout(
+    `${API_BASE}/photos/share?name=${encodeURIComponent(name)}&hours=${encodeURIComponent(String(hours))}`,
+    { headers: authHeaders() },
+  ).catch((error: unknown) => {
+    throw new Error(
+      error instanceof Error && error.name === "AbortError"
+        ? "创建分享链接超时"
+        : "网络错误",
+    );
+  });
   if (!response.ok) {
     const err = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? "Failed to create share link");

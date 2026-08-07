@@ -1,4 +1,5 @@
 import { API_BASE } from "../utils/apiBase";
+import { fetchWithTimeout } from "./http";
 
 function getToken(): string | null {
   return localStorage.getItem("cloudphoto_token");
@@ -46,7 +47,7 @@ export interface GroupDetail extends Group {
 // ---- API calls ----
 export async function createGroupApi(data: { name: string; description?: string }): Promise<Group> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups`, {
+    await fetchWithTimeout(`${API_BASE}/groups`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(data),
@@ -56,19 +57,19 @@ export async function createGroupApi(data: { name: string; description?: string 
 
 export async function listGroupsApi(): Promise<Group[]> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups`, { headers: authHeaders() })
+    await fetchWithTimeout(`${API_BASE}/groups`, { headers: authHeaders() })
   );
 }
 
 export async function getGroupApi(groupId: string): Promise<GroupDetail> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups/${groupId}`, { headers: authHeaders() })
+    await fetchWithTimeout(`${API_BASE}/groups/${groupId}`, { headers: authHeaders() })
   );
 }
 
 export async function updateGroupApi(groupId: string, data: { name?: string; description?: string }): Promise<Group> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups/${groupId}`, {
+    await fetchWithTimeout(`${API_BASE}/groups/${groupId}`, {
       method: "PATCH",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(data),
@@ -78,7 +79,7 @@ export async function updateGroupApi(groupId: string, data: { name?: string; des
 
 export async function deleteGroupApi(groupId: string): Promise<void> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups/${groupId}`, { method: "DELETE", headers: authHeaders() })
+    await fetchWithTimeout(`${API_BASE}/groups/${groupId}`, { method: "DELETE", headers: authHeaders() })
   );
 }
 
@@ -87,7 +88,7 @@ export async function addMemberApi(
   username: string,
 ): Promise<{ id: string; email: string; displayName: string; groupName: string; expiresAt: string }> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups/${groupId}/members`, {
+    await fetchWithTimeout(`${API_BASE}/groups/${groupId}/members`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ username }),
@@ -97,7 +98,7 @@ export async function addMemberApi(
 
 export async function removeMemberApi(groupId: string, memberId: string): Promise<void> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups/${groupId}/members/${memberId}`, { method: "DELETE", headers: authHeaders() })
+    await fetchWithTimeout(`${API_BASE}/groups/${groupId}/members/${memberId}`, { method: "DELETE", headers: authHeaders() })
   );
 }
 
@@ -123,7 +124,7 @@ export interface InviteInfo {
 
 export async function createInviteApi(groupId: string, email: string): Promise<{ id: string; email: string; groupName: string; expiresAt: string }> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups/${groupId}/invites`, {
+    await fetchWithTimeout(`${API_BASE}/groups/${groupId}/invites`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ email }),
@@ -133,17 +134,17 @@ export async function createInviteApi(groupId: string, email: string): Promise<{
 
 export async function listGroupInvitesApi(groupId: string): Promise<PendingInvite[]> {
   return handleResponse(
-    await fetch(`${API_BASE}/groups/${groupId}/invites`, { headers: authHeaders() })
+    await fetchWithTimeout(`${API_BASE}/groups/${groupId}/invites`, { headers: authHeaders() })
   );
 }
 
 export async function getInviteApi(token: string): Promise<InviteInfo> {
-  return handleResponse(await fetch(`${API_BASE}/invites/${token}`));
+  return handleResponse(await fetchWithTimeout(`${API_BASE}/invites/${token}`));
 }
 
 export async function respondInviteApi(token: string, action: "accept" | "decline"): Promise<{ message: string; member?: GroupMember }> {
   return handleResponse(
-    await fetch(`${API_BASE}/invites/${token}/respond`, {
+    await fetchWithTimeout(`${API_BASE}/invites/${token}/respond`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ action }),
@@ -153,6 +154,6 @@ export async function respondInviteApi(token: string, action: "accept" | "declin
 
 export async function cancelInviteApi(token: string): Promise<void> {
   return handleResponse(
-    await fetch(`${API_BASE}/invites/${token}`, { method: "DELETE", headers: authHeaders() })
+    await fetchWithTimeout(`${API_BASE}/invites/${token}`, { method: "DELETE", headers: authHeaders() })
   );
 }

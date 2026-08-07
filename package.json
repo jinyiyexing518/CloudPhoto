@@ -13,6 +13,7 @@
     "check:static-cache": "node scripts/check-static-cache-config.mjs",
     "dev:client": "yarn workspace cloudphoto-client dev",
     "dev:server": "yarn workspace cloudphoto-server start",
+    "test:photo-loading-contracts": "node scripts/check-photo-loading-contracts.mjs",
     "change": "node scripts/create-change.mjs",
     "changes:collect": "node scripts/collect-changes.mjs",
     "test:production-smoke": "node --test scripts/production-smoke.test.mjs",

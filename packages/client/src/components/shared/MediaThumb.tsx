@@ -1,7 +1,7 @@
 /**
  * MediaThumb — renders a thumbnail for photos or videos.
  *
- * For videos: if thumbnailUrl is provided, renders an <img> (zero network cost
+ * For videos: if a thumbnail/preview is provided, renders an <img> (zero network cost
  * beyond what the gallery already loaded). Falls back to <video preload="none">
  * only when no thumbnail is available. The old preload="metadata" + seek approach
  * was removed because it downloads video headers on every render, burning MB/s in
@@ -16,9 +16,12 @@
  *   wrapClass     — wraps video+badge in <span className={wrapClass}>
  *   loading       — lazy (default) | eager
  */
+import { fallbackMediaSource } from "../../services/mediaRoute";
+
 interface Props {
   url: string;
   thumbnailUrl?: string;
+  previewUrl?: string;
   alt?: string;
   contentType?: string;
   className?: string;
@@ -29,6 +32,7 @@ interface Props {
 export default function MediaThumb({
   url,
   thumbnailUrl,
+  previewUrl,
   alt = "",
   contentType,
   className,
@@ -36,15 +40,35 @@ export default function MediaThumb({
   loading = "lazy",
 }: Props) {
   const isVideo = contentType?.startsWith("video/") ?? false;
+  const imageSources = thumbnailUrl || previewUrl
+    ? [thumbnailUrl, previewUrl]
+    : [url];
 
   if (!isVideo) {
-    return <img src={thumbnailUrl ?? url} alt={alt} className={className} loading={loading} />;
+    return (
+      <img
+        src={imageSources[0]}
+        alt={alt}
+        className={className}
+        loading={loading}
+        onError={(event) => { fallbackMediaSource(event.currentTarget, imageSources); }}
+      />
+    );
   }
 
   // Video with a pre-generated thumbnail image: render as <img> + badge.
   // This avoids downloading ANY video data on mount.
-  if (thumbnailUrl) {
-    const img = <img src={thumbnailUrl} alt={alt} className={className} loading={loading} />;
+  const videoPoster = thumbnailUrl ?? previewUrl;
+  if (videoPoster) {
+    const img = (
+      <img
+        src={videoPoster}
+        alt={alt}
+        className={className}
+        loading={loading}
+        onError={(event) => { fallbackMediaSource(event.currentTarget, imageSources); }}
+      />
+    );
     const badge = <span className="photo-video-badge">▶</span>;
     if (wrapClass) return <span className={wrapClass}>{img}{badge}</span>;
     return <>{img}{badge}</>;
@@ -65,4 +89,3 @@ export default function MediaThumb({
   if (wrapClass) return <span className={wrapClass}>{video}{badge}</span>;
   return <>{video}{badge}</>;
 }
-

@@ -7,6 +7,7 @@ import {
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import type { BlobItem } from "@azure/storage-blob";
 import type sharpT from "sharp";
 
 // Lazy-load sharp so a missing native binary doesn't crash the function app
@@ -27,6 +28,27 @@ const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/w
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
   return metadata[key] ?? metadata[key.toLowerCase()];
+}
+
+function decodeMeta(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    return Buffer.from(raw, "base64").toString("utf8") || undefined;
+  } catch {
+    return raw;
+  }
+}
+
+function setMeta(metadata: Record<string, string>, key: string, value: string): void {
+  for (const existingKey of Object.keys(metadata)) {
+    if (existingKey.toLowerCase() === key.toLowerCase()) delete metadata[existingKey];
+  }
+  metadata[key] = value;
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  return (error as { statusCode?: number }).statusCode === 412;
 }
 
 app.http("backfillThumbnails", {
@@ -51,15 +73,33 @@ app.http("backfillThumbnails", {
     }
     // Max blobs to process per request — prevents 10 min Function timeout on large galleries.
     // Client calls repeatedly until hasMore is false.
-    const limit = Math.min(parseInt(request.query.get("limit") ?? "30", 10), 100);
+    const parsedLimit = Number.parseInt(request.query.get("limit") ?? "30", 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, 100)
+      : 30;
+    const cursor = request.query.get("cursor") ?? "";
 
     const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
     const prefix = `${scope}/`;
 
     const containerClient = getBlobServiceClient().getContainerClient(containerName);
     let processed = 0, generated = 0, skipped = 0, failed = 0, remaining = 0;
+    let lastProcessedName = "";
 
+      // The same listing already includes derivative blobs. Keep their names so
+      // stale metadata can be detected without issuing two HEAD requests per photo.
+      const blobs: BlobItem[] = [];
+      const blobNames = new Set<string>();
       for await (const blob of containerClient.listBlobsFlat({ prefix, includeMetadata: true })) {
+        blobs.push(blob);
+        blobNames.add(blob.name);
+      }
+
+      for (const blob of blobs) {
+        // Azure flat listings are lexicographically ordered. A cursor lets one
+        // backfill run progress past a permanently broken item instead of
+        // retrying the same first page forever and starving later photos.
+        if (cursor && blob.name <= cursor) continue;
         // Skip soft-deleted and internal blobs
         if (getMeta(blob.metadata, "deletedAt")) continue;
         const segs = blob.name.split("/");
@@ -75,56 +115,100 @@ app.http("backfillThumbnails", {
         // - GIFs: sharp extracts frame 0 → fast gallery placeholder while full GIF loads.
         // - Animated WebPs: same first-frame extraction.
 
-        const needsThumb = !getMeta(blob.metadata, "thumbnailName");
-        const needsPreview = !getMeta(blob.metadata, "previewName");
+        const lastSlash = blob.name.lastIndexOf("/");
+        const dir = blob.name.substring(0, lastSlash + 1);
+        const thumbName = `${dir}_th_${filename}.webp`;
+        const previewName = `${dir}_th_${filename}-prev.webp`;
+        const storedThumbName = decodeMeta(getMeta(blob.metadata, "thumbnailName"));
+        const storedPreviewName = decodeMeta(getMeta(blob.metadata, "previewName"));
+        const needsThumb = storedThumbName !== thumbName || !blobNames.has(thumbName);
+        const needsPreview = storedPreviewName !== previewName || !blobNames.has(previewName);
         // Skip blobs that already have both thumbnail and preview
         if (!needsThumb && !needsPreview) { skipped++; continue; }
 
-        // Respect per-request limit — count remaining but don't download/process them
-        if (processed >= limit) { remaining++; continue; }
+        // Stop at the first remaining candidate; the cursor resumes after the
+        // last attempted item without rescanning/counting later blobs twice.
+        if (processed >= limit) { remaining = 1; break; }
         processed++;
+        lastProcessedName = blob.name;
         try {
-          // Derive blob names: same folder, _th_ prefix, .webp suffix
-          const lastSlash = blob.name.lastIndexOf("/");
-          const dir = blob.name.substring(0, lastSlash + 1);
-          const thumbName = `${dir}_th_${filename}.webp`;
-          const previewName = `${dir}_th_${filename}-prev.webp`;
-
           const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
-          const buf = await blockBlobClient.downloadToBuffer();
           const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
-          const updatedMeta = { ...blob.metadata };
+          let sourceBuffer: Buffer | null = null;
+          const getSourceBuffer = async (): Promise<Buffer> => {
+            if (!sourceBuffer) sourceBuffer = await blockBlobClient.downloadToBuffer();
+            return sourceBuffer;
+          };
 
           if (needsThumb) {
-            const thumbBuf = await sharp(buf)
-              .resize({ width: 400, withoutEnlargement: true })
-              .webp({ quality: 75 })
-              .toBuffer();
-            const thumbClient = containerClient.getBlockBlobClient(thumbName);
-            await thumbClient.uploadData(thumbBuf, {
-              blobHTTPHeaders: { blobContentType: "image/webp" },
-              metadata: { isThumb: "1" },
-            });
-            updatedMeta.thumbnailName = b64(thumbName);
+            if (!blobNames.has(thumbName)) {
+              const thumbBuf = await sharp(await getSourceBuffer())
+                .resize({ width: 400, withoutEnlargement: true })
+                .webp({ quality: 75 })
+                .toBuffer();
+              const thumbClient = containerClient.getBlockBlobClient(thumbName);
+              await thumbClient.uploadData(thumbBuf, {
+                blobHTTPHeaders: {
+                  blobContentType: "image/webp",
+                  blobCacheControl: "private, max-age=3600, immutable",
+                },
+                metadata: { isThumb: "1" },
+              });
+              blobNames.add(thumbName);
+            }
             context.log(`Thumbnail generated: ${thumbName}`);
           }
 
           if (needsPreview) {
-            // 2048 px preview — used by the viewer instead of the full original
-            const previewBuf = await sharp(buf)
-              .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
-              .webp({ quality: 82 })
-              .toBuffer();
-            const previewClient = containerClient.getBlockBlobClient(previewName);
-            await previewClient.uploadData(previewBuf, {
-              blobHTTPHeaders: { blobContentType: "image/webp" },
-              metadata: { isThumb: "1" },
-            });
-            updatedMeta.previewName = b64(previewName);
+            if (!blobNames.has(previewName)) {
+              // 2048 px preview — used by the viewer instead of the full original
+              const previewBuf = await sharp(await getSourceBuffer())
+                .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+                .webp({ quality: 82 })
+                .toBuffer();
+              const previewClient = containerClient.getBlockBlobClient(previewName);
+              await previewClient.uploadData(previewBuf, {
+                blobHTTPHeaders: {
+                  blobContentType: "image/webp",
+                  blobCacheControl: "private, max-age=3600, immutable",
+                },
+                metadata: { isThumb: "1" },
+              });
+              blobNames.add(previewName);
+            }
             context.log(`Preview generated: ${previewName}`);
           }
 
-          await blockBlobClient.setMetadata(updatedMeta);
+          // Merge derivative names into the latest metadata under ETag
+          // protection. The initial list can be minutes old by this point.
+          let metadataUpdated = false;
+          let deletedDuringBackfill = false;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            const props = await blockBlobClient.getProperties();
+            const latestMeta: Record<string, string> = { ...(props.metadata ?? {}) };
+            if (getMeta(latestMeta, "deletedAt")) {
+              deletedDuringBackfill = true;
+              break;
+            }
+            if (needsThumb) setMeta(latestMeta, "thumbnailName", b64(thumbName));
+            if (needsPreview) setMeta(latestMeta, "previewName", b64(previewName));
+            try {
+              if (!props.etag) throw new Error("Missing photo ETag");
+              await blockBlobClient.setMetadata(latestMeta, {
+                conditions: { ifMatch: props.etag },
+              });
+              metadataUpdated = true;
+              break;
+            } catch (e) {
+              if (isPreconditionFailed(e) && attempt < 3) continue;
+              throw e;
+            }
+          }
+          if (deletedDuringBackfill) {
+            skipped++;
+            continue;
+          }
+          if (!metadataUpdated) throw new Error("Thumbnail metadata update conflict");
           generated++;
         } catch (e) {
           failed++;
@@ -135,7 +219,14 @@ app.http("backfillThumbnails", {
       return {
         status: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ processed, generated, skipped, failed, hasMore: remaining > 0 }),
+        body: JSON.stringify({
+          processed,
+          generated,
+          skipped,
+          failed,
+          hasMore: remaining > 0,
+          ...(remaining > 0 && lastProcessedName ? { cursor: lastProcessedName } : {}),
+        }),
       };
     } catch (error) {
       context.error("backfillThumbnails error:", error);

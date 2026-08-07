@@ -1,5 +1,14 @@
 [
   {
+    "id": "2026-08-07-persistent-photo-list-cache",
+    "date": "2026-08-07",
+    "icon": "⚡",
+    "title": "刷新页面后立即恢复照片列表",
+    "type": "improvement",
+    "desc": "照片列表的 SWR 缓存现在按用户和群组持久保存并限量清理；一小时内刷新会先显示非空本地列表，再后台更新且保留错误提示。注销、自动注销或切换账号会清除私有列表和媒体缓存。",
+    "seq": 1786090620000
+  },
+  {
     "id": "2026-08-07-static-asset-immutable-cache",
     "date": "2026-08-07",
     "icon": "⚡",
@@ -8,6 +17,16 @@
     "desc": "带内容哈希的前端资源启用一年期 immutable 缓存，同时确保 SPA shell、PWA 更新文件和稳定文件名资源及时重验证。",
     "details": "Azure Static Web Apps 缓存配置现在随 Vite 产物部署；/assets/* 使用一年期 immutable，index.html、Service Worker 和注册入口禁止旧缓存阻塞更新，manifest、图标和 changelog 使用短缓存。CI 会验证源配置、构建产物与资源哈希命名。",
     "seq": 1786090563407
+  },
+  {
+    "id": "2026-08-07-photo-loading-global-routing",
+    "date": "2026-08-07",
+    "icon": "⚡",
+    "title": "优化照片加载速度、流量与全球访问",
+    "type": "improvement",
+    "desc": "照片列表跨刷新快速绘制并抑制聚焦重复请求；媒体自动选择 Blob 直连或 Nginx 代理，图片、视频、复制和下载失败时有限次换线。",
+    "details": "PWA 媒体缓存只接收非 Range 的可验证 200 GET，并在注销/切号时清除；Blob 与 Nginx 的浏览器 HTTP freshness 限为一小时。缩略图仅在 derivative 存在后以 ETag 合并元数据，历史回填、回收站字段、Nginx Range 与精确 CORS allowlist 同步更新。",
+    "seq": 1786088379482
   },
   {
     "id": "2026-08-07-fix-timeline-date-filters",

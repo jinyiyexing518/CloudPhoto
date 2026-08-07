@@ -20,6 +20,11 @@ import {
 import { DEFAULT_PAGE_SIZE, SCROLL_SENTINEL_MARGIN } from "@cloudphoto/algorithm";
 import { addRecentShareLink } from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
+import {
+  fallbackMediaSource,
+  fetchMediaWithFallback,
+  preloadImageWithFallback,
+} from "../../services/mediaRoute";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";
@@ -94,6 +99,27 @@ const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
 const MOMENTS_DIAGNOSTICS_KEY = "cloudphoto_moments_diagnostics_v1";
 
 type MomentsDiagnosticsStatus = "unknown" | "local-only" | "server-synced" | "server-unavailable";
+
+async function toClipboardPng(blob: Blob): Promise<Blob> {
+  if (blob.type === "image/png") return blob;
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas unavailable");
+    context.drawImage(bitmap, 0, 0);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (png) => png ? resolve(png) : reject(new Error("PNG conversion failed")),
+        "image/png",
+      );
+    });
+  } finally {
+    bitmap.close();
+  }
+}
 
 function splitDisplayName(value: string): { baseName: string; extension: string } {
   const trimmed = value.trim();
@@ -301,12 +327,12 @@ function PhotoGallery({
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [videoRetryKey, setVideoRetryKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
   // Progressive GIF loading in the viewer: show thumbnail immediately, upgrade to full GIF silently
   const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
-  const gifViewerPreloadRef = useRef<HTMLImageElement | null>(null);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
@@ -707,6 +733,7 @@ function PhotoGallery({
     setMotionVideoLoading(false);
     setVideoBuffering(false);
     setVideoError(false);
+    setVideoRetryKey(0);
     setImageDimensions(null);
     setModalImageLoaded(false);
     setGifViewerSrc("");
@@ -722,13 +749,6 @@ function PhotoGallery({
   // full GIF when ready.  Without this, large GIFs show a blank white area for
   // several seconds which looks identical to "broken" to the user.
   useEffect(() => {
-    // Abort any in-progress preload from the previous photo
-    if (gifViewerPreloadRef.current) {
-      gifViewerPreloadRef.current.onload = null;
-      gifViewerPreloadRef.current.onerror = null;
-      gifViewerPreloadRef.current.src = ""; // cancel network request
-      gifViewerPreloadRef.current = null;
-    }
     if (!selectedPhoto) return;
     const isGifFormat = selectedPhoto.contentType === "image/gif";
     // Non-JPEG animated: animated WebP / HEIF / AVIF from phone cameras
@@ -741,17 +761,15 @@ function PhotoGallery({
     setGifViewerSrc(selectedPhoto.thumbnailUrl); // instant visual feedback
     if (isGifFormat) {
       // GIF: preload-then-swap to avoid partial-frame artifacts
-      const img = new Image();
-      gifViewerPreloadRef.current = img;
-      const done = () => { setGifViewerSrc(selectedPhoto.url); gifViewerPreloadRef.current = null; };
-      img.onload = done;
-      img.onerror = done;
-      img.src = selectedPhoto.url;
-      return () => {
-        img.onload = null;
-        img.onerror = null;
-        img.src = ""; // abort download if user navigates away before load completes
-      };
+      const controller = new AbortController();
+      void preloadImageWithFallback([selectedPhoto.url], controller.signal)
+        .then(setGifViewerSrc)
+        .catch((error: unknown) => {
+          if (!(error instanceof Error && error.name === "AbortError")) {
+            setGifViewerSrc(selectedPhoto.url);
+          }
+        });
+      return () => controller.abort();
     } else {
       // Non-GIF animated (phone 动图: animated WebP/HEIF/AVIF):
       // stream directly — browser renders frames as they arrive.
@@ -844,8 +862,9 @@ function PhotoGallery({
       const src = getViewerSrc(p);
       if (adjacentPreloadedRef.current.has(src)) return; // already fetched this session
       adjacentPreloadedRef.current.add(src);
-      const img = new Image();
-      img.src = src;
+      void preloadImageWithFallback([src]).catch(() => {
+        adjacentPreloadedRef.current.delete(src);
+      });
     });
   }, [selectedIdx, modalPhotos]);
 
@@ -868,6 +887,9 @@ function PhotoGallery({
     setVoiceError(null);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
+    setVideoBuffering(false);
+    setVideoError(false);
+    setVideoRetryKey(0);
     setGifViewerSrc("");
   };
 
@@ -997,11 +1019,10 @@ function PhotoGallery({
     if (!navigator.clipboard?.write) { showToast("当前浏览器不支持复制图片", "error"); return; }
     setCopyingImage(true);
     try {
-      const resp = await fetch(selectedPhoto.url);
-      const blob = await resp.blob();
-      // Chrome requires image/png for ClipboardItem; convert if needed
-      const type = blob.type.startsWith("image/") ? blob.type : "image/png";
-      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      const resp = await fetchMediaWithFallback(selectedPhoto.url);
+      if (!resp.ok) throw new Error(`图片加载失败 (${resp.status})`);
+      const blob = await toClipboardPng(await resp.blob());
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
       showToast("图片已复制到剪贴板 📋", "success");
     } catch {
       showToast("复制失败，请重试", "error");
@@ -1294,7 +1315,7 @@ function PhotoGallery({
                 <article key={photo.name} className="moments-card" onClick={() => openModal(photo)}>
                   <div className="moments-rank">{rankBadge} #{rank}</div>
                   <div className="media-thumb-wrap">
-                    <MediaThumb url={photo.url} thumbnailUrl={photo.thumbnailUrl} alt={display} contentType={photo.contentType} className="moments-thumb" />
+                    <MediaThumb url={photo.url} thumbnailUrl={photo.thumbnailUrl} previewUrl={photo.previewUrl} alt={display} contentType={photo.contentType} className="moments-thumb" />
                   </div>
                   <div className="moments-card-body">
                     <div className="moments-title-row">
@@ -1426,7 +1447,7 @@ function PhotoGallery({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
                   <video
-                    key={selectedPhoto.url}
+                    key={`${selectedPhoto.url}:${videoRetryKey}`}
                     src={selectedPhoto.url}
                     className="modal-image modal-video"
                     controls
@@ -1435,7 +1456,16 @@ function PhotoGallery({
                     onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
                     onPlaying={() => setVideoBuffering(false)}
                     onWaiting={() => setVideoBuffering(true)}
-                    onError={() => { setVideoBuffering(false); setVideoError(true); }}
+                    onError={(event) => {
+                      if (fallbackMediaSource(event.currentTarget, [selectedPhoto.url])) {
+                        setVideoError(false);
+                        setVideoBuffering(true);
+                        event.currentTarget.load();
+                      } else {
+                        setVideoBuffering(false);
+                        setVideoError(true);
+                      }
+                    }}
                   />
                   {videoBuffering && !videoError && (
                     <div className="modal-video-spinner">
@@ -1449,7 +1479,11 @@ function PhotoGallery({
                       <span style={{ fontSize: 13 }}>视频加载失败</span>
                       <button
                         style={{ marginTop: 4, padding: "4px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13 }}
-                        onClick={() => { setVideoError(false); setVideoBuffering(false); }}
+                        onClick={() => {
+                          setVideoError(false);
+                          setVideoBuffering(false);
+                          setVideoRetryKey((key) => key + 1);
+                        }}
                       >重试</button>
                     </div>
                   )}
@@ -1473,11 +1507,18 @@ function PhotoGallery({
                       <>
                         <img
                           key={selectedPhoto.url}
-                          src={selectedPhoto.url}
+                          src={selectedPhoto.previewUrl ?? selectedPhoto.thumbnailUrl ?? selectedPhoto.url}
                           alt={selectedPhoto.name}
                           className="modal-image modal-image--gif"
                           onClick={() => setShowOriginalPreview(true)}
                           title="点击预览原图"
+                          onError={(event) => {
+                            fallbackMediaSource(event.currentTarget, [
+                              selectedPhoto.previewUrl,
+                              selectedPhoto.thumbnailUrl,
+                              selectedPhoto.url,
+                            ]);
+                          }}
                         />
                         <button
                           className="motion-play-btn"
@@ -1505,6 +1546,9 @@ function PhotoGallery({
                       className="modal-image modal-image--gif"
                       onClick={() => setShowOriginalPreview(true)}
                       title="点击预览原图"
+                      onError={(event) => {
+                        fallbackMediaSource(event.currentTarget, [gifViewerSrc, selectedPhoto.url]);
+                      }}
                     />
                   )}
                   <span className="modal-gif-badge">
@@ -1524,6 +1568,9 @@ function PhotoGallery({
                       alt=""
                       aria-hidden="true"
                       className="modal-image modal-image--placeholder"
+                      onError={(event) => {
+                        fallbackMediaSource(event.currentTarget, [selectedPhoto.thumbnailUrl]);
+                      }}
                     />
                   )}
                   {/* Spinner only when there is no thumbnail to show */}
@@ -1538,6 +1585,14 @@ function PhotoGallery({
                       const img = e.currentTarget;
                       setImageDimensions({ w: img.naturalWidth, h: img.naturalHeight });
                       setModalImageLoaded(true);
+                    }}
+                    onError={(event) => {
+                      fallbackMediaSource(event.currentTarget, [
+                        getViewerSrc(selectedPhoto),
+                        selectedPhoto.previewUrl,
+                        selectedPhoto.thumbnailUrl,
+                        selectedPhoto.url,
+                      ]);
                     }}
                   />
                 </>
@@ -1679,7 +1734,14 @@ function PhotoGallery({
                 <div className="modal-panel-box">
                   {selectedPhoto.voiceMemoUrl ? (
                     <div className="modal-voice-section">
-                      <audio controls src={selectedPhoto.voiceMemoUrl} className="modal-voice-player" />
+                      <audio
+                        controls
+                        src={selectedPhoto.voiceMemoUrl}
+                        className="modal-voice-player"
+                        onError={(event) => {
+                          fallbackMediaSource(event.currentTarget, [selectedPhoto.voiceMemoUrl]);
+                        }}
+                      />
                       <button className="modal-action-btn modal-action-btn--danger" onClick={() => void deleteVoiceMemo()}>
                         🗑 删除备注
                       </button>
@@ -1866,7 +1928,14 @@ function PhotoGallery({
             <a className="modal-preview-open" href={selectedPhoto.url} target="_blank" rel="noreferrer">
               在新窗口打开原图
             </a>
-            <img src={selectedPhoto.url} alt={selectedPhoto.name} className="modal-preview-image" />
+            <img
+              src={selectedPhoto.url}
+              alt={selectedPhoto.name}
+              className="modal-preview-image"
+              onError={(event) => {
+                fallbackMediaSource(event.currentTarget, [selectedPhoto.url]);
+              }}
+            />
           </div>
         </div>
       )}

@@ -33,9 +33,10 @@
 `azurewebsites.net` 和 `azurestaticapps.net` 在中国大陆访问不稳定。通过新加坡 VM 作为中转，所有流量走自定义域名，用户无需翻墙。
 
 ```
-中国用户 ──► cloudphotos.top（新加坡 VM 172.188.17.176）
+中国用户 ──► cloudphotos.top（新加坡 VM 20.195.27.151）
                   │
                   ├── /api/*  ──►  cloudphoto-api.azurewebsites.net
+                  ├── /media/* ─►  photostorage.blob.core.windows.net/photos
                   └── /*      ──►  brave-sand-053b07a00.7.azurestaticapps.net
 ```
 
@@ -51,6 +52,7 @@
 |---------|---------|--------|
 | A | `@` | `20.195.27.151` |
 | A | `www` | `20.195.27.151` |
+| A | `cn` | `20.195.27.151` |
 
 > ⚠️ 需完成域名实名认证，否则 DNS 不生效（`.top` 等国际域名在阿里云均需实名）
 
@@ -110,9 +112,10 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 | Location | 代理目标 | 特殊配置 |
 |----------|---------|---------|
 | `/api/` | `cloudphoto-api.azurewebsites.net/api/` | `client_max_body_size 210m`，超时 600s（视频上传） |
-| `/` | `brave-sand-053b07a00.7.azurestaticapps.net` | 透传 SWA 响应头，包括 `Cache-Control` |
+| `/media/` | `photostorage.blob.core.windows.net/photos/` | 保留 `Range` / `If-Range` 与 206 响应；`private, max-age=3600, immutable` |
+| `/` | `brave-sand-053b07a00.7.azurestaticapps.net` | 前端 HTML/静态资源反代；透传 SWA `Cache-Control` |
 
-两个 location 均设置 `proxy_set_header Host <upstream-host>`（SNI 必须）和 `proxy_ssl_server_name on`。
+三个 location 均设置 `proxy_set_header Host <upstream-host>`（SNI 必须）和 `proxy_ssl_server_name on`。`/api` 与 `/media` 的 CORS allowlist 只包含 `cloudphotos.top` 受信子域和精确 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`；禁止配置通配 `*.azurestaticapps.net`。受信 OPTIONS/GET 会回显相同 `Access-Control-Allow-Origin`，其他源不返回 ACAO。
 
 前端缓存规则由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
 
@@ -125,8 +128,10 @@ https://cloudphoto-api.azurewebsites.net/api
 
 运行时行为：
 - 在 `cloudphotos.top` 下，前端优先走同源 `/api`（VM Nginx 反代）
-- 若 VM 代理发生网络级失败，前端自动回退到上面的 Azure Functions 直连地址
+- 在 `cn.cloudphotos.top` 下同样优先走同源 `/api` 和 `/media`
+- 若首选线路发生网络/网关失败，可安全重试的读取及认证请求自动回退；非幂等写请求不重复发送
 - 直接访问 Azure Static Web Apps 域名时，也使用该直连地址
+- 媒体使用 Blob 与 `/media` 的无响应体 HEAD 竞速；Range 请求和 HEAD 探测不进入 PWA 媒体缓存
 
 因此前端 CI 只需保持 `VITE_API_BASE` 指向 Azure Functions 直连地址，无需再把 secret 改成 `https://cloudphotos.top/api`。
 
@@ -155,7 +160,7 @@ systemctl status certbot.timer
 |--|-----------|------------|
 | 访问域名 | `brave-sand-053b07a00.7.azurestaticapps.net` | `https://cloudphotos.top` |
 | 中国大陆可用 | ❌ 不稳定 | ✅ 可用 |
-| 额外成本 | 无 | Azure VM B1s ~$7/月 + 域名 |
+| 额外成本 | 无 | Azure VM B2s + 域名 |
 | SSL | Azure 托管 | Let's Encrypt（自动续签） |
 | 上传大小限制 | Azure Functions 限制 | Nginx `client_max_body_size 210m` |
 | 维护 | 全自动 | certbot 自动续签，Nginx 无需维护 |

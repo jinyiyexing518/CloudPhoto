@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
+import { fallbackMediaSource } from "../../services/mediaRoute";
 
 interface Props {
   photos: Photo[];
@@ -141,7 +142,19 @@ export default function AutoStory({ photos }: Props) {
       <div className="story-preview-grid">
         {storyPhotos.slice(0, 12).map((p, i) => (
           <div key={p.name} className="story-preview-thumb">
-            <img src={p.thumbnailUrl ?? p.url} alt={p.originalName ?? ""} loading="lazy" />
+            <img
+              src={p.thumbnailUrl ?? p.previewUrl ?? p.url}
+              alt={p.originalName ?? ""}
+              loading="lazy"
+              onError={(event) => {
+                fallbackMediaSource(
+                  event.currentTarget,
+                  p.thumbnailUrl || p.previewUrl
+                    ? [p.thumbnailUrl, p.previewUrl]
+                    : [p.url],
+                );
+              }}
+            />
             <span className="story-preview-num">{i + 1}</span>
           </div>
         ))}
@@ -165,6 +178,13 @@ export default function AutoStory({ photos }: Props) {
               src={currentPhoto.previewUrl ?? currentPhoto.url}
               alt={currentPhoto.originalName ?? ""}
               className="story-player-img"
+              onError={(event) => {
+                fallbackMediaSource(event.currentTarget, [
+                  currentPhoto.previewUrl,
+                  currentPhoto.thumbnailUrl,
+                  currentPhoto.url,
+                ]);
+              }}
             />
           </div>
 

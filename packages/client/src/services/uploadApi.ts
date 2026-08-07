@@ -9,28 +9,15 @@
  */
 
 import { API_BASE } from "../utils/apiBase";
-import { fetchWithTimeout, authHeaders } from "./http";
+import { fetchWithTimeout, authHeaders, resolveApiUrl } from "./http";
 import type { Photo } from "./photoApi";
-
-// ── Blob URL proxy (re-used from photoApi) ────────────────────────────────
-// Inline here to avoid circular imports; kept private to this module.
-function proxyBlobUrl(url: string): string {
-  if (typeof window === "undefined" || window.location.hostname !== "cloudphotos.top") return url;
-  try {
-    const parsed = new URL(url);
-    if (!parsed.hostname.endsWith(".blob.core.windows.net")) return url;
-    const blobPath = parsed.pathname.split("/").slice(2).join("/");
-    return "/media/" + blobPath + parsed.search;
-  } catch { return url; }
-}
+import { getPreferredMediaUrl, routeMediaUrls } from "./mediaRoute";
 
 function proxyPhoto(photo: Photo): Photo {
+  const routed = routeMediaUrls(photo);
   return {
     ...photo,
-    url: proxyBlobUrl(photo.url),
-    thumbnailUrl: photo.thumbnailUrl ? proxyBlobUrl(photo.thumbnailUrl) : undefined,
-    previewUrl: photo.previewUrl ? proxyBlobUrl(photo.previewUrl) : undefined,
-    voiceMemoUrl: photo.voiceMemoUrl ? proxyBlobUrl(photo.voiceMemoUrl) : undefined,
+    ...routed,
   };
 }
 
@@ -77,7 +64,7 @@ export async function uploadPhoto(
  * XHR-based upload with real-time progress. Supports AbortSignal for cancellation.
  * Timeout: 10 min to accommodate large video files.
  */
-export function uploadPhotoWithProgress(
+export async function uploadPhotoWithProgress(
   file: File,
   onProgress: (loaded: number, total: number) => void,
   uploadedBy?: string,
@@ -89,18 +76,23 @@ export function uploadPhotoWithProgress(
   signal?: AbortSignal,
   takenAt?: string,
 ): Promise<Photo> {
-  return new Promise((resolve, reject) => {
-    const params = new URLSearchParams({ filename: file.name });
-    if (uploadedBy) params.set("uploadedBy", uploadedBy);
-    if (subject) params.set("subject", subject);
-    if (folder) params.set("folder", folder);
-    if (groupId) params.set("groupId", groupId);
-    if (gpsLat) params.set("gpsLat", gpsLat);
-    if (gpsLon) params.set("gpsLon", gpsLon);
-    if (takenAt) params.set("takenAt", takenAt);
+  const params = new URLSearchParams({ filename: file.name });
+  if (uploadedBy) params.set("uploadedBy", uploadedBy);
+  if (subject) params.set("subject", subject);
+  if (folder) params.set("folder", folder);
+  if (groupId) params.set("groupId", groupId);
+  if (gpsLat) params.set("gpsLat", gpsLat);
+  if (gpsLon) params.set("gpsLon", gpsLon);
+  if (takenAt) params.set("takenAt", takenAt);
+  const uploadUrl = await resolveApiUrl(
+    `${API_BASE}/photos/upload?${params.toString()}`,
+    signal,
+  );
+  if (signal?.aborted) throw new DOMException("上传已取消", "AbortError");
 
+  return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${API_BASE}/photos/upload?${params.toString()}`);
+    xhr.open("POST", uploadUrl);
 
     const headers = authHeaders({ "Content-Type": file.type || "application/octet-stream" });
     Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
@@ -204,7 +196,7 @@ export async function setVideoThumbnail(
     );
     if (!res.ok) return null;
     const json = await res.json() as { thumbnailUrl?: string };
-    return json.thumbnailUrl ? proxyBlobUrl(json.thumbnailUrl) : null;
+    return json.thumbnailUrl ? getPreferredMediaUrl(json.thumbnailUrl) : null;
   } catch {
     return null;
   }

@@ -15,6 +15,19 @@
 
 import { API_BASE } from "../utils/apiBase";
 import { fetchWithTimeout, authHeaders, parseApiError } from "./http";
+import {
+  getPrivatePhotoCacheGeneration,
+  readMemoryPhotoListCache,
+  readPhotoListCache,
+  writeMemoryPhotoListCache,
+  writePhotoListCache,
+} from "./photoListCache";
+import {
+  getPreferredMediaUrl,
+  resolveMediaUrlWithFallback,
+  routeMediaUrls,
+  selectFastestMediaRoute,
+} from "./mediaRoute";
 import type { MomentInsight } from "./shareApi";
 import { ManagedMomentsUnavailableError } from "./shareApi";
 import {
@@ -57,24 +70,38 @@ export interface PhotoLocation {
   name: string; lat: number; lon: number; originalName?: string; contentType?: string;
 }
 
-// ── Blob URL proxy ────────────────────────────────────────────────────────
+function isPhotoPayload(value: unknown): value is Photo {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<Photo>;
+  const optionalUrls = [
+    candidate.thumbnailUrl,
+    candidate.previewUrl,
+    candidate.voiceMemoUrl,
+  ];
+  return typeof candidate.name === "string"
+    && candidate.name.length > 0
+    && typeof candidate.url === "string"
+    && candidate.url.length > 0
+    && optionalUrls.every((url) => url === undefined || typeof url === "string");
+}
+
+function parsePhotoListPayload(value: unknown): Photo[] {
+  if (!Array.isArray(value) || !value.every(isPhotoPayload)) {
+    throw new Error("Invalid photo-list response");
+  }
+  return value;
+}
+
+// ── Adaptive Blob routing ─────────────────────────────────────────────────
 export function proxyBlobUrl(url: string): string {
-  if (typeof window === "undefined" || window.location.hostname !== "cloudphotos.top") return url;
-  try {
-    const parsed = new URL(url);
-    if (!parsed.hostname.endsWith(".blob.core.windows.net")) return url;
-    const blobPath = parsed.pathname.split("/").slice(2).join("/");
-    return "/media/" + blobPath + parsed.search;
-  } catch { return url; }
+  return getPreferredMediaUrl(url);
 }
 
 export function proxyPhoto(photo: Photo): Photo {
+  const routed = routeMediaUrls(photo);
   return {
     ...photo,
-    url: proxyBlobUrl(photo.url),
-    thumbnailUrl: photo.thumbnailUrl ? proxyBlobUrl(photo.thumbnailUrl) : undefined,
-    previewUrl: photo.previewUrl ? proxyBlobUrl(photo.previewUrl) : undefined,
-    voiceMemoUrl: photo.voiceMemoUrl ? proxyBlobUrl(photo.voiceMemoUrl) : undefined,
+    ...routed,
   };
 }
 
@@ -104,22 +131,59 @@ export async function fetchMotionVideoBlob(photoName: string): Promise<MotionVid
 }
 
 // ── Photo list SWR cache ──────────────────────────────────────────────────
-// Stores the last-fetched list per groupId so the UI can render stale data
-// instantly on repeat visits while the fresh fetch runs in the background.
-const _photoListCache = new Map<string, Photo[]>();
+// A cache key is never created without an authenticated user id. This prevents
+// anonymous/session keys from being reused when accounts change in one browser.
+function photoListCacheKey(groupId: string, cacheScope: string): string | null {
+  if (!cacheScope) return null;
+  return `user:${cacheScope}:group:${groupId || "personal"}`;
+}
 
-/** Returns the last-fetched photo list for a group (may be stale). */
-export function getCachedPhotos(groupId = ""): Photo[] | null {
-  return _photoListCache.get(groupId) ?? null;
+/** Returns the in-memory photo list for a user/group (may be stale). */
+export function getCachedPhotos(groupId = "", cacheScope = ""): Photo[] | null {
+  const key = photoListCacheKey(groupId, cacheScope);
+  return key ? readMemoryPhotoListCache<Photo>(key) : null;
+}
+
+/** Restores a recent photo list from Cache Storage after a page reload. */
+export async function getPersistedPhotos(groupId = "", cacheScope = ""): Promise<Photo[] | null> {
+  const key = photoListCacheKey(groupId, cacheScope);
+  if (!key) return null;
+  const memory = readMemoryPhotoListCache<Photo>(key);
+  if (memory) return memory;
+
+  const cached = await readPhotoListCache<unknown>(key);
+  if (cached && !cached.every(isPhotoPayload)) {
+    await writePhotoListCache(key, []);
+    return null;
+  }
+  const photos = cached?.map(proxyPhoto) ?? null;
+  if (photos) writeMemoryPhotoListCache(key, photos);
+  return photos;
 }
 
 // ── Photo list ────────────────────────────────────────────────────────────
-export async function listPhotos(groupId = ""): Promise<Photo[]> {
+interface ListPhotosOptions {
+  cacheScope?: string;
+  signal?: AbortSignal;
+}
+
+export async function listPhotos(groupId = "", options: ListPhotosOptions = {}): Promise<Photo[]> {
+  const cacheGeneration = getPrivatePhotoCacheGeneration();
   const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
-  const response = await fetchWithTimeout(url, { headers: authHeaders() });
+  const response = await fetchWithTimeout(
+    url,
+    { headers: authHeaders(), signal: options.signal },
+    45_000,
+  );
   if (!response.ok) throw new Error("Failed to fetch photos");
-  const photos = (await response.json() as Photo[]).map(proxyPhoto);
-  _photoListCache.set(groupId, photos);   // update SWR cache
+  const rawPhotos = parsePhotoListPayload(await response.json() as unknown);
+  await selectFastestMediaRoute(rawPhotos[0]?.url);
+  const photos = rawPhotos.map(proxyPhoto);
+  const key = photoListCacheKey(groupId, options.cacheScope ?? "");
+  if (key && cacheGeneration === getPrivatePhotoCacheGeneration()) {
+    writeMemoryPhotoListCache(key, photos);
+    void writePhotoListCache(key, photos, cacheGeneration);
+  }
   return photos;
 }
 
@@ -175,9 +239,9 @@ export async function downloadPhotoApi(name: string, filename: string): Promise<
   if (!res.ok) throw new Error("Download failed");
   const { url } = await res.json() as { url: string };
 
-  // Convert to proxy URL so China mainland users download via Nginx → Azure Blob
-  // instead of connecting to blob.core.windows.net directly.
-  const downloadUrl = proxyBlobUrl(url);
+  // Verify the preferred route with bounded HEAD requests. The selected URL is
+  // still handed to the browser so large files never pass through JS memory.
+  const downloadUrl = await resolveMediaUrlWithFallback(url);
 
   // Trigger the browser's native download — no file data passes through JS memory.
   // The download bar appears immediately; user can navigate away while it runs.
@@ -194,7 +258,7 @@ export async function listTrashPhotos(groupId = ""): Promise<Photo[]> {
   const url = groupId ? `${API_BASE}/photos/trash?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos/trash`;
   const response = await fetchWithTimeout(url, { headers: authHeaders() });
   if (!response.ok) throw new Error("Failed to fetch trash");
-  return (await response.json() as Photo[]).map(proxyPhoto);
+  return parsePhotoListPayload(await response.json() as unknown).map(proxyPhoto);
 }
 
 export async function restorePhoto(name: string): Promise<void> {
@@ -218,13 +282,18 @@ export async function backfillPhotoMetadata(groupId = ""): Promise<{ processed: 
 export async function backfillThumbnails(groupId = ""): Promise<{ processed: number; generated: number; skipped: number; failed: number }> {
   const totals = { processed: 0, generated: 0, skipped: 0, failed: 0 };
   let hasMore = true;
+  let cursor = "";
   while (hasMore) {
-    const qp = new URLSearchParams(); if (groupId) qp.set("groupId", groupId); qp.set("limit", "30");
+    const qp = new URLSearchParams(); if (groupId) qp.set("groupId", groupId); qp.set("limit", "30"); if (cursor) qp.set("cursor", cursor);
     const response = await fetchWithTimeout(`${API_BASE}/photos/backfill-thumbnails?${qp}`, { method: "POST", headers: authHeaders() }, 120_000);
     if (!response.ok) throw new Error(await parseApiError(response, "缩略图回填失败"));
-    const result = await response.json() as { processed: number; generated: number; skipped: number; failed: number; hasMore: boolean; };
+    const result = await response.json() as { processed: number; generated: number; skipped: number; failed: number; hasMore: boolean; cursor?: string; };
     totals.processed += result.processed; totals.generated += result.generated; totals.skipped += result.skipped; totals.failed += result.failed;
     hasMore = result.hasMore;
+    if (hasMore) {
+      if (!result.cursor || result.cursor === cursor) throw new Error("缩略图回填未能继续分页");
+      cursor = result.cursor;
+    }
   }
   return totals;
 }
