@@ -567,7 +567,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 
 ### 生产健康检查
 
-`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML、两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组。每次请求都会输出目标、状态和耗时。每个请求 10 秒超时，失败后最多重试 8 次、间隔 15 秒，以覆盖前后端部署传播竞态；若触发它的部署失败，workflow 会直接失败而不会将线上状态误报为健康。
+`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML、两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组。同一轮 6 项并行执行，但按固定顺序输出目标、状态和耗时。每个请求 10 秒超时，失败后最多重试 8 次、间隔 15 秒，以覆盖前后端部署传播竞态，并将全线超时最坏路径控制在约 185 秒；若触发它的部署失败，workflow 会直接失败而不会将线上状态误报为健康。
 
 默认入口为 `https://cloudphotos.top`、`https://brave-sand-053b07a00.7.azurestaticapps.net` 和 `https://cloudphoto-api.azurewebsites.net/api`。可通过 `PRODUCTION_BASE_URL`、`PRODUCTION_AZURE_FRONTEND_URL`、`PRODUCTION_AZURE_API_BASE_URL` 覆盖入口，或使用对应的 `PRODUCTION_HOME_URL` / `PRODUCTION_AUTH_ME_URL` / `PRODUCTION_CHANGELOGS_URL` 与 `PRODUCTION_AZURE_*` 变量覆盖单个检查地址。运行 `yarn test:production-smoke` 可在本机用内置 HTTP fixture 重复验证成功、重试和失败路径，无需访问生产环境。
 

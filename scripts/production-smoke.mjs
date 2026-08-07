@@ -134,23 +134,37 @@ export async function runSmoke({
   const checks = createChecks(env);
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const results = await Promise.all(
+      checks.map(async (check) => {
+        const startedAt = performance.now();
+        try {
+          await runCheck(check, fetchImpl, requestTimeoutMs);
+          return {
+            check,
+            elapsedMs: Math.round(performance.now() - startedAt),
+          };
+        } catch (error) {
+          return {
+            check,
+            elapsedMs: Math.round(performance.now() - startedAt),
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      })
+    );
     const failures = [];
 
-    for (const check of checks) {
-      const startedAt = performance.now();
-      try {
-        await runCheck(check, fetchImpl, requestTimeoutMs);
-        const elapsedMs = Math.round(performance.now() - startedAt);
+    for (const result of results) {
+      if (result.error === undefined) {
         logger.log(
-          `PASS ${check.target} ${check.name}: ${check.url} (${elapsedMs}ms)`
+          `PASS ${result.check.target} ${result.check.name}: ${result.check.url} (${result.elapsedMs}ms)`
         );
-      } catch (error) {
-        const elapsedMs = Math.round(performance.now() - startedAt);
-        const message =
-          error instanceof Error ? error.message : String(error);
-        failures.push(`${check.target} ${check.name}: ${message}`);
+      } else {
+        failures.push(
+          `${result.check.target} ${result.check.name}: ${result.error}`
+        );
         logger.error(
-          `FAIL ${check.target} ${check.name}: ${check.url} (${elapsedMs}ms; ${message})`
+          `FAIL ${result.check.target} ${result.check.name}: ${result.check.url} (${result.elapsedMs}ms; ${result.error})`
         );
       }
     }
@@ -179,10 +193,14 @@ export async function runSmoke({
   return false;
 }
 
+export async function runCli(options) {
+  return (await runSmoke(options)) ? 0 : 1;
+}
+
 const invokedDirectly =
   process.argv[1] &&
   resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
-if (invokedDirectly && !(await runSmoke())) {
-  process.exitCode = 1;
+if (invokedDirectly) {
+  process.exitCode = await runCli();
 }

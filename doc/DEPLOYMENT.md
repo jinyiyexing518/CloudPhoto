@@ -130,7 +130,7 @@ https://cloudphoto-api.azurewebsites.net/api
 
 ### 部署后健康检查
 
-`.github/workflows/production-health.yml` 在前端或后端部署完成后运行，并每 30 分钟定时检查一次。它通过 `scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、未登录认证状态和更新日志 JSON 契约，并输出每个入口的响应时间。触发它的部署失败时，健康 workflow 会显式失败；部署成功但传播尚未完成时，检查使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
+`.github/workflows/production-health.yml` 在前端或后端部署完成后运行，并每 30 分钟定时检查一次。它通过 `scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、未登录认证状态和更新日志 JSON 契约，并输出每个入口的响应时间。同轮检查并行执行、日志顺序固定；即使 6 个端点全部超时，8 轮检查加重试等待的最坏路径约 185 秒，不会撞上 10 分钟 job timeout 而丢失最终摘要。触发它的部署失败时，健康 workflow 会显式失败；部署成功但传播尚未完成时，检查使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
 
 本地先运行 `yarn test:production-smoke` 验证 fixture，再按需运行 `node scripts/production-smoke.mjs` 检查线上。
 

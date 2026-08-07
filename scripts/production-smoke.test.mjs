@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
-import { createChecks, runSmoke } from "./production-smoke.mjs";
+import { createChecks, runCli, runSmoke } from "./production-smoke.mjs";
 
 async function withServer(handler, run) {
   const server = http.createServer(handler);
@@ -131,29 +131,37 @@ test("passes the primary and Azure production contracts with timings", async () 
 
 test("retries and fails when either changelog response is not an array", async () => {
   let invalidRequests = 0;
+  let inFlight = 0;
+  let maxInFlight = 0;
   await withServer(
     (request, response) => {
-      if (request.url === "/primary" || request.url === "/azure") {
-        response.writeHead(200, { "content-type": "text/html" });
-        response.end("<!doctype html><title>Cloud Photo</title>");
-      } else if (request.url?.endsWith("/api/auth/me")) {
-        response.writeHead(401, { "content-type": "application/json" });
-        response.end('{"error":"Unauthorized"}');
-      } else if (request.url === "/azure/api/changelogs") {
-        invalidRequests += 1;
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end("{}");
-      } else if (request.url?.endsWith("/api/changelogs")) {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end("[]");
-      } else {
-        response.writeHead(404);
-        response.end();
-      }
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+
+      setTimeout(() => {
+        if (request.url === "/primary" || request.url === "/azure") {
+          response.writeHead(200, { "content-type": "text/html" });
+          response.end("<!doctype html><title>Cloud Photo</title>");
+        } else if (request.url?.endsWith("/api/auth/me")) {
+          response.writeHead(401, { "content-type": "application/json" });
+          response.end('{"error":"Unauthorized"}');
+        } else if (request.url === "/azure/api/changelogs") {
+          invalidRequests += 1;
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end("{}");
+        } else if (request.url?.endsWith("/api/changelogs")) {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end("[]");
+        } else {
+          response.writeHead(404);
+          response.end();
+        }
+        inFlight -= 1;
+      }, 20);
     },
     async (origin) => {
       const messages = logger();
-      const passed = await runSmoke({
+      const exitCode = await runCli({
         env: testEnvironment(origin),
         logger: messages,
         attempts: 2,
@@ -161,8 +169,26 @@ test("retries and fails when either changelog response is not an array", async (
         requestTimeoutMs: 1_000,
       });
 
-      assert.equal(passed, false);
+      assert.equal(exitCode, 1);
       assert.equal(invalidRequests, 2);
+      assert.equal(maxInFlight, 6);
+      assert.deepEqual(
+        messages.output
+          .filter(
+            (message) =>
+              message.startsWith("PASS ") || message.startsWith("FAIL ")
+          )
+          .slice(0, 6)
+          .map((message) => message.split(":")[0]),
+        [
+          "PASS primary homepage",
+          "PASS azure homepage",
+          "PASS primary auth/me",
+          "PASS azure auth/me",
+          "PASS primary changelogs",
+          "FAIL azure changelogs",
+        ]
+      );
       assert.ok(
         messages.output.some((message) =>
           message.includes("azure changelogs: response JSON is not an array")
