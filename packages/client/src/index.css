@@ -5942,8 +5942,8 @@ body {
 }
 
 .auth-field label {
-  color: #555;
   font-size: 0.82rem;
+  color: #555;
   font-weight: 500;
 }
 
@@ -5951,10 +5951,10 @@ body {
   border: 1px solid #d1d5db;
   border-radius: 8px;
   padding: 9px 12px;
-  outline: none;
-  color: #111;
   font-size: 0.92rem;
+  outline: none;
   transition: border-color 0.15s;
+  color: #111;
 }
 
 .auth-field input:focus {
@@ -6077,13 +6077,13 @@ body {
 }
 
 .auth-error {
-  margin-bottom: 4px;
-  padding: 8px 12px;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #dc2626;
   background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: 8px 12px;
   font-size: 0.85rem;
+  margin-bottom: 4px;
 }
 
 .auth-page .auth-error {
