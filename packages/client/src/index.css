@@ -6092,10 +6092,8 @@ body {
   min-height: 39px;
   margin-bottom: 13px;
   padding: 9px 12px;
-  border: 1px solid #fecaca;
   border-radius: 9px;
   color: #b91c1c;
-  background: #fef2f2;
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -6220,7 +6218,7 @@ body {
   }
 
   .auth-tab,
-  .auth-field input,
+  .auth-page .auth-field input,
   .auth-password-toggle,
   .auth-submit {
     transition: none;
