@@ -5,30 +5,11 @@ import {
   InvocationContext,
 } from "@azure/functions";
 import { getChangelogsContainer } from "../../utils/cosmos/cosmosClient";
-
-interface ChangelogEntry {
-  id: string;
-  date: string;
-  icon: string;
-  title: string;
-  desc: string;
-  details?: string;
-  type?: "feature" | "fix" | "improvement";
-  seq?: number;
-  _ts?: number;
-}
-
-interface ChangelogQueryRow {
-  id: string;
-  date: string;
-  icon: string;
-  title: string;
-  description: string;
-  details?: string;
-  type?: "feature" | "fix" | "improvement";
-  seq?: number;
-  _ts?: number;
-}
+import {
+  CHANGELOG_QUERY,
+  ChangelogQueryRow,
+  toChangelogEntries,
+} from "./changelogResponse";
 
 app.http("getChangelogs", {
   methods: ["GET"],
@@ -49,40 +30,12 @@ app.http("getChangelogs", {
       const container = await getChangelogsContainer();
       const { resources: queryRows } = await container.items
         .query<ChangelogQueryRow>({
-          query:
-            'SELECT c.id, c.date, c.icon, c.title, c["desc"] AS description, c.details, c.type, c.seq, c._ts FROM c WHERE c.date >= @cutoff',
+          query: CHANGELOG_QUERY,
           parameters: [{ name: "@cutoff", value: cutoffStr }],
         })
         .fetchAll();
 
-      const resources: ChangelogEntry[] = queryRows.map((row) => ({
-        id: row.id,
-        date: row.date,
-        icon: row.icon,
-        title: row.title,
-        desc: row.description,
-        details: row.details,
-        type: row.type,
-        seq: row.seq,
-        _ts: row._ts,
-      }));
-
-      // Sort newest-first by date, then by seq (stable creation timestamp written
-      // into each change file) within the same date.  Fall back to id alphabetical
-      // for old entries that pre-date the seq field, and finally to _ts.
-      resources.sort((a, b) => {
-        const dateCmp = b.date.localeCompare(a.date);
-        if (dateCmp !== 0) return dateCmp;
-        // seq present on both → use it
-        if (a.seq != null && b.seq != null) return b.seq - a.seq;
-        // seq present on one side only → seq'd entry sorts first (it's newer)
-        if (a.seq != null) return 1;
-        if (b.seq != null) return -1;
-        // neither has seq → fall back to _ts, then id
-        const tsCmp = (b._ts ?? 0) - (a._ts ?? 0);
-        if (tsCmp !== 0) return tsCmp;
-        return b.id.localeCompare(a.id);
-      });
+      const resources = toChangelogEntries(queryRows);
 
       return {
         status: 200,
