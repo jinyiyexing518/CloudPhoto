@@ -2,12 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import changelogResponse from "../dist/src/functions/changelogs/changelogResponse.js";
 
-const { CHANGELOG_QUERY, toChangelogEntries } = changelogResponse;
+const { CHANGELOG_QUERY, parseChangelogDays, toChangelogEntries } =
+  changelogResponse;
 
 test("uses a safe Cosmos projection without exposing all fields", () => {
   assert.match(CHANGELOG_QUERY, /c\["desc"\] AS description/);
   assert.doesNotMatch(CHANGELOG_QUERY, /\bAS\s+desc\b/i);
   assert.doesNotMatch(CHANGELOG_QUERY, /\bSELECT\s+\*/i);
+});
+
+test("accepts only finite integer day ranges from 1 through 365", () => {
+  assert.equal(parseChangelogDays(null), 30);
+  assert.equal(parseChangelogDays(""), 30);
+  assert.equal(parseChangelogDays("abc"), 30);
+  assert.equal(parseChangelogDays("1.5"), 30);
+  assert.equal(parseChangelogDays("Infinity"), 30);
+  assert.equal(parseChangelogDays("-1"), 30);
+  assert.equal(parseChangelogDays("0"), 30);
+  assert.equal(parseChangelogDays("366"), 30);
+  assert.equal(parseChangelogDays("1"), 1);
+  assert.equal(parseChangelogDays("30"), 30);
+  assert.equal(parseChangelogDays("365"), 365);
 });
 
 test("maps the internal description alias to the public desc shape", () => {

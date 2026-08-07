@@ -24,6 +24,12 @@ export interface ChangelogQueryRow {
 export const CHANGELOG_QUERY =
   'SELECT c.id, c.date, c.icon, c.title, c["desc"] AS description, c.details, c.type, c.seq, c._ts FROM c WHERE c.date >= @cutoff';
 
+export function parseChangelogDays(value: string | null): number {
+  if (value === null) return 30;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 365 ? parsed : 30;
+}
+
 export function toChangelogEntries(
   queryRows: ChangelogQueryRow[]
 ): ChangelogEntry[] {
