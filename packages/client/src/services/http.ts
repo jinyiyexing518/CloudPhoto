@@ -17,6 +17,15 @@ import {
   PROXY_API_BASE,
   isProxySiteHost,
 } from "../utils/apiBase";
+import {
+  AuthorizationSnapshot,
+  ProxyProbeResult,
+  classifyProxyProbe,
+  decodeAuthorizationSnapshot,
+  isSafeReplayMethod,
+  proxyProbeTtlMs,
+  raceHedgedAttempts,
+} from "./photoLoadingPolicy";
 
 type ApiRouteKind = "direct" | "proxy" | "same-origin";
 
@@ -98,17 +107,20 @@ function getFallbackApiUrl(input: RequestInfo): string | null {
     : buildApiUrl(DIRECT_API_BASE, request);
 }
 
-function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
-  const method = (
+function requestMethod(input: RequestInfo, init?: RequestInit): string {
+  return (
     init?.method ??
     (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")
   ).toUpperCase();
+}
+
+function canHedgeOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
+  const method = requestMethod(input, init);
   const request = parseApiRequest(input);
-  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+  if (isSafeReplayMethod(method)) {
     return request?.suffix.split("?")[0] !== "/photos/share";
   }
-  if (method !== "POST") return false;
-  return request?.suffix === "/auth/login" || request?.suffix === "/auth/refresh";
+  return false;
 }
 
 function keepCancellationUntilBodyCompletes(
@@ -160,15 +172,32 @@ function keepCancellationUntilBodyCompletes(
   return wrapped;
 }
 
-let sameOriginProxyProbe: Promise<boolean> | null = null;
+interface ProxyProbeCache {
+  result: ProxyProbeResult;
+  expiresAt: number;
+}
 
-function detectSameOriginProxy(): Promise<boolean> {
-  if (typeof window === "undefined") return Promise.resolve(false);
-  if (isProxySiteHost(window.location.hostname)) return Promise.resolve(true);
-  if (window.location.hostname !== "www.cloudphotos.top") return Promise.resolve(false);
+let sameOriginProxyProbe: Promise<ProxyProbeResult> | null = null;
+let sameOriginProxyProbeCache: ProxyProbeCache | null = null;
+
+function waitForResult<T>(
+  pending: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return pending;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    void pending.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", abort);
+    });
+  });
+}
+
+function getSameOriginProxyProbe(): Promise<ProxyProbeResult> {
   if (sameOriginProxyProbe) return sameOriginProxyProbe;
-
-  sameOriginProxyProbe = (async () => {
+  const probe = (async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1_200);
     try {
@@ -177,22 +206,49 @@ function detectSameOriginProxy(): Promise<boolean> {
         headers: { Accept: "application/json" },
         signal: controller.signal,
       });
-      if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
-        return false;
+      const contentType = response.headers.get("content-type") ?? "";
+      let route: string | undefined;
+      if (response.ok && contentType.includes("application/json")) {
+        route = (await response.json() as { route?: string }).route;
       }
-      const body = await response.json() as { route?: string };
-      return body.route === "cloudphoto-proxy";
+      return classifyProxyProbe({
+        ok: response.ok,
+        status: response.status,
+        contentType,
+        route,
+      });
     } catch {
-      return false;
+      return "transient";
     } finally {
       clearTimeout(timeoutId);
     }
-  })();
-  return sameOriginProxyProbe;
+  })().then((result) => {
+    sameOriginProxyProbeCache = {
+      result,
+      expiresAt: Date.now() + proxyProbeTtlMs(result),
+    };
+    return result;
+  }).finally(() => {
+    if (sameOriginProxyProbe === probe) sameOriginProxyProbe = null;
+  });
+  sameOriginProxyProbe = probe;
+  return probe;
+}
+
+async function detectSameOriginProxy(signal?: AbortSignal): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (isProxySiteHost(window.location.hostname)) return true;
+  if (window.location.hostname !== "www.cloudphotos.top") return false;
+  if (sameOriginProxyProbeCache && sameOriginProxyProbeCache.expiresAt > Date.now()) {
+    return sameOriginProxyProbeCache.result === "proxy";
+  }
+  return (await waitForResult(getSameOriginProxyProbe(), signal)) === "proxy";
 }
 
 async function resolvePrimaryApiInput(input: RequestInfo, init?: RequestInit): Promise<RequestInfo> {
-  if (init?.signal?.aborted || !await detectSameOriginProxy()) return input;
+  if (init?.signal?.aborted) throw init.signal.reason;
+  if (!await detectSameOriginProxy(init?.signal ?? undefined)) return input;
+  if (init?.signal?.aborted) throw init.signal.reason;
   const request = parseApiRequest(input);
   if (!request || request.kind === "same-origin" || typeof window === "undefined") return input;
   // Service calls use string/URL inputs. Keep a Request object intact because
@@ -210,65 +266,34 @@ export async function resolveApiUrl(url: string, signal?: AbortSignal): Promise<
 async function fetchWithProxyFallback(
   input: RequestInfo,
   init?: RequestInit,
-  routeTimeoutMs?: number,
+  hedgeDelayMs?: number,
 ): Promise<Response> {
   const primaryInput = await resolvePrimaryApiInput(input, init);
-  const canFallback = canRetryOnAlternateRoute(primaryInput, init);
-  const fallbackUrl = canFallback ? getFallbackApiUrl(primaryInput) : null;
-  const routeController = fallbackUrl && routeTimeoutMs ? new AbortController() : null;
-  const abortRoute = () => routeController?.abort(init?.signal?.reason);
-  if (routeController) {
-    if (init?.signal?.aborted) abortRoute();
-    else init?.signal?.addEventListener("abort", abortRoute, { once: true });
-  }
-  const routeTimer = routeController
-    ? setTimeout(
-        () => routeController.abort(new DOMException("Route timed out", "TimeoutError")),
-        routeTimeoutMs,
-      )
+  const fallbackUrl = canHedgeOnAlternateRoute(primaryInput, init)
+    ? getFallbackApiUrl(primaryInput)
     : null;
-  const primaryInit = routeController ? { ...init, signal: routeController.signal } : init;
-  const cleanupPrimary = () => {
-    if (routeTimer) clearTimeout(routeTimer);
-    init?.signal?.removeEventListener("abort", abortRoute);
-  };
+  if (!fallbackUrl || !hedgeDelayMs) return fetch(primaryInput, init);
 
-  let res: Response;
-  try {
-    res = await fetch(primaryInput, primaryInit);
-  } catch (networkError) {
-    cleanupPrimary();
-    // A caller cancellation or timeout is intentional. Retrying the same
-    // request against the fallback would keep expensive work alive after the
-    // UI has moved on.
-    if (init?.signal?.aborted) throw networkError;
-    // Whichever route was primary failed at the network layer.
-    if (!fallbackUrl) throw networkError;
-    return fetch(fallbackUrl, init);
-  }
-  // Retry gateway/edge failures through the other route.
-  if ([502, 503, 504, 521, 522, 523, 524].includes(res.status)) {
-    if (fallbackUrl && !init?.signal?.aborted) {
-      if (routeTimer) clearTimeout(routeTimer);
-      try {
-        const fallbackResponse = await fetch(fallbackUrl, init);
-        cleanupPrimary();
-        if (res.body) await res.body.cancel().catch(() => undefined);
-        return fallbackResponse;
-      } catch (error) {
-        if (init?.signal?.aborted) {
-          cleanupPrimary();
-          throw error;
-        }
-        // Fallback also failed — return the original gateway response
-        return keepCancellationUntilBodyCompletes(res, cleanupPrimary);
-      }
-    }
-  }
-  if (routeTimer) clearTimeout(routeTimer);
-  return routeController
-    ? keepCancellationUntilBodyCompletes(res, cleanupPrimary)
-    : res;
+  const startAttempt = (attemptInput: RequestInfo) => {
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort(init?.signal?.reason);
+    if (init?.signal?.aborted) abortFromCaller();
+    else init?.signal?.addEventListener("abort", abortFromCaller, { once: true });
+    return {
+      promise: fetch(attemptInput, { ...init, signal: controller.signal }),
+      cancel: (reason?: unknown) => controller.abort(reason),
+      release: () => init?.signal?.removeEventListener("abort", abortFromCaller),
+    };
+  };
+  const retryableStatuses = new Set([502, 503, 504, 521, 522, 523, 524]);
+  const outcome = await raceHedgedAttempts({
+    startPrimary: () => startAttempt(primaryInput),
+    startFallback: () => startAttempt(fallbackUrl),
+    hedgeDelayMs,
+    isUsable: (response) => !retryableStatuses.has(response.status),
+    signal: init?.signal ?? undefined,
+  });
+  return keepCancellationUntilBodyCompletes(outcome.value, outcome.release);
 }
 
 // ── Token storage keys ────────────────────────────────────────────────────
@@ -289,16 +314,40 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+export function getAuthorizationSnapshot(): AuthorizationSnapshot | null {
+  return decodeAuthorizationSnapshot(getToken());
+}
+
+export function authHeadersForSnapshot(
+  snapshot: AuthorizationSnapshot,
+  extra?: Record<string, string>,
+): Record<string, string> {
+  return { Authorization: `Bearer ${snapshot.token}`, ...extra };
+}
+
+type AuthIdentityChangeListener = (token: string | null) => void;
+const authIdentityChangeListeners = new Set<AuthIdentityChangeListener>();
+
+export function subscribeAuthIdentityChanges(listener: AuthIdentityChangeListener): () => void {
+  authIdentityChangeListeners.add(listener);
+  return () => authIdentityChangeListeners.delete(listener);
+}
+
+export function signalAuthIdentityChange(token = getToken()): void {
+  for (const listener of authIdentityChangeListeners) listener(token);
+}
+
 // ── 401 auto-logout callback ──────────────────────────────────────────────
-let _onUnauthorized: (() => void) | null = null;
-export function setUnauthorizedHandler(fn: () => void): void {
+let _onUnauthorized: ((failedToken: string | null) => void) | null = null;
+export function setUnauthorizedHandler(fn: (failedToken: string | null) => void): void {
   _onUnauthorized = fn;
 }
 
 // ── Token refresh (concurrency-safe mutex) ────────────────────────────────
-let _refreshPromise: Promise<string | null> | null = null;
+let _refreshPromise: { expectedToken: string; promise: Promise<string | null> } | null = null;
 
-async function _doRefresh(): Promise<string | null> {
+async function _doRefresh(expectedToken: string): Promise<string | null> {
+  if (getToken() !== expectedToken) return null;
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
   if (!refreshToken) return null;
   const controller = new AbortController();
@@ -307,7 +356,7 @@ async function _doRefresh(): Promise<string | null> {
     signal: controller.signal,
     method: "POST",
     headers: { Authorization: `Bearer ${refreshToken}` },
-  }, 5_000).catch(() => null);
+  }).catch(() => null);
   if (!res?.ok) {
     clearTimeout(timeoutId);
     return null;
@@ -315,16 +364,29 @@ async function _doRefresh(): Promise<string | null> {
   const data = await res.json()
     .finally(() => clearTimeout(timeoutId)) as { token?: string; refreshToken?: string };
   if (!data.token) return null;
+  if (
+    getToken() !== expectedToken
+    || localStorage.getItem(REFRESH_TOKEN_KEY) !== refreshToken
+  ) {
+    return null;
+  }
+  const previousIdentity = decodeAuthorizationSnapshot(expectedToken)?.cacheOwner ?? null;
+  const nextIdentity = decodeAuthorizationSnapshot(data.token)?.cacheOwner ?? null;
   saveStoredAuth(data.token, data.refreshToken);
+  if (previousIdentity !== nextIdentity) signalAuthIdentityChange(data.token);
   return data.token;
 }
 
 /** Returns a single shared in-flight refresh promise to avoid duplicate requests. */
-export function getRefreshedToken(): Promise<string | null> {
-  if (!_refreshPromise) {
-    _refreshPromise = _doRefresh().finally(() => { _refreshPromise = null; });
+export function getRefreshedToken(expectedToken = getToken()): Promise<string | null> {
+  if (!expectedToken) return Promise.resolve(null);
+  if (!_refreshPromise || _refreshPromise.expectedToken !== expectedToken) {
+    const promise = _doRefresh(expectedToken).finally(() => {
+      if (_refreshPromise?.promise === promise) _refreshPromise = null;
+    });
+    _refreshPromise = { expectedToken, promise };
   }
-  return _refreshPromise;
+  return _refreshPromise.promise;
 }
 
 // ── Core fetch helpers ────────────────────────────────────────────────────
@@ -334,8 +396,29 @@ export function getRefreshedToken(): Promise<string | null> {
  * Returns an empty object when the user is not logged in.
  */
 export function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}`, ...extra } : { ...extra };
+  const snapshot = getAuthorizationSnapshot();
+  return snapshot ? authHeadersForSnapshot(snapshot, extra) : { ...extra };
+}
+
+function authorizationToken(headers?: HeadersInit): string | null {
+  const authorization = new Headers(headers).get("Authorization");
+  return authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+}
+
+export async function recoverFromUnauthorized(
+  requestToken: string | null,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  // A stale request must not refresh or clear credentials installed by a
+  // newer login in this or another tab.
+  if (!requestToken || getToken() !== requestToken) return null;
+  const newToken = await waitForResult(
+    getRefreshedToken(requestToken),
+    signal,
+  );
+  if (newToken) return newToken;
+  if (getToken() === requestToken) _onUnauthorized?.(requestToken);
+  return null;
 }
 
 /**
@@ -359,16 +442,18 @@ export function fetchWithTimeout(
   }
   const id = setTimeout(() => controller.abort(), ms);
   const requestInit = { ...init, signal: controller.signal };
-  const routeTimeoutMs = Math.min(5_000, Math.max(750, Math.floor(ms / 3)));
+  const hedgeDelayMs = Math.min(5_000, Math.max(750, Math.floor(ms / 3)));
+  const initialToken = authorizationToken(init?.headers);
   const cleanup = () => {
     clearTimeout(id);
     callerSignal?.removeEventListener("abort", abortFromCaller);
   };
-  return fetchWithProxyFallback(input, requestInit, routeTimeoutMs)
+  return fetchWithProxyFallback(input, requestInit, hedgeDelayMs)
     .then(async (res) => {
       if (res.status === 401) {
-        const newToken = await getRefreshedToken();
+        const newToken = await recoverFromUnauthorized(initialToken, controller.signal);
         if (newToken) {
+          if (!isSafeReplayMethod(requestMethod(input, init))) return res;
           if (res.body) await res.body.cancel().catch(() => undefined);
           const retryHeaders = {
             ...(init?.headers as Record<string, string> ?? {}),
@@ -377,10 +462,9 @@ export function fetchWithTimeout(
           return fetchWithProxyFallback(
             input,
             { ...requestInit, headers: retryHeaders },
-            routeTimeoutMs,
+            hedgeDelayMs,
           );
         }
-        _onUnauthorized?.();
       }
       return res;
     })

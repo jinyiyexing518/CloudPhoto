@@ -13,8 +13,11 @@ const requireText = (source, text, label) => {
 
 const app = read("packages/client/src/App.tsx");
 const auth = read("packages/client/src/contexts/AuthContext.tsx");
+const http = read("packages/client/src/services/http.ts");
 const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
+const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
+const uploadApi = read("packages/client/src/services/uploadApi.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
 const gallery = read("packages/client/src/components/gallery/PhotoGallery.tsx");
 const photoCard = read("packages/client/src/components/gallery/PhotoCard.tsx");
@@ -32,6 +35,9 @@ requireText(app, "Date.now() - lastPhotoRefreshRef.current >= 60_000", "refresh 
 requireText(app, 'window.addEventListener("focus", refreshIfStale)', "focus gate");
 requireText(app, "refreshIfStale();", "visibility gate");
 requireText(app, "if (controller.signal.aborted) return;", "superseded abort");
+requireText(app, "photoStateRevisionRef.current === stateRevision", "mutation revision gate");
+requireText(app, "void invalidatePhotoListCaches()", "mutation cache invalidation");
+requireText(app, "isAuthorizationDriftError(error)", "identity drift handling");
 requireText(app, 'showToast("加载照片失败，请检查网络或服务器状态", "error")', "stale refresh error");
 requireText(app, '(momentsMounted || activeTab === "moments")', "deferred Moments mount");
 
@@ -40,16 +46,43 @@ requireText(listCache, "const CACHE_MAX_ENTRIES = 24", "cache bound");
 requireText(listCache, "Date.now() - cachedAt <= CACHE_MAX_AGE_MS", "cache expiry");
 requireText(listCache, "activePersistentWrites", "in-flight cache cleanup");
 requireText(listCache, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
+requireText(listCache, "persistentWriteChains", "ordered persistent writes");
+requireText(listCache, "expectedGeneration !== cacheGeneration", "stale persistent read/write guard");
 for (const name of ["cloudphoto-photo-lists-v1", "photo-media-v1", "cf-media-v1"]) {
   requireText(listCache, name, "private cache cleanup");
 }
 requireText(auth, "void clearPrivatePhotoCaches()", "explicit/automatic logout cleanup");
-requireText(auth, "preparePrivatePhotoCachesForUser(restoredUser.id)", "restore ownership");
-requireText(auth, "preparePrivatePhotoCachesForUser(resp.user.id)", "account-switch ownership");
+requireText(auth, "preparePrivatePhotoCachesForOwner(userCacheOwner(restoredUser))", "restore ownership");
+requireText(auth, "preparePrivatePhotoCachesForOwner(userCacheOwner(resp.user))", "account-switch ownership");
 requireText(auth, 'window.addEventListener("storage", handleStorage)', "cross-tab memory cleanup");
-requireText(auth, "tokenUserId(event.newValue) === user?.id", "cross-tab token rotation");
-requireText(auth, "preparePrivatePhotoCachesForUser(nextUser.id)", "cross-tab account switch");
-requireText(photoApi, "cacheGeneration === getPrivatePhotoCacheGeneration()", "stale list write guard");
+requireText(auth, "replacementIdentity?.cacheOwner === userCacheOwner(currentUser)", "cross-tab role identity");
+requireText(auth, "subscribeAuthIdentityChanges", "same-tab refresh identity sync");
+requireText(auth, "Never clear replacement credentials", "new-tab credential safety");
+requireText(loadingPolicy, 'return `${encodeURIComponent(userId)}:${role}`', "role-scoped cache owner");
+requireText(photoApi, "authHeadersForSnapshot(authorization)", "request authorization snapshot");
+requireText(photoApi, "canPublishPhotoList({", "stale list write guard");
+requireText(photoApi, "signalAuthIdentityChange()", "identity drift synchronization");
+
+// Safe routing hedges reads without killing a slow primary. Mutations and 401
+// recovery are never replayed because POST endpoints are not idempotent.
+requireText(http, "raceHedgedAttempts({", "safe request hedge");
+requireText(http, "isSafeReplayMethod(requestMethod(input, init))", "safe 401 replay");
+assert(!http.includes('request?.suffix === "/auth/login"'), "login must not route-replay");
+assert(!http.includes('request?.suffix === "/auth/refresh"'), "refresh must not route-replay");
+requireText(http, "if (!isSafeReplayMethod(requestMethod(input, init))) return res;", "unsafe 401 no replay");
+requireText(app, "Upload is not replay-safe", "upload UI no replay");
+assert(!app.includes("for (let attempt = 0; attempt < 3; attempt++)"), "upload retry loop removed");
+requireText(uploadApi, "const uploadUrl = await resolveApiUrl(", "XHR recovered proxy probe");
+requireText(uploadApi, "await recoverFromUnauthorized(requestToken, signal)", "XHR auth recovery");
+requireText(uploadApi, "请手动重试上传", "XHR no automatic replay");
+
+// Health detection distinguishes durable topology from transient failures and
+// deduplicates concurrent probes without caching a timeout for the page lifetime.
+requireText(http, "sameOriginProxyProbeCache.expiresAt > Date.now()", "health probe TTL");
+requireText(http, "sameOriginProxyProbe = null", "health probe retry");
+requireText(loadingPolicy, "PROXY_PROBE_TRANSIENT_TTL_MS = 5_000", "transient health TTL");
+requireText(loadingPolicy, "PROXY_PROBE_STABLE_TTL_MS = 5 * 60 * 1000", "stable health TTL");
+requireText(loadingPolicy, 'return "transient"', "transient health classification");
 
 // Workbox may cache only full, verifiable GET 200 responses.
 requireText(vite, 'request.method === "GET"', "media request method");
@@ -132,3 +165,4 @@ console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visi
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
 console.log("evidence range-sw-cache=false range-body-requires-206=true cache-statuses=200 private-list-max=24 private-max-age-s=3600");
 console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 logout-private-caches=3 logout-write-drain=true");
+console.log("evidence auth-owner=user+role hedge-safe-methods-only=true health-transient-ttl-ms=5000 unsafe-replay=false");

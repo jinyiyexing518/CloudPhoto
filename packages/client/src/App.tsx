@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, authCacheOwner, isAuthorizationDriftError, Photo, ManagedShareLink } from "./services/photoApi";
+import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
@@ -112,6 +113,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 function AppContent() {
   const { user, logout } = useAuth();
+  const photoCacheScope = user ? authCacheOwner(user.id, user.role) : "";
   const { currentGroupId, groups, groupsLoaded } = useGroup();
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
@@ -524,17 +526,35 @@ function AppContent() {
   }, [importantPhotos, filteredPhotos.length]);
 
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const photoStateRevisionRef = useRef(0);
+  const mutatePhotos = useCallback((updater: (previous: Photo[]) => Photo[]) => {
+    photoStateRevisionRef.current += 1;
+    fetchAbortRef.current?.abort();
+    void invalidatePhotoListCaches();
+    setPhotos(updater);
+  }, []);
+
+  useEffect(() => {
+    photoStateRevisionRef.current += 1;
+    fetchAbortRef.current?.abort();
+    setPhotos([]);
+  }, [photoCacheScope]);
+
   const fetchPhotos = useCallback(async () => {
     // Cancel any in-flight previous request before starting another full Blob listing.
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
+    const stateRevision = photoStateRevisionRef.current;
+    const isCurrent = () => (
+      !controller.signal.aborted
+      && photoStateRevisionRef.current === stateRevision
+    );
     lastPhotoRefreshRef.current = Date.now();
 
-    const cacheScope = user?.id ?? "";
-    let stale = getCachedPhotos(currentGroupId, cacheScope);
+    let stale = getCachedPhotos(currentGroupId, photoCacheScope);
     let hasStale = stale !== null && stale.length > 0;
-    if (hasStale) {
+    if (hasStale && isCurrent()) {
       setPhotos(stale!);
       setLoading(false);
     } else {
@@ -546,8 +566,8 @@ function AppContent() {
       // The memory cache disappears on reload. Restore the recent user-scoped
       // Cache Storage entry first so the gallery can paint while Azure refreshes.
       if (!hasStale) {
-        stale = await getPersistedPhotos(currentGroupId, cacheScope);
-        if (controller.signal.aborted) return;
+        stale = await getPersistedPhotos(currentGroupId, photoCacheScope, isCurrent);
+        if (!isCurrent()) return;
         hasStale = stale !== null && stale.length > 0;
         if (hasStale) {
           setPhotos(stale!);
@@ -556,15 +576,20 @@ function AppContent() {
       }
 
       const data = await listPhotos(currentGroupId, {
-        cacheScope,
+        cacheScope: photoCacheScope,
         signal: controller.signal,
+        isCurrent,
       });
-      if (controller.signal.aborted) return;
+      if (!isCurrent()) return;
       setPhotos(data);
-    } catch {
+    } catch (error) {
       // Superseded group/focus loads are intentionally aborted and must not
       // surface a false network error regardless of the transport's error type.
       if (controller.signal.aborted) return;
+      if (isAuthorizationDriftError(error)) {
+        setPhotos([]);
+        return;
+      }
       // Always show the error — even when stale data is shown the user needs to
       // know the refresh failed (otherwise they'd silently see outdated photos).
       showToast("加载照片失败，请检查网络或服务器状态", "error");
@@ -575,7 +600,7 @@ function AppContent() {
         setLoading(false);
       }
     }
-  }, [currentGroupId, showToast, user?.id]);
+  }, [currentGroupId, photoCacheScope, showToast]);
 
   useEffect(() => {
     void fetchPhotos();
@@ -952,74 +977,50 @@ function AppContent() {
           } catch { /* best-effort */ }
         }
 
-        // ── Upload with retry (up to 3 attempts, auto-waits for network) ──
-        let lastErr: unknown;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const controller = new AbortController();
-            const uploadedPhoto = await uploadPhotoWithProgress(
-              valid[i],
-              (loaded) => {
-                // Speed tracking (EMA, update every 500 ms)
-                const now = Date.now();
-                const elapsed = (now - speedRef.current.ts) / 1000;
-                if (elapsed >= 0.5) {
-                  const totalLoaded = fileBase + loaded;
-                  const rawBps = (totalLoaded - speedRef.current.bytes) / elapsed;
-                  speedRef.current.ema = speedRef.current.ema === 0 ? rawBps : speedRef.current.ema * 0.7 + rawBps * 0.3;
-                  speedRef.current.ts = now;
-                  speedRef.current.bytes = totalLoaded;
-                  setUploadSpeed(formatSpeed(speedRef.current.ema));
-                }
-                setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
-              },
-              user?.displayName || undefined,
-              subject || undefined,
-              folder || undefined,
-              currentGroupId || undefined,
-              gpsLat,
-              gpsLon,
-              controller.signal,
-              videoTakenAt,
-            );
-            // Immediately add the uploaded photo so the folder view refreshes live
-            setPhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
-
-            // For videos: extract a thumbnail frame client-side and persist it.
-            // Fire-and-forget — failure is non-fatal, card falls back to <video> seek.
-            if (valid[i].type.startsWith("video/")) {
-              extractVideoThumbnail(valid[i]).then(async (thumb) => {
-                if (!thumb) return;
-                const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumb);
-                if (thumbnailUrl) {
-                  setPhotos(prev => prev.map(p =>
-                    p.name === uploadedPhoto.name ? { ...p, thumbnailUrl } : p,
-                  ));
-                }
-              }).catch(() => { /* best-effort */ });
+        // Upload is not replay-safe: a lost response does not prove that the
+        // server failed to persist the file, so route and UI retries are manual.
+        const controller = new AbortController();
+        const uploadedPhoto = await uploadPhotoWithProgress(
+          valid[i],
+          (loaded) => {
+            // Speed tracking (EMA, update every 500 ms)
+            const now = Date.now();
+            const elapsed = (now - speedRef.current.ts) / 1000;
+            if (elapsed >= 0.5) {
+              const totalLoaded = fileBase + loaded;
+              const rawBps = (totalLoaded - speedRef.current.bytes) / elapsed;
+              speedRef.current.ema = speedRef.current.ema === 0 ? rawBps : speedRef.current.ema * 0.7 + rawBps * 0.3;
+              speedRef.current.ts = now;
+              speedRef.current.bytes = totalLoaded;
+              setUploadSpeed(formatSpeed(speedRef.current.ema));
             }
+            setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
+          },
+          user?.displayName || undefined,
+          subject || undefined,
+          folder || undefined,
+          currentGroupId || undefined,
+          gpsLat,
+          gpsLon,
+          controller.signal,
+          videoTakenAt,
+        );
+        // Immediately add the uploaded photo so the folder view refreshes live
+        mutatePhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
 
-            lastErr = undefined;
-            break; // success — exit retry loop
-          } catch (e) {
-            lastErr = e;
-            if (attempt < 2) {
-              if (!navigator.onLine) {
-                // Wait until network comes back before retrying
-                setUploadSpeed("等待网络…");
-                await new Promise<void>(resolve => {
-                  const h = () => { window.removeEventListener("online", h); resolve(); };
-                  window.addEventListener("online", h);
-                });
-                setUploadSpeed("");
-              } else {
-                // Brief back-off between retries
-                await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
-              }
+        // For videos: extract a thumbnail frame client-side and persist it.
+        // Fire-and-forget — failure is non-fatal, card falls back to <video> seek.
+        if (valid[i].type.startsWith("video/")) {
+          extractVideoThumbnail(valid[i]).then(async (thumb) => {
+            if (!thumb) return;
+            const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumb);
+            if (thumbnailUrl) {
+              mutatePhotos(prev => prev.map(p =>
+                p.name === uploadedPhoto.name ? { ...p, thumbnailUrl } : p,
+              ));
             }
-          }
+          }).catch(() => { /* best-effort */ });
         }
-        if (lastErr) throw lastErr;
 
         completedBytes += valid[i].size;
       } catch {
@@ -1058,7 +1059,7 @@ function AppContent() {
   const handleDelete = async (name: string) => {
     try {
       await deletePhoto(name);
-      setPhotos((prev) => prev.filter((p) => p.name !== name));
+      mutatePhotos((prev) => prev.filter((p) => p.name !== name));
       showToast("照片已删除", "success");
     } catch {
       showToast("删除失败，请重试", "error");
@@ -1072,7 +1073,7 @@ function AppContent() {
     for (let i = 0; i < names.length; i++) {
       try {
         await deletePhoto(names[i]);
-        setPhotos((prev) => prev.filter((p) => p.name !== names[i]));
+        mutatePhotos((prev) => prev.filter((p) => p.name !== names[i]));
       } catch { failed++; }
       setDeleteProgress({ done: i + 1, total: names.length, label: "删除中" });
     }
@@ -1082,25 +1083,25 @@ function AppContent() {
   };
 
   const handleSubjectUpdate = (name: string, subject: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, subject } : p))
     );
   };
 
   const handleTakenAtUpdate = (name: string, takenAt: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, takenAt } : p))
     );
   };
 
   const handleGpsUpdate = (name: string, gpsLat: string, gpsLon: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, gpsLat, gpsLon } : p))
     );
   };
 
   const handleRenamePhoto = (name: string, newOriginalName: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, originalName: newOriginalName } : p))
     );
   };
@@ -1113,7 +1114,7 @@ function AppContent() {
   };
 
   const handleToggleFavorite = async (name: string, favorite: boolean): Promise<boolean> => {
-    setPhotos((prev) => prev.map((p) => (p.name === name ? { ...p, favorite } : p)));
+    mutatePhotos((prev) => prev.map((p) => (p.name === name ? { ...p, favorite } : p)));
     try {
       await setPhotoFavorite(name, favorite, user?.displayName || undefined);
       return true;
@@ -1126,10 +1127,10 @@ function AppContent() {
 
   const handleMovePhoto = async (name: string, toFolder: string): Promise<boolean> => {
     // Optimistic update (folder display only; name updated after server confirms)
-    setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
+    mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
     try {
       const { newName } = await movePhotoToFolder(name, toFolder, user?.displayName || undefined);
-      setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, name: newName, folder: toFolder } : p));
+      mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, name: newName, folder: toFolder } : p));
       return true;
     } catch {
       showToast("移动照片失败", "error");
@@ -1849,7 +1850,7 @@ function AppContent() {
                   groupId={currentGroupId || ""}
                   onViewPhoto={jumpToTimelinePhoto}
                   onGpsUpdate={(name, lat, lon) =>
-                    setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
+                    mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
                   }
                 />
               </Suspense>

@@ -9,7 +9,12 @@
  */
 
 import { API_BASE } from "../utils/apiBase";
-import { fetchWithTimeout, authHeaders, resolveApiUrl } from "./http";
+import {
+  authHeaders,
+  fetchWithTimeout,
+  recoverFromUnauthorized,
+  resolveApiUrl,
+} from "./http";
 import type { Photo } from "./photoApi";
 import { getPreferredMediaUrl, routeMediaUrls } from "./mediaRoute";
 
@@ -96,15 +101,26 @@ export async function uploadPhotoWithProgress(
 
     const headers = authHeaders({ "Content-Type": file.type || "application/octet-stream" });
     Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    const authorization = headers.Authorization;
+    const requestToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice(7)
+      : null;
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) onProgress(e.loaded, e.total);
     });
 
-    xhr.addEventListener("load", () => {
+    xhr.addEventListener("load", async () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try { resolve(proxyPhoto(JSON.parse(xhr.responseText) as Photo)); }
         catch { reject(new Error(`上传失败: ${file.name}`)); }
+      } else if (xhr.status === 401) {
+        try {
+          await recoverFromUnauthorized(requestToken, signal);
+          reject(new Error("登录状态已更新，请手动重试上传"));
+        } catch (error) {
+          reject(error);
+        }
       } else {
         try {
           const msg = JSON.parse(xhr.responseText) as { error?: string };

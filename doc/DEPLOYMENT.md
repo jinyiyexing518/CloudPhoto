@@ -127,7 +127,9 @@ https://cloudphoto-api.azurewebsites.net/api
 运行时行为：
 - 在 `cloudphotos.top` 下，前端优先走同源 `/api`（VM Nginx 反代）
 - 在 `cn.cloudphotos.top` 下同样优先走同源 `/api` 和 `/media`
-- 若首选线路发生网络/网关失败，可安全重试的读取及认证请求自动回退；非幂等写请求不重复发送
+- 安全读取在首选线路 5 秒仍未响应时并发尝试备用线路，首个非网关响应胜出；备用失败时继续等待仍健康的首选线路
+- 登录、刷新、上传及其他非幂等写请求只发送一次，不做线路或 401 自动重放
+- `www` 的 `/healthz` 明确结果缓存 5 分钟；超时、网络错误与 5xx 仅缓存 5 秒，并发调用共享同一次探测
 - 直接访问 Azure Static Web Apps 域名时，也使用该直连地址
 - 媒体使用 Blob 与 `/media` 的无响应体 HEAD 竞速；Range 请求和 HEAD 探测不进入 PWA 媒体缓存
 

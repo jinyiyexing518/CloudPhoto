@@ -14,7 +14,14 @@
  */
 
 import { API_BASE } from "../utils/apiBase";
-import { fetchWithTimeout, authHeaders, parseApiError } from "./http";
+import {
+  authHeaders,
+  authHeadersForSnapshot,
+  fetchWithTimeout,
+  getAuthorizationSnapshot,
+  parseApiError,
+  signalAuthIdentityChange,
+} from "./http";
 import {
   getPrivatePhotoCacheGeneration,
   readMemoryPhotoListCache,
@@ -22,6 +29,9 @@ import {
   writeMemoryPhotoListCache,
   writePhotoListCache,
 } from "./photoListCache";
+import {
+  canPublishPhotoList,
+} from "./photoLoadingPolicy";
 import {
   getPreferredMediaUrl,
   resolveMediaUrlWithFallback,
@@ -41,6 +51,7 @@ export {
   saveStoredAuth, clearStoredAuth, getToken, setUnauthorizedHandler,
   fetchWithTimeout, authHeaders,
 } from "./http";
+export { authCacheOwner } from "./photoLoadingPolicy";
 export type { AuthUser, AuthResponse } from "./authApi";
 export { loginApi, registerApi, getMeApi, addAdminApi, updateProfileApi, changePasswordApi } from "./authApi";
 export { uploadPhoto, uploadPhotoWithProgress, extractVideoThumbnail, setVideoThumbnail } from "./uploadApi";
@@ -131,29 +142,69 @@ export async function fetchMotionVideoBlob(photoName: string): Promise<MotionVid
 }
 
 // ── Photo list SWR cache ──────────────────────────────────────────────────
-// A cache key is never created without an authenticated user id. This prevents
-// anonymous/session keys from being reused when accounts change in one browser.
+export class AuthorizationDriftError extends Error {
+  constructor() {
+    super("Authorization identity changed");
+    this.name = "AuthorizationDriftError";
+  }
+}
+
+export function isAuthorizationDriftError(error: unknown): boolean {
+  return error instanceof AuthorizationDriftError;
+}
+
+function assertAuthorizationOwner(expectedOwner: string) {
+  const snapshot = getAuthorizationSnapshot();
+  if (!snapshot || snapshot.cacheOwner !== expectedOwner) {
+    signalAuthIdentityChange();
+    throw new AuthorizationDriftError();
+  }
+  return snapshot;
+}
+
+// A cache key is never created without a JWT-derived user+role owner. Admin
+// personal lists can contain other users' photos, so user id alone is unsafe.
 function photoListCacheKey(groupId: string, cacheScope: string): string | null {
   if (!cacheScope) return null;
-  return `user:${cacheScope}:group:${groupId || "personal"}`;
+  return `auth:${cacheScope}:group:${groupId || "personal"}`;
 }
 
 /** Returns the in-memory photo list for a user/group (may be stale). */
 export function getCachedPhotos(groupId = "", cacheScope = ""): Photo[] | null {
   const key = photoListCacheKey(groupId, cacheScope);
-  return key ? readMemoryPhotoListCache<Photo>(key) : null;
+  if (!key || getAuthorizationSnapshot()?.cacheOwner !== cacheScope) {
+    if (cacheScope) signalAuthIdentityChange();
+    return null;
+  }
+  return readMemoryPhotoListCache<Photo>(key);
 }
 
 /** Restores a recent photo list from Cache Storage after a page reload. */
-export async function getPersistedPhotos(groupId = "", cacheScope = ""): Promise<Photo[] | null> {
+export async function getPersistedPhotos(
+  groupId = "",
+  cacheScope = "",
+  isCurrent?: () => boolean,
+): Promise<Photo[] | null> {
   const key = photoListCacheKey(groupId, cacheScope);
   if (!key) return null;
+  assertAuthorizationOwner(cacheScope);
+  const cacheGeneration = getPrivatePhotoCacheGeneration();
   const memory = readMemoryPhotoListCache<Photo>(key);
-  if (memory) return memory;
+  if (memory) {
+    assertAuthorizationOwner(cacheScope);
+    return isCurrent?.() === false ? null : memory;
+  }
 
-  const cached = await readPhotoListCache<unknown>(key);
+  const cached = await readPhotoListCache<unknown>(key, cacheGeneration);
+  assertAuthorizationOwner(cacheScope);
+  if (
+    isCurrent?.() === false
+    || cacheGeneration !== getPrivatePhotoCacheGeneration()
+  ) {
+    return null;
+  }
   if (cached && !cached.every(isPhotoPayload)) {
-    await writePhotoListCache(key, []);
+    await writePhotoListCache(key, [], cacheGeneration);
     return null;
   }
   const photos = cached?.map(proxyPhoto) ?? null;
@@ -165,22 +216,37 @@ export async function getPersistedPhotos(groupId = "", cacheScope = ""): Promise
 interface ListPhotosOptions {
   cacheScope?: string;
   signal?: AbortSignal;
+  isCurrent?: () => boolean;
 }
 
 export async function listPhotos(groupId = "", options: ListPhotosOptions = {}): Promise<Photo[]> {
+  const expectedOwner = options.cacheScope ?? "";
+  const authorization = assertAuthorizationOwner(expectedOwner);
   const cacheGeneration = getPrivatePhotoCacheGeneration();
   const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
   const response = await fetchWithTimeout(
     url,
-    { headers: authHeaders(), signal: options.signal },
+    { headers: authHeadersForSnapshot(authorization), signal: options.signal },
     45_000,
   );
   if (!response.ok) throw new Error("Failed to fetch photos");
   const rawPhotos = parsePhotoListPayload(await response.json() as unknown);
+  assertAuthorizationOwner(expectedOwner);
+  if (options.isCurrent?.() === false) throw new AuthorizationDriftError();
   await selectFastestMediaRoute(rawPhotos[0]?.url);
+  const currentOwner = getAuthorizationSnapshot()?.cacheOwner ?? null;
+  if (!canPublishPhotoList({
+    expectedOwner,
+    currentOwner,
+    expectedCacheGeneration: cacheGeneration,
+    currentCacheGeneration: getPrivatePhotoCacheGeneration(),
+  }) || options.isCurrent?.() === false) {
+    if (currentOwner !== expectedOwner) signalAuthIdentityChange();
+    throw new AuthorizationDriftError();
+  }
   const photos = rawPhotos.map(proxyPhoto);
-  const key = photoListCacheKey(groupId, options.cacheScope ?? "");
-  if (key && cacheGeneration === getPrivatePhotoCacheGeneration()) {
+  const key = photoListCacheKey(groupId, expectedOwner);
+  if (key) {
     writeMemoryPhotoListCache(key, photos);
     void writePhotoListCache(key, photos, cacheGeneration);
   }
