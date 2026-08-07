@@ -66,7 +66,7 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 照片列表使用按 `userId + role + groupId` 隔离的一小时 SWR 缓存：冷启动只发起一次列表请求；刷新页面时可先绘制最近的非空列表，再后台刷新，刷新失败仍显示错误提示。内存和 Cache Storage 各最多保留 24 个列表，过期项会清除。PWA 仅缓存可验证的 `200 GET` 媒体响应，Range/HEAD 和跨域 opaque 响应绕过缓存；注销、自动注销、账号切换或角色变化会保守清除全部私有照片列表及媒体 runtime cache，因为忽略 SAS query 的媒体 key 无法可靠反推所属用户；应用壳/precache 不受影响。
 
-Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutable`，短于 2 小时 SAS；Nginx CORS 仅回显 `cloudphotos.top` 受信域和实际 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`，不会接受任意 `*.azurestaticapps.net`。
+Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutable`，短于 2 小时 SAS；Nginx CORS 仅回显 `cloudphotos.top` / `cloudphotos.cn` 的 HTTPS 根域与子域，以及实际 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`。其他 `azurestaticapps.net` 子域、伪造后缀和任意第三方 origin 都不会获得 ACAO；API 与媒体预检分别限制允许的方法和请求头，并始终返回 `Vary: Origin`。
 
 ### 全球与中国大陆入口
 

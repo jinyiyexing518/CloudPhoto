@@ -10,6 +10,9 @@ const read = (relative) => readFileSync(join(root, relative), "utf8");
 const requireText = (source, text, label) => {
   assert(source.includes(text), `${label}: missing ${JSON.stringify(text)}`);
 };
+const requireCount = (source, text, count, label) => {
+  assert.equal(source.split(text).length - 1, count, `${label}: expected ${count} occurrences`);
+};
 
 const app = read("packages/client/src/App.tsx");
 const auth = read("packages/client/src/contexts/AuthContext.tsx");
@@ -197,25 +200,72 @@ requireText(trash, "previewUrl:", "trash preview contract");
 const swaOrigin = "https://brave-sand-053b07a00.7.azurestaticapps.net";
 requireText(nginx, `"${swaOrigin}" $http_origin;`, "exact SWA origin");
 assert(!nginx.includes("*.azurestaticapps.net"), "wildcard SWA origin is forbidden");
+const corsMap = /map \$http_origin \$cloudphoto_cors_origin \{([\s\S]*?)\n\}/.exec(nginx)?.[1];
+assert(corsMap, "CORS origin map must exist");
+const exactCorsOrigins = [...corsMap.matchAll(/^\s*"([^"]+)"\s+\$http_origin;/gm)]
+  .map((match) => match[1]);
+const regexCorsOrigins = [...corsMap.matchAll(/^\s*"~([^"]+)"\s+\$http_origin;/gm)]
+  .map((match) => new RegExp(match[1]));
+const allowedOrigin = (origin) => (
+  exactCorsOrigins.includes(origin)
+  || regexCorsOrigins.some((pattern) => pattern.test(origin))
+) ? origin : "";
+const allowedOrigins = [
+  swaOrigin,
+  "https://cloudphotos.top",
+  "https://cn.cloudphotos.top",
+  "https://cloudphotos.cn",
+  "https://global.cloudphotos.cn",
+];
+for (const origin of allowedOrigins) assert.equal(allowedOrigin(origin), origin);
+const rejectedOrigins = [
+  "https://evil.azurestaticapps.net",
+  "https://brave-sand-053b07a00.7.azurestaticapps.net.evil.example",
+  "https://cloudphotos.top.evil.example",
+  "https://cloudphotos.cn.evil.example",
+  "http://cloudphotos.top",
+  "https://attacker.example",
+];
+for (const origin of rejectedOrigins) assert.equal(allowedOrigin(origin), "");
+requireCount(
+  nginx,
+  "add_header Access-Control-Allow-Origin $cloudphoto_cors_origin always;",
+  4,
+  "API/media preflight and response ACAO",
+);
+requireCount(nginx, "add_header Vary Origin always;", 4, "API/media Vary Origin");
+requireCount(nginx, "add_header Access-Control-Max-Age 86400 always;", 2, "preflight max age");
+requireCount(nginx, "if ($request_method = OPTIONS)", 2, "API/media OPTIONS handlers");
+requireText(
+  nginx,
+  'Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"',
+  "API preflight methods",
+);
+requireText(
+  nginx,
+  'Access-Control-Allow-Headers "Authorization, Content-Type, Range"',
+  "API preflight headers",
+);
+requireText(
+  nginx,
+  'Access-Control-Allow-Methods "GET, HEAD, OPTIONS"',
+  "media preflight methods",
+);
+requireText(
+  nginx,
+  'Access-Control-Allow-Headers "Range, If-Range"',
+  "media preflight headers",
+);
 requireText(nginx, "proxy_set_header      Range             $http_range;", "Range forwarding");
 requireText(nginx, "proxy_set_header      If-Range          $http_if_range;", "If-Range forwarding");
 requireText(nginx, 'Access-Control-Expose-Headers "Accept-Ranges, Content-Length, Content-Range"', "Range exposure");
-
-const allowedOrigin = (origin) => (
-  origin === swaOrigin ||
-  /^https:\/\/([a-z0-9-]+\.)?cloudphotos\.top$/.test(origin)
-) ? origin : "";
-assert.equal(allowedOrigin(swaOrigin), swaOrigin);
-assert.equal(allowedOrigin("https://cn.cloudphotos.top"), "https://cn.cloudphotos.top");
-assert.equal(allowedOrigin("https://evil.azurestaticapps.net"), "");
-assert.equal(allowedOrigin("https://brave-sand-053b07a00.7.azurestaticapps.net.evil.example"), "");
-assert.equal(allowedOrigin("https://attacker.example"), "");
 
 console.log("photo-loading contracts: PASS");
 console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=60000");
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
 console.log("evidence range-sw-cache=false range-body-requires-206=true cache-statuses=200 private-list-max=24 private-max-age-s=3600");
-console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 private-blob-writes=6");
+console.log(`evidence cors trusted=${allowedOrigins.length}/${allowedOrigins.length} rejected=0/${rejectedOrigins.length} options=2 vary-origin=4`);
+console.log("evidence cors exact-swa=true wildcard-swa=false top-cn-subdomains=true preflight-methods-headers=true");
 console.log("evidence logout-private-caches=3 logout-write-drain=true app-shell-preserved=true private-max-age-s=3600 stale=false");
 console.log("evidence auth-owner=user+role hedge-safe-methods-only=true health-transient-ttl-ms=5000 unsafe-replay=false");
 console.log("evidence direct-fetch-files=4 media-fetch-bypasses=0 xhr-files=1 opaque-cache=false");

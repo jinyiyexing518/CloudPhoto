@@ -115,7 +115,7 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 | `/media/` | `photostorage.blob.core.windows.net/photos/` | GET/HEAD 保留 `Range` / `If-Range` 与 206 响应；`private, max-age=3600, immutable`，无 stale window |
 | `/` | `brave-sand-053b07a00.7.azurestaticapps.net` | 前端 HTML/静态资源反代 |
 
-三个 location 均设置 `proxy_set_header Host <upstream-host>`（SNI 必须）和 `proxy_ssl_server_name on`。`/api` 与 `/media` 的 CORS allowlist 只包含 `cloudphotos.top` 受信子域和精确 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`；禁止配置通配 `*.azurestaticapps.net`。受信 OPTIONS/GET/HEAD 会回显相同 `Access-Control-Allow-Origin`，其他源不返回 ACAO。`/media` 的一小时 browser-private freshness 小于两小时 SAS，且不配置 `stale-while-revalidate` 或 `proxy_cache_use_stale`，删除或授权变化后不会由代理继续供应旧对象。
+三个 location 均设置 `proxy_set_header Host <upstream-host>`（SNI 必须）和 `proxy_ssl_server_name on`。`/api` 与 `/media` 的 CORS allowlist 只包含 `cloudphotos.top` / `cloudphotos.cn` 的 HTTPS 根域与子域，以及精确 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`；禁止配置通配 `*.azurestaticapps.net`，其他 SWA 子域、伪造域名后缀和第三方 origin 均不返回 ACAO。受信 OPTIONS/GET/HEAD 会回显请求 origin 并返回 `Vary: Origin`；API 预检允许 `GET, POST, PUT, PATCH, DELETE, OPTIONS` 及 `Authorization, Content-Type, Range`，媒体预检仅允许 `GET, HEAD, OPTIONS` 及 `Range, If-Range`。`/media` 的一小时 browser-private freshness 小于两小时 SAS，且不配置 `stale-while-revalidate` 或 `proxy_cache_use_stale`，删除或授权变化后不会由代理继续供应旧对象。
 
 ### 部署后更新 GitHub Secret
 

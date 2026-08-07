@@ -5,6 +5,6 @@
   "title": "优化照片加载速度、流量与全球访问",
   "type": "improvement",
   "desc": "照片列表跨刷新快速绘制并抑制聚焦重复请求；安全读取在首选 API 线路较慢时并发尝试备用线路，但不会提前终止仍健康的主线路，也不会重放上传等写请求。",
-  "details": "www 的同源代理健康探测区分明确拓扑与瞬时超时，瞬时失败 5 秒后可恢复重试且并发探测去重。PWA 媒体缓存只接收非 Range 的可验证 200 GET，并在授权身份变化时清除；Blob 与 Nginx 的浏览器 HTTP freshness 为 private 一小时且不允许 stale。缩略图仅在 derivative 存在后以 ETag 合并元数据，历史回填、回收站字段、Nginx Range 与精确 CORS allowlist 同步更新。",
+  "details": "www 的同源代理健康探测区分明确拓扑与瞬时超时，瞬时失败 5 秒后可恢复重试且并发探测去重。PWA 媒体缓存只接收非 Range 的可验证 200 GET，并在授权身份变化时清除；Blob 与 Nginx 的浏览器 HTTP freshness 为 private 一小时且不允许 stale。缩略图仅在 derivative 存在后以 ETag 合并元数据；Nginx 保留 Range，并仅允许 cloudphotos.top/cloudphotos.cn 受信域与精确生产 SWA origin 通过 CORS，其他 SWA/第三方 origin 无 ACAO。",
   "seq": 1786088379482
 }
