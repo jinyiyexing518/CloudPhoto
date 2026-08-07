@@ -18,6 +18,18 @@ interface ChangelogEntry {
   _ts?: number;
 }
 
+interface ChangelogQueryRow {
+  id: string;
+  date: string;
+  icon: string;
+  title: string;
+  description: string;
+  details?: string;
+  type?: "feature" | "fix" | "improvement";
+  seq?: number;
+  _ts?: number;
+}
+
 app.http("getChangelogs", {
   methods: ["GET"],
   authLevel: "anonymous",
@@ -35,13 +47,25 @@ app.http("getChangelogs", {
       const cutoffStr = cutoff.toISOString().split("T")[0];
 
       const container = await getChangelogsContainer();
-      const { resources } = await container.items
-        .query<ChangelogEntry>({
+      const { resources: queryRows } = await container.items
+        .query<ChangelogQueryRow>({
           query:
-            'SELECT c.id, c.date, c.icon, c.title, c["desc"] AS desc, c.details, c.type, c.seq, c._ts FROM c WHERE c.date >= @cutoff',
+            'SELECT c.id, c.date, c.icon, c.title, c["desc"] AS description, c.details, c.type, c.seq, c._ts FROM c WHERE c.date >= @cutoff',
           parameters: [{ name: "@cutoff", value: cutoffStr }],
         })
         .fetchAll();
+
+      const resources: ChangelogEntry[] = queryRows.map((row) => ({
+        id: row.id,
+        date: row.date,
+        icon: row.icon,
+        title: row.title,
+        desc: row.description,
+        details: row.details,
+        type: row.type,
+        seq: row.seq,
+        _ts: row._ts,
+      }));
 
       // Sort newest-first by date, then by seq (stable creation timestamp written
       // into each change file) within the same date.  Fall back to id alphabetical
