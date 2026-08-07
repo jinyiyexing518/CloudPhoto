@@ -1,0 +1,45 @@
+name: Production Health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_run:
+    workflows:
+      - Deploy Frontend (Azure Static Web Apps)
+      - Deploy Backend (Azure Functions)
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-health
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Reject failed deployment
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success'
+        env:
+          DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.name }}
+          DEPLOYMENT_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          echo "::error::${DEPLOYMENT_WORKFLOW} finished with ${DEPLOYMENT_CONCLUSION}; production health cannot pass."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Check production
+        run: node scripts/production-smoke.mjs
