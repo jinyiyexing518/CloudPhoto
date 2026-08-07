@@ -112,6 +112,58 @@ function formatLocalDate(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function toLocalDateKey(value?: string): string | null {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
+  if (dateOnlyMatch) {
+    const [, yearText, monthText, dayText] = dateOnlyMatch;
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    const localDate = new Date(year, month - 1, day);
+    if (
+      localDate.getFullYear() !== year
+      || localDate.getMonth() !== month - 1
+      || localDate.getDate() !== day
+    ) {
+      return null;
+    }
+    return normalized;
+  }
+
+  const date = new Date(normalized);
+  return Number.isFinite(date.getTime()) ? formatLocalDate(date) : null;
+}
+
+function firstLocalDateKey(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const dateKey = toLocalDateKey(value);
+    if (dateKey) return dateKey;
+  }
+  return null;
+}
+
+function getPhotoUploadDateKey(photo: Photo) {
+  return firstLocalDateKey(photo.createdAt, photo.lastModified);
+}
+
+function getPhotoDateKey(photo: Photo, sortKey: "taken" | "uploaded") {
+  return sortKey === "uploaded"
+    ? getPhotoUploadDateKey(photo)
+    : firstLocalDateKey(photo.takenAt, photo.createdAt, photo.lastModified);
+}
+
+function getPhotoUploadTimestamp(photo: Photo) {
+  for (const value of [photo.createdAt, photo.lastModified]) {
+    if (!value) continue;
+    const timestamp = new Date(value).getTime();
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return 0;
+}
+
 function getQuickDateRanges(referenceDate = new Date()): Record<QuickDateFilter, { dateFrom: string; dateTo: string }> {
   const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
   const mondayOffset = (today.getDay() + 6) % 7;
@@ -371,13 +423,14 @@ function AppContent() {
   const filteredPhotos = useMemo(() => {
     return photos.filter((p) => {
       const name = (p.originalName || p.name.replace(/^\d+-/, "")).toLowerCase();
-      const date = p.takenAt ?? p.createdAt ?? p.lastModified;
+      const dateKey = getPhotoDateKey(p, photoSortKey);
 
       if (filters.name && !name.includes(filters.name.toLowerCase())) return false;
       if (filters.subject && !(p.subject ?? "").toLowerCase().includes(filters.subject.toLowerCase())) return false;
       if (filters.uploader && p.createdBy !== filters.uploader) return false;
-      if (filters.dateFrom && date && date.slice(0, 10) < filters.dateFrom) return false;
-      if (filters.dateTo && date && date.slice(0, 10) > filters.dateTo) return false;
+      if ((filters.dateFrom || filters.dateTo) && !dateKey) return false;
+      if (filters.dateFrom && dateKey && dateKey < filters.dateFrom) return false;
+      if (filters.dateTo && dateKey && dateKey > filters.dateTo) return false;
       if (filters.favoriteOnly && !p.favorite) return false;
       if (filters.missingSubjectOnly && Boolean(p.subject?.trim())) return false;
       if (filters.uncategorizedOnly && Boolean((p.folder ?? "").trim())) return false;
@@ -385,11 +438,11 @@ function AppContent() {
       if (filters.folder && (p.folder ?? "").trim() !== filters.folder) return false;
       return true;
     });
-  }, [photos, filters]);
+  }, [photos, filters, photoSortKey]);
 
   const todayUploads = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return photos.filter((p) => (p.createdAt ?? p.lastModified ?? "").slice(0, 10) === today);
+    const today = getQuickDateRanges().today.dateFrom;
+    return photos.filter((photo) => getPhotoUploadDateKey(photo) === today);
   }, [photos]);
 
   const greetingText = useMemo(() => {
@@ -401,11 +454,10 @@ function AppContent() {
   }, []);
 
   const weeklyStats = useMemo(() => {
-    const now = Date.now();
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
-    const thisWeek = photos.filter((p) => {
-      const ts = new Date(p.createdAt ?? p.lastModified ?? 0).getTime();
-      return Number.isFinite(ts) && now - ts <= weekMs;
+    const range = getQuickDateRanges().thisWeek;
+    const thisWeek = photos.filter((photo) => {
+      const dateKey = getPhotoUploadDateKey(photo);
+      return dateKey !== null && dateKey >= range.dateFrom && dateKey <= range.dateTo;
     }).length;
     const favorites = photos.filter((p) => p.favorite).length;
     return { thisWeek, favorites };
@@ -502,24 +554,24 @@ function AppContent() {
     });
   }, []);
 
+  const showTodayUploads = useCallback(() => {
+    setPhotoSortKey("uploaded");
+    toggleQuickDateFilter("today");
+  }, [toggleQuickDateFilter]);
+
   const recentUploads = useMemo(() => {
-    const now = Date.now();
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const range = getQuickDateRanges().last7Days;
     return photos.filter((photo) => {
-      const ts = new Date(photo.createdAt ?? photo.lastModified ?? 0).getTime();
-      return Number.isFinite(ts) && now - ts <= sevenDaysMs;
+      const dateKey = getPhotoUploadDateKey(photo);
+      return dateKey !== null && dateKey >= range.dateFrom && dateKey <= range.dateTo;
     });
   }, [photos]);
 
   const latestUploadText = useMemo(() => {
-    const latestPhoto = [...photos].sort((a, b) => {
-      const at = new Date(a.createdAt ?? a.lastModified ?? 0).getTime();
-      const bt = new Date(b.createdAt ?? b.lastModified ?? 0).getTime();
-      return bt - at;
-    })[0];
+    const latestPhoto = [...photos].sort((a, b) => getPhotoUploadTimestamp(b) - getPhotoUploadTimestamp(a))[0];
     if (!latestPhoto) return "暂无上传记录";
-    const ts = latestPhoto.createdAt ?? latestPhoto.lastModified;
-    return ts ? new Date(ts).toLocaleString("zh-CN") : "暂无上传时间";
+    const timestamp = getPhotoUploadTimestamp(latestPhoto);
+    return timestamp ? new Date(timestamp).toLocaleString("zh-CN") : "暂无上传时间";
   }, [photos]);
 
   const expiringSoonShareLinks = useMemo(() => {
@@ -1197,7 +1249,8 @@ function AppContent() {
   };
 
   const jumpToRecentUploads = () => {
-    const targetPhoto = [...recentUploads].sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())[0];
+    setPhotoSortKey("uploaded");
+    const targetPhoto = [...recentUploads].sort((a, b) => getPhotoUploadTimestamp(b) - getPhotoUploadTimestamp(a))[0];
     if (!targetPhoto) {
       switchTab("timeline");
       return;
@@ -1212,7 +1265,7 @@ function AppContent() {
   const jumpToMissingSubjectPhotos = () => {
     const targetPhoto = [...photos]
       .filter((photo) => !photo.subject?.trim())
-      .sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())[0];
+      .sort((a, b) => getPhotoUploadTimestamp(b) - getPhotoUploadTimestamp(a))[0];
     if (!targetPhoto) {
       switchTab("timeline");
       return;
@@ -1235,7 +1288,7 @@ function AppContent() {
   const jumpToUncategorizedPhotos = () => {
     const targetPhoto = [...photos]
       .filter((photo) => !(photo.folder ?? "").trim())
-      .sort((a, b) => new Date(b.createdAt ?? b.lastModified ?? 0).getTime() - new Date(a.createdAt ?? a.lastModified ?? 0).getTime())[0];
+      .sort((a, b) => getPhotoUploadTimestamp(b) - getPhotoUploadTimestamp(a))[0];
     if (!targetPhoto) {
       switchTab("timeline");
       return;
@@ -1577,7 +1630,7 @@ function AppContent() {
                   className={`quick-chip${activeQuickDateFilter === key ? " active" : ""}`}
                   onClick={() => toggleQuickDateFilter(key)}
                   aria-pressed={activeQuickDateFilter === key}
-                  title={title}
+                  title={`${title}，按${photoSortKey === "taken" ? "拍摄" : "上传"}时间筛选`}
                 >{label}</button>
               ))}
               <button
@@ -1611,12 +1664,12 @@ function AppContent() {
               <button
                 className={`quick-chip${photoSortKey === "taken" ? " quick-chip--sort active" : ""}`}
                 onClick={() => setPhotoSortKey("taken")}
-                title="按照片拍摄时间排序"
+                title="按照片拍摄时间排序和筛选日期"
               >📷 拍摄时间</button>
               <button
                 className={`quick-chip${photoSortKey === "uploaded" ? " quick-chip--sort active" : ""}`}
                 onClick={() => setPhotoSortKey("uploaded")}
-                title="按上传时间排序"
+                title="按上传时间排序和筛选日期"
               >☁ 上传时间</button>
               {/* Sort order toggle */}
               <button
@@ -1734,7 +1787,7 @@ function AppContent() {
                       <span>📸 今天上传了 <strong>{todayUploads.length}</strong> 张</span>
                       <button
                         className="today-uploads-jump"
-                        onClick={() => toggleQuickDateFilter("today")}
+                        onClick={showTodayUploads}
                       >仅查看今日</button>
                     </div>
                   )}
