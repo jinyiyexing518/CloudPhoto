@@ -41,5 +41,8 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Test smoke checks
+        run: node --test scripts/production-smoke.test.mjs
+
       - name: Check production
         run: node scripts/production-smoke.mjs
