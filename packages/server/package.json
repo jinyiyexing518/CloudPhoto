@@ -5,7 +5,8 @@
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "yarn build && node --test test/changelogResponse.test.mjs",
+    "test": "yarn build && yarn test:unit",
+    "test:unit": "node --test test/*.test.mjs",
     "watch": "tsc -w",
     "prestart": "npm run build",
     "start": "func start",
