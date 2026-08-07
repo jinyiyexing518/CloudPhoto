@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-07-static-asset-immutable-cache",
+  "date": "2026-08-07",
+  "icon": "⚡",
+  "title": "静态资源长期缓存优化",
+  "type": "improvement",
+  "desc": "带内容哈希的前端资源启用一年期 immutable 缓存，同时确保 SPA shell、PWA 更新文件和稳定文件名资源及时重验证。",
+  "details": "Azure Static Web Apps 缓存配置现在随 Vite 产物部署；/assets/* 使用一年期 immutable，index.html、Service Worker 和注册入口禁止旧缓存阻塞更新，manifest、图标和 changelog 使用短缓存。CI 会验证源配置、构建产物与资源哈希命名。",
+  "seq": 1786090563407
+}
