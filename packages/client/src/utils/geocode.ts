@@ -2,6 +2,7 @@
 const cache = new Map<string, Promise<string | null>>();
 
 import { API_BASE } from "./apiBase";
+import { fetchWithTimeout } from "../services/http";
 
 /** Retrieve the stored auth token (mirrors authHeaders() in photoApi.ts) */
 function getToken(): string | null {
@@ -104,7 +105,7 @@ export async function searchLocation(query: string): Promise<LocationSearchResul
   const token = getToken();
   if (token) {
     try {
-      const resp = await fetch(
+      const resp = await fetchWithTimeout(
         `${API_BASE}/geocode/search?q=${encodeURIComponent(q)}`,
         { headers: { "Authorization": `Bearer ${token}` } },
       );

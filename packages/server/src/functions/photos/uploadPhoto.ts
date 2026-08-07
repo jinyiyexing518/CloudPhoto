@@ -192,28 +192,27 @@ app.http("uploadPhoto", {
       // GIFs: sharp extracts the first frame → static WebP thumbnail used as gallery placeholder.
       // Animated WebPs: same first-frame extraction.
       // All produce a valid static thumbnail shown while the full animated file loads.
-      const isMotionPhotoUpload = isAnimated && (mimeType === "image/jpeg" || mimeType === "image/jpg");
       const skipThumb = !willGenerateThumb;
 
+      const originalMetadata = {
+        originalName: b64(filename),
+        subject: b64(subject),
+        createdBy: b64(uploadedBy),
+        createdById: payload.userId,
+        createdAt: now,
+        lastModifiedBy: b64(uploadedBy),
+        lastModifiedAt: now,
+        ...(resolvedLat && { gpsLat: resolvedLat }),
+        ...(resolvedLon && { gpsLon: resolvedLon }),
+        ...(takenAt && { takenAt }),
+        ...(isAnimated && { isAnimated: "1" }),
+      };
       await blockBlobClient.uploadData(buf, {
-        blobHTTPHeaders: { blobContentType: contentType },
-        metadata: {
-          originalName: b64(filename),
-          subject: b64(subject),
-          createdBy: b64(uploadedBy),
-          createdById: payload.userId,
-          createdAt: now,
-          lastModifiedBy: b64(uploadedBy),
-          lastModifiedAt: now,
-          ...(resolvedLat && { gpsLat: resolvedLat }),
-          ...(resolvedLon && { gpsLon: resolvedLon }),
-          ...(takenAt && { takenAt }),
-          ...(isAnimated && { isAnimated: "1" }),
-          // Store thumbnail name so listPhotos can build a SAS URL without scanning
-          // b64-encode because the path may contain non-ASCII (Chinese folder/file names)
-          ...(!skipThumb && { thumbnailName: b64(thumbnailBlobName) }),
-          ...(!skipThumb && { previewName: b64(previewBlobName) }),
+        blobHTTPHeaders: {
+          blobContentType: contentType,
+          blobCacheControl: "private, max-age=3600, immutable",
         },
+        metadata: originalMetadata,
       });
 
       // Generate 400 px WebP thumbnail — best-effort, failure is non-fatal
@@ -229,7 +228,10 @@ app.http("uploadPhoto", {
               .toBuffer();
             const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);
             await thumbClient.uploadData(thumbBuf, {
-              blobHTTPHeaders: { blobContentType: "image/webp" },
+              blobHTTPHeaders: {
+                blobContentType: "image/webp",
+                blobCacheControl: "private, max-age=3600, immutable",
+              },
               metadata: { isThumb: "1" },
             });
             thumbnailGenerated = true;
@@ -241,13 +243,57 @@ app.http("uploadPhoto", {
               .toBuffer();
             const previewClient = containerClient.getBlockBlobClient(previewBlobName);
             await previewClient.uploadData(previewBuf, {
-              blobHTTPHeaders: { blobContentType: "image/webp" },
+              blobHTTPHeaders: {
+                blobContentType: "image/webp",
+                blobCacheControl: "private, max-age=3600, immutable",
+              },
               metadata: { isThumb: "1" },
             });
             previewGenerated = true;
           }
         } catch (e) {
           context.warn("Thumbnail/preview generation failed (non-fatal):", e);
+        }
+      }
+      if (thumbnailGenerated || previewGenerated) {
+        try {
+          // Publish derivative names only after their blobs exist. Otherwise a
+          // failed sharp/upload step leaves every gallery load retrying a 404.
+          let published = false;
+          for (let attempt = 0; attempt < 3 && !published; attempt++) {
+            const latest = await blockBlobClient.getProperties();
+            const metadata = { ...(latest.metadata ?? {}) };
+            if (Object.keys(metadata).some((key) => key.toLowerCase() === "deletedat")) {
+              break;
+            }
+            const setValue = (key: string, value: string) => {
+              const existing = Object.keys(metadata)
+                .find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+              metadata[existing ?? key] = value;
+            };
+            if (thumbnailGenerated) setValue("thumbnailName", b64(thumbnailBlobName));
+            if (previewGenerated) setValue("previewName", b64(previewBlobName));
+            try {
+              if (!latest.etag) throw new Error("Missing photo ETag");
+              await blockBlobClient.setMetadata(metadata, {
+                conditions: { ifMatch: latest.etag },
+              });
+              published = true;
+            } catch (error) {
+              const statusCode = typeof error === "object" && error !== null && "statusCode" in error
+                ? (error as { statusCode?: number }).statusCode
+                : undefined;
+              if (statusCode !== 412 || attempt === 2) throw error;
+            }
+          }
+          if (!published) {
+            thumbnailGenerated = false;
+            previewGenerated = false;
+          }
+        } catch (e) {
+          thumbnailGenerated = false;
+          previewGenerated = false;
+          context.warn("Derivative metadata update failed (backfill can repair it):", e);
         }
       }
 

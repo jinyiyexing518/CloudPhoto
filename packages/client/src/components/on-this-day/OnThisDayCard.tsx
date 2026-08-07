@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Photo } from "../../services/photoApi";
+import { fallbackMediaSource } from "../../services/mediaRoute";
 
 interface Props {
   photos: Photo[];
@@ -61,9 +62,17 @@ export default function OnThisDayCard({ photos, onJumpToPhoto }: Props) {
               title={`${yrsAgo} 年前 · ${p.originalName ?? p.name}`}
             >
               <img
-                src={p.thumbnailUrl ?? p.url}
+                src={p.thumbnailUrl ?? p.previewUrl ?? p.url}
                 alt={p.originalName ?? "照片"}
                 loading="lazy"
+                onError={(event) => {
+                  fallbackMediaSource(
+                    event.currentTarget,
+                    p.thumbnailUrl || p.previewUrl
+                      ? [p.thumbnailUrl, p.previewUrl]
+                      : [p.url],
+                  );
+                }}
               />
               <span className="otd-thumb-label">{yrsAgo}年前</span>
             </button>

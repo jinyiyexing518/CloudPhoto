@@ -55,14 +55,14 @@
 - **Service Worker 媒体缓存**（SAS 令牌穿透缓存）  
   - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），每 2h 轮换 → URL 变化 → 浏览器缓存失效，每次访问重新下载全部图片（200 张 ≈ 90MB/次）  
   - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  
-  - 我们的方案：Workbox `CacheFirst` + `matchOptions: { ignoreSearch: true }` — Service Worker 以路径为缓存键，忽略 SAS 参数；效果等同于个人 CDN  
-  - 效果：重复访问 **0 字节**；600 条目 / 7 天 / `purgeOnQuotaError` 自动淘汰；SW 全模式注册（非 PWA 普通浏览器同样受益）
-- **nginx 浏览器缓存头** — `Cache-Control: public, max-age=3600, stale-while-revalidate=7200`，覆盖 Azure Blob 默认 `no-cache`；无 SW 的浏览器在 SAS 有效期内命中 HTTP 缓存
+  - 我们的方案：Workbox `CacheFirst` + `matchOptions: { ignoreSearch: true }`；只接收可验证的 `200 GET`，opaque、Range 和 HEAD 不进入缓存，避免把过期 SAS 的 403/状态 0 固化
+  - 结构边界：600 条目 / 7 天 / `purgeOnQuotaError`；注销、自动注销或切号清除私有 `photo-media-v1`，不清应用壳/precache
+- **nginx 浏览器缓存头** — `Cache-Control: private, max-age=3600, immutable`，freshness 短于 2h SAS，不提供越过授权期的 stale window
 - **HTTP Range Request 视频截帧**（`bandwidth.ts`）— 视频封面改为 `Range: bytes=0-524287`（512 KB）替代全量下载；iOS/Android 默认 faststart MP4 的 moov 原子在文件开头，512KB 足以解码元数据 + 截第一帧；首次访问 10 个视频：从 **1-2 GB → 5 MB**（-99.5%）
-- **视频封面一次生成永久复用**（`bandwidth.ts`）— 首次 gallery 浏览时 canvas 截帧后自动 POST 到 `/api/photos/set-thumbnail`，后续所有访问走 `<img src={thumbnailUrl}>` 快速路径；session-level `Set` 防重复上传
-- **原生浏览器下载，零 JS 内存**（`render.ts`）— 服务端 download 端点改为返回含 `Content-Disposition: attachment` 的 SAS URL（~100ms 元数据查询），客户端 `<a>` 触发原生下载，文件不经 JS heap；用户点击后立即可离开页面
-- **Tab 切换零重载** — 时间线/瞬间/文件夹三个主 Tab 通过 `display:none` 保持挂载，切换回来无需重新拉取数据或重渲缩略图；Map/TimeCapsule/Story 等重型 Tab 仍按需挂载（懒加载 bundle）
-- **GIF 渐进式加载** — 服务端 sharp 为 GIF 生成静态首帧 WebP 缩略图；客户端先显示首帧（秒出），后台 `new Image()` 静默预加载完整动图，完成后无缝切换；动图播放前视觉效果与普通图片一致
+- **视频封面一次生成复用**（`bandwidth.ts`）— 首次 gallery 浏览时 canvas 截帧后自动 POST 到 `/api/photos/set-thumbnail`；derivative 上传成功后才以 ETag 条件合并 `thumbnailName`，session-level `Set` 防重复上传
+- **原生浏览器下载，零 JS 文件缓冲**（`render.ts`）— 服务端返回带 `Content-Disposition: attachment` 的 SAS；客户端以有界 HEAD 换线预检后交给 `<a>` 下载，大文件不进入 JS heap
+- **Tab 切换零重载** — 时间线常驻；重要片段和文件夹首次访问时才挂载，此后用 `display:none` 保持状态；Map/TimeCapsule/Story 等重型 Tab 仍按需加载
+- **GIF 渐进式加载** — 服务端 sharp 为 GIF 生成静态首帧 WebP 缩略图；客户端先显示首帧，再通过共享的有限次直连/代理 fallback 预载完整动图
 - **骨架屏** — 每张卡片渲染前展示闪光骨架，消除 CLS
 - **防抖搜索** — 300ms 防抖，避免每次击键触发全列表重渲
 - **useMemo 隔离大计算** — 时间线分组、片段评分、可见切片均按依赖变化重算

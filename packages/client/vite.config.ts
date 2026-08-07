@@ -65,23 +65,29 @@ export default defineConfig({
             handler: "NetworkOnly",
           },
           {
-            // Cache all /media/** requests (thumbnails, previews, originals, videos).
+            // Cache only verifiable successful GET responses. Opaque status-0
+            // responses and Range/HEAD probes must never enter this ignore-SAS cache.
             // KEY: matchOptions.ignoreSearch strips SAS token query params from the cache
             // key — so a re-issued SAS URL still hits the cached response.
-            // This turns the browser into a personal CDN: first visit fetches from network,
-            // every repeat visit is instant (0 bytes). CacheFirst = serve cache without
-            // even checking the network (thumbnails/previews don't change after upload).
-            urlPattern: ({ url }) => url.pathname.startsWith("/media/"),
+            // Eligible repeat visits can reuse immutable media by path without
+            // checking the network until Workbox expiration/eviction.
+            urlPattern: ({ url, request }) =>
+              request.method === "GET" &&
+              !request.headers.has("range") &&
+              (
+                url.pathname.startsWith("/media/") ||
+                url.hostname.endsWith(".blob.core.windows.net")
+              ),
             handler: "CacheFirst" as const,
             options: {
-              cacheName: "cf-media-v1",
+              cacheName: "photo-media-v1",
               matchOptions: { ignoreSearch: true }, // ignore SAS ?sv=...&sig=...&se=...
               expiration: {
                 maxEntries: 600,           // ~200 photos × 3 sizes (thumb+preview+orig)
                 maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
                 purgeOnQuotaError: true,   // auto-evict oldest if storage quota exceeded
               },
-              cacheableResponse: { statuses: [0, 200] },
+              cacheableResponse: { statuses: [200] },
             },
           },
         ],

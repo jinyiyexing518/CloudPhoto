@@ -127,6 +127,8 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                       <MediaThumb
                         key={p.name}
                         url={p.url}
+                        thumbnailUrl={p.thumbnailUrl}
+                        previewUrl={p.previewUrl}
                         contentType={p.contentType}
                         className="capsule-card-thumb"
                         wrapClass="capsule-card-thumb-wrap"
@@ -237,7 +239,12 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                         setSelectedNames(next);
                       }}
                     >
-                      <MediaThumb url={p.url} contentType={p.contentType} />
+                      <MediaThumb
+                        url={p.url}
+                        thumbnailUrl={p.thumbnailUrl}
+                        previewUrl={p.previewUrl}
+                        contentType={p.contentType}
+                      />
                       {sel && <span className="capsule-photo-check">✓</span>}
                     </button>
                   );
@@ -276,7 +283,13 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   onClick={() => { setOpenedCapsuleId(null); onViewPhoto?.(p.name); }}
                   title={p.originalName ?? p.name}
                 >
-                  <MediaThumb url={p.url} alt={p.originalName ?? ""} contentType={p.contentType} />
+                  <MediaThumb
+                    url={p.url}
+                    thumbnailUrl={p.thumbnailUrl}
+                    previewUrl={p.previewUrl}
+                    alt={p.originalName ?? ""}
+                    contentType={p.contentType}
+                  />
                 </button>
               ))}
             </div>

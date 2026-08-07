@@ -238,7 +238,14 @@ export default function TrashView({ groupId, onRestored }: Props) {
                   return (
                     <div key={p.name} className={`trash-card${busy ? " trash-card--busy" : ""}`}>
                       <div className="trash-card-thumb">
-                        <MediaThumb url={p.url} alt={displayName} contentType={p.contentType} loading="lazy" />
+                        <MediaThumb
+                          url={p.url}
+                          thumbnailUrl={p.thumbnailUrl}
+                          previewUrl={p.previewUrl}
+                          alt={displayName}
+                          contentType={p.contentType}
+                          loading="lazy"
+                        />
                       </div>
                       <div className="trash-card-body">
                         <div className="trash-card-name" title={displayName}>{displayName}</div>

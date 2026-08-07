@@ -63,6 +63,8 @@ app.http("listTrash", {
         folder: string | undefined;
         groupId: string | undefined;
         url: string;
+        thumbnailUrl: string | undefined;
+        previewUrl: string | undefined;
         size: number | undefined;
         lastModified: Date | undefined;
         contentType: string | undefined;
@@ -93,6 +95,12 @@ app.http("listTrash", {
           folder,
           groupId: blobGroupId,
           url: generateSasUrlWithKey(blob.name, delegationKey),
+          thumbnailUrl: decodeMeta(getMeta(blob.metadata, "thumbnailName"))
+            ? generateSasUrlWithKey(decodeMeta(getMeta(blob.metadata, "thumbnailName"))!, delegationKey)
+            : undefined,
+          previewUrl: decodeMeta(getMeta(blob.metadata, "previewName"))
+            ? generateSasUrlWithKey(decodeMeta(getMeta(blob.metadata, "previewName"))!, delegationKey)
+            : undefined,
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,

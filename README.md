@@ -47,10 +47,11 @@ cloudphoto-api.azurewebsites.net/api/*       ← Azure Functions v4（后端）
     │
     │  https://cloudphotos.top
     ▼
-172.188.17.176  ← Azure VM B1s · Southeast Asia（新加坡）
+cloudphotos.top  ← Azure VM · Southeast Asia（当前 A 记录：20.195.27.151）
 Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
     │
     ├── /api/*  ──►  cloudphoto-api.azurewebsites.net/api/*
+    ├── /media/* ─►  photostorage.blob.core.windows.net/photos/*
     │
     └── /*      ──►  brave-sand-053b07a00.7.azurestaticapps.net
 ```
@@ -59,14 +60,35 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 详细部署步骤见 [DEPLOYMENT.md](doc/DEPLOYMENT.md)。
 
-本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境下，`cloudphotos.top` 运行时优先走同源 `/api`（VM Nginx 反代），若该代理发生网络级失败则自动回退直连 `cloudphoto-api.azurewebsites.net/api`；其他入口直接读取 `VITE_API_BASE`。
+本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境下，`cloudphotos.top` / `cn.cloudphotos.top` 优先走同源 `/api`；`www`、SWA 和其他全球入口优先直连 Azure Functions。只读请求和登录/刷新等可安全重试的请求在线路网络或网关故障时双向回退；非幂等写请求不会在发送后自动重放，避免重复上传或修改。
+
+媒体也使用双线路：客户端对同一张原图执行两个无响应体的 `HEAD` 探测，在 Blob 直连和 `/media` 代理中缓存 30 分钟内最快的线路；胜出后立即取消另一探测。图片、视频、语音、动图预载、剪贴板复制和下载预检共用有限次换线逻辑，失败不会在直连/代理间循环。海外用户通常直连 Blob，避免所有流量绕行 VM；大陆网络则可自动选择 Nginx 代理。
+
+照片列表使用按 `userId + groupId` 隔离的一小时 SWR 缓存：冷启动只发起一次列表请求；刷新页面时可先绘制最近的非空列表，再后台刷新，刷新失败仍显示错误提示。内存和 Cache Storage 各最多保留 24 个列表，过期项会清除。PWA 仅缓存可验证的 `200 GET` 媒体响应，Range/HEAD 和跨域 opaque 响应绕过缓存；注销、自动注销或账号切换只清除私有照片列表及 `photo-media-v1`，不删除应用壳/precache。
+
+Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutable`，短于 2 小时 SAS；Nginx CORS 仅回显 `cloudphotos.top` 受信域和实际 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`，不会接受任意 `*.azurestaticapps.net`。
+
+### 全球与中国大陆入口
+
+客户端回退只能处理 API/媒体故障；如果 HTML 入口本身在某个地区不可达，必须在 DNS 层分流。推荐部署以下记录（先在 SWA/Nginx 配置对应自定义域名和证书）：
+
+| 主机名 | DNS 记录 | 用途 |
+|---|---|---|
+| `cn.cloudphotos.top` | `A 20.195.27.151` | 大陆/受限网络备用入口 |
+| `global.cloudphotos.top` | `CNAME brave-sand-053b07a00.7.azurestaticapps.net` | 海外直连入口 |
+| `www.cloudphotos.top`（中国大陆线路） | `CNAME cn.cloudphotos.top` | 智能 DNS 大陆解析 |
+| `www.cloudphotos.top`（境外线路） | `CNAME global.cloudphotos.top` | 智能 DNS 境外解析 |
+
+`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，可作为智能 DNS 健康检查。`www` 同时落到两个平台时应使用 DNS-01 签发证书，避免 HTTP-01 校验被地域解析到另一端。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
 
 ---
 
 ## 功能列表
 
 - **JWT 认证与自动刷新** — 2 小时访问令牌 + 30 天滚动刷新令牌；收到 401 时客户端静默刷新并重试原请求；并发 401 共享同一个刷新请求（互斥锁）
-- **代理故障自动回退** — 在 `cloudphotos.top` 下，登录和通用 API 请求优先走同源 `/api`；若 VM 反向代理出现网络级失败，前端自动回退直连 Azure Functions，避免短时代理故障导致登录页直接报“网络错误”
+- **API 双向故障回退** — 大陆入口优先同源 `/api`，全球入口优先 Azure Functions；可安全重试的读取/认证请求在网络或网关故障时切换线路，非幂等写入不重复发送
+- **媒体自适应线路** — Blob 直连与 Nginx `/media` 通过轻量 `HEAD` 竞速选择，失败时自动换线；海外直连可显著降低 VM 出站流量
+- **用户隔离照片 SWR** — 最近非空照片列表按用户/群组持久化并限量保留；刷新先本地绘制再联网，注销/切号清除列表与私有媒体缓存
 - **认证限流** — 内存中按 IP 滑动窗口：登录 10 次/分，注册 5 次/分，刷新 20 次/分；超限返回 `429 + Retry-After: 60`
 - **委托密钥缓存** — Azure 用户委托密钥进程内缓存，有效期剩余 > 10 分钟时复用，省去每次列表请求的一次控制面调用
 - **角色系统** — 全局 `admin` / `viewer`；群组内 `admin` / `member`
@@ -279,7 +301,11 @@ gpsLat            GPS 纬度（字符串，EXIF 提取或手动设置）
 gpsLon            GPS 经度（字符串，EXIF 提取或手动设置）
 lastModifiedBy    最后编辑者显示名
 lastModifiedAt    ISO 8601 时间戳
+thumbnailName     400 px WebP 名称（仅在 derivative 上传成功后以 ETag 条件写入）
+previewName       2048 px WebP 名称（仅在 derivative 上传成功后以 ETag 条件写入）
 ```
+
+原图及 derivative 的 Blob HTTP 缓存头统一为 `private, max-age=3600, immutable`；授权 URL 的 SAS 有效期为 2 小时，不配置超出授权期的浏览器 stale window。
 
 ---
 
@@ -616,4 +642,3 @@ push 到 `main` 时自动运行三个 workflow：
 ## 更新日志
 
 详见 [CHANGELOG.md](doc/CHANGELOG.md)
-

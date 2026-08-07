@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
-import { listPhotos, getCachedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, Photo, ManagedShareLink } from "./services/photoApi";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
@@ -225,7 +225,7 @@ function AppContent() {
   const [timelineFocusRequestKey, setTimelineFocusRequestKey] = useState(0);
   const scrollLockYRef = useRef(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const lastFocusRefreshRef = useRef<number>(0);
+  const lastPhotoRefreshRef = useRef<number>(0);
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -233,6 +233,9 @@ function AppContent() {
   // to the folder tab. Once mounted it stays mounted (tab-caching). Avoids a failed dynamic
   // import error ("main渲染失败") on app startup when the network/VM is briefly unavailable.
   const [folderMounted, setFolderMounted] = useState(() => activeTab === "folder");
+  // Moments performs a full-photo statistics request, so do not mount it behind
+  // display:none until the user actually opens the tab.
+  const [momentsMounted, setMomentsMounted] = useState(() => activeTab === "moments");
   const [dragFileCount, setDragFileCount] = useState(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
@@ -414,9 +417,10 @@ function AppContent() {
     return () => window.removeEventListener("resize", updateViewTabAffordance);
   }, [activeTab, filteredPhotos.length, folderCount, importantPhotos.length]);
 
-  // Mount FolderView on first folder-tab visit (deferred to avoid eager lazy-chunk load)
+  // Mount expensive panels on first visit, then retain their local UI state.
   useEffect(() => {
     if (activeTab === "folder") setFolderMounted(true);
+    if (activeTab === "moments") setMomentsMounted(true);
   }, [activeTab]);
 
   const missingSubjectCount = useMemo(
@@ -521,50 +525,87 @@ function AppContent() {
 
   const fetchAbortRef = useRef<AbortController | null>(null);
   const fetchPhotos = useCallback(async () => {
-    // Cancel any in-flight previous request
+    // Cancel any in-flight previous request before starting another full Blob listing.
     fetchAbortRef.current?.abort();
-    fetchAbortRef.current = new AbortController();
-    // SWR: show non-empty stale data instantly while the fresh fetch runs.
-    // Note: [] (empty array) is truthy but we must not treat it as valid stale
-    // data — an empty cache entry caused by a cold-start glitch would silently
-    // hide all photos if we showed it here.
-    const stale = getCachedPhotos(currentGroupId);
-    const hasStale = stale !== null && stale.length > 0;
-    if (hasStale) { setPhotos(stale!); setLoading(false); }
-    else { setLoading(true); }
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    lastPhotoRefreshRef.current = Date.now();
+
+    const cacheScope = user?.id ?? "";
+    let stale = getCachedPhotos(currentGroupId, cacheScope);
+    let hasStale = stale !== null && stale.length > 0;
+    if (hasStale) {
+      setPhotos(stale!);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setLoadError(false);
+
     try {
-      const data = await listPhotos(currentGroupId);
+      // The memory cache disappears on reload. Restore the recent user-scoped
+      // Cache Storage entry first so the gallery can paint while Azure refreshes.
+      if (!hasStale) {
+        stale = await getPersistedPhotos(currentGroupId, cacheScope);
+        if (controller.signal.aborted) return;
+        hasStale = stale !== null && stale.length > 0;
+        if (hasStale) {
+          setPhotos(stale!);
+          setLoading(false);
+        }
+      }
+
+      const data = await listPhotos(currentGroupId, {
+        cacheScope,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
       setPhotos(data);
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
+    } catch {
+      // Superseded group/focus loads are intentionally aborted and must not
+      // surface a false network error regardless of the transport's error type.
+      if (controller.signal.aborted) return;
       // Always show the error — even when stale data is shown the user needs to
       // know the refresh failed (otherwise they'd silently see outdated photos).
       showToast("加载照片失败，请检查网络或服务器状态", "error");
       if (!hasStale) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (fetchAbortRef.current === controller) {
+        fetchAbortRef.current = null;
+        setLoading(false);
+      }
     }
-  }, [currentGroupId, showToast]);
+  }, [currentGroupId, showToast, user?.id]);
 
-  useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
+  useEffect(() => {
+    void fetchPhotos();
+    return () => fetchAbortRef.current?.abort();
+  }, [fetchPhotos]);
 
-  // Background refresh when user genuinely returns to the app after switching away.
-  // Only fires if the document was actually hidden first — prevents false triggers
-  // from mobile browsers that fire visibilitychange during modal interactions
-  // (e.g. closing the WhatsNew popup) even though the user never left the app.
+  // Browsers commonly emit both visibilitychange and focus when returning to
+  // the app. Both events share one 60 s gate so they cannot launch duplicate
+  // full photo-list requests.
   useEffect(() => {
     let wasHidden = false;
+    const refreshIfStale = () => {
+      if (Date.now() - lastPhotoRefreshRef.current >= 60_000) {
+        void fetchPhotos();
+      }
+    };
     const onVisibility = () => {
       if (document.hidden) {
         wasHidden = true;
       } else if (wasHidden) {
         wasHidden = false;
-        void fetchPhotos();
+        refreshIfStale();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", refreshIfStale);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", refreshIfStale);
+    };
   }, [fetchPhotos]);
 
   // Reset all active filters when the user switches groups (B5 / F9)
@@ -712,19 +753,6 @@ function AppContent() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  // Auto-refresh when window regains focus (max once per 60 s)
-  useEffect(() => {
-    const onFocus = () => {
-      const now = Date.now();
-      if (now - lastFocusRefreshRef.current > 60_000) {
-        lastFocusRefreshRef.current = now;
-        void fetchPhotos();
-      }
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [fetchPhotos]);
 
   // Keyboard shortcuts: R=refresh, ?=help, 1/2/3=tabs, S=sidebar, Backspace=clear, Esc=close
   useEffect(() => {
@@ -1762,7 +1790,8 @@ function AppContent() {
               )}
             </div>
 
-            {/* ── Moments panel ── kept mounted */}
+            {/* ── Moments panel ── mounted on first visit, then kept mounted */}
+            {(momentsMounted || activeTab === "moments") && (
             <div style={{ display: activeTab === "moments" ? "" : "none" }}>
               <PhotoGallery
                 photos={importantPhotos}
@@ -1785,6 +1814,7 @@ function AppContent() {
                 gridSize={gridSize}
               />
             </div>
+            )}
 
             {/* ── Folder panel ── mounted on first visit, then kept mounted */}
             {(folderMounted || activeTab === "folder") && (
