@@ -60,8 +60,11 @@ test("manual coordinates and no-GPS photo controls expose complete contracts", a
   assert.match(memoryMap, /ref=\{manualLatRef\}/);
   assert.match(memoryMap, /showToast\("更新位置失败",\s*"error"\)/);
   assert.match(memoryMap, /workspaceRef\.current = groupId/);
-  assert.match(memoryMap, /mountedRef\.current = false;[\s\S]*editSessionRef\.current \+= 1/);
+  assert.match(memoryMap, /useEffect\(\(\) => \{[\s\S]*mountedRef\.current = true;[\s\S]*mountedRef\.current = false;[\s\S]*editSessionRef\.current \+= 1/);
   assert.match(memoryMap, /target\.workspace !== workspaceRef\.current/);
+  assert.match(memoryMap, /pendingMarkerFocusRef\.current = \{[\s\S]*name: target\.photo\.name[\s\S]*expiresAt: Date\.now\(\) \+ 1_000/);
+  assert.match(memoryMap, /restoreSavedPhotoFocus\(p\.name, element\)/);
+  assert.match(memoryMap, /editRestoreFocusRef\.current = element;[\s\S]*element\.focus\(\{ preventScroll: true \}\)/);
 });
 
 test("shared coordinate parser rejects partial and out-of-range manual values", async () => {

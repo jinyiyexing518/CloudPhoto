@@ -92,6 +92,7 @@ export default function MemoryMap({
   const editSessionRef = useRef(0);
   const mountedRef = useRef(true);
   const workspaceRef = useRef(groupId);
+  const pendingMarkerFocusRef = useRef<{ name: string; expiresAt: number } | null>(null);
   workspaceRef.current = groupId;
 
   const [mapReady, setMapReady] = useState(false);
@@ -211,6 +212,14 @@ export default function MemoryMap({
     const markerMap = markerMapRef.current;
 
     const currentNames = new Set(geoPhotos.map((p) => p.name));
+    const restoreSavedPhotoFocus = (name: string, element: HTMLElement) => {
+      const pending = pendingMarkerFocusRef.current;
+      if (!pending || pending.name !== name) return;
+      pendingMarkerFocusRef.current = null;
+      if (pending.expiresAt < Date.now() || !element.isConnected) return;
+      editRestoreFocusRef.current = element;
+      element.focus({ preventScroll: true });
+    };
 
     // Remove stale markers
     for (const [name, registration] of markerMap) {
@@ -238,6 +247,7 @@ export default function MemoryMap({
         existing.element.setAttribute("aria-label", label);
         existing.element.setAttribute("title", label);
         existing.marker.setTooltipContent(createMapTooltipContent(p));
+        restoreSavedPhotoFocus(p.name, existing.element);
       } else {
         // Lightweight dot - no photo URL in icon = no extra network requests
         const label = getMapMarkerLabel(p);
@@ -275,6 +285,7 @@ export default function MemoryMap({
         element.addEventListener("keydown", keydown);
         marker.on("click", activate);
         markerMap.set(p.name, { marker, element, click: activate, keydown, workspace: groupId });
+        restoreSavedPhotoFocus(p.name, element);
         addedNew = true;
       }
     }
@@ -292,9 +303,11 @@ export default function MemoryMap({
 
   // Cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       editSessionRef.current += 1;
+      pendingMarkerFocusRef.current = null;
       for (const registration of markerMapRef.current.values()) {
         removeMarkerRegistration(registration);
       }
@@ -370,6 +383,12 @@ export default function MemoryMap({
         || session !== editSessionRef.current
         || target.workspace !== workspaceRef.current
       ) return;
+      if (editRestoreFocusRef.current?.matches(".memory-map-nogps-item")) {
+        pendingMarkerFocusRef.current = {
+          name: target.photo.name,
+          expiresAt: Date.now() + 1_000,
+        };
+      }
       onGpsUpdate?.(target.photo.name, normalizedLat, normalizedLon);
       setSaving(false);
       resetEdit();
@@ -396,6 +415,7 @@ export default function MemoryMap({
     setManualLat("");
     setManualLon("");
     setSaving(false);
+    pendingMarkerFocusRef.current = null;
   }, [groupId]);
 
   useModalFocusBoundary({
