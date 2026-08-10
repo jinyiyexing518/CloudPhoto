@@ -14,7 +14,7 @@
  *   wrapClass     — wraps video+badge in <span className={wrapClass}>
  *   loading       — lazy (default) | eager
  */
-import { fallbackMediaSource } from "../../services/mediaRoute";
+import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
 
 interface Props {
   url: string;
@@ -25,6 +25,7 @@ interface Props {
   className?: string;
   wrapClass?: string;
   loading?: "lazy" | "eager";
+  priority?: boolean;
 }
 
 export default function MediaThumb({
@@ -36,13 +37,15 @@ export default function MediaThumb({
   className,
   wrapClass,
   loading = "lazy",
+  priority = false,
 }: Props) {
   const isVideo = contentType?.startsWith("video/") ?? false;
   const derivativeSources = [thumbnailUrl, previewUrl]
-    .filter((source): source is string => Boolean(source));
+    .filter((source): source is string => Boolean(source))
+    .map(getPreferredMediaUrl);
   const imageSources = derivativeSources.length > 0
     ? derivativeSources
-    : [url];
+    : [getPreferredMediaUrl(url)];
 
   if (!isVideo) {
     return (
@@ -50,7 +53,8 @@ export default function MediaThumb({
         src={imageSources[0]}
         alt={alt}
         className={className}
-        loading={loading}
+        loading={priority ? "eager" : loading}
+        fetchPriority={priority ? "high" : "auto"}
         onError={(event) => { fallbackMediaSource(event.currentTarget, imageSources); }}
       />
     );
@@ -58,14 +62,15 @@ export default function MediaThumb({
 
   // Video with a pre-generated thumbnail image: render as <img> + badge.
   // This avoids downloading ANY video data on mount.
-  const videoPoster = thumbnailUrl ?? previewUrl;
+  const videoPoster = derivativeSources[0];
   if (videoPoster) {
     const img = (
       <img
         src={videoPoster}
         alt={alt}
         className={className}
-        loading={loading}
+        loading={priority ? "eager" : loading}
+        fetchPriority={priority ? "high" : "auto"}
         onError={(event) => { fallbackMediaSource(event.currentTarget, imageSources); }}
       />
     );

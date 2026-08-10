@@ -4,8 +4,10 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName, generateDownloadSasUrl } from "../../utils/blob/blobStorage";
+import { generateDownloadSasUrl } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { canAccessPhotoPath, sanitizeDownloadFilename } from "../../utils/auth/photoAccess";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 
 app.http("downloadPhoto", {
   methods: ["GET"],
@@ -35,20 +37,24 @@ app.http("downloadPhoto", {
       };
     }
 
-    try {
-      const containerClient = getBlobServiceClient().getContainerClient(containerName);
-      const blobClient = containerClient.getBlobClient(blobName);
+    if (!await canAccessPhotoPath(blobName, payload, isGroupMember)) {
+      return {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Forbidden" }),
+      };
+    }
 
-      // Fetch only properties (not the file content) to get the original filename
-      const props = await blobClient.getProperties();
-      const originalName = props.metadata?.originalName
-        ? Buffer.from(props.metadata.originalName, "base64").toString("utf8")
-        : blobName.split("/").pop() ?? "photo";
+    try {
+      const fallbackName = blobName.split("/").pop() ?? "photo";
+      const originalName = sanitizeDownloadFilename(
+        request.query.get("filename"),
+        fallbackName,
+      );
 
       // Generate a short-lived SAS URL that instructs the browser to download
       // the file as an attachment (Content-Disposition: attachment; filename=...).
-      // Returning only the URL — not the file body — means the server uses almost
-      // no memory and responds in ~100ms instead of streaming 100MB+.
+      // The authenticated path check and client filename avoid an extra Blob read.
       const url = await generateDownloadSasUrl(blobName, originalName, 1);
 
       return {

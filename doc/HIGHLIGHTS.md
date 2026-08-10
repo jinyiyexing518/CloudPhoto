@@ -33,7 +33,7 @@
 - 效果：Blob 连接更快释放，大文件传输效率提升
 
 **渐进式预览加载**
-- 实现：打开全屏查看器时立即渲染已缓存的缩略图占位（`position: absolute` 铺满），后台加载 2048px WebP 预览（~400KB），`onLoad` 后 0.25s fade-in 替换；`getViewerSrc()` 根据 `window.innerWidth × devicePixelRatio × 0.85` 自动在 thumbnail(400px) / preview(2048px) / original 三档选择，手机不加载原图
+- 实现：打开全屏查看器时立即渲染已缓存的缩略图或现有 preview 占位（`position: absolute` 铺满），后台优先加载 2048px WebP 预览（~400KB），`onLoad` 后 0.25s fade-in 替换；`getViewerSrc()` 只在低像素视口复用 thumbnail，其余首次打开统一选 preview，原图由显式点击入口加载
 - 效果：打开即有清晰缩略图，查看器实际传输量从 5–20MB 降至 ~400KB（节省 95%+）
 
 ---
@@ -43,9 +43,10 @@
 - **IntersectionObserver 无限滚动** — 首屏仅渲染 40 张，sentinel 节点触发分批加载；首屏流量减少 **66%**
 - **2048px WebP 预览图** — 上传时服务端（sharp）同步生成 2048px WebP 预览；查看器加载预览而非原图，流量减少 **95%+**；缩略图和 EXIF 历史回填都按游标分批且单次最多读取一个 Blob 页，不把完整图库保留在 Function 内存，也不会在空/视频库中无界扫描
 - **SAS 安全复用** — Workbox 仍以完整 SAS 查询作为私有缓存键；仅当同一资源的旧 URL 尚有 10 分钟以上有效期且不早于新 URL 过期时才复用，绝不以缓存命中换取更短可用期
-- **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px→thumbnail，≤2200px→preview，>2200px→original；手机避免加载多余像素
+- **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px 优先 thumbnail，其余优先 preview；缺少 preview 时继续复用 thumbnail，只有没有任何派生图才回退 original
+- **首屏封面优先级** — 时间线、重点片段和文件夹仅将前 6 张派生图标记为 `loading="eager"` + `fetchpriority="high"`，其余继续原生 lazy，避免首屏封面与屏外资源争抢连接
 - **视频封面体积压缩** — `setVideoThumbnail` 端点用 sharp 将 canvas 截帧（最大 1920×1080，~500KB）缩至 400px 再存储，体积缩小 **10–15×**
-- **视频按需加载** — `preload="none"` + IntersectionObserver，进入视口才调 `video.load()`；修复了 `useEffect` deps 遗漏 `useVideoThumb` 导致缩略图 404 后 Observer 永远不注册的 bug
+- **视频按意图加载** — 网格只渲染持久化的 WebP 封面，不创建 video 元素；用户明确打开视频后使用 `preload="metadata"` 先取时长与起播所需范围
 - **动图懒加载** — `loading="lazy"`，GIF/HEIC 接近视口才发请求
 - **地理编码服务端代理** — `/api/geocode/search` 携带合规 `User-Agent` 调用 Nominatim + 10 分钟内存缓存，解决国内直连 429
 
@@ -68,8 +69,8 @@
   - 结构边界：600 条目 / 1 小时 / `purgeOnQuotaError`；注销、自动注销或切号清除私有 `photo-media-v1`，迟到写入也无法被其他账号的不同 SAS 请求命中
 - **nginx 浏览器缓存头** — `Cache-Control: private, max-age=3600, immutable`，freshness 短于 2h SAS，不提供越过授权期的 stale window
 - **HTTP Range Request 视频截帧**（`bandwidth.ts`）— 视频封面改为 `Range: bytes=0-524287`（512 KB）替代全量下载；iOS/Android 默认 faststart MP4 的 moov 原子在文件开头，512KB 足以解码元数据 + 截第一帧；非 `206` 响应主动取消响应体，避免忽略 Range 的线路继续传完整视频；首次访问 10 个视频：从 **1-2 GB → 5 MB**（-99.5%）
-- **视频封面一次生成复用**（`bandwidth.ts`）— 首次 gallery 浏览时 canvas 截帧后自动 POST 到 `/api/photos/set-thumbnail`；derivative 上传成功后才以 ETag 条件合并 `thumbnailName`，session-level `Set` 防重复上传
-- **原生浏览器下载，零 JS 文件缓冲**（`render.ts`）— 服务端返回带 `Content-Disposition: attachment` 的 SAS；客户端以有界 HEAD 换线预检后交给 `<a>` 下载，大文件不进入 JS heap
+- **视频封面一次生成复用**（`bandwidth.ts`）— 新视频从本地 File 截帧与原文件上传并行，原 Blob 创建后立即持久化 400px WebP；播放历史视频时仍可补齐缺失封面，derivative 上传成功后以 ETag 条件合并 `thumbnailName`
+- **原生浏览器下载，零 JS 文件缓冲** — 查看器空闲时预热按 auth generation 隔离、最多 8 条的附件 SAS；服务端用已校验的个人/群组 Blob 路径和安全文件名直接签票，不再读取 Blob metadata，点击路径不再串行 HEAD，大文件仍由浏览器原生传输
 - **Tab 切换零重载** — 时间线常驻；重要片段和文件夹首次访问时才挂载，此后用 `display:none` 保持状态；Map/TimeCapsule/Story 等重型 Tab 仍按需加载
 - **GIF 渐进式加载** — 服务端 sharp 为 GIF 生成静态首帧 WebP 缩略图；客户端先显示首帧，再通过共享的有限次直连/代理 fallback 预载完整动图
 - **骨架屏** — 每张卡片渲染前展示闪光骨架，消除 CLS
@@ -88,7 +89,7 @@
 | `bandwidth.ts` | Range Request 策略（`VIDEO_THUMB_RANGE_BYTES = 524 287`）、预加载边距 | `PhotoCard.tsx` |
 | `priority.ts` | 照片重要性评分函数（收藏×120、标签×20、时效性 0-40）、`MOMENTS_MAX_PHOTOS` | `AuthenticatedApp.tsx` |
 | `pagination.ts` | `DEFAULT_PAGE_SIZE = 24`、`SCROLL_SENTINEL_MARGIN = "200px"` | `PhotoGallery.tsx` |
-| `render.ts` | 查看器图片分级阈值（thumb ≤ 450px / preview ≤ 2200px / original）、`VIEWER_DPR_SCALE` | `photoApi.ts` |
+| `render.ts` | preview-first 查看器选择、前 6 张封面优先级、`VIEWER_DPR_SCALE` | `photoApi.ts` / gallery surfaces |
 | `media.ts` | `THUMBNAIL_MIME` 集合、`BLANK_GIF` 占位符、WebP 质量常量 | `PhotoCard.tsx` |
 
 **设计原则**：纯函数 + 常量，无副作用，所有数值均有注释说明选取依据；新增优化算法时在此包统一沉淀，避免魔法数字散落各组件。

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import "./authenticated.css";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
+import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
@@ -638,6 +639,10 @@ function AppContent() {
     setPhotos([]);
   }, [photoCacheScope]);
 
+  useEffect(() => subscribeToPreferredMediaRoute(() => {
+    setPhotos((current) => current.map(proxyPhoto));
+  }), []);
+
   const fetchPhotos = useCallback(async () => {
     // Cancel any in-flight previous request before starting another full Blob listing.
     fetchAbortRef.current?.abort();
@@ -1144,6 +1149,10 @@ function AppContent() {
       const fileBase = completedBytes;
       const uploadId = crypto.randomUUID();
       try {
+        const videoThumbnailPromise = valid[i].type.startsWith("video/")
+          ? extractVideoThumbnail(valid[i]).catch(() => null)
+          : Promise.resolve<Blob | null>(null);
+
         // Extract GPS from EXIF (images) or MP4/MOV container (videos)
         let gpsLat: string | undefined;
         let gpsLon: string | undefined;
@@ -1212,10 +1221,11 @@ function AppContent() {
               mutatePhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
             }
 
-            // For videos: extract a thumbnail frame client-side and persist it.
-            // Fire-and-forget — failure is non-fatal; the card keeps a local placeholder.
+            // The local frame was prepared while the original uploaded. Persist it
+            // only after the server has created the original blob.
             if (valid[i].type.startsWith("video/")) {
-              extractVideoThumbnail(valid[i]).then(async (thumb) => {
+              void (async () => {
+                const thumb = await videoThumbnailPromise;
                 if (!thumb) return;
                 if (
                   uploadAuthGeneration !== getAuthGeneration()
@@ -1236,7 +1246,7 @@ function AppContent() {
                       : p,
                   ));
                 }
-              }).catch(() => { /* best-effort */ });
+              })().catch(() => { /* best-effort */ });
             }
 
             lastErr = undefined;

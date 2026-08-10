@@ -4,6 +4,7 @@ import {
   updatePhotoSubject,
   renamePhoto as apiRenamePhoto,
   downloadPhotoApi,
+  preloadPhotoDownload,
   createPhotoShareLink,
   createFolderShareLink,
   recordMomentViewApi,
@@ -16,6 +17,7 @@ import {
   getViewerSrc,
   persistVideoPlaybackThumbnail,
 } from "../../services/photoApi";
+import { GALLERY_EAGER_MEDIA_COUNT } from "@cloudphoto/algorithm";
 import { addRecentShareLink } from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
 import {
@@ -779,6 +781,16 @@ function FolderContent({
     refreshRoute();
     return subscribeToPreferredMediaRoute(refreshRoute);
   }, [selectedPhoto?.contentType, selectedPhoto?.name, selectedPhoto?.url]);
+
+  useEffect(() => {
+    if (!selectedPhoto) return;
+    const filename = selectedPhoto.originalName
+      || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
+    const timerId = window.setTimeout(() => {
+      void preloadPhotoDownload(selectedPhoto.name, filename).catch(() => undefined);
+    }, 250);
+    return () => window.clearTimeout(timerId);
+  }, [selectedPhoto?.name, selectedPhoto?.originalName]);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
   const [savingSubject, setSavingSubject] = useState(false);
@@ -909,8 +921,7 @@ function FolderContent({
     setGifViewerSrc("");
   }, [trackPhotoView]);
 
-  // Progressive GIF loading in the viewer is intentionally removed — see PhotoGallery.tsx.
-  // Re-enabled with thumbnail + loading badge (blank white looks broken to users).
+  // Show a persisted derivative immediately, then swap to the animated source.
   useEffect(() => {
     if (!selectedPhoto) return;
     const isGifFormat = selectedPhoto.contentType === "image/gif";
@@ -920,20 +931,20 @@ function FolderContent({
       !isGifFormat;
     if (!isGifFormat && !isOtherAnimated) return;
     if (!selectedPhoto.thumbnailUrl) return;
-    setGifViewerSrc(selectedPhoto.thumbnailUrl);
+    setGifViewerSrc(getPreferredMediaUrl(selectedPhoto.thumbnailUrl));
     if (isGifFormat) {
       const controller = new AbortController();
       void preloadImageWithFallback([selectedPhoto.url], controller.signal)
         .then(setGifViewerSrc)
         .catch((error: unknown) => {
           if (!(error instanceof Error && error.name === "AbortError")) {
-            setGifViewerSrc(selectedPhoto.url);
+            setGifViewerSrc(getPreferredMediaUrl(selectedPhoto.url));
           }
         });
       return () => controller.abort();
     } else {
       // Non-GIF animated (phone 动图: animated WebP/HEIF/AVIF): stream directly
-      const t = window.setTimeout(() => setGifViewerSrc(selectedPhoto.url), 0);
+      const t = window.setTimeout(() => setGifViewerSrc(getPreferredMediaUrl(selectedPhoto.url)), 0);
       return () => window.clearTimeout(t);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1148,7 +1159,8 @@ function FolderContent({
     if (!selectedPhoto) return;
     setDownloading(true);
     try {
-      const filename = selectedPhoto.originalName || selectedPhoto.name.replace(/^\d+-/, "");
+      const filename = selectedPhoto.originalName
+        || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
       await downloadPhotoApi(selectedPhoto.name, filename);
     } finally {
       setDownloading(false);
@@ -1391,10 +1403,11 @@ function FolderContent({
         })}
 
         {/* Photos — limited to FOLDER_PHOTO_PREVIEW unless expanded */}
-        {displayedPhotos.map((photo) => (
+        {displayedPhotos.map((photo, index) => (
           <PhotoCard
             key={photo.name}
             photo={photo}
+            priority={index < GALLERY_EAGER_MEDIA_COUNT}
             onClick={() => !selectMode && openModal(photo)}
             onDelete={() => onDelete(photo.name)}
             onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
@@ -1509,7 +1522,7 @@ function FolderContent({
                     className="modal-image modal-video"
                     controls
                     playsInline
-                    preload="none"
+                    preload="metadata"
                     onPlay={() => {
                       videoRouteLockedRef.current = true;
                       setVideoError(false);
@@ -1579,7 +1592,7 @@ function FolderContent({
                       <>
                         <img
                           key={selectedPhoto.url}
-                          src={selectedPhoto.previewUrl ?? selectedPhoto.thumbnailUrl ?? selectedPhoto.url}
+                          src={getPreferredMediaUrl(selectedPhoto.previewUrl ?? selectedPhoto.thumbnailUrl ?? selectedPhoto.url)}
                           alt={displayName(selectedPhoto)}
                           className="modal-image modal-image--gif"
                           onClick={() => setShowOriginalPreview(true)}
@@ -1633,22 +1646,23 @@ function FolderContent({
                 </>
               ) : (
                 <>
-                  {/* Blurred thumbnail shown instantly while full-res original loads */}
-                  {!modalImageLoaded && selectedPhoto.thumbnailUrl && (
+                  {/* A cached derivative stays visible while the 2048px preview loads. */}
+                  {!modalImageLoaded && (selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl) && (
                     <img
-                      src={selectedPhoto.thumbnailUrl}
+                      src={getPreferredMediaUrl(selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl!)}
                       alt=""
                       aria-hidden="true"
                       className="modal-image modal-image--placeholder"
                       onError={(event) => {
-                        fallbackMediaSource(event.currentTarget, [selectedPhoto.thumbnailUrl]);
+                        fallbackMediaSource(event.currentTarget, [selectedPhoto.thumbnailUrl, selectedPhoto.previewUrl]);
                       }}
                     />
                   )}
                   {/* Spinner only when there is no thumbnail to show */}
-                  {!modalImageLoaded && !selectedPhoto.thumbnailUrl && <div className="modal-image-spinner" />}
+                  {!modalImageLoaded && !selectedPhoto.thumbnailUrl && !selectedPhoto.previewUrl && <div className="modal-image-spinner" />}
                   <img
                     src={getViewerSrc(selectedPhoto)}
+                    fetchPriority="high"
                     alt={displayName(selectedPhoto)}
                     className={`modal-image${modalImageLoaded ? " modal-image--fadein" : " modal-image--loading"}`}
                     onClick={() => setShowOriginalPreview(true)}
@@ -1983,11 +1997,11 @@ function FolderContent({
         <div className="modal-preview-overlay" onClick={() => setShowOriginalPreview(false)}>
           <div className="modal-preview-content" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="modal-close" onClick={() => setShowOriginalPreview(false)} aria-label="关闭原图预览">✕</button>
-            <a className="modal-preview-open" href={selectedPhoto.url} target="_blank" rel="noreferrer">
+            <a className="modal-preview-open" href={getPreferredMediaUrl(selectedPhoto.url)} target="_blank" rel="noreferrer">
               在新窗口打开原图
             </a>
             <img
-              src={selectedPhoto.url}
+              src={getPreferredMediaUrl(selectedPhoto.url)}
               alt={displayName(selectedPhoto)}
               className="modal-preview-image"
               onError={(event) => {

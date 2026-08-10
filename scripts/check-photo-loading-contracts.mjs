@@ -28,6 +28,7 @@ const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
+const renderPolicy = read("packages/algorithm/src/render.ts");
 const gallery = read("packages/client/src/components/gallery/PhotoGallery.tsx");
 const folder = read("packages/client/src/components/gallery/FolderView.tsx");
 const photoCard = read("packages/client/src/components/gallery/PhotoCard.tsx");
@@ -41,6 +42,7 @@ const backfill = read("packages/server/src/functions/photos/backfillThumbnails.t
 const backfillCursor = read("packages/server/src/functions/photos/backfillCursor.ts");
 const photoLocationSync = read("packages/server/src/utils/cosmos/photoLocationSync.ts");
 const setVideoThumb = read("packages/server/src/functions/photos/setVideoThumbnail.ts");
+const download = read("packages/server/src/functions/photos/downloadPhoto.ts");
 const trash = read("packages/server/src/functions/trash/listTrash.ts");
 const restore = read("packages/server/src/functions/trash/restorePhoto.ts");
 const productionSmoke = read("scripts/production-smoke.mjs");
@@ -240,6 +242,24 @@ const listPhotosSource = photoApi.slice(
 assert(!listPhotosSource.includes("await selectFastestMediaRoute"), "cold photo-list paint must not await media probing");
 requireText(listPhotosSource, "photo.thumbnailUrl || photo.previewUrl", "derivative-first route probe sample");
 requireText(listPhotosSource, "void selectFastestMediaRoute", "background media route probe");
+requireText(app, "subscribeToPreferredMediaRoute", "live gallery route promotion subscription");
+requireText(app, "current.map(proxyPhoto)", "live gallery route promotion");
+requireText(photoCard, "getPreferredMediaUrl", "current card media route");
+requireText(mediaThumb, "getPreferredMediaUrl", "current shared-thumbnail media route");
+requireText(photoCard, 'fetchPriority={priority ? "high" : "auto"}', "above-fold card priority");
+requireText(mediaThumb, 'fetchPriority={priority ? "high" : "auto"}', "above-fold shared-thumbnail priority");
+requireText(gallery, "GALLERY_EAGER_MEDIA_COUNT", "bounded gallery eager-media count");
+requireText(folder, "priority={index < GALLERY_EAGER_MEDIA_COUNT}", "bounded folder eager-media count");
+
+// Viewer open must stay on derivatives; the explicit original-preview action owns full files.
+requireText(renderPolicy, "selectInitialViewerMediaSource", "pure viewer tier selection");
+assert(!renderPolicy.includes("VIEWER_PREVIEW_THRESHOLD_PX"), "initial viewer must not auto-select originals on high-DPR screens");
+requireText(photoApi, "selectInitialViewerMediaSource", "viewer tier policy reuse");
+requireText(photoApi, "getPreferredMediaUrl(", "viewer route refresh");
+for (const source of [gallery, folder]) {
+  requireText(source, 'fetchPriority="high"', "selected viewer image priority");
+  requireText(source, 'preload="metadata"', "selected video metadata preload");
+}
 
 // Workbox may cache only full, verifiable GET 200 responses.
 requireText(vite, 'request.method === "GET"', "media request method");
@@ -273,7 +293,7 @@ requireText(photoCard, 'className="video-thumb-placeholder"', "missing video der
 requireText(mediaThumb, '"video-thumb-placeholder"', "shared missing video derivative placeholder");
 requireText(photoCard, ".filter((source): source is string => Boolean(source))", "preview-only source normalization");
 for (const [name, source] of [["timeline playback", gallery], ["folder playback", folder]]) {
- requireText(source, 'preload="none"', `${name} remains on demand`);
+ requireText(source, 'preload="metadata"', `${name} preloads only metadata after explicit open`);
  requireText(source, "persistVideoPlaybackThumbnail", `${name} thumbnail persistence`);
  requireText(source, "getPreferredMediaUrl(selectedPhoto.url)", `${name} refreshes a stale routed video URL`);
  requireText(source, "getPreferredMediaUrl(selectedVideoPoster)", `${name} refreshes a stale routed poster URL`);
@@ -305,17 +325,36 @@ requireText(
 requireText(media, "attempted: Set<string>", "finite element fallback");
 requireText(media, "if (route) rememberRoute(route)", "successful alternate route promotion");
 requireText(media, 'element.tagName === "IMG" ? "load" : "loadeddata"', "image/media success events");
-requireText(media, "resolveMediaUrlWithFallback", "native download preflight");
-const nativeDownloadResolver = media.slice(media.indexOf("export async function resolveMediaUrlWithFallback"));
-assert(
-  nativeDownloadResolver.indexOf("for (let index = 0; index < candidates.length; index++)")
-    < nativeDownloadResolver.indexOf("const controller = new AbortController();"),
-  "native download must allocate a fresh timeout controller inside each candidate iteration",
-);
-requireText(nativeDownloadResolver, "clearTimeout(timeoutId);", "per-route download timeout cleanup");
 requireText(media, "preloadImageWithFallback", "programmatic image fallback");
 requireText(gallery, "fetchMediaWithFallback(selectedPhoto.url)", "clipboard fallback");
 assert(!gallery.includes("fetch(selectedPhoto.url)"), "clipboard must not bypass fallback");
+
+// Download clicks reuse a prewarmed ticket and immediately hand the preferred URL
+// to the browser. Blob bodies and route probes never sit on the click path.
+requireText(photoApi, "preloadPhotoDownload", "download ticket prewarm");
+requireText(photoApi, "DOWNLOAD_TICKET_CACHE_MAX", "bounded download ticket cache");
+requireText(photoApi, "subscribeToAuthChanges(() => downloadTicketCache.clear())", "auth changes discard stale download tickets");
+requireText(photoApi, "Date.now() + 50 * 60 * 1000", "unparseable SAS expiries use a conservative reuse deadline");
+requireText(photoApi, 'params.set("filename", filename)', "download filename handoff");
+requireText(photoApi, "getPreferredMediaUrl(ticket.url)", "native download preferred route");
+assert(!photoApi.includes("resolveMediaUrlWithFallback"), "download click must not wait for a HEAD preflight");
+for (const source of [gallery, folder]) {
+  requireText(source, "preloadPhotoDownload", "viewer download prewarm");
+  assert(
+    !source.includes('selectedPhoto.name.replace(/^\\d+-/, "")'),
+    "legacy photos must derive download filenames from the Blob basename",
+  );
+}
+requireText(download, "canAccessPhotoPath", "download path authorization");
+requireText(download, 'request.query.get("filename")', "client filename fast path");
+assert(!download.includes("getProperties()"), "download ticket generation must not read Blob metadata");
+
+// Local video frame extraction runs while the original upload is in flight.
+const thumbnailPromise = app.indexOf("videoThumbnailPromise");
+const originalUpload = app.indexOf("await uploadPhotoWithProgress", thumbnailPromise);
+const thumbnailPersist = app.indexOf("await videoThumbnailPromise", originalUpload);
+assert(thumbnailPromise >= 0 && thumbnailPromise < originalUpload, "video cover extraction must start before upload");
+assert(thumbnailPersist > originalUpload, "video cover persistence must wait for the original blob");
 
 const walk = (directory) => readdirSync(directory).flatMap((name) => {
   const path = join(directory, name);
@@ -433,7 +472,8 @@ assert.equal(allowedOrigin("https://attacker.example"), "");
 
 console.log("photo-loading contracts: PASS");
 console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=60000");
-console.log("evidence video-grid-original-requests=0 video-grid-original-bytes=0 cold-list-route-wait-ms=0 playback-video-load=on-demand");
+console.log("evidence video-grid-original-requests=0 video-grid-original-bytes=0 cold-list-route-wait-ms=0 selected-video-preload=metadata");
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
+console.log("evidence above-fold-priority=6 viewer-tier=derivative download-click-head=false video-cover-overlap=true");
 console.log("evidence range-sw-cache=false range-body-requires-206=true cache-statuses=200 private-list-max=24 private-max-age-s=3600");
 console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 logout-private-caches=3 logout-write-drain=true");

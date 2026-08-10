@@ -17,7 +17,7 @@
 2.25 视频 MIME 类型列表：video/mp4, video/quicktime, video/webm, video/x-msvideo, video/mpeg, video/3gpp, video/3gpp2；图片限 20 MB，视频限 200 MB
 2.26 uploadPhotoWithProgress 使用 XMLHttpRequest + upload.addEventListener('progress') 实现字节级回调；uploadProgress state 字段为 bytesLoaded/bytesTotal/filesDone/filesTotal
 2.27 分享面板使用 showSharePanel 布尔状态切换，默认收起；面板内含 modal-privacy-notice 元素
-2.28 PhotoCard.tsx 中视频使用 <video preload="metadata" muted playsInline> 渲染缩略图，右下角显示 photo-video-badge (.▶)
+2.28 PhotoCard.tsx 与 MediaThumb.tsx 中视频网格只能使用已持久化的 thumbnail/preview `<img>`，缺失时显示本地 placeholder，不得挂载原始 `<video>`；右下角显示 photo-video-badge (.▶)。用户明确打开视频查看器后才以 `preload="metadata"` 获取起播元数据。
 2.29 文件夹路径刷新持久化：FolderView 使用惰性 useState 初始器从 localStorage 直接读取 currentPath 和 extraFolders，确保刷新页面后立即回到上次所在文件夹，而不是重置到根目录；persist effect 使用 hydratedContextRef 防止首次渲染覆盖
 2.30 删除确认弹窗必须通过 createPortal(…, document.body) 渲染，避免受父元素 transform/overflow 影响导致 position:fixed 偏移出视口
 2.31 批量删除与清空回收站进度：AuthenticatedApp.tsx 中新增 deleteProgress state（done/total/label）；handleBatchDeleteWithProgress 顺序调用 deletePhoto 并逐步更新进度；transferring 条件包含 deleteProgress !== null；transfer-banner 新增 deleteProgress 分支（🗑️ 图标 + 百分比 + 进度轨道）；TrashView 内部有独立 emptyProgress state，渲染 .trash-empty-progress 内联进度块（复用 transfer-banner-* CSS 类）；清空过程中"清空回收站"和"全部恢复"按钮 disabled
@@ -44,6 +44,7 @@
 2.51 私有照片缓存生命周期边界：AuthContext.tsx 只能从 privatePhotoCacheLifecycle.ts 获取账号/角色归属准备和清理能力，禁止直接导入 photoListCache.ts。生命周期模块必须在清理前同步递增 generation、同步通知内存缓存 reset，并等待已注册的持久化写入后再删除照片列表及私有媒体 Cache Storage；photoListCache.ts 仅保留认证后需要的列表读写、过期裁剪和序列化。构建后的 `index-<hash>.js` 必须小于 30 kB，且不得包含照片列表虚拟缓存路径或读写失败文本。
 2.52 照片策略模块边界：http.ts 必须从 authScope.ts 获取 JWT authorization snapshot，从 apiRoutingPolicy.ts 获取安全重放、代理探测 TTL 和 hedge 竞速；禁止导入 photoLoadingPolicy.ts。photoLoadingPolicy.ts 仅保留照片列表 cache key、发布代次、刷新节流和媒体缓存资格规则。构建后的 `index-<hash>.js` 必须小于 29.7 kB，且不得包含照片列表 `:group:` cache key 片段；行为测试必须在拆分后继续覆盖角色隔离、路由竞速、取消和昂贵读取不 hedge。
 2.53 注册表单意图边界：AuthPage.tsx 只保留默认登录表单，并通过缓存同一个 Promise 的 React.lazy loader 加载 RegisterForm.tsx；注册 Tab 的 pointer hover、键盘 focus 与实际切换均触发预载。RegisterForm 挂载后在登录/注册 Tab 间保持字段状态，注册提交仍必须在 API 请求前调用 onAuthIntent 预载认证工作区。构建必须产生唯一 `RegisterForm-<hash>.js`，该 chunk 不得进入 sw.js precache；登录入口必须小于 27.6 kB，且不得包含「正在创建账号…」注册提交文案。
+2.54 媒体快路径：时间线、重点片段和文件夹只允许前 `GALLERY_EAGER_MEDIA_COUNT = 6` 张派生图使用 eager/high priority，其余保持 lazy；后台直连/代理竞速改变首选线路后，已加载照片状态及卡片 URL 必须重路由。普通图片查看器首次打开只能按 thumbnail → preview → original fallback 选择，不得因高 DPR 自动下载 original，且主图使用 high priority；视频查看器在用户打开后使用 metadata preload。下载接口必须校验 `personal/{userId}` 或已加入的 `groups/{groupId}` 路径，拒绝 derivative/voice 内部 Blob，接收清洗后的 filename 并直接签发附件 SAS，不读取 Blob properties；客户端票据缓存按 auth generation 隔离、最多 8 条，查看器打开后预热，点击不得等待媒体 HEAD。视频上传开始前必须启动本地封面提取，原 Blob 创建后再持久化封面。
 
 ## 1. 目标
 
