@@ -126,7 +126,7 @@
     "title": "修复视频播放中途黑屏与无限加载",
     "type": "fix",
     "desc": "大视频播放中途停滞时会有限切换直连/代理并从原位置继续；双线路失败会结束加载状态并提供重试。",
-    "details": "时间线与文件夹查看器复用共享恢复控制器。视频打开前用 Range bytes=0-1 严格验证 206 并立即取消响应体；播放态只有在可见、未暂停、未 seek/ended 且 currentTime 连续 4 秒无进展时才换线。新线路在 loadedmetadata 后恢复 currentTime、播放意图、muted、volume 与 playbackRate；每条线路每个 session 最多一次，旧 photo/session/timer 事件无害，失败重试建立新 session 并保留最后位置。视频封面修复队列、poster 与一次性 playback thumbnail capture 保持不变。",
+    "details": "时间线与文件夹查看器复用共享恢复控制器。视频打开前用 Range bytes=0-1 严格验证 206 并立即取消响应体；播放态只有在可见、未暂停、未 seek/ended 且 currentTime 连续 4 秒无进展时才换线。新线路在 loadedmetadata 后恢复 currentTime、播放意图、muted、volume 与 playbackRate；跨域 Blob 备用播放不强制存储 CORS，同源代理仍支持封面截帧。每条线路每个 session 最多一次，旧 photo/session/timer 事件无害，失败重试建立新 session 并保留最后位置。视频封面修复队列、poster 与一次性 playback thumbnail capture 保持不变。",
     "seq": 1786372600000
   },
   {

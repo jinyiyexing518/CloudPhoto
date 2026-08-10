@@ -357,6 +357,36 @@ test("timeline and folder viewers both use the shared resilient hook", async () 
   }
 });
 
+test("cross-origin direct fallback does not require storage CORS", async () => {
+  const mediaRoute = await importTypeScript("./mediaRoute.ts", (source) =>
+    source.replaceAll("import.meta.env", "({})"));
+  assert.equal(
+    mediaRoute.videoPlaybackCrossOrigin(
+      "/media/large.mp4?sig=secret",
+      "https://cloudphotos.top",
+    ),
+    "anonymous",
+  );
+  assert.equal(
+    mediaRoute.videoPlaybackCrossOrigin(
+      "https://photostorage.blob.core.windows.net/photos/large.mp4?sig=secret",
+      "https://cloudphotos.top",
+    ),
+    undefined,
+  );
+
+  for (const relative of [
+    "../components/gallery/PhotoGallery.tsx",
+    "../components/gallery/FolderView.tsx",
+  ]) {
+    const source = await readFile(new URL(relative, import.meta.url), "utf8");
+    assert.match(
+      source,
+      /crossOrigin=\{videoPlaybackCrossOrigin\(selectedVideoRender\.source\)\}/,
+    );
+  }
+});
+
 test("video route probe accepts only 206 and cancels every response body", async () => {
   const mediaRoute = await importTypeScript("./mediaRoute.ts", (source) =>
     source.replaceAll("import.meta.env", "({})"));

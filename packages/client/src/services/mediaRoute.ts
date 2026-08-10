@@ -35,6 +35,19 @@ function runtimeBaseUrl(): string {
   return typeof window === "undefined" ? "https://cloudphotos.top" : window.location.origin;
 }
 
+export function videoPlaybackCrossOrigin(
+  source: string,
+  pageOrigin = runtimeBaseUrl(),
+): "anonymous" | undefined {
+  try {
+    return new URL(source, pageOrigin).origin === new URL(pageOrigin).origin
+      ? "anonymous"
+      : undefined;
+  } catch {
+    return "anonymous";
+  }
+}
+
 function proxyBaseForRuntime(): string {
   if (typeof window !== "undefined" && isProxySiteHost(window.location.hostname)) {
     return "/media";

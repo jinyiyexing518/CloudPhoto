@@ -27,6 +27,7 @@ import {
   fetchMediaWithFallback,
   getPreferredMediaUrl,
   preloadImageWithFallback,
+  videoPlaybackCrossOrigin,
 } from "../../services/mediaRoute";
 import {
   getVideoPlaybackRenderState,
@@ -1651,7 +1652,7 @@ function PhotoGallery({
                   {selectedVideoRender && <video
                     ref={videoRef}
                     key={selectedVideoRender.key}
-                    crossOrigin="anonymous"
+                    crossOrigin={videoPlaybackCrossOrigin(selectedVideoRender.source)}
                     src={selectedVideoRender.source}
                     poster={selectedVideoRender.poster}
                     className="modal-image modal-video"
