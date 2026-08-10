@@ -165,9 +165,19 @@ https://cloudphoto-api.azurewebsites.net/api
 
 因此前端 CI 只需保持 `VITE_API_BASE` 指向 Azure Functions 直连地址，无需再把 secret 改成 `https://cloudphotos.top/api`。
 
+### 前端生产发布边界
+
+`.github/workflows/deploy-frontend.yml` 只有 `main` push，或在 `main` 上显式选择 `mode=production` 的 `workflow_dispatch`，才能暂存生产 artifact 并进入唯一的 `Deploy production` job。PR、`mode=validate` 和任何非 `main` 手动运行都只执行 build/contracts，既不暂存生产 artifact，也不会调用 `Azure/static-web-apps-deploy`。生产 job 通过 OIDC 登录 Azure 后即时解析 SWA deployment token，当前 workflow 不读取 repository 级生产 token。要同时阻断仍引用旧 token 的历史分支 workflow，必须删除并确认仓库不再配置旧 `AZURE_STATIC_WEB_APPS_API_TOKEN` secret。
+
+所有 production run 共用 `deploy-frontend-production` concurrency group，且 `cancel-in-progress` 为 false：已经进入 Azure 的 upload 不会被后续 run 取消；GitHub 最多保留一个 pending run，同目标的更多事件会在进入 Azure 前 coalesce。这样 duplicate same-SHA 或快速连续 main push 不会并发竞争并制造 `Deployment Canceled` 红灯。PR 与其他 validation 按 PR 或 ref 使用独立、可取消旧验证的 group，不会干扰生产发布。
+
 ### 部署后健康检查
 
-`.github/workflows/production-health.yml` 在前端或后端部署完成后运行，并每 30 分钟定时检查一次。workflow_run 使用稳定的 workflow 文件路径识别前后端部署，不依赖会被自定义 `run-name` 覆盖的名称；并发分组、事件分类、SHA marker gate 和报告使用同一身份。网络检查前先执行 workflow 运行时契约，锁定 `actions/setup-node@v7`、Node 24、`azure/login@v3`，以及健康检查必须取消陈旧运行的并发策略；随后通过 `scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、manifest MIME/身份/语言/PNG 安装字段、180px Apple Touch PNG、未登录认证状态和更新日志 JSON 契约，并检查主域 `/healthz`。同一轮检查并行执行，结果按固定顺序输出；跨轮仍串行重试。前端 deployment 另以 no-store `deployment.json` 同时核对主域和 SWA 的 triggering `head_sha`；validation、部署前 coalesce、Backend 与普通检查使用隔离并发组，真实失败不会被无关成功事件覆盖。按 10 秒请求超时、8 轮和 15 秒轮次间隔计算，最坏检查时长为 185 秒（不含 runner setup），低于 workflow 的 10 分钟上限。部署成功但传播尚未完成时使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
+`.github/workflows/production-health.yml` 在前端或后端 workflow 完成后运行，并每 30 分钟定时检查一次。`workflow_run` 使用稳定的 workflow 文件路径识别前后端部署，不依赖会被自定义 `run-name` 覆盖的名称；并发分组、事件分类、SHA marker gate 和报告使用同一身份。该路径先在隔离的 controller checkout 中读取当前 canonical classifier；classifier 使用事件的 run ID 与 `run_attempt` 调用 attempt-specific jobs API，不能因重跑复用 run ID 而混合不同 attempt 的 conclusion 与 jobs。Frontend 只有该 attempt 的 `Deploy production` job 确实 started 才被视为部署，validation、build-before-deploy failure 和 Azure 前 coalesce 都不会伪造生产红灯。分类通过后，部署 SHA、报告文本和 `.deployment` checkout ref 均固定使用 `github.event.workflow_run.head_sha`，禁止以健康 workflow 的 `github.sha` 或已经前移的当前 `main` 代替实际部署版本。
+
+网络检查前会从该 deployed revision 执行 workflow/runtime、production smoke 和安全头契约。`scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、manifest MIME/身份/语言/PNG 安装字段、180px Apple Touch PNG、未登录认证状态和更新日志 JSON 契约，并检查主域 `/healthz`。每次前端 production build 还会写入只含 commit SHA 的 `deployment.json`；SWA 对它返回 `Cache-Control: no-store`，controller-owned identity smoke 使用 cache-busting query 要求主域与 SWA 直连 marker 都精确等于 triggering SHA。普通轮次并行执行 11 个检查，Frontend deployed-SHA full smoke 增加两条 marker 检查；结果按固定顺序输出，跨轮仍串行重试。
+
+canonical Frontend、Frontend non-deployment、Backend 和定时/手动检查使用隔离的 concurrency group；较新的同类成功检查可以取代陈旧检查，但真实失败与 Frontend non-deployment 按 triggering run ID + attempt 隔离，不会被同一 run 的重跑或后续成功事件取消。按 10 秒请求超时、8 轮和 15 秒轮次间隔计算，最坏检查时长为 185 秒（不含 runner setup），低于 workflow 的 10 分钟上限。部署成功但传播尚未完成时，检查使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
 
 本地先运行 `yarn test:production-smoke` 验证 fixture，再按需运行 `node scripts/production-smoke.mjs` 检查线上。
 

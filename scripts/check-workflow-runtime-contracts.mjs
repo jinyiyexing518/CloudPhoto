@@ -16,7 +16,7 @@ const requiredContractWorkflows = [
 const productionHealthWorkingDirectory = ".deployment";
 const productionHealthWorkflow = ".github/workflows/production-health.yml";
 const productionHealthConcurrencyGroup =
-  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}";
+  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}";
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const frontendProductionConcurrencyGroup =
   "deploy-frontend-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && 'production' || github.event_name == 'pull_request' && format('validation-pr-{0}', github.event.pull_request.number) || format('validation-{0}', github.ref_name) }}";
@@ -43,11 +43,13 @@ const productionHealthCurrentCondition = "github.event_name != 'workflow_run'";
 const productionHealthDeployedCondition =
   "github.event_name == 'workflow_run' && steps.deployment_event.outputs.should_check == 'true'";
 const productionHealthClassifierCommand =
-  'gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" --event "$DEPLOYMENT_EVENT" --head-branch "$DEPLOYMENT_HEAD_BRANCH" --head-sha "$DEPLOYMENT_SHA" --conclusion "$DEPLOYMENT_CONCLUSION" >> "$GITHUB_OUTPUT"';
+  'gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/attempts/$DEPLOYMENT_RUN_ATTEMPT/jobs?per_page=100" | node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" --event "$DEPLOYMENT_EVENT" --head-branch "$DEPLOYMENT_HEAD_BRANCH" --head-sha "$DEPLOYMENT_SHA" --conclusion "$DEPLOYMENT_CONCLUSION" >> "$GITHUB_OUTPUT"';
 const productionHealthClassifierEnv = {
   DEPLOYMENT_CONCLUSION: "${{ github.event.workflow_run.conclusion }}",
   DEPLOYMENT_EVENT: "${{ github.event.workflow_run.event }}",
   DEPLOYMENT_HEAD_BRANCH: "${{ github.event.workflow_run.head_branch }}",
+  DEPLOYMENT_RUN_ID: "${{ github.event.workflow_run.id }}",
+  DEPLOYMENT_RUN_ATTEMPT: "${{ github.event.workflow_run.run_attempt }}",
   DEPLOYMENT_SHA: "${{ github.event.workflow_run.head_sha }}",
   DEPLOYMENT_WORKFLOW: "${{ github.event.workflow_run.path }}",
 };
@@ -436,6 +438,8 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         deploymentConclusion: stepChildField(step, "env", "DEPLOYMENT_CONCLUSION"),
         deploymentEvent: stepChildField(step, "env", "DEPLOYMENT_EVENT"),
         deploymentHeadBranch: stepChildField(step, "env", "DEPLOYMENT_HEAD_BRANCH"),
+        deploymentRunId: stepChildField(step, "env", "DEPLOYMENT_RUN_ID"),
+        deploymentRunAttempt: stepChildField(step, "env", "DEPLOYMENT_RUN_ATTEMPT"),
         deploymentSha: stepChildField(step, "env", "DEPLOYMENT_SHA"),
         deploymentWorkflow: stepChildField(step, "env", "DEPLOYMENT_WORKFLOW"),
         command: stepField(step, "run"),
@@ -594,6 +598,18 @@ export function checkWorkflowRuntimeContracts(workflows) {
   }
   if (
     !healthPolicy?.productionHealthClassification
+    || healthPolicy.productionHealthClassification.deploymentRunId
+      !== productionHealthClassifierEnv.DEPLOYMENT_RUN_ID
+    || healthPolicy.productionHealthClassification.deploymentRunAttempt
+      !== productionHealthClassifierEnv.DEPLOYMENT_RUN_ATTEMPT
+    || healthPolicy.productionHealthClassification.command !== productionHealthClassifierCommand
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must pin classifier jobs to the triggering workflow attempt`
+    );
+  }
+  if (
+    !healthPolicy?.productionHealthClassification
     || healthPolicy.productionHealthClassification.condition !== "github.event_name == 'workflow_run'"
     || healthPolicy.productionHealthClassification.ghToken !== "${{ secrets.GITHUB_TOKEN }}"
     || healthPolicy.productionHealthClassification.deploymentConclusion
@@ -602,6 +618,10 @@ export function checkWorkflowRuntimeContracts(workflows) {
       !== productionHealthClassifierEnv.DEPLOYMENT_EVENT
     || healthPolicy.productionHealthClassification.deploymentHeadBranch
       !== productionHealthClassifierEnv.DEPLOYMENT_HEAD_BRANCH
+    || healthPolicy.productionHealthClassification.deploymentRunId
+      !== productionHealthClassifierEnv.DEPLOYMENT_RUN_ID
+    || healthPolicy.productionHealthClassification.deploymentRunAttempt
+      !== productionHealthClassifierEnv.DEPLOYMENT_RUN_ATTEMPT
     || healthPolicy.productionHealthClassification.deploymentSha
       !== productionHealthClassifierEnv.DEPLOYMENT_SHA
     || healthPolicy.productionHealthClassification.deploymentWorkflow

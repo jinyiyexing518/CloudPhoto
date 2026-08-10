@@ -117,8 +117,8 @@ test("rejects generic health runs that can cancel frontend SHA verification", ()
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}"
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || 'latest' }}"
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
@@ -135,8 +135,44 @@ test("rejects frontend validation runs that can cancel deployment SHA verificati
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}"
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("without hiding deployment failures")
+    )
+  );
+});
+
+test("rejects rerun failures that share a health concurrency identity", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt)",
+    "format('failure-{0}', github.event.workflow_run.id)"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("without hiding deployment failures")
+    )
+  );
+});
+
+test("rejects frontend nondeployment reruns that share a health concurrency identity", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt)",
+    "format('frontend-nondeployment-{0}', github.event.workflow_run.id)"
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
@@ -472,6 +508,42 @@ test("rejects production health without deployment-event classification", () => 
   assert.ok(
     result.issues.some((issue) =>
       issue.includes("never started production deployment")
+    )
+  );
+});
+
+test("rejects production health that reads jobs from a different rerun attempt", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "runs/$DEPLOYMENT_RUN_ID/attempts/$DEPLOYMENT_RUN_ATTEMPT/jobs?per_page=100",
+    "runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("triggering workflow attempt")
+    )
+  );
+});
+
+test("rejects production health that reads jobs from the health workflow run", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "DEPLOYMENT_RUN_ID: ${{ github.event.workflow_run.id }}",
+    "DEPLOYMENT_RUN_ID: ${{ github.run_id }}"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("triggering workflow attempt")
     )
   );
 });

@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}
+  group: production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}
   cancel-in-progress: true
 
 jobs:
@@ -49,12 +49,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOYMENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DEPLOYMENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.path }}
           DEPLOYMENT_EVENT: ${{ github.event.workflow_run.event }}
           DEPLOYMENT_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           DEPLOYMENT_SHA: ${{ github.event.workflow_run.head_sha }}
           DEPLOYMENT_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-        run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" --event "$DEPLOYMENT_EVENT" --head-branch "$DEPLOYMENT_HEAD_BRANCH" --head-sha "$DEPLOYMENT_SHA" --conclusion "$DEPLOYMENT_CONCLUSION" >> "$GITHUB_OUTPUT"
+        run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/attempts/$DEPLOYMENT_RUN_ATTEMPT/jobs?per_page=100" | node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" --event "$DEPLOYMENT_EVENT" --head-branch "$DEPLOYMENT_HEAD_BRANCH" --head-sha "$DEPLOYMENT_SHA" --conclusion "$DEPLOYMENT_CONCLUSION" >> "$GITHUB_OUTPUT"
 
       - name: Validate deployment classification
         if: github.event_name == 'workflow_run'
