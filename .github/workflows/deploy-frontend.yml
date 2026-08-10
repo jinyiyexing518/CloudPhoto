@@ -35,6 +35,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -64,6 +65,40 @@ jobs:
 
       - name: Verify mobile layout and PWA metadata contracts
         run: yarn test:mobile-layout-contracts
+
+      - name: Verify auth layout and native validation in Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          yarn workspace cloudphoto-client preview --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/auth-preview.log" 2>&1 &
+          preview_pid=$!
+          chrome_pid=""
+          chrome_path="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
+          cleanup() {
+            if [[ -n "$chrome_pid" ]]; then
+              kill "$chrome_pid" 2>/dev/null || true
+            fi
+            kill "$preview_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for _ in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:4173/ > /dev/null
+          "$chrome_path" \
+            --headless=new \
+            --remote-debugging-port=9333 \
+            --user-data-dir="$RUNNER_TEMP/cloudphoto-auth-chrome" \
+            --lang=en-US \
+            --disable-gpu \
+            --no-first-run \
+            --no-default-browser-check \
+            http://127.0.0.1:4173/ > "$RUNNER_TEMP/auth-chrome.log" 2>&1 &
+          chrome_pid=$!
+          yarn test:auth-layout-cdp
 
       - name: Verify workspace tab accessibility and contrast contracts
         run: yarn test:workspace-tabs
