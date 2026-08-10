@@ -268,6 +268,12 @@ function checkHashedAssets(configPath) {
   if (pwaInstallEntryChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred PWA install entry chunk");
   }
+  const privateMetadataChunks = assets.filter((asset) =>
+    /^idb-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (privateMetadataChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred private metadata cleanup chunk");
+  }
   const entryStylesheets = assets.filter((asset) =>
     /^index-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
   );
@@ -364,6 +370,9 @@ function checkHashedAssets(configPath) {
   }
   if (serviceWorker.includes(`assets/${basename(authenticatedStylesheets[0])}`)) {
     fail(configPath, "deferred AuthenticatedApp styles must not be downloaded by the precache");
+  }
+  if (!serviceWorker.includes(`assets/${basename(privateMetadataChunks[0])}`)) {
+    fail(configPath, "private metadata cleanup must remain available for offline logout");
   }
   if (!serviceWorker.includes("app-code-v1")) {
     fail(configPath, "service worker must cache deferred app chunks after first use");

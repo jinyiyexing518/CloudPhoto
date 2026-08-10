@@ -70,6 +70,7 @@ export default defineConfig({
         globPatterns: [
           "index.html",
           "assets/index-*.{js,css}",
+          "assets/idb-*.js",
           "assets/react-vendor-*.js",
           "assets/virtual_pwa-register-*.js",
           "assets/workbox-window*.js",

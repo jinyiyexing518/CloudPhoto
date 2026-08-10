@@ -418,6 +418,7 @@ assert(
 for (const pattern of [
   '"index.html"',
   '"assets/index-*.{js,css}"',
+  '"assets/idb-*.js"',
   '"assets/react-vendor-*.js"',
   '"assets/virtual_pwa-register-*.js"',
   '"assets/workbox-window*.js"',
