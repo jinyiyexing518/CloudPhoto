@@ -826,6 +826,7 @@ export default function FolderView({
           onShareCreated={onShareCreated}
           onThumbnailUpdate={onThumbnailUpdate}
           userName={userName}
+          locationRequestScope={contextKey}
         />
       )}
     </div>
@@ -864,6 +865,7 @@ interface ContentProps {
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
+  locationRequestScope: string;
 }
 
 function FolderContent({
@@ -896,6 +898,7 @@ function FolderContent({
   onShareCreated,
   onThumbnailUpdate,
   userName,
+  locationRequestScope,
 }: ContentProps) {
   const showToast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1618,6 +1621,7 @@ function FolderContent({
           onApplyBatchTime={() => void handleBatchSetTakenAt()}
           onCancelBatchTime={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}
           showBatchGpsEdit={showBatchGpsEdit}
+          locationRequestScope={locationRequestScope}
           onToggleBatchGpsEdit={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
           onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); return handleBatchSetGps(lat, lon); }}
           onCancelBatchGpsEdit={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
@@ -2228,6 +2232,7 @@ function FolderContent({
                           onSelect={(lat, lon) => void saveGps(lat, lon)}
                           onClose={() => setEditingGps(false)}
                           returnFocusRef={gpsEditButtonRef}
+                          requestScope={locationRequestScope}
                         />
                       )}
                     </span>
@@ -2254,6 +2259,7 @@ function FolderContent({
                           onSelect={(lat, lon) => void saveGps(lat, lon)}
                           onClose={() => setEditingGps(false)}
                           returnFocusRef={gpsEditButtonRef}
+                          requestScope={locationRequestScope}
                         />
                       )}
                     </span>

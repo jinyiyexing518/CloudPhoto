@@ -5408,6 +5408,18 @@ body {
   gap: 6px;
 }
 
+.location-search-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
+}
+
 .location-search-input {
   flex: 1;
   border: none;
@@ -5417,7 +5429,7 @@ body {
   background: transparent;
   padding: 4px 2px;
 }
-.location-search-input::placeholder { color: #9ca3af; }
+.location-search-input::placeholder { color: #5f6b7a; }
 
 .location-search-close {
   background: none;
@@ -5437,6 +5449,13 @@ body {
   color: #9ca3af;
   margin: 8px 12px;
   padding: 0;
+}
+.location-search-hint:empty { display: none; }
+
+.location-search-result:disabled,
+.location-search-coord-preview:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .location-search-results {

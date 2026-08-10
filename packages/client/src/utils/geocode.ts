@@ -16,10 +16,18 @@ export interface LocationSearchResult {
 
 const searchCache = new Map<string, LocationSearchResult[]>();
 
-export async function searchLocation(query: string): Promise<LocationSearchResult[]> {
+export async function searchLocation(
+  query: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<LocationSearchResult[]> {
   const normalized = query.trim();
   if (normalized.length < 2) return [];
   const snapshot = getAuthorizationSnapshot();
+  const generation = getAuthGeneration();
+  const authorizationIsCurrent = () => (
+    getAuthGeneration() === generation
+    && getAuthorizationSnapshot()?.cacheOwner === snapshot?.cacheOwner
+  );
   const cacheKey = `${snapshot?.cacheOwner ?? "anonymous"}:${normalized.toLocaleLowerCase()}`;
   const cached = searchCache.get(cacheKey);
   if (cached) return cached;
@@ -28,8 +36,9 @@ export async function searchLocation(query: string): Promise<LocationSearchResul
     try {
       const response = await fetchWithTimeout(
         `${API_BASE}/geocode/search?q=${encodeURIComponent(normalized)}`,
-        { headers: authHeadersForSnapshot(snapshot) },
+        { headers: authHeadersForSnapshot(snapshot), signal: options.signal },
       );
+      if (!authorizationIsCurrent() || options.signal?.aborted) return [];
       if (response.ok) {
         const data = await response.json() as Array<{
           displayName?: string;
@@ -47,18 +56,20 @@ export async function searchLocation(query: string): Promise<LocationSearchResul
               }]
             : []
         ));
-        if (results.length > 0) {
+        if (results.length > 0 && authorizationIsCurrent() && !options.signal?.aborted) {
           searchCache.set(cacheKey, results);
           return results;
         }
       }
     } catch {
+      if (options.signal?.aborted) return [];
       // The direct request below is the single fallback for an unavailable proxy.
     }
   }
 
+  if (options.signal?.aborted || !authorizationIsCurrent()) return [];
   try {
-    return await fetchWithDeadline(
+    const results = await fetchWithDeadline(
       fetch,
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(normalized)}&format=json&limit=6`,
       {
@@ -82,10 +93,13 @@ export async function searchLocation(query: string): Promise<LocationSearchResul
             lon,
           }];
         });
-        if (results.length > 0) searchCache.set(cacheKey, results);
         return results;
       },
+      options.signal,
     );
+    if (options.signal?.aborted || !authorizationIsCurrent()) return [];
+    if (results.length > 0) searchCache.set(cacheKey, results);
+    return results;
   } catch {
     return [];
   }

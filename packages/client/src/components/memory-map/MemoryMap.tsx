@@ -626,6 +626,7 @@ export default function MemoryMap({
                 onSelect={(lat, lon) => void saveGps(lat, lon)}
                 onClose={() => setShowLocationSearch(false)}
                 returnFocusRef={searchToggleRef}
+                requestScope={groupId ?? "personal"}
               />
             )}
 

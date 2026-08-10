@@ -32,6 +32,7 @@ export interface BatchOperationsBarProps {
 
   /** GPS-edit panel */
   showBatchGpsEdit: boolean;
+  locationRequestScope: string;
   onToggleBatchGpsEdit: () => void;
   onApplyBatchGps: (lat: string, lon: string) => Promise<boolean>;
   onCancelBatchGpsEdit: () => void;
@@ -73,6 +74,7 @@ export default function BatchOperationsBar({
   onApplyBatchTime,
   onCancelBatchTime,
   showBatchGpsEdit,
+  locationRequestScope,
   onToggleBatchGpsEdit,
   onApplyBatchGps,
   onCancelBatchGpsEdit,
@@ -207,6 +209,7 @@ export default function BatchOperationsBar({
             }}
             onClose={onCancelBatchGpsEdit}
             returnFocusRef={batchGpsButtonRef}
+            requestScope={locationRequestScope}
           />
         </div>
       )}

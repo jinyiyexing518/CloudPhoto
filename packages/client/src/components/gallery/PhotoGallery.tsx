@@ -1352,6 +1352,7 @@ function PhotoGallery({
         onApplyBatchTime={() => void handleBatchSetTakenAt()}
         onCancelBatchTime={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}
         showBatchGpsEdit={showBatchGpsEdit}
+        locationRequestScope={privateMomentsWorkspace ?? "personal"}
         onToggleBatchGpsEdit={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
         onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); return handleBatchSetGps(lat, lon); }}
         onCancelBatchGpsEdit={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
@@ -2112,6 +2113,7 @@ function PhotoGallery({
                               onSelect={(lat, lon) => void saveGps(lat, lon)}
                               onClose={() => setEditingGps(false)}
                               returnFocusRef={gpsEditButtonRef}
+                              requestScope={privateMomentsWorkspace ?? "personal"}
                             />
                           )}
                         </span>
@@ -2138,6 +2140,7 @@ function PhotoGallery({
                               onSelect={(lat, lon) => void saveGps(lat, lon)}
                               onClose={() => setEditingGps(false)}
                               returnFocusRef={gpsEditButtonRef}
+                              requestScope={privateMomentsWorkspace ?? "personal"}
                             />
                           )}
                         </span>

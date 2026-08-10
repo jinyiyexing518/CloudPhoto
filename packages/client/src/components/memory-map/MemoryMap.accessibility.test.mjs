@@ -46,7 +46,7 @@ test("map detail and GPS edit overlays use the shared modal boundary", async () 
   assert.match(locationSearch, /<button[\s\S]*className="location-search-coord-preview"/);
   assert.match(locationSearch, /<li[\s\S]*<button[\s\S]*className="location-search-result"/);
   assert.doesNotMatch(locationSearch, /<(?:div|li)[^>]*className="location-search-(?:coord-preview|result)"/);
-  assert.match(locationSearch, /className="location-search-panel" onKeyDown=\{handlePanelKeyDown\}/);
+  assert.match(locationSearch, /className="location-search-panel"[\s\S]*onKeyDown=\{handlePanelKeyDown\}/);
   assert.match(locationSearch, /e\.key === "Escape"[\s\S]*e\.stopPropagation\(\);[\s\S]*if \(saving\) return;[\s\S]*onClose\(\)[\s\S]*restoreTriggerFocus\(\)/);
   assert.match(locationSearch, /returnFocusRef\?\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
   assert.match(css, /\.location-search-result\s*\{[\s\S]*min-height:\s*44px/);
