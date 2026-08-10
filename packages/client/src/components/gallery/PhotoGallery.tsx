@@ -1296,6 +1296,7 @@ function PhotoGallery({
                 onClick={() => openModal(photo)}
                 onDelete={() => onDelete(photo.name)}
                 onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+                onThumbnailUpdate={onThumbnailUpdate}
               />
             ))}
           </div>
@@ -1313,6 +1314,7 @@ function PhotoGallery({
                 onClick={() => openModal(photo)}
                 onDelete={() => onDelete(photo.name)}
                 onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+                onThumbnailUpdate={onThumbnailUpdate}
               />
             ))}
           </div>
@@ -1493,6 +1495,7 @@ function PhotoGallery({
                     onClick={() => !selectMode && openModal(photo)}
                     onDelete={() => onDelete(photo.name)}
                     onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+                    onThumbnailUpdate={onThumbnailUpdate}
                     selected={selectMode ? selected.has(photo.name) : undefined}
                     onSelect={selectMode ? (e) => {
                       e.stopPropagation();

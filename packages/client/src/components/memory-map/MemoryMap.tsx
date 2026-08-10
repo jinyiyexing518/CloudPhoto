@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Photo, PhotoLocation, fetchPhotoLocations, updatePhotoGps } from "../../services/photoApi";
-import { fallbackMediaSource } from "../../services/mediaRoute";
 import MediaThumb from "../shared/MediaThumb";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 
@@ -328,18 +327,14 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
           <div className="memory-map-detail-card" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="memory-map-detail-close" onClick={() => setSelectedName(null)} aria-label="关闭照片位置详情">✕</button>
             {selected.photo ? (
-              <img
-                src={selected.photo.previewUrl ?? selected.photo.thumbnailUrl ?? selected.photo.url}
+              <MediaThumb
+                url={selected.photo.url}
+                thumbnailUrl={selected.photo.thumbnailUrl}
+                previewUrl={selected.photo.previewUrl}
                 alt={displayName(selected)}
+                contentType={selected.photo.contentType}
                 className="memory-map-detail-img"
                 loading="lazy"
-                onError={(event) => {
-                  fallbackMediaSource(event.currentTarget, [
-                    selected.photo?.previewUrl,
-                    selected.photo?.thumbnailUrl,
-                    selected.photo?.url,
-                  ]);
-                }}
               />
             ) : (
               <div className="memory-map-detail-img memory-map-detail-img--placeholder">📷</div>

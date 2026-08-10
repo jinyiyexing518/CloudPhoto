@@ -1546,6 +1546,7 @@ function FolderContent({
             onClick={() => !selectMode && openModal(photo)}
             onDelete={() => onDelete(photo.name)}
             onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+            onThumbnailUpdate={onThumbnailUpdate}
             onMoveRequest={!selectMode ? () => {
               setQuickMovePhoto(photo);
               setQuickMoveTo(MOVE_UNSELECTED);

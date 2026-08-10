@@ -14,7 +14,9 @@
  *   wrapClass     — wraps video+badge in <span className={wrapClass}>
  *   loading       — lazy (default) | eager
  */
+import { useEffect, useState } from "react";
 import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
+import { isLowInformationVideoCoverImage } from "../../services/videoCoverRepair";
 
 interface Props {
   url: string;
@@ -47,6 +49,9 @@ export default function MediaThumb({
     ? derivativeSources
     : [getPreferredMediaUrl(url)];
 
+  const [videoPosterFailed, setVideoPosterFailed] = useState(false);
+  useEffect(() => setVideoPosterFailed(false), [thumbnailUrl, previewUrl]);
+
   if (!isVideo) {
     return (
       <img
@@ -62,16 +67,28 @@ export default function MediaThumb({
 
   // Video with a pre-generated thumbnail image: render as <img> + badge.
   // This avoids downloading ANY video data on mount.
-  const videoPoster = derivativeSources[0];
+  const videoPoster = videoPosterFailed ? undefined : derivativeSources[0];
   if (videoPoster) {
     const img = (
       <img
         src={videoPoster}
+        crossOrigin="anonymous"
         alt={alt}
         className={className}
         loading={priority ? "eager" : loading}
         fetchPriority={priority ? "high" : "auto"}
-        onError={(event) => { fallbackMediaSource(event.currentTarget, imageSources); }}
+        onLoad={(event) => {
+          if (isLowInformationVideoCoverImage(event.currentTarget) === true) {
+            if (!fallbackMediaSource(event.currentTarget, imageSources)) {
+              setVideoPosterFailed(true);
+            }
+          }
+        }}
+        onError={(event) => {
+          if (!fallbackMediaSource(event.currentTarget, imageSources)) {
+            setVideoPosterFailed(true);
+          }
+        }}
       />
     );
     const badge = <span className="photo-video-badge">▶</span>;
@@ -83,8 +100,11 @@ export default function MediaThumb({
     <span
       className={[className, "video-thumb-placeholder"].filter(Boolean).join(" ")}
       role="img"
-      aria-label={alt || "视频封面暂不可用"}
-    />
+      aria-label={alt ? `${alt}，打开视频后生成封面` : "打开视频后生成封面"}
+    >
+      <span className="video-thumb-placeholder-icon" aria-hidden="true">▶</span>
+      <span className="video-thumb-placeholder-text">打开视频后生成封面</span>
+    </span>
   );
   const badge = <span className="photo-video-badge">▶</span>;
   if (wrapClass) return <span className={wrapClass}>{placeholder}{badge}</span>;

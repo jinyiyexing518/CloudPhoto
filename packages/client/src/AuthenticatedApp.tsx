@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import "./authenticated.css";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
@@ -1488,6 +1488,10 @@ function AppContent() {
               videoTakenAt,
               uploadId,
             );
+            const uploadedVideoNeedsThumbnail = valid[i].type.startsWith("video/");
+            if (uploadedVideoNeedsThumbnail) {
+              markVideoThumbnailPersistencePending(uploadedPhoto.name, true);
+            }
             // Immediately add the uploaded photo so the folder view refreshes live
             if (
               !batchController.signal.aborted
@@ -1498,28 +1502,38 @@ function AppContent() {
 
             // The local frame was prepared while the original uploaded. Persist it
             // only after the server has created the original blob.
-            if (valid[i].type.startsWith("video/")) {
+            if (uploadedVideoNeedsThumbnail) {
               void (async () => {
-                const thumb = await videoThumbnailPromise;
-                if (!thumb) return;
-                if (
-                  uploadAuthGeneration !== getAuthGeneration()
-                  || currentGroupIdRef.current !== uploadWorkspaceId
-                ) return;
-                const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumb);
-                if (
-                  thumbnailUrl
-                  && uploadAuthGeneration === getAuthGeneration()
-                  && currentGroupIdRef.current === uploadWorkspaceId
-                ) {
-                  mutatePhotos(prev => prev.map(p =>
-                    p.name === uploadedPhoto.name
-                      ? {
-                          ...p,
-                          thumbnailUrl: selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl),
-                        }
-                      : p,
-                  ));
+                let persistedThumbnailUrl: string | null = null;
+                try {
+                  const thumb = await videoThumbnailPromise;
+                  if (!thumb) return;
+                  if (
+                    uploadAuthGeneration !== getAuthGeneration()
+                    || currentGroupIdRef.current !== uploadWorkspaceId
+                  ) return;
+                  const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumb);
+                  persistedThumbnailUrl = thumbnailUrl;
+                  if (
+                    thumbnailUrl
+                    && uploadAuthGeneration === getAuthGeneration()
+                    && currentGroupIdRef.current === uploadWorkspaceId
+                  ) {
+                    mutatePhotos(prev => prev.map(p =>
+                      p.name === uploadedPhoto.name
+                        ? {
+                            ...p,
+                            thumbnailUrl: selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl),
+                          }
+                        : p,
+                    ));
+                  }
+                } finally {
+                  markVideoThumbnailPersistencePending(
+                    uploadedPhoto.name,
+                    false,
+                    persistedThumbnailUrl ?? undefined,
+                  );
                 }
               })().catch(() => { /* best-effort */ });
             }

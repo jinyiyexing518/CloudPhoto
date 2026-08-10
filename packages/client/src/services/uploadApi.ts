@@ -264,6 +264,56 @@ export function extractVideoThumbnail(file: File): Promise<Blob | null> {
 }
 
 const persistedPlaybackThumbnails = new Set<string>();
+const pendingVideoThumbnailPersistence = new Set<string>();
+const videoThumbnailWrites = new Map<string, Promise<string | null>>();
+const videoThumbnailPersistenceListeners = new Set<
+  (blobName: string, pending: boolean, thumbnailUrl?: string) => void
+>();
+
+export function markVideoThumbnailPersistencePending(
+  blobName: string,
+  pending: boolean,
+  thumbnailUrl?: string,
+): void {
+  if (pending) pendingVideoThumbnailPersistence.add(blobName);
+  else pendingVideoThumbnailPersistence.delete(blobName);
+  for (const listener of videoThumbnailPersistenceListeners) {
+    listener(blobName, pending, thumbnailUrl);
+  }
+}
+
+export function isVideoThumbnailPersistencePending(blobName: string): boolean {
+  return pendingVideoThumbnailPersistence.has(blobName);
+}
+
+export function subscribeToVideoThumbnailPersistence(
+  listener: (blobName: string, pending: boolean, thumbnailUrl?: string) => void,
+): () => void {
+  videoThumbnailPersistenceListeners.add(listener);
+  return () => videoThumbnailPersistenceListeners.delete(listener);
+}
+
+export async function extractVideoElementThumbnail(
+  video: HTMLVideoElement,
+): Promise<Blob | null> {
+  if (
+    video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+    || video.videoWidth <= 0
+    || video.videoHeight <= 0
+  ) {
+    return null;
+  }
+  const scale = Math.min(1, VIDEO_THUMB_WIDTH / video.videoWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/webp", VIDEO_THUMB_QUALITY);
+  });
+}
 
 /**
  * Persists the first frame this session that the user has already loaded
@@ -287,16 +337,7 @@ export async function persistVideoPlaybackThumbnail(
   let persisted = false;
 
   try {
-    const scale = Math.min(1, VIDEO_THUMB_WIDTH / video.videoWidth);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
-    const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const thumbnail = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, "image/webp", VIDEO_THUMB_QUALITY);
-    });
+    const thumbnail = await extractVideoElementThumbnail(video);
     if (!thumbnail) return null;
     const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail);
     persisted = Boolean(thumbnailUrl);
@@ -316,21 +357,33 @@ export async function setVideoThumbnail(
   blobName: string,
   thumbnail: Blob,
 ): Promise<string | null> {
+  const existing = videoThumbnailWrites.get(blobName);
+  if (existing) return existing;
+  const write = (async () => {
+    try {
+      const params = new URLSearchParams({ blobName });
+      const res = await fetchWithTimeout(
+        `${API_BASE}/photos/set-thumbnail?${params}`,
+        {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "image/webp" }),
+          body: thumbnail,
+        },
+        30_000,
+      );
+      if (!res.ok) return null;
+      const json = await res.json() as { thumbnailUrl?: string };
+      return json.thumbnailUrl ? getPreferredMediaUrl(json.thumbnailUrl) : null;
+    } catch {
+      return null;
+    }
+  })();
+  videoThumbnailWrites.set(blobName, write);
   try {
-    const params = new URLSearchParams({ blobName });
-    const res = await fetchWithTimeout(
-      `${API_BASE}/photos/set-thumbnail?${params}`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "image/webp" }),
-        body: thumbnail,
-      },
-      30_000,
-    );
-    if (!res.ok) return null;
-    const json = await res.json() as { thumbnailUrl?: string };
-    return json.thumbnailUrl ? getPreferredMediaUrl(json.thumbnailUrl) : null;
-  } catch {
-    return null;
+    return await write;
+  } finally {
+    if (videoThumbnailWrites.get(blobName) === write) {
+      videoThumbnailWrites.delete(blobName);
+    }
   }
 }

@@ -3,6 +3,10 @@ import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { BLANK_GIF } from "@cloudphoto/algorithm";
 import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
+import {
+  isLowInformationVideoCoverImage,
+  useVideoCoverRepair,
+} from "../../services/videoCoverRepair";
 
 interface Props {
   photo: Photo;
@@ -18,6 +22,7 @@ interface Props {
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
   priority?: boolean;
+  onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
 }
 
 function PhotoCard({
@@ -33,6 +38,7 @@ function PhotoCard({
   onDragStart,
   onDragEnd,
   priority = false,
+  onThumbnailUpdate,
 }: Props) {
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
@@ -53,8 +59,12 @@ function PhotoCard({
       : [originalImageUrl];
   const lowDataImageSrc = lowDataImageSources[0] ?? BLANK_GIF;
   const staticAnimatedSrc = derivativeImageSources[0] ?? BLANK_GIF;
-  const videoPosterSources = derivativeImageSources;
-  const videoPosterSrc = derivativeImageSources[0];
+  const { targetRef: videoRepairTargetRef, state: videoRepairState, markDerivativeBroken } =
+    useVideoCoverRepair(photo);
+  const videoPosterSources = videoRepairState.thumbnailUrl
+    ? [videoRepairState.thumbnailUrl]
+    : derivativeImageSources;
+  const videoPosterSrc = videoPosterSources[0];
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -65,10 +75,22 @@ function PhotoCard({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
+  const publishedRepairUrlRef = useRef<string | null>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
   // Video cards render only server-persisted derivatives. Missing or broken
   // derivatives stay as a local placeholder until the user opens playback.
   const useVideoThumb = isVideo && !!videoPosterSrc && !videoThumbFailed;
+
+  useEffect(() => {
+    const repairedUrl = videoRepairState.thumbnailUrl;
+    if (!repairedUrl || publishedRepairUrlRef.current === repairedUrl) return;
+    publishedRepairUrlRef.current = repairedUrl;
+    onThumbnailUpdate?.(photo.name, repairedUrl);
+  }, [onThumbnailUpdate, photo.name, videoRepairState.thumbnailUrl]);
+
+  useEffect(() => {
+    publishedRepairUrlRef.current = null;
+  }, [photo.name]);
 
   // For video thumbnails served as <img>: if the image is already cached the browser
   // may fire onLoad synchronously before React attaches the handler, so we check
@@ -76,12 +98,23 @@ function PhotoCard({
   useEffect(() => {
     const el = videoThumbImgRef.current;
     if (useVideoThumb && el?.complete && el.naturalWidth > 0) {
+      if (isLowInformationVideoCoverImage(el) === true) {
+        if (fallbackMediaSource(el, videoPosterSources)) {
+          setImgLoaded(false);
+          return;
+        }
+        setVideoThumbFailed(true);
+        setImgLoaded(false);
+        markDerivativeBroken();
+        return;
+      }
       setImgLoaded(true);
     }
-  }, [useVideoThumb, videoPosterSrc]);
+  }, [markDerivativeBroken, useVideoThumb, videoPosterSrc]);
 
   useEffect(() => {
     setVideoThumbFailed(false);
+    setImgLoaded(false);
   }, [videoPosterSrc]);
 
   // Same safety net for animated images (GIFs / motion photos).
@@ -137,30 +170,61 @@ function PhotoCard({
             {selected ? "✓" : ""}
           </div>
         )}
-        <div className="photo-thumbnail" onClick={interactionDisabled ? undefined : (onSelect ?? onClick)}>
+        <div
+          ref={videoRepairTargetRef}
+          className="photo-thumbnail"
+          onClick={interactionDisabled ? undefined : (onSelect ?? onClick)}
+        >
           {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
           {useVideoThumb ? (
             <img
               ref={videoThumbImgRef}
+              crossOrigin="anonymous"
               src={videoPosterSrc}
               alt={displayName}
               loading={priority ? "eager" : "lazy"}
               fetchPriority={priority ? "high" : "auto"}
               className={imgLoaded ? "img-loaded" : "img-loading"}
-              onLoad={() => setImgLoaded(true)}
+              onLoad={(event) => {
+                if (isLowInformationVideoCoverImage(event.currentTarget) === true) {
+                  if (fallbackMediaSource(event.currentTarget, videoPosterSources)) {
+                    setImgLoaded(false);
+                    return;
+                  }
+                  setVideoThumbFailed(true);
+                  setImgLoaded(false);
+                  markDerivativeBroken();
+                  return;
+                }
+                setImgLoaded(true);
+              }}
               onError={(e) => {
                 if (!fallbackMediaSource(e.currentTarget, videoPosterSources)) {
                   setVideoThumbFailed(true);
                   setImgLoaded(false);
+                  markDerivativeBroken();
                 }
               }}
             />
           ) : isVideo ? (
-            <div
-              className="video-thumb-placeholder"
-              role="img"
-              aria-label={`${displayName} 的视频封面暂不可用`}
-            />
+           <button
+             type="button"
+             className="video-thumb-placeholder"
+             aria-label={`${displayName}，打开视频后生成封面`}
+             onClick={(event) => {
+               event.stopPropagation();
+               if (interactionDisabled) return;
+               if (onSelect) onSelect(event);
+               else onClick();
+             }}
+           >
+             <span className="video-thumb-placeholder-icon" aria-hidden="true">▶</span>
+             <span className="video-thumb-placeholder-text" aria-live="polite">
+               {videoRepairState.phase === "queued" || videoRepairState.phase === "repairing"
+                 ? "正在生成封面"
+                 : "打开视频后生成封面"}
+             </span>
+           </button>
           ) : isMotionPhoto ? (
             <img
               ref={gifImgRef}

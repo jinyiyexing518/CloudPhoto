@@ -65,8 +65,12 @@ export {
   uploadPhoto,
   uploadPhotoWithProgress,
   extractVideoThumbnail,
+  extractVideoElementThumbnail,
+  isVideoThumbnailPersistencePending,
+  markVideoThumbnailPersistencePending,
   persistVideoPlaybackThumbnail,
   setVideoThumbnail,
+  subscribeToVideoThumbnailPersistence,
 } from "./uploadApi";
 export type { ManagedShareLink, MomentInsight } from "./shareApi";
 export { ManagedMomentsUnavailableError, createPhotoShareLink, createFolderShareLink, listManagedShareLinks, updateManagedShareLink } from "./shareApi";
