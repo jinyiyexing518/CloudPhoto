@@ -54,8 +54,8 @@
 ### 渲染优化
 
 - **鉴权后加载图库** — `PhotoGallery` 及其批量操作、位置搜索等依赖拆为独立动态 chunk；未登录首屏入口从 179.82 kB 降至 120.83 kB（约 -33%，gzip 56.41 kB → 38.57 kB），登录成功后立即与照片请求并行预载
-- **认证工作区整体分包** — `App.tsx` 只保留鉴权门与恢复 UI，2,200 行工作区迁入 `AuthenticatedApp.tsx`；入口进一步从 120.83 kB 降至 36.39 kB（约 -70%，相对原始入口约 -80%），已有 token 与登录/注册提交都会提前并行下载
-- **PWA 最小首装缓存** — Workbox 从预缓存全部 894.44 KiB 资源改为只安装 306.93 KiB 应用壳（约 -66%）；动态功能 chunk 首次访问后进入 `app-code-v1` CacheFirst 缓存，兼顾首屏带宽与后续离线复用
+- **认证工作区整体分包** — `App.tsx` 只保留鉴权门与恢复 UI，2,200 行工作区迁入 `AuthenticatedApp.tsx`；入口进一步从 120.83 kB 降至 36.21 kB（约 -70%，gzip 12.82 kB，相对原始入口约 -80%），已有 token 与登录/注册提交都会提前并行下载
+- **PWA 最小首装缓存** — Workbox 从预缓存全部 894.44 KiB 资源改为只安装 306.94 KiB 应用壳（约 -66%）；动态功能 chunk 首次访问后进入 `app-code-v1` CacheFirst 缓存，兼顾首屏带宽与后续离线复用
 - **Service Worker 私有媒体缓存**
   - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），媒体缓存既要减少同一会话重复下载，也不能跨越账号授权边界
   - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  

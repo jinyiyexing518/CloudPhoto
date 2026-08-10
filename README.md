@@ -626,7 +626,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 
 - Vite 生成的 `/assets/*` 内容哈希文件缓存一年并标记 `immutable`
 - SPA shell、Service Worker 和注册入口每次重验证，确保 PWA 能发现新版本
-- Service Worker 首装只预缓存 HTML、入口 JS/CSS、React 与注册运行时（306.93 KiB）；工作区与图库等动态 chunk 首次使用后进入 `app-code-v1`，不再把 894.44 KiB 全站资源与登录页并发下载
+- Service Worker 首装只预缓存 HTML、入口 JS/CSS、React 与注册运行时（306.94 KiB）；工作区与图库等动态 chunk 首次使用后进入 `app-code-v1`，不再把 894.44 KiB 全站资源与登录页并发下载
 - manifest、静态图标与 `changelog.json` 使用短缓存并重验证；`.webmanifest` 明确返回 `application/manifest+json`
 - `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
 - `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖

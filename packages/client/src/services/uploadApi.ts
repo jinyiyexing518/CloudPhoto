@@ -22,6 +22,9 @@ import {
 import type { Photo } from "./photoApi";
 import { getPreferredMediaUrl, routeMediaUrls } from "./mediaRoute";
 
+const VIDEO_THUMB_WIDTH = 400;
+const VIDEO_THUMB_QUALITY = 0.75;
+
 function proxyPhoto(photo: Photo): Photo {
   const routed = routeMediaUrls(photo);
   return {
@@ -217,7 +220,7 @@ export async function uploadPhotoWithProgress(
 
 /**
  * Extracts a thumbnail frame from a video File using an off-screen <video> + canvas.
- * Seeks to min(2 s, 10% of duration) — same logic as PhotoCard's preview seek.
+ * Seeks to min(2 s, 10% of duration) before upload, while the local File is available.
  * Returns a 400 px-wide WebP Blob, or null if extraction fails / times out.
  */
 export function extractVideoThumbnail(file: File): Promise<Blob | null> {
@@ -232,8 +235,8 @@ export function extractVideoThumbnail(file: File): Promise<Blob | null> {
 
     const drawFrame = () => {
       try {
-        const scale = Math.min(1, 400 / (video.videoWidth || 400));
-        const w = Math.round((video.videoWidth || 400) * scale);
+        const scale = Math.min(1, VIDEO_THUMB_WIDTH / (video.videoWidth || VIDEO_THUMB_WIDTH));
+        const w = Math.round((video.videoWidth || VIDEO_THUMB_WIDTH) * scale);
         const h = Math.round((video.videoHeight || 300) * scale);
         const canvas = document.createElement("canvas");
         canvas.width = w;
@@ -241,7 +244,7 @@ export function extractVideoThumbnail(file: File): Promise<Blob | null> {
         const ctx = canvas.getContext("2d");
         if (!ctx) { cleanup(); resolve(null); return; }
         ctx.drawImage(video, 0, 0, w, h);
-        canvas.toBlob((blob) => { cleanup(); resolve(blob); }, "image/webp", 0.75);
+        canvas.toBlob((blob) => { cleanup(); resolve(blob); }, "image/webp", VIDEO_THUMB_QUALITY);
       } catch { cleanup(); resolve(null); }
     };
 
@@ -258,6 +261,51 @@ export function extractVideoThumbnail(file: File): Promise<Blob | null> {
     // Hard timeout so we never stall the upload queue
     setTimeout(() => { cleanup(); resolve(null); }, 15_000);
   });
+}
+
+const persistedPlaybackThumbnails = new Set<string>();
+
+/**
+ * Persists the first frame this session that the user has already loaded
+ * through the video player, repairing missing or stale derivative metadata.
+ * This never starts or seeks playback and therefore adds no original-video
+ * request; failures (including a CORS-tainted canvas) remain best-effort.
+ */
+export async function persistVideoPlaybackThumbnail(
+  blobName: string,
+  video: HTMLVideoElement,
+): Promise<string | null> {
+  if (
+    persistedPlaybackThumbnails.has(blobName)
+    || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+    || video.videoWidth <= 0
+    || video.videoHeight <= 0
+  ) {
+    return null;
+  }
+  persistedPlaybackThumbnails.add(blobName);
+  let persisted = false;
+
+  try {
+    const scale = Math.min(1, VIDEO_THUMB_WIDTH / video.videoWidth);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const thumbnail = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/webp", VIDEO_THUMB_QUALITY);
+    });
+    if (!thumbnail) return null;
+    const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail);
+    persisted = Boolean(thumbnailUrl);
+    return thumbnailUrl;
+  } catch {
+    return null;
+  } finally {
+    if (!persisted) persistedPlaybackThumbnails.delete(blobName);
+  }
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   updatePhotoGps,
   fetchMotionVideoBlob,
   getViewerSrc,
+  persistVideoPlaybackThumbnail,
 } from "../../services/photoApi";
 import { DEFAULT_PAGE_SIZE, SCROLL_SENTINEL_MARGIN } from "@cloudphoto/algorithm";
 import { addRecentShareLink } from "../../services/share/shareLinksStore";
@@ -44,6 +45,7 @@ interface Props {
   onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onShareCreated?: (photoName: string) => void;
+  onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
   showMemoryHighlights?: boolean;
   showImportantMoments?: boolean;
@@ -293,6 +295,7 @@ function PhotoGallery({
   onDownloadStateChange,
   onMomentsCountChange,
   onShareCreated,
+  onThumbnailUpdate,
   userName,
   showMemoryHighlights = true,
   showImportantMoments = false,
@@ -1465,13 +1468,26 @@ function PhotoGallery({
                 <div className="modal-video-wrap">
                   <video
                     key={`${selectedPhoto.url}:${videoRetryKey}`}
+                    crossOrigin="anonymous"
                     src={selectedPhoto.url}
+                    poster={selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl}
                     className="modal-image modal-video"
                     controls
                     playsInline
                     preload="none"
                     onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
-                    onPlaying={() => setVideoBuffering(false)}
+                    onPlaying={(event) => {
+                      setVideoBuffering(false);
+                      const photoName = selectedPhoto.name;
+                      void persistVideoPlaybackThumbnail(photoName, event.currentTarget)
+                        .then((thumbnailUrl) => {
+                          if (!thumbnailUrl) return;
+                          onThumbnailUpdate?.(photoName, thumbnailUrl);
+                          setSelectedPhoto((current) => current?.name === photoName
+                            ? { ...current, thumbnailUrl }
+                            : current);
+                        });
+                    }}
                     onWaiting={() => setVideoBuffering(true)}
                     onError={(event) => {
                       if (fallbackMediaSource(event.currentTarget, [selectedPhoto.url])) {

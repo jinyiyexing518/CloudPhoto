@@ -1231,7 +1231,7 @@ function AppContent() {
             }
 
             // For videos: extract a thumbnail frame client-side and persist it.
-            // Fire-and-forget — failure is non-fatal, card falls back to <video> seek.
+            // Fire-and-forget — failure is non-fatal; the card keeps a local placeholder.
             if (valid[i].type.startsWith("video/")) {
               extractVideoThumbnail(valid[i]).then(async (thumb) => {
                 if (!thumb) return;
@@ -1392,6 +1392,14 @@ function AppContent() {
       prev.map((p) => (p.name === name ? { ...p, originalName: newOriginalName } : p))
     );
   };
+
+  const handleThumbnailUpdate = useCallback((name: string, thumbnailUrl: string) => {
+    mutatePhotos((previous) => previous.map((photo) =>
+      photo.name === name
+        ? { ...photo, thumbnailUrl: selectFresherMediaUrl(photo.thumbnailUrl, thumbnailUrl) }
+        : photo
+    ));
+  }, [mutatePhotos]);
 
   const handleMomentShareCreated = (photoName: string) => {
     setMomentsShareViews((prev) => ({
@@ -2042,6 +2050,7 @@ function AppContent() {
                       onMovePhoto={handleMovePhoto}
                       onDownloadStateChange={setDownloading}
                       onShareCreated={handleMomentShareCreated}
+                      onThumbnailUpdate={handleThumbnailUpdate}
                       userName={user?.displayName}
                       showImportantMoments={false}
                       reverseOrder={photoSortAsc}
@@ -2071,6 +2080,7 @@ function AppContent() {
                   onMovePhoto={handleMovePhoto}
                   onDownloadStateChange={setDownloading}
                   onShareCreated={handleMomentShareCreated}
+                  onThumbnailUpdate={handleThumbnailUpdate}
                   userName={user?.displayName}
                   showMemoryHighlights={false}
                   showImportantMoments={false}
@@ -2101,6 +2111,7 @@ function AppContent() {
                 onRenameFolder={handleRenameFolder}
                 onDownloadStateChange={setDownloading}
                 onShareCreated={handleMomentShareCreated}
+                onThumbnailUpdate={handleThumbnailUpdate}
                 userName={user?.displayName}
                 currentGroupId={currentGroupId || undefined}
                 contextKey={currentGroupId || "personal"}

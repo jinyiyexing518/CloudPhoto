@@ -14,6 +14,7 @@ import {
   updatePhotoGps,
   fetchMotionVideoBlob,
   getViewerSrc,
+  persistVideoPlaybackThumbnail,
 } from "../../services/photoApi";
 import { addRecentShareLink } from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
@@ -214,6 +215,7 @@ interface Props {
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onShareCreated?: (photoName: string) => void;
+  onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
   currentGroupId?: string;
   /** Unique key for localStorage persistence (e.g. groupId or "personal") */
@@ -237,6 +239,7 @@ export default function FolderView({
   onRenameFolder,
   onDownloadStateChange,
   onShareCreated,
+  onThumbnailUpdate,
   userName,
   currentGroupId,
   contextKey = "personal",
@@ -675,6 +678,7 @@ export default function FolderView({
           onBatchDelete={onBatchDelete}
           onDownloadStateChange={onDownloadStateChange}
           onShareCreated={onShareCreated}
+          onThumbnailUpdate={onThumbnailUpdate}
           userName={userName}
         />
       )}
@@ -708,6 +712,7 @@ interface ContentProps {
   onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onShareCreated?: (photoName: string) => void;
+  onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
 }
 
@@ -735,6 +740,7 @@ function FolderContent({
   onBatchDelete,
   onDownloadStateChange,
   onShareCreated,
+  onThumbnailUpdate,
   userName,
 }: ContentProps) {
   const showToast = useToast();
@@ -1470,13 +1476,26 @@ function FolderContent({
                 <div className="modal-video-wrap">
                   <video
                     key={`${selectedPhoto.url}:${videoRetryKey}`}
+                    crossOrigin="anonymous"
                     src={selectedPhoto.url}
+                    poster={selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl}
                     className="modal-image modal-video"
                     controls
                     playsInline
                     preload="none"
                     onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
-                    onPlaying={() => setVideoBuffering(false)}
+                    onPlaying={(event) => {
+                      setVideoBuffering(false);
+                      const photoName = selectedPhoto.name;
+                      void persistVideoPlaybackThumbnail(photoName, event.currentTarget)
+                        .then((thumbnailUrl) => {
+                          if (!thumbnailUrl) return;
+                          onThumbnailUpdate?.(photoName, thumbnailUrl);
+                          setSelectedPhoto((current) => current?.name === photoName
+                            ? { ...current, thumbnailUrl }
+                            : current);
+                        });
+                    }}
                     onWaiting={() => setVideoBuffering(true)}
                     onError={(event) => {
                       if (fallbackMediaSource(event.currentTarget, [selectedPhoto.url])) {

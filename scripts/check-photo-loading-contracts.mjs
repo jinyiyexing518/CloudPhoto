@@ -25,7 +25,9 @@ const photoApi = read("packages/client/src/services/photoApi.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
 const gallery = read("packages/client/src/components/gallery/PhotoGallery.tsx");
+const folder = read("packages/client/src/components/gallery/FolderView.tsx");
 const photoCard = read("packages/client/src/components/gallery/PhotoCard.tsx");
+const mediaThumb = read("packages/client/src/components/shared/MediaThumb.tsx");
 const vite = read("packages/client/vite.config.mts");
 const nginx = read("infra/nginx.conf");
 const setup = read("infra/setup.sh");
@@ -172,6 +174,13 @@ requireText(photoApi, "previousExpiry >= nextExpiry", "non-regressing SAS reuse"
 requireText(photoApi, "export function selectFresherMediaUrl", "shared media freshness merge");
 requireText(photoApi, "mediaResourcePath(previousUrl) === mediaResourcePath(nextUrl)", "same-resource SAS reuse");
 requireText(photoApi, "authGeneration !== getAuthGeneration()", "account-bound backfill loop");
+const listPhotosSource = photoApi.slice(
+  photoApi.indexOf("export async function listPhotos"),
+  photoApi.indexOf("export async function fetchPhotoLocations"),
+);
+assert(!listPhotosSource.includes("await selectFastestMediaRoute"), "cold photo-list paint must not await media probing");
+requireText(listPhotosSource, "photo.thumbnailUrl || photo.previewUrl", "derivative-first route probe sample");
+requireText(listPhotosSource, "void selectFastestMediaRoute", "background media route probe");
 
 // Workbox may cache only full, verifiable GET 200 responses.
 requireText(vite, 'request.method === "GET"', "media request method");
@@ -197,11 +206,23 @@ requireText(vite, 'url.pathname.startsWith("/assets/")', "on-demand app chunk ro
 requireText(vite, "matchOptions: { ignoreSearch: false }", "account-safe SAS cache key");
 requireText(vite, "maxAgeSeconds: 60 * 60", "SAS-bounded Workbox freshness");
 assert(!vite.includes("ignoreSearch: true"), "private media cache must retain SAS authorization");
-requireText(photoCard, "if (res.status === 206)", "bounded video Range body");
-assert(!photoCard.includes("res.status === 206 || res.ok"), "Range fallback must not buffer a full video");
-requireText(photoCard, "controller.abort();", "unmounted video Range cancellation");
-requireText(photoCard, "if (disposed)", "late video object URL disposal");
+assert(!photoCard.includes("<video"), "gallery cards must never create original-video elements");
+assert(!photoCard.includes("fetchMediaWithFallback"), "gallery cards must never fetch original-video ranges");
+assert(!photoCard.includes("Range:"), "gallery cards must not request video bytes");
+assert(!mediaThumb.includes("<video"), "secondary grids must never create original-video elements");
+requireText(photoCard, 'className="video-thumb-placeholder"', "missing video derivative placeholder");
+requireText(mediaThumb, '"video-thumb-placeholder"', "shared missing video derivative placeholder");
 requireText(photoCard, ".filter((source): source is string => Boolean(source))", "preview-only source normalization");
+for (const [name, source] of [["timeline playback", gallery], ["folder playback", folder]]) {
+ requireText(source, 'preload="none"', `${name} remains on demand`);
+ requireText(source, "persistVideoPlaybackThumbnail", `${name} thumbnail persistence`);
+ requireText(source, 'poster={selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl}', `${name} static poster`);
+ assert(!source.includes("if (selectedPhoto.thumbnailUrl) return;"), `${name} must repair stale thumbnail metadata`);
+}
+requireText(uploadApi, "video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA", "already-loaded playback frame guard");
+requireText(uploadApi, "const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail)", "playback thumbnail endpoint reuse");
+requireText(uploadApi, "if (!persisted) persistedPlaybackThumbnails.delete(blobName)", "failed playback thumbnail retry");
+requireText(app, "onThumbnailUpdate={handleThumbnailUpdate}", "persisted playback thumbnail grid publication");
 
 // Route probes and fallback are finite, body-free, bounded, and cancel losers.
 requireText(media, 'method: "HEAD"', "body-free media probe");
@@ -296,6 +317,13 @@ requireText(backfillCursor, "export const BACKFILL_PAGE_SIZE = 200", "shared bou
 requireText(backfillCursor, "value.context !== expectedContext", "scope-bound backfill cursor");
 requireText(backfill, "storedThumbName !== thumbName", "matching thumbnail metadata");
 requireText(backfill, "storedPreviewName !== previewName", "matching preview metadata");
+requireText(backfill, "const needsPreview = !isVideo", "video preview generation exclusion");
+const missingVideoThumbnailSkip = backfill.indexOf("if (isVideo && !thumbExists)");
+assert(missingVideoThumbnailSkip >= 0, "video backfill must recognize missing derivatives");
+assert(
+  missingVideoThumbnailSkip < backfill.indexOf("const getSourceBuffer"),
+  "video backfill must skip before any original body download",
+);
 requireText(setVideoThumb, "MAX_THUMBNAIL_BYTES", "bounded thumbnail upload");
 requireText(upload, "await isGroupMember(groupId, payload.userId)", "group upload authorization");
 requireText(upload, 'request.query.get("uploadId")', "upload idempotency key");
@@ -343,6 +371,7 @@ assert.equal(allowedOrigin("https://attacker.example"), "");
 
 console.log("photo-loading contracts: PASS");
 console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=60000");
+console.log("evidence video-grid-original-requests=0 video-grid-original-bytes=0 cold-list-route-wait-ms=0 playback-video-load=on-demand");
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
 console.log("evidence range-sw-cache=false range-body-requires-206=true cache-statuses=200 private-list-max=24 private-max-age-s=3600");
 console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 logout-private-caches=3 logout-write-drain=true");
