@@ -150,6 +150,16 @@
     "seq": 1786377601000
   },
   {
+    "id": "2026-08-10-memory-map-accessibility",
+    "date": "2026-08-10",
+    "icon": "🗺️",
+    "title": "补齐记忆地图键盘与触控访问",
+    "type": "fix",
+    "desc": "地图标记、照片详情和位置编辑现在具备完整名称、44px 命中区、键盘操作与安全焦点回归。",
+    "details": "Leaflet 标记保持 22px 视觉圆点和原地理锚点，同时将真实交互元素扩大为 44×44px，使用照片显示名而非 URL 作为 aria-label/title，并支持 Tab、Enter、Space、focus-visible 和完整 listener 清理。照片位置详情与 GPS 编辑均通过 body portal 和共享 stacked modal boundary 提供 dialog/aria-modal/labelledby、初始焦点、动态 Tab/Shift+Tab、Escape、背景关闭与 connected-only 回焦；保存中阻止关闭，失败保留编辑状态，空间切换丢弃迟到回调。搜索结果改为原生按钮，所有手动坐标入口共用严格 finite/range parser，拒绝 91/181 与 partial 数值。320/390px 和 200% zoom 下保留 44px 控件且不改变地图坐标。已登录 Header 安装入口保持移除。",
+    "seq": 1786377600001
+  },
+  {
     "id": "2026-08-10-upload-throughput-backpressure",
     "date": "2026-08-10",
     "icon": "⬆️",

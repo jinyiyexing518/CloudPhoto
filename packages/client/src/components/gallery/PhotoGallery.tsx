@@ -66,6 +66,7 @@ import {
   type PrivateMomentsContext,
 } from "../../services/privateMomentsStore";
 import { registerPrivatePhotoCacheReset } from "../../services/privatePhotoCacheLifecycle";
+import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 
 let photoGalleryBatchMutationSequence = 0;
 
@@ -1125,9 +1126,7 @@ function PhotoGallery({
     const effectiveLat = overrideLat ?? batchGpsLat;
     const effectiveLon = overrideLon ?? batchGpsLon;
     if (!effectiveLat || !effectiveLon || selected.size === 0) return;
-    const lat = parseFloat(effectiveLat);
-    const lon = parseFloat(effectiveLon);
-    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    if (!readGpsCoordinates(effectiveLat, effectiveLon)) {
       showToast("坐标无效：纬度 ±90°，经度 ±180°", "error");
       return;
     }

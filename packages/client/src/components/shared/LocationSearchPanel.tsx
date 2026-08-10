@@ -19,7 +19,7 @@ function splitDisplayName(name: string): { primary: string; secondary: string } 
 
 /** Detect "lat, lon" or "lat lon" typed directly in the input */
 function parseCoords(q: string): { lat: number; lon: number } | null {
-  const m = q.trim().match(/^([+-]?\d+\.?\d*)[,\s]+([+-]?\d+\.?\d*)$/);
+  const m = q.trim().match(/^([^,\s]+)[,\s]+([^,\s]+)$/);
   if (!m) return null;
   return readGpsCoordinates(m[1], m[2]);
 }
@@ -94,6 +94,7 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
       }
       doSearch(query);
     } else if (e.key === "Escape") {
+      e.stopPropagation();
       onClose();
     }
   };
@@ -115,9 +116,11 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
 
       {/* Coordinate direct-use shortcut */}
       {coordPreview && (
-        <div
+        <button
+          type="button"
           className="location-search-coord-preview"
           onClick={() => !saving && onSelect(String(coordPreview.lat), String(coordPreview.lon))}
+          disabled={saving}
         >
           <span className="location-coord-icon">📍</span>
           <span className="location-coord-text">
@@ -125,7 +128,7 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
             <strong>{coordPreview.lat.toFixed(5)}, {coordPreview.lon.toFixed(5)}</strong>
           </span>
           <span className="location-coord-confirm">按 Enter 或点击确认</span>
-        </div>
+        </button>
       )}
 
       {searching && <p className="location-search-hint">搜索中…</p>}
@@ -141,18 +144,22 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
             // Prefer server-provided shortName; fall back to local split
             const mainLabel = r.shortName && r.shortName !== r.displayName ? r.shortName : primary;
             return (
-              <li
-                key={i}
-                className="location-search-result"
-                onClick={() => !saving && onSelect(String(r.lat), String(r.lon))}
-              >
-                <span className="location-result-name" title={r.displayName}>{mainLabel}</span>
-                {secondary && (
-                  <span className="location-result-secondary">{secondary}</span>
-                )}
-                <span className="location-result-coords">
-                  {r.lat.toFixed(4)}°, {r.lon.toFixed(4)}°
-                </span>
+              <li key={`${r.lat}:${r.lon}:${i}`}>
+                <button
+                  type="button"
+                  className="location-search-result"
+                  onClick={() => !saving && onSelect(String(r.lat), String(r.lon))}
+                  disabled={saving}
+                  aria-label={`选择位置：${r.displayName}`}
+                >
+                  <span className="location-result-name" title={r.displayName}>{mainLabel}</span>
+                  {secondary && (
+                    <span className="location-result-secondary">{secondary}</span>
+                  )}
+                  <span className="location-result-coords">
+                    {r.lat.toFixed(4)}°, {r.lon.toFixed(4)}°
+                  </span>
+                </button>
               </li>
             );
           })}

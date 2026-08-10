@@ -15,6 +15,7 @@ interface ModalBoundaryOptions {
   containerRef: RefObject<HTMLElement | null>;
   initialFocusRef?: RefObject<HTMLElement | null>;
   restoreFocusTo?: HTMLElement | null;
+  restoreFocusRef?: RefObject<HTMLElement | null>;
   onEscape: (event: KeyboardEvent) => boolean | void;
   onKeyDown?: (event: KeyboardEvent) => void;
 }
@@ -25,6 +26,7 @@ export function useModalFocusBoundary({
   containerRef,
   initialFocusRef,
   restoreFocusTo,
+  restoreFocusRef,
   onEscape,
   onKeyDown,
 }: ModalBoundaryOptions): void {
@@ -40,7 +42,7 @@ export function useModalFocusBoundary({
     const container = containerRef.current;
     if (!layer || !container) return;
 
-    previousFocusRef.current = restoreFocusTo ?? (
+    previousFocusRef.current = restoreFocusRef?.current ?? restoreFocusTo ?? (
       document.activeElement instanceof HTMLElement ? document.activeElement : null
     );
     activateModalLayer(layer, document);
@@ -81,8 +83,8 @@ export function useModalFocusBoundary({
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("focusin", handleFocusIn, true);
       deactivateModalLayer(layer, document);
-      restoreFocus(previousFocusRef.current);
+      restoreFocus(restoreFocusRef?.current ?? previousFocusRef.current);
       previousFocusRef.current = null;
     };
-  }, [active, containerRef, initialFocusRef, layerRef, restoreFocusTo]);
+  }, [active, containerRef, initialFocusRef, layerRef, restoreFocusRef, restoreFocusTo]);
 }

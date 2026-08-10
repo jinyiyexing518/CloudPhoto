@@ -13,6 +13,12 @@ import MediaThumb from "../shared/MediaThumb";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import { useToast } from "../../contexts/ToastContext";
 import { readGpsCoordinates } from "../../utils/gpsCoordinates";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+import {
+  createMapTooltipContent,
+  getMapMarkerLabel,
+  getPhotoDisplayName as displayName,
+} from "./memoryMapAccessibility";
 
 // Module-level Leaflet cache - avoids re-importing on every effect run
 let cachedLeaflet: typeof import("leaflet") | null = null;
@@ -28,11 +34,6 @@ function loadLeaflet(): Promise<typeof import("leaflet")> {
     });
   }
   return leafletLoadPromise;
-}
-
-// Pure helper outside component - stable reference
-function displayName(p: { name: string; originalName?: string }): string {
-  return p.originalName ?? p.name.split("/").pop() ?? p.name;
 }
 
 interface Props {
@@ -54,6 +55,20 @@ interface GeoPin {
   photo?: Photo;
 }
 
+interface MarkerRegistration {
+  marker: Marker;
+  element: HTMLElement;
+  click: () => void;
+  keydown: (event: KeyboardEvent) => void;
+  workspace: string;
+}
+
+function removeMarkerRegistration(registration: MarkerRegistration): void {
+  registration.element.removeEventListener("keydown", registration.keydown);
+  registration.marker.off("click", registration.click);
+  registration.marker.remove();
+}
+
 export default function MemoryMap({
   photos,
   groupId = "",
@@ -64,12 +79,20 @@ export default function MemoryMap({
   const showToast = useToast();
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
-  // name -> Marker for O(1) incremental add/remove/update
-  const markerMapRef = useRef<Map<string, Marker>>(new Map());
+  // name -> marker DOM/listeners for O(1) incremental updates and complete cleanup
+  const markerMapRef = useRef<Map<string, MarkerRegistration>>(new Map());
+  const detailLayerRef = useRef<HTMLDivElement>(null);
+  const detailDialogRef = useRef<HTMLDivElement>(null);
+  const detailCloseRef = useRef<HTMLButtonElement>(null);
+  const detailRestoreFocusRef = useRef<HTMLElement | null>(null);
+  const editLayerRef = useRef<HTMLDivElement>(null);
+  const editDialogRef = useRef<HTMLDivElement>(null);
+  const manualLatRef = useRef<HTMLInputElement>(null);
+  const editRestoreFocusRef = useRef<HTMLElement | null>(null);
+  const editSessionRef = useRef(0);
 
   const [mapReady, setMapReady] = useState(false);
-  // Track by name so detail card always shows latest data
-  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<{ workspace: string; name: string } | null>(null);
 
   // Fast GPS locations from Cosmos cache (lat/lon only, no URL)
   const [cosmosLocationState, setCosmosLocationState] = useState<{
@@ -102,7 +125,7 @@ export default function MemoryMap({
   }, [groupId, showToast]);
 
   // Manual GPS editing
-  const [editTarget, setEditTarget] = useState<Photo | null>(null);
+  const [editTarget, setEditTarget] = useState<{ workspace: string; photo: Photo } | null>(null);
   const [showLocationSearch, setShowLocationSearch] = useState(false);
   const [manualLat, setManualLat] = useState("");
   const [manualLon, setManualLon] = useState("");
@@ -154,7 +177,9 @@ export default function MemoryMap({
 
   // Includes coordinates so effect re-runs on GPS updates, not just count changes
   const geoPhotoKey = useMemo(
-    () => geoPhotos.map((p) => `${p.name}@${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).join("|"),
+    () => geoPhotos
+      .map((p) => `${p.name}@${p.lat.toFixed(5)},${p.lon.toFixed(5)}#${displayName(p)}`)
+      .join("|"),
     [geoPhotos],
   );
 
@@ -185,9 +210,9 @@ export default function MemoryMap({
     const currentNames = new Set(geoPhotos.map((p) => p.name));
 
     // Remove stale markers
-    for (const [name, marker] of markerMap) {
+    for (const [name, registration] of markerMap) {
       if (!currentNames.has(name)) {
-        marker.remove();
+        removeMarkerRegistration(registration);
         markerMap.delete(name);
       }
     }
@@ -195,27 +220,58 @@ export default function MemoryMap({
     // Add new / update moved markers
     let addedNew = false;
     for (const p of geoPhotos) {
-      const existing = markerMap.get(p.name);
+      let existing = markerMap.get(p.name);
+      if (existing && existing.workspace !== groupId) {
+        removeMarkerRegistration(existing);
+        markerMap.delete(p.name);
+        existing = undefined;
+      }
       if (existing) {
-        const pos = existing.getLatLng();
+        const pos = existing.marker.getLatLng();
         if (Math.abs(pos.lat - p.lat) > 0.00001 || Math.abs(pos.lng - p.lon) > 0.00001) {
-          existing.setLatLng([p.lat, p.lon]);
-          existing.off("click");
-          existing.on("click", () => setSelectedName(p.name));
+          existing.marker.setLatLng([p.lat, p.lon]);
         }
+        const label = getMapMarkerLabel(p);
+        existing.element.setAttribute("aria-label", label);
+        existing.element.setAttribute("title", label);
+        existing.marker.setTooltipContent(createMapTooltipContent(p));
       } else {
         // Lightweight dot - no photo URL in icon = no extra network requests
+        const label = getMapMarkerLabel(p);
         const icon = L.divIcon({
-          className: "",
+          className: "map-photo-marker",
           html: `<div class="map-marker-pin"></div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
+          iconSize: [44, 44],
+          iconAnchor: [22, 22],
+          tooltipAnchor: [0, -22],
         });
-        const marker = L.marker([p.lat, p.lon], { icon })
-          .bindTooltip(displayName(p), { direction: "top", offset: [0, -10] })
+        const marker = L.marker([p.lat, p.lon], { icon, keyboard: false, title: label })
+          .bindTooltip(createMapTooltipContent(p), { direction: "top" })
           .addTo(map);
-        marker.on("click", () => setSelectedName(p.name));
-        markerMap.set(p.name, marker);
+        const element = marker.getElement();
+        if (!element) {
+          marker.remove();
+          continue;
+        }
+        element.setAttribute("tabindex", "0");
+        element.setAttribute("role", "button");
+        element.setAttribute("aria-label", getMapMarkerLabel(p));
+        element.setAttribute("title", label);
+        const activate = () => {
+          if (!element.isConnected) return;
+          element.focus({ preventScroll: true });
+          detailRestoreFocusRef.current = element;
+          setSelectedTarget({ workspace: groupId, name: p.name });
+        };
+        const keydown = (event: KeyboardEvent) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) activate();
+        };
+        element.addEventListener("keydown", keydown);
+        marker.on("click", activate);
+        markerMap.set(p.name, { marker, element, click: activate, keydown, workspace: groupId });
         addedNew = true;
       }
     }
@@ -229,12 +285,14 @@ export default function MemoryMap({
         map.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
       }
     }
-  }, [geoPhotoKey, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geoPhotoKey, groupId, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      for (const m of markerMapRef.current.values()) m.remove();
+      for (const registration of markerMapRef.current.values()) {
+        removeMarkerRegistration(registration);
+      }
       markerMapRef.current.clear();
       if (leafletMapRef.current) {
         leafletMapRef.current.remove();
@@ -243,11 +301,18 @@ export default function MemoryMap({
     };
   }, []);
 
-  // Always resolves to latest pin data via name lookup
+  // Always resolves to the latest pin data, but never across workspace changes.
   const selected = useMemo(
-    () => (selectedName ? geoPhotos.find((p) => p.name === selectedName) ?? null : null),
-    [selectedName, geoPhotos],
+    () => (
+      selectedTarget?.workspace === groupId
+        ? geoPhotos.find((p) => p.name === selectedTarget.name) ?? null
+        : null
+    ),
+    [geoPhotos, groupId, selectedTarget],
   );
+  const editPhoto = editTarget?.workspace === groupId ? editTarget.photo : null;
+
+  const closeDetail = () => setSelectedTarget(null);
 
   const fitAll = () => {
     if (!leafletMapRef.current || !cachedLeaflet || geoPhotos.length === 0) return;
@@ -260,42 +325,90 @@ export default function MemoryMap({
     }
   };
 
-  const openEditFor = (photo: Photo) => {
-    setEditTarget(photo);
+  const openEditFor = (photo: Photo, restoreTarget: HTMLElement | null) => {
+    editSessionRef.current += 1;
+    editRestoreFocusRef.current = restoreTarget;
+    setEditTarget({ workspace: groupId, photo });
     setShowLocationSearch(false);
     setManualLat(photo.gpsLat ?? "");
     setManualLon(photo.gpsLon ?? "");
   };
 
-  const closeEdit = () => {
+  const resetEdit = () => {
+    editSessionRef.current += 1;
     setEditTarget(null);
     setShowLocationSearch(false);
     setManualLat("");
     setManualLon("");
   };
 
+  const closeEdit = () => {
+    if (saving) return;
+    resetEdit();
+  };
+
   const saveGps = async (lat: string, lon: string) => {
-    if (!editTarget) return;
     const gps = readGpsCoordinates(lat, lon);
-    if (!gps) {
+    if (!editTarget || editTarget.workspace !== groupId || !gps) {
       showToast("请输入有效的纬度（-90 到 90）和经度（-180 到 180）", "error");
       return;
     }
+    const session = editSessionRef.current;
+    const target = editTarget;
+    const normalizedLat = String(gps.lat);
+    const normalizedLon = String(gps.lon);
     setSaving(true);
     try {
-      const normalizedLat = String(gps.lat);
-      const normalizedLon = String(gps.lon);
-      await updatePhotoGps(editTarget.name, normalizedLat, normalizedLon);
-      onGpsUpdate?.(editTarget.name, normalizedLat, normalizedLon);
-      closeEdit();
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "更新照片位置失败", "error");
-    } finally {
+      await updatePhotoGps(target.photo.name, normalizedLat, normalizedLon);
+      if (session !== editSessionRef.current || target.workspace !== groupId) return;
+      onGpsUpdate?.(target.photo.name, normalizedLat, normalizedLon);
       setSaving(false);
+      resetEdit();
+    } catch (error) {
+      if (session === editSessionRef.current && target.workspace === groupId) {
+        showToast(error instanceof Error ? error.message : "更新照片位置失败", "error");
+      }
+    } finally {
+      if (session === editSessionRef.current) setSaving(false);
     }
   };
 
   const canSaveManual = readGpsCoordinates(manualLat, manualLon) !== null;
+
+  useEffect(() => {
+    setSelectedTarget(null);
+    editSessionRef.current += 1;
+    setEditTarget(null);
+    setShowLocationSearch(false);
+    setManualLat("");
+    setManualLon("");
+    setSaving(false);
+  }, [groupId]);
+
+  useModalFocusBoundary({
+    active: selected !== null,
+    layerRef: detailLayerRef,
+    containerRef: detailDialogRef,
+    initialFocusRef: detailCloseRef,
+    restoreFocusRef: detailRestoreFocusRef,
+    onEscape: () => {
+      closeDetail();
+      return true;
+    },
+  });
+
+  useModalFocusBoundary({
+    active: editPhoto !== null,
+    layerRef: editLayerRef,
+    containerRef: editDialogRef,
+    initialFocusRef: manualLatRef,
+    restoreFocusRef: editRestoreFocusRef,
+    onEscape: () => {
+      if (saving) return false;
+      resetEdit();
+      return true;
+    },
+  });
 
   const NO_GPS_PAGE = 24;
   const visibleNoGps = noGpsExpanded
@@ -351,8 +464,9 @@ export default function MemoryMap({
                   <button
                     key={p.name}
                     className="memory-map-nogps-item"
-                    onClick={() => openEditFor(p)}
+                    onClick={(event) => openEditFor(p, event.currentTarget)}
                     title={displayName(p)}
+                    aria-label={`为照片 ${displayName(p)} 设置位置`}
                   >
                     <MediaThumb url={p.url} thumbnailUrl={p.thumbnailUrl} previewUrl={p.previewUrl} contentType={p.contentType} alt="" className="memory-map-nogps-thumb" />
                     <span className="memory-map-nogps-name">{displayName(p)}</span>
@@ -370,10 +484,18 @@ export default function MemoryMap({
         </div>
       )}
 
-      {selected && (
-        <div className="memory-map-detail" onClick={() => setSelectedName(null)}>
-          <div className="memory-map-detail-card" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="memory-map-detail-close" onClick={() => setSelectedName(null)} aria-label="关闭照片位置详情">✕</button>
+      {selected && createPortal(
+        <div ref={detailLayerRef} className="memory-map-detail" data-modal-layer onClick={closeDetail}>
+          <div
+            ref={detailDialogRef}
+            className="memory-map-detail-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="memory-map-detail-title"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button ref={detailCloseRef} type="button" className="memory-map-detail-close" onClick={closeDetail} aria-label="关闭照片位置详情">✕</button>
             {selected.photo ? (
               <MediaThumb
                 url={selected.photo.url}
@@ -388,7 +510,7 @@ export default function MemoryMap({
               <div className="memory-map-detail-img memory-map-detail-img--placeholder">📷</div>
             )}
             <div className="memory-map-detail-info">
-              <div className="memory-map-detail-name">{displayName(selected)}</div>
+              <div id="memory-map-detail-title" className="memory-map-detail-name">{displayName(selected)}</div>
               <div className="memory-map-detail-coords">
                 📍 {selected.lat.toFixed(4)}, {selected.lon.toFixed(4)}
               </div>
@@ -402,32 +524,46 @@ export default function MemoryMap({
                 {onViewPhoto && selected.photo && (
                   <button
                     className="memory-map-detail-jump"
-                    onClick={() => { setSelectedName(null); onViewPhoto(selected.name); }}
+                    onClick={() => { closeDetail(); onViewPhoto(selected.name); }}
                   >在时间线中查看</button>
                 )}
                 {selected.photo && (
                   <button
                     className="memory-map-detail-edit"
-                    onClick={() => { setSelectedName(null); openEditFor(selected.photo!); }}
+                    onClick={() => {
+                      const markerElement = markerMapRef.current.get(selected.name)?.element ?? null;
+                      closeDetail();
+                      openEditFor(selected.photo!, markerElement);
+                    }}
                   >✏️ 修改位置</button>
                 )}
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {editTarget && createPortal(
-        <div className="map-gps-overlay" onClick={closeEdit}>
-          <div className="map-gps-dialog" onClick={(e) => e.stopPropagation()}>
+      {editPhoto && createPortal(
+        <div ref={editLayerRef} className="map-gps-overlay" data-modal-layer onClick={closeEdit}>
+          <div
+            ref={editDialogRef}
+            className="map-gps-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="map-gps-title"
+            aria-describedby="map-gps-description"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="map-gps-header">
-              <span>📍 设置位置</span>
+              <span id="map-gps-title">📍 设置位置</span>
               <button type="button" className="map-gps-close" onClick={closeEdit} aria-label="关闭位置设置">✕</button>
             </div>
 
-            <div className="map-gps-photo-row">
-              <MediaThumb url={editTarget.url} thumbnailUrl={editTarget.thumbnailUrl} previewUrl={editTarget.previewUrl} contentType={editTarget.contentType} alt="" className="map-gps-photo-thumb" />
-              <span className="map-gps-photo-name">{displayName(editTarget)}</span>
+            <div id="map-gps-description" className="map-gps-photo-row">
+              <MediaThumb url={editPhoto.url} thumbnailUrl={editPhoto.thumbnailUrl} previewUrl={editPhoto.previewUrl} contentType={editPhoto.contentType} alt="" className="map-gps-photo-thumb" />
+              <span className="map-gps-photo-name">{displayName(editPhoto)}</span>
             </div>
 
             {/* Shared LocationSearchPanel — same component + search logic as PhotoGallery/FolderView */}
@@ -452,6 +588,7 @@ export default function MemoryMap({
               <label className="map-gps-coord-label">
                 <span>纬度</span>
                 <input
+                  ref={manualLatRef}
                   className="map-gps-input"
                   placeholder="例如 39.9042"
                   value={manualLat}

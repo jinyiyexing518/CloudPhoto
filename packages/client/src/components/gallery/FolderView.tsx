@@ -55,6 +55,7 @@ import {
 } from "./folderCardAccessibility";
 import { isModalShortcutTarget } from "../shared/modalFocus";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 
 let folderBatchMutationSequence = 0;
 
@@ -1294,9 +1295,7 @@ function FolderContent({
     const effectiveLat = overrideLat ?? batchGpsLat;
     const effectiveLon = overrideLon ?? batchGpsLon;
     if (!effectiveLat || !effectiveLon || selected.size === 0) return;
-    const lat = parseFloat(effectiveLat);
-    const lon = parseFloat(effectiveLon);
-    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    if (!readGpsCoordinates(effectiveLat, effectiveLon)) {
       showToast("坐标无效：纬度 ±90°，经度 ±180°", "error");
       return;
     }
