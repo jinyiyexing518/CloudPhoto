@@ -54,7 +54,10 @@ test("map detail and GPS edit overlays use the shared modal boundary", async () 
 });
 
 test("manual coordinates and no-GPS photo controls expose complete contracts", async () => {
-  const memoryMap = await source("./MemoryMap.tsx");
+  const [memoryMap, photoApi] = await Promise.all([
+    source("./MemoryMap.tsx"),
+    source("../../services/photoApi.ts"),
+  ]);
 
   assert.match(memoryMap, /readGpsCoordinates\(manualLat,\s*manualLon\)/);
   assert.doesNotMatch(memoryMap, /!isNaN\(parseFloat\(manualLat\)\)/);
@@ -64,11 +67,20 @@ test("manual coordinates and no-GPS photo controls expose complete contracts", a
   assert.match(memoryMap, /showToast\(error instanceof Error \? error\.message : "更新照片位置失败",\s*"error"\)/);
   assert.match(memoryMap, /workspaceRef\.current = groupId/);
   assert.match(memoryMap, /useEffect\(\(\) => \{[\s\S]*mountedRef\.current = true;[\s\S]*mountedRef\.current = false;[\s\S]*editSessionRef\.current \+= 1/);
-  assert.match(memoryMap, /target\.workspace !== workspaceRef\.current/);
-  assert.match(memoryMap, /pendingMarkerFocusRef\.current = \{[\s\S]*name: target\.photo\.name[\s\S]*expiresAt: Date\.now\(\) \+ 1_000/);
+  assert.match(memoryMap, /currentIdentity\?\.workspace !== identity\.workspace/);
+  assert.match(memoryMap, /pendingMarkerFocusRef\.current = \{[\s\S]*name: target\.name[\s\S]*expiresAt: Date\.now\(\) \+ 1_000/);
   assert.match(memoryMap, /existingMarker\?\.isConnected[\s\S]*editRestoreFocusRef\.current = existingMarker/);
   assert.match(memoryMap, /restoreSavedPhotoFocus\(p\.name, element\)/);
   assert.match(memoryMap, /editRestoreFocusRef\.current = element;[\s\S]*element\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(memoryMap, /setEditTarget\(\{ workspace: groupId, name: photo\.name \}\)/);
+  assert.match(memoryMap, /photosByName\.get\(editTarget\.name\)/);
+  assert.match(memoryMap, /editTargetRef\.current = editPhoto \? editTarget : null/);
+  assert.match(memoryMap, /useLayoutEffect\(\(\) => \{[\s\S]*Photo partition changed/);
+  assert.match(memoryMap, /if \(mapRootRef\.current\?\.isConnected\) \{[\s\S]*editRestoreFocusRef\.current = mapRootRef\.current/);
+  assert.match(memoryMap, /role="region"[\s\S]*aria-label="照片位置地图"[\s\S]*tabIndex=\{-1\}/);
+  assert.match(memoryMap, /saveControllerRef\.current\?\.abort/);
+  assert.match(memoryMap, /updatePhotoGps\([\s\S]*signal: controller\.signal/);
+  assert.match(photoApi, /updatePhotoGps[\s\S]*options: \{ signal\?: AbortSignal \}/);
 });
 
 test("shared coordinate parser rejects partial and out-of-range manual values", async () => {

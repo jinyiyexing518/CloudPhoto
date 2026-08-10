@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -69,6 +69,7 @@ export default function MemoryMap({
   onGpsUpdate,
 }: Props) {
   const showToast = useToast();
+  const mapRootRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
   // name -> marker DOM/listeners for O(1) incremental updates and complete cleanup
@@ -83,6 +84,8 @@ export default function MemoryMap({
   const searchToggleRef = useRef<HTMLButtonElement>(null);
   const editRestoreFocusRef = useRef<HTMLElement | null>(null);
   const editSessionRef = useRef(0);
+  const editTargetRef = useRef<{ workspace: string; name: string } | null>(null);
+  const saveControllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const workspaceRef = useRef(groupId);
   const pendingMarkerFocusRef = useRef<{ name: string; expiresAt: number } | null>(null);
@@ -122,7 +125,7 @@ export default function MemoryMap({
   }, [groupId, locationIndexRevision, showToast]);
 
   // Manual GPS editing
-  const [editTarget, setEditTarget] = useState<{ workspace: string; photo: Photo } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ workspace: string; name: string } | null>(null);
   const [showLocationSearch, setShowLocationSearch] = useState(false);
   const [manualLat, setManualLat] = useState("");
   const [manualLon, setManualLon] = useState("");
@@ -131,10 +134,18 @@ export default function MemoryMap({
   const [noGpsShowAll, setNoGpsShowAll] = useState(false);
 
   // Memoised derived state
-  const locationPartitions = useMemo(() => {
-    const currentPhotos = photosGroupId === groupId ? photos : [];
-    return partitionPhotoLocations(currentPhotos, cosmosLocations);
-  }, [cosmosLocations, groupId, photos, photosGroupId]);
+  const currentPhotos = useMemo(
+    () => photosGroupId === groupId ? photos : [],
+    [groupId, photos, photosGroupId],
+  );
+  const photosByName = useMemo(
+    () => new Map(currentPhotos.map((photo) => [photo.name, photo])),
+    [currentPhotos],
+  );
+  const locationPartitions = useMemo(
+    () => partitionPhotoLocations(currentPhotos, cosmosLocations),
+    [cosmosLocations, currentPhotos],
+  );
   const { geoPhotos, noGpsPhotos } = locationPartitions;
 
   // Includes coordinates so effect re-runs on GPS updates, not just count changes
@@ -270,6 +281,7 @@ export default function MemoryMap({
     return () => {
       mountedRef.current = false;
       editSessionRef.current += 1;
+      saveControllerRef.current?.abort(new DOMException("Memory map closed", "AbortError"));
       pendingMarkerFocusRef.current = null;
       for (const registration of markerMapRef.current.values()) {
         removeMarkerRegistration(registration);
@@ -291,7 +303,10 @@ export default function MemoryMap({
     ),
     [geoPhotos, groupId, selectedTarget],
   );
-  const editPhoto = editTarget?.workspace === groupId ? editTarget.photo : null;
+  const editPhoto = editTarget?.workspace === groupId
+    ? photosByName.get(editTarget.name) ?? null
+    : null;
+  editTargetRef.current = editPhoto ? editTarget : null;
 
   const closeDetail = () => setSelectedTarget(null);
 
@@ -307,9 +322,10 @@ export default function MemoryMap({
   };
 
   const openEditFor = (photo: Photo, restoreTarget: HTMLElement | null) => {
+    saveControllerRef.current?.abort(new DOMException("Location save superseded", "AbortError"));
     editSessionRef.current += 1;
     editRestoreFocusRef.current = restoreTarget;
-    setEditTarget({ workspace: groupId, photo });
+    setEditTarget({ workspace: groupId, name: photo.name });
     setShowLocationSearch(false);
     setManualLat(photo.gpsLat ?? "");
     setManualLon(photo.gpsLon ?? "");
@@ -317,6 +333,8 @@ export default function MemoryMap({
 
   const resetEdit = () => {
     editSessionRef.current += 1;
+    saveControllerRef.current?.abort(new DOMException("Location editor closed", "AbortError"));
+    saveControllerRef.current = null;
     setEditTarget(null);
     setShowLocationSearch(false);
     setManualLat("");
@@ -330,44 +348,58 @@ export default function MemoryMap({
 
   const saveGps = async (lat: string, lon: string) => {
     const gps = readGpsCoordinates(lat, lon);
-    if (!editTarget || editTarget.workspace !== workspaceRef.current || !gps) {
+    if (!editTarget || !editPhoto || editTarget.workspace !== workspaceRef.current || !gps) {
       showToast("请输入有效的纬度（-90 到 90）和经度（-180 到 180）", "error");
       return;
     }
     const session = editSessionRef.current;
-    const target = editTarget;
+    const identity = editTarget;
+    const target = editPhoto;
+    const controller = new AbortController();
+    saveControllerRef.current?.abort(new DOMException("Location save superseded", "AbortError"));
+    saveControllerRef.current = controller;
     const normalizedLat = String(gps.lat);
     const normalizedLon = String(gps.lon);
     setSaving(true);
     try {
-      await updatePhotoGps(target.photo.name, normalizedLat, normalizedLon);
+      await updatePhotoGps(target.name, normalizedLat, normalizedLon, {
+        signal: controller.signal,
+      });
+      const currentIdentity = editTargetRef.current;
       if (
-        !mountedRef.current
+        controller.signal.aborted
+        || !mountedRef.current
         || session !== editSessionRef.current
-        || target.workspace !== workspaceRef.current
+        || currentIdentity?.workspace !== identity.workspace
+        || currentIdentity.name !== identity.name
       ) return;
-      const existingMarker = markerMapRef.current.get(target.photo.name)?.element;
+      const existingMarker = markerMapRef.current.get(target.name)?.element;
       if (existingMarker?.isConnected) {
         editRestoreFocusRef.current = existingMarker;
       } else if (editRestoreFocusRef.current?.matches(".memory-map-nogps-item")) {
         pendingMarkerFocusRef.current = {
-          name: target.photo.name,
+          name: target.name,
           expiresAt: Date.now() + 1_000,
         };
       }
-      onGpsUpdate?.(target.photo.name, normalizedLat, normalizedLon);
+      onGpsUpdate?.(target.name, normalizedLat, normalizedLon);
       setSaving(false);
       resetEdit();
     } catch (error) {
       if (
-        mountedRef.current
+        !controller.signal.aborted
+        && mountedRef.current
         && session === editSessionRef.current
-        && target.workspace === workspaceRef.current
+        && identity.workspace === workspaceRef.current
+        && !(error instanceof Error && error.name === "AbortError")
       ) {
         showToast(error instanceof Error ? error.message : "更新照片位置失败", "error");
       }
     } finally {
-      if (mountedRef.current && session === editSessionRef.current) setSaving(false);
+      if (saveControllerRef.current === controller) {
+        saveControllerRef.current = null;
+        if (mountedRef.current && session === editSessionRef.current) setSaving(false);
+      }
     }
   };
 
@@ -376,6 +408,8 @@ export default function MemoryMap({
   useEffect(() => {
     setSelectedTarget(null);
     editSessionRef.current += 1;
+    saveControllerRef.current?.abort(new DOMException("Photo workspace changed", "AbortError"));
+    saveControllerRef.current = null;
     setEditTarget(null);
     setShowLocationSearch(false);
     setManualLat("");
@@ -383,6 +417,22 @@ export default function MemoryMap({
     setSaving(false);
     pendingMarkerFocusRef.current = null;
   }, [groupId]);
+
+  useLayoutEffect(() => {
+    if (!editTarget || editPhoto) return;
+    if (mapRootRef.current?.isConnected) {
+      editRestoreFocusRef.current = mapRootRef.current;
+    }
+    saveControllerRef.current?.abort(new DOMException("Photo partition changed", "AbortError"));
+    saveControllerRef.current = null;
+    editSessionRef.current += 1;
+    setEditTarget(null);
+    setShowLocationSearch(false);
+    setManualLat("");
+    setManualLon("");
+    setSaving(false);
+    pendingMarkerFocusRef.current = null;
+  }, [editPhoto, editTarget]);
 
   useModalFocusBoundary({
     active: selected !== null,
@@ -415,7 +465,13 @@ export default function MemoryMap({
     : [];
 
   return (
-    <div className="memory-map-wrap">
+    <div
+      ref={mapRootRef}
+      className="memory-map-wrap"
+      role="region"
+      aria-label="照片位置地图"
+      tabIndex={-1}
+    >
       <div className="memory-map-header">
         <span className="memory-map-title">🗺️ 记忆地图</span>
         <span className="memory-map-subtitle">

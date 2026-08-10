@@ -365,10 +365,20 @@ export async function fetchPhotoLocations(
 }
 
 // ── Photo metadata mutations (consolidated via shared patchMetadata) ───────
-async function patchMetadata(name: string, patch: Record<string, unknown>, errorMsg: string): Promise<void> {
+async function patchMetadata(
+  name: string,
+  patch: Record<string, unknown>,
+  errorMsg: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
   const response = await fetchWithTimeout(
     `${API_BASE}/photos/metadata?name=${encodeURIComponent(name)}`,
-    { method: "PATCH", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(patch) },
+    {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(patch),
+      signal: options.signal,
+    },
   );
   if (!response.ok) throw new Error(await parseApiError(response, errorMsg));
 }
@@ -376,7 +386,12 @@ async function patchMetadata(name: string, patch: Record<string, unknown>, error
 export const updatePhotoSubject  = (name: string, subject: string, updatedBy?: string) => patchMetadata(name, { subject, updatedBy }, "更新主题失败");
 export const setPhotoFavorite    = (name: string, favorite: boolean, updatedBy?: string) => patchMetadata(name, { favorite, updatedBy }, "更新收藏状态失败");
 export const setPhotoVoiceMemo   = (name: string, voiceMemoName: string, updatedBy?: string) => patchMetadata(name, { voiceMemoName, updatedBy }, "更新语音备注失败");
-export const updatePhotoGps      = (name: string, gpsLat: string, gpsLon: string) => patchMetadata(name, { gpsLat, gpsLon }, "更新位置失败");
+export const updatePhotoGps = (
+  name: string,
+  gpsLat: string,
+  gpsLon: string,
+  options: { signal?: AbortSignal } = {},
+) => patchMetadata(name, { gpsLat, gpsLon }, "更新位置失败", options);
 export const updatePhotoTakenAt  = (name: string, takenAt: string, updatedBy?: string) => patchMetadata(name, { takenAt, updatedBy }, "更新拍摄时间失败");
 export const renamePhoto         = (name: string, newOriginalName: string, updatedBy?: string) => patchMetadata(name, { originalName: newOriginalName, updatedBy }, "重命名照片失败");
 
