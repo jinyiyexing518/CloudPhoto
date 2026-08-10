@@ -48,6 +48,9 @@ function scheduler() {
       callbacks.clear();
       pending.forEach((callback) => callback());
     },
+    get created() {
+      return nextId;
+    },
   };
 }
 
@@ -144,6 +147,18 @@ test("short waiting recovery and currentTime progress cancel the watchdog", () =
   }
 });
 
+test("repeated waiting and stalled events keep the original watchdog deadline", () => {
+  const run = harness();
+  const video = media();
+  run.controller.onPlay(run.session.key, video);
+  run.controller.onWaiting(run.session.key, video);
+  run.controller.onStalled(run.session.key, video);
+  run.controller.onWaiting(run.session.key, video);
+  assert.equal(run.clock.created, 1, "one interruption must use one bounded deadline");
+  run.clock.flush();
+  assert.equal(video.counts().loadCalls, 1);
+});
+
 test("pause, seek, ended, and hidden-document transitions never switch routes", () => {
   for (const cancel of ["pause", "seeking", "ended", "hidden"]) {
     let visible = true;
@@ -191,6 +206,7 @@ test("stall failover restores 18s and playback properties exactly once", async (
   assert.equal(video.src, "https://blob.test/large.mp4?sig=secret");
   assert.deepEqual(video.counts(), { playCalls: 0, loadCalls: 1 });
 
+  video.currentSrc = video.src;
   video.currentTime = 0;
   video.muted = false;
   video.volume = 1;
@@ -226,6 +242,7 @@ test("retry creates a fresh route budget and keeps the last position", () => {
   const video = media();
   run.controller.onPlay(run.session.key, video);
   run.controller.onError(run.session.key, video);
+  video.currentTime = 0;
   video.currentSrc = video.src;
   run.controller.onError(run.session.key, video);
   const failedKey = run.session.key;
@@ -260,6 +277,7 @@ test("stale play rejection and visibility changes preserve newer or terminal sta
   });
   run.controller.onPlay(run.session.key, video);
   run.controller.onError(run.session.key, video);
+  video.currentSrc = video.src;
   const restorePromise = run.controller.onLoadedMetadata(run.session.key, video);
   const fresh = {
     ...session(2),
@@ -285,6 +303,27 @@ test("stale play rejection and visibility changes preserve newer or terminal sta
   run.setVisible(false);
   run.controller.onVisibilityChange();
   assert.equal(run.states.at(-1), "error", "backgrounding must retain retry UI");
+  run.controller.onCanPlay(fresh.key, failedVideo);
+  assert.equal(run.controller.onLoadedData(fresh.key, failedVideo), false);
+  run.controller.onPlaying(fresh.key, failedVideo);
+  assert.equal(run.states.at(-1), "error", "late media events must retain retry UI");
+});
+
+test("stale source metadata cannot consume the active route restore", async () => {
+  const run = harness();
+  const video = media();
+  run.controller.onPlay(run.session.key, video);
+  const oldSource = video.currentSrc;
+  run.controller.onError(run.session.key, video);
+  video.currentTime = 0;
+  assert.equal(run.controller.onLoadedData(run.session.key, video), false);
+  await run.controller.onLoadedMetadata(run.session.key, video);
+  assert.equal(video.currentTime, 0, "metadata from the replaced source must be ignored");
+
+  video.currentSrc = video.src;
+  await run.controller.onLoadedMetadata(run.session.key, video);
+  assert.notEqual(video.currentSrc, oldSource);
+  assert.equal(video.currentTime, 18);
 });
 
 test("timeline and folder viewers both use the shared resilient hook", async () => {
@@ -296,6 +335,9 @@ test("timeline and folder viewers both use the shared resilient hook", async () 
     assert.match(source, /useResilientVideoPlayback/);
     assert.doesNotMatch(source, /fallbackVideoPlaybackSession/);
     assert.doesNotMatch(source, /setTimeout\([^)]*video/i);
+    assert.match(source, /useModalFocusBoundary/);
+    assert.match(source, /createPortal/);
+    assert.match(source, /aria-modal="true"/);
   }
 });
 

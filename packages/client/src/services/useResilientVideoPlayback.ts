@@ -157,7 +157,7 @@ export function useResilientVideoPlayback({
       },
       onLoadedData: (event) => {
         const video = event.currentTarget;
-        controller.onLoadedData(key, video);
+        if (!controller.onLoadedData(key, video)) return;
         const current = sessionRef.current;
         if (!current || current.key !== key) return;
         if (current.fallbackAttempted) promoteSuccessfulMediaUrl(current.source);

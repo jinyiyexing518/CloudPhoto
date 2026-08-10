@@ -1126,7 +1126,6 @@ function FolderContent({
     setSelectedPhoto(null);
     setShowOriginalPreview(false);
   }, []);
-
   const onModalKeyDown = useCallback((event: KeyboardEvent) => {
     if (isModalShortcutTarget(event.target)) return;
     if (event.key === "ArrowLeft" && selectedIdx !== null && selectedIdx > 0) {
