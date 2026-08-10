@@ -42,17 +42,60 @@ export default function WorkspaceFab({
   const railRef = useRef<HTMLDivElement>(null);
   const compactToggleRef = useRef<HTMLButtonElement>(null);
   const compactFirstActionRef = useRef<HTMLButtonElement>(null);
-  const compactWasExpanded = useRef(false);
+  const primaryChipRef = useRef<HTMLButtonElement>(null);
+  const secondaryChipRef = useRef<HTMLButtonElement>(null);
+  const restoreAfterHidden = useRef<"compact" | "pill" | null>(null);
   const drag = useRef({ active: false, hasDragged: false, mx: 0, my: 0, ox: 0, oy: 0 });
 
   useEffect(() => {
     if (compactExpanded) {
       compactFirstActionRef.current?.focus();
-    } else if (compactWasExpanded.current) {
-      compactToggleRef.current?.focus();
     }
-    compactWasExpanded.current = compactExpanded;
   }, [compactExpanded]);
+
+  useEffect(() => {
+    if (!compactExpanded) return;
+    const collapseOutside = (event: PointerEvent) => {
+      if (railRef.current?.contains(event.target as Node)) return;
+      setCompactExpanded(false);
+    };
+    document.addEventListener("pointerdown", collapseOutside);
+    return () => document.removeEventListener("pointerdown", collapseOutside);
+  }, [compactExpanded]);
+
+  useEffect(() => {
+    if (hidden || !restoreAfterHidden.current) return;
+    const target = restoreAfterHidden.current;
+    restoreAfterHidden.current = null;
+    requestAnimationFrame(() => {
+      if (target === "compact") compactToggleRef.current?.focus();
+      else compactFirstActionRef.current?.focus();
+    });
+  }, [hidden]);
+
+  const runCompactAction = useCallback((
+    action: () => void,
+    desktopTarget: React.RefObject<HTMLButtonElement>,
+    restoreFocus: boolean,
+  ) => {
+    setCompactExpanded(false);
+    action();
+    if (restoreFocus) {
+      const compact = window.matchMedia("(max-width: 480px)").matches;
+      requestAnimationFrame(() => {
+        if (compact) compactToggleRef.current?.focus();
+        else desktopTarget.current?.focus();
+      });
+    }
+  }, []);
+
+  const openSidebarFromFab = useCallback(() => {
+    restoreAfterHidden.current = window.matchMedia("(max-width: 480px)").matches
+      ? "compact"
+      : "pill";
+    setCompactExpanded(false);
+    onOpenSidebar();
+  }, [onOpenSidebar]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as Element).closest("button")) return;
@@ -105,6 +148,7 @@ export default function WorkspaceFab({
     if (!compactExpanded) return;
     event.preventDefault();
     setCompactExpanded(false);
+    requestAnimationFrame(() => compactToggleRef.current?.focus());
   }, [compactExpanded]);
 
   return (
@@ -118,7 +162,7 @@ export default function WorkspaceFab({
       onKeyDown={onKeyDown}
     >
       <div id="workspace-fab-actions" className="workspace-fab-actions">
-        <button ref={compactFirstActionRef} className="workspace-fab-pill" onClick={onOpenSidebar}>
+        <button ref={compactFirstActionRef} className="workspace-fab-pill" onClick={openSidebarFromFab}>
           <span className="workspace-fab-icon">{activeTab === "timeline" ? "⚙" : "✦"}</span>
           <span className="workspace-fab-copy">
             <strong>{activeTab === "timeline" ? "筛选与整理" : "片段洞察"}</strong>
@@ -131,10 +175,10 @@ export default function WorkspaceFab({
           )}
         </button>
         <div className="workspace-fab-chip-group">
-          <button className="workspace-fab-chip" onClick={onPrimaryChipClick}>
+          <button ref={primaryChipRef} className="workspace-fab-chip" onClick={() => runCompactAction(onPrimaryChipClick, primaryChipRef, activeTab === "timeline")}>
             {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>最近<br />上传</span> : <span style={{ lineHeight: 1.2 }}>分享<br />管理</span>}
           </button>
-          <button className="workspace-fab-chip workspace-fab-chip--secondary" onClick={onSecondaryChipClick}>
+          <button ref={secondaryChipRef} className="workspace-fab-chip workspace-fab-chip--secondary" onClick={() => runCompactAction(onSecondaryChipClick, secondaryChipRef, activeTab === "timeline")}>
             {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>去<br />整理</span> : <span style={{ lineHeight: 1.2 }}>看<br />诊断</span>}
           </button>
         </div>

@@ -99,7 +99,7 @@ test("tab strip retains its own intentional horizontal scrolling", () => {
   assert.match(authenticatedApp, /ref=\{viewTabsRef\}[\s\S]*onScroll=/);
 });
 
-test("narrow FAB defaults to one safe-area-aware 48px launcher", () => {
+test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
   assert.match(workspaceFab, /const \[compactExpanded, setCompactExpanded\] = useState\(false\)/);
   assert.match(workspaceFab, /aria-expanded=\{compactExpanded\}/);
   assert.match(workspaceFab, /aria-controls="workspace-fab-actions"/);
@@ -107,7 +107,7 @@ test("narrow FAB defaults to one safe-area-aware 48px launcher", () => {
   assert.match(workspaceFab, /compactToggleRef\.current\?\.focus\(\)/);
   assert.match(workspaceFab, /compactFirstActionRef\.current\?\.focus\(\)/);
 
-  const narrowSection = mediaBlock(360);
+  const narrowSection = mediaBlock(480);
   const rail = cssBlock(".workspace-fab-rail", narrowSection);
   const toggle = cssBlock(".workspace-fab-compact-toggle", narrowSection);
   assert.equal(px(declaration(rail, "width")), 48);

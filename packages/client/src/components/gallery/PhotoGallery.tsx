@@ -35,6 +35,11 @@ import {
 import { useResilientVideoPlayback } from "../../services/useResilientVideoPlayback";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
+import {
+  formatPhotoDateTime,
+  formatPhotoGroupDate,
+  getPhotoDateKey,
+} from "../../utils/dateFormat";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
@@ -86,8 +91,8 @@ interface Props {
 }
 
 interface DateGroup {
-  key: string;       // YYYY-MM-DD
-  label: string;     // "May 25, 2026"
+  key: string;       // YYYY-MM-DD, with 0000-00-00 reserved for unknown dates
+  label: string;
   photos: Photo[];
 }
 
@@ -270,8 +275,7 @@ function groupByDate(photos: Photo[], sortKey: "taken" | "uploaded" = "taken"): 
     const raw = sortKey === "taken"
       ? (photo.takenAt ?? photo.createdAt ?? photo.lastModified)
       : (photo.createdAt ?? photo.lastModified);
-    const date = raw ? new Date(raw) : new Date(0);
-    const key = date.toISOString().slice(0, 10); // YYYY-MM-DD
+    const key = getPhotoDateKey(raw ?? "") || "0000-00-00";
     const bucket = map.get(key) ?? [];
     bucket.push(photo);
     map.set(key, bucket);
@@ -282,11 +286,7 @@ function groupByDate(photos: Photo[], sortKey: "taken" | "uploaded" = "taken"): 
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([key, groupPhotos]) => ({
       key,
-      label: new Date(key + "T12:00:00").toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }),
+      label: formatPhotoGroupDate(key) || "日期未知",
       photos: groupPhotos,
     }));
 
@@ -2195,10 +2195,7 @@ function formatSize(bytes: number): string {
 }
 
 function formatDate(value: string | Date): string {
-  return new Date(value).toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
+  return formatPhotoDateTime(value);
 }
 
 export default memo(PhotoGallery);

@@ -84,10 +84,13 @@ export default function WorkspaceSidebar({
   gridSize,
   onGridSizeChange,
 }: Props) {
-  if (activeTab === "folder") return null;
-
   const topbarRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isOpen) closeButtonRef.current?.focus();
+  }, [isOpen]);
 
   // iOS Safari requires an explicit pixel height on the scroll container.
   // CSS flex/grid 1fr heights are not always honoured for overflow:scroll.
@@ -104,17 +107,23 @@ export default function WorkspaceSidebar({
     return () => window.removeEventListener("resize", applyHeight);
   }, [isOpen]);
 
+  if (activeTab === "folder") return null;
+
   return (
     <>
       {isOpen && <div className="workspace-sidebar-backdrop" onClick={onClose} />}
-      <aside className={`workspace-sidebar${isOpen ? " workspace-sidebar--open" : ""}`}>
+      <aside
+        className={`workspace-sidebar${isOpen ? " workspace-sidebar--open" : ""}`}
+        hidden={!isOpen}
+        aria-hidden={!isOpen}
+      >
         <div className="workspace-sidebar-shell">
           <div className="workspace-sidebar-topbar" ref={topbarRef}>
             <div>
               <span className="workspace-sidebar-kicker">{activeTab === "timeline" ? "Timeline" : "Moments"}</span>
               <h2>{activeTab === "timeline" ? "侧边工具栏" : "片段侧边栏"}</h2>
             </div>
-            <button type="button" className="workspace-sidebar-close" onClick={onClose} aria-label="关闭侧边工具栏">✕</button>
+            <button ref={closeButtonRef} type="button" className="workspace-sidebar-close" onClick={onClose} aria-label="关闭侧边工具栏">✕</button>
           </div>
 
           <div className="workspace-sidebar-content" ref={contentRef}>

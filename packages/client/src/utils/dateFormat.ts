@@ -1,0 +1,87 @@
+const PHOTO_LOCALE = "zh-CN";
+
+type PhotoDateValue = string | number | Date;
+
+function canonicalDateParts(value: string): RegExpMatchArray | null {
+  return value.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?$/,
+  );
+}
+
+function hasValidCalendarDate(parts: RegExpMatchArray): boolean {
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = parts;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const calendarDate = new Date(Date.UTC(year, month - 1, day));
+  const calendarMatches = calendarDate.getUTCFullYear() === year
+    && calendarDate.getUTCMonth() === month - 1
+    && calendarDate.getUTCDate() === day;
+  const timeMatches = hourText === undefined || (
+    Number(hourText) <= 23
+    && Number(minuteText) <= 59
+    && (secondText === undefined || Number(secondText) <= 59)
+  );
+  return calendarMatches && timeMatches;
+}
+
+function validDate(value: PhotoDateValue): Date | null {
+  if (value === "") return null;
+  let parsedValue = value;
+  if (typeof value === "string") {
+    const parts = canonicalDateParts(value);
+    if (!parts || !hasValidCalendarDate(parts)) return null;
+    if (!value.includes("T")) parsedValue = `${value}T12:00:00`;
+  }
+  const date = parsedValue instanceof Date ? parsedValue : new Date(parsedValue);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function format(
+  value: PhotoDateValue,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  const date = validDate(value);
+  return date ? date.toLocaleString(PHOTO_LOCALE, options) : "";
+}
+
+export function formatPhotoGroupDate(dateKey: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
+  return format(`${dateKey}T12:00:00`, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+export function getPhotoDateKey(value: PhotoDateValue): string {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return validDate(value) ? value : "";
+  }
+  const date = validDate(value);
+  if (!date) return "";
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+export function formatPhotoDate(value: PhotoDateValue): string {
+  return format(value, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function formatPhotoDateTime(value: PhotoDateValue): string {
+  return format(value, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}

@@ -22,9 +22,9 @@ body {
 
 .app-header {
   background: #fff;
-  padding: 10px 24px;
+  padding: 4px 24px;
   /* account for iOS notch / status bar in standalone PWA mode */
-  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  padding-top: calc(4px + env(safe-area-inset-top, 0px));
   /* min-height must match view-tabs-shell-wrap sticky top so there is no gap */
   min-height: calc(52px + env(safe-area-inset-top, 0px));
   border-bottom: 1px solid #e2e8f0;
@@ -88,8 +88,10 @@ body {
 }
 
 .user-avatar-btn {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 50%;
   background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
   color: #fff;
@@ -4429,8 +4431,13 @@ body {
   opacity: 0.5;
   transition: opacity 0.2s;
   flex-shrink: 0;
-  padding: 2px 4px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .delete-btn:hover {
@@ -4446,8 +4453,13 @@ body {
   font-weight: 700;
   border-radius: 6px;
   flex-shrink: 0;
-  padding: 1px 7px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .move-btn:hover {
@@ -4463,8 +4475,13 @@ body {
   color: #9ca3af;
   transition: opacity 0.2s, color 0.2s;
   flex-shrink: 0;
-  padding: 2px 4px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .move-btn,
@@ -5228,6 +5245,17 @@ body {
   outline: none;
   border-color: #0078d4;
   box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.12);
+}
+
+.filter-field input[type="date"],
+.time-edit-input[type="date"],
+.capsule-input[type="date"] {
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.25rem;
 }
 
 .time-edit-save-btn {
@@ -6742,7 +6770,7 @@ body {
 
   /* ── Header ── */
   .app-header {
-    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+    padding: calc(4px + env(safe-area-inset-top, 0px)) 12px 4px;
     min-height: calc(52px + env(safe-area-inset-top, 0px));
     gap: 8px;
   }
@@ -6785,10 +6813,10 @@ body {
   /* photo-count is redundant on mobile */
   .photo-count { display: none; }
 
-  /* user-avatar-wrap on mobile: smaller avatar */
+  /* Keep the account menu comfortably touchable on mobile. */
   .user-avatar-btn {
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
     font-size: 0.9rem;
   }
   .user-menu-dropdown {
@@ -8473,7 +8501,7 @@ body {
 .weekly-summary-row--highlight { color: #15803d; }
 .weekly-summary-row--highlight strong { color: #15803d; }
 
-@media (max-width: 360px) {
+@media (max-width: 480px) {
   .workspace-fab-rail {
     width: 48px;
     right: calc(12px + env(safe-area-inset-right, 0px)) !important;
@@ -8487,7 +8515,22 @@ body {
 
   .workspace-fab-actions {
     display: none;
-    width: 200px;
+    width: min(200px, calc(100vw - 24px));
+  }
+
+  .workspace-fab-pill {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .workspace-fab-copy {
+    min-width: 0;
+  }
+
+  .workspace-fab-copy strong,
+  .workspace-fab-copy em {
+    overflow-wrap: anywhere;
+    text-align: left;
   }
 
   .workspace-fab-rail--expanded .workspace-fab-actions {
@@ -8514,6 +8557,33 @@ body {
   .workspace-fab-compact-toggle:focus-visible {
     outline: 3px solid #93c5fd;
     outline-offset: 3px;
+  }
+
+  .photo-info {
+    padding: 8px 2px;
+    gap: 0;
+    flex-wrap: wrap;
+  }
+
+  .photo-name {
+    box-sizing: border-box;
+    flex: 1 0 100%;
+    padding: 0 8px;
+  }
+
+  .photo-info > button:first-of-type {
+    margin-left: auto;
+  }
+
+  .photo-info > button:last-of-type {
+    margin-right: auto;
+  }
+}
+
+@media (max-width: 360px) {
+  .photo-grid,
+  .folder-section-grid.photo-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
