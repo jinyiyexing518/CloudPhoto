@@ -350,6 +350,9 @@ export default function FolderView({
   const [folderShareHours, setFolderShareHours] = useState("24");
   const [sharingFolder, setSharingFolder] = useState(false);
   const [showShareFolderDialog, setShowShareFolderDialog] = useState(false);
+  const shareFolderLayerRef = useRef<HTMLDivElement | null>(null);
+  const shareFolderDialogRef = useRef<HTMLDivElement | null>(null);
+  const shareFirstOptionRef = useRef<HTMLButtonElement | null>(null);
   // Mark as hydrated immediately — state is already initialized from localStorage above.
   const hydratedContextRef = useRef<string | null>(contextKey);
   const historyHydratedRef = useRef(false);
@@ -359,6 +362,20 @@ export default function FolderView({
   const mutationBusy = batchMutationBusy || folderRenameActive;
   const batchMutationGate = useRef<BatchMutationGate>({ current: null }).current;
   const mountedRef = useRef(true);
+
+  const closeShareFolderDialog = useCallback(() => {
+    if (sharingFolder || mutationBusy) return false;
+    setShowShareFolderDialog(false);
+    return true;
+  }, [mutationBusy, sharingFolder]);
+
+  useModalFocusBoundary({
+    active: showShareFolderDialog && currentPath !== null,
+    layerRef: shareFolderLayerRef,
+    containerRef: shareFolderDialogRef,
+    initialFocusRef: shareFirstOptionRef,
+    onEscape: () => closeShareFolderDialog(),
+  });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -668,20 +685,29 @@ export default function FolderView({
         )}
       </div>
 
-      {showShareFolderDialog && currentPath !== null && (
-        <div className="dialog-overlay" onClick={() => !sharingFolder && setShowShareFolderDialog(false)}>
-          <div className="share-folder-dialog" onClick={(e) => e.stopPropagation()}>
+      {showShareFolderDialog && currentPath !== null && createPortal(
+        <div ref={shareFolderLayerRef} className="dialog-overlay" data-modal-layer onClick={closeShareFolderDialog}>
+          <div
+            ref={shareFolderDialogRef}
+            className="share-folder-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-folder-dialog-title"
+            aria-describedby="share-folder-dialog-description"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="add-admin-header">
-              <span>分享当前文件夹</span>
+              <span id="share-folder-dialog-title">分享当前文件夹</span>
               <button
                 type="button"
                 className="dialog-close-btn"
-                onClick={() => setShowShareFolderDialog(false)}
+                onClick={closeShareFolderDialog}
                 disabled={sharingFolder || mutationBusy}
                 aria-label="关闭文件夹分享"
               >✕</button>
             </div>
-            <p className="add-admin-hint">选择这个文件夹分享链接的有效期。</p>
+            <p id="share-folder-dialog-description" className="add-admin-hint">选择这个文件夹分享链接的有效期。</p>
             <div className="share-folder-summary">
               <span className="share-folder-label">当前文件夹</span>
               <strong>{currentPath === "" ? "未分类" : currentPath}</strong>
@@ -698,6 +724,7 @@ export default function FolderView({
                   const active = folderShareHours === option.value;
                   return (
                     <button
+                      ref={option.value === "1" ? shareFirstOptionRef : undefined}
                       key={option.value}
                       type="button"
                       className={`share-folder-option${active ? " active" : ""}`}
@@ -713,13 +740,14 @@ export default function FolderView({
               </div>
             </div>
             <div className="confirm-actions">
-              <button className="confirm-cancel-btn" onClick={() => setShowShareFolderDialog(false)} disabled={sharingFolder}>取消</button>
+              <button className="confirm-cancel-btn" onClick={closeShareFolderDialog} disabled={sharingFolder || mutationBusy}>取消</button>
               <button className="folder-share-btn" onClick={() => void handleShareCurrentFolder()} disabled={sharingFolder || mutationBusy}>
                 {sharingFolder ? "创建中…" : "确认分享"}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Root view: folder cards */}
@@ -885,6 +913,9 @@ function FolderContent({
   const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
+  const quickMoveLayerRef = useRef<HTMLDivElement | null>(null);
+  const quickMoveDialogRef = useRef<HTMLDivElement | null>(null);
+  const quickMoveSelectRef = useRef<HTMLSelectElement | null>(null);
   const {
     session: videoSession,
     videoRef,
@@ -972,6 +1003,7 @@ function FolderContent({
   const [movingTo, setMovingTo] = useState(MOVE_UNSELECTED);
   const [quickMovePhoto, setQuickMovePhoto] = useState<Photo | null>(null);
   const [quickMoveTo, setQuickMoveTo] = useState(MOVE_UNSELECTED);
+  const [quickMoveBusy, setQuickMoveBusy] = useState(false);
   const [showVoicePanel, setShowVoicePanel] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "recording" | "uploading">("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -1132,6 +1164,12 @@ function FolderContent({
     setSelectedPhoto(null);
     setShowOriginalPreview(false);
   }, []);
+  const closeQuickMoveDialog = useCallback(() => {
+    if (quickMoveBusy) return false;
+    setQuickMovePhoto(null);
+    setQuickMoveTo(MOVE_UNSELECTED);
+    return true;
+  }, [quickMoveBusy]);
   const onModalKeyDown = useCallback((event: KeyboardEvent) => {
     if (isModalShortcutTarget(event.target)) return;
     if (event.key === "ArrowLeft" && selectedIdx !== null && selectedIdx > 0) {
@@ -1155,6 +1193,14 @@ function FolderContent({
       return true;
     },
     onKeyDown: onModalKeyDown,
+  });
+
+  useModalFocusBoundary({
+    active: quickMovePhoto !== null,
+    layerRef: quickMoveLayerRef,
+    containerRef: quickMoveDialogRef,
+    initialFocusRef: quickMoveSelectRef,
+    onEscape: () => closeQuickMoveDialog(),
   });
 
   useModalFocusBoundary({
@@ -1464,14 +1510,25 @@ function FolderContent({
   };
 
   const handleQuickMove = async () => {
-    if (!quickMovePhoto) return;
+    if (!quickMovePhoto || quickMoveBusy) return;
     const target = resolveMoveTarget(quickMoveTo);
     if (!target) return;
-    const ok = await onMovePhoto(quickMovePhoto.name, target);
-    if (ok) {
-      showToast(`已移动到「${target || UNCATEGORIZED}」`, "success");
-      setQuickMovePhoto(null);
-      setQuickMoveTo(MOVE_UNSELECTED);
+    const photoName = quickMovePhoto.name;
+    setQuickMoveBusy(true);
+    try {
+      const ok = await onMovePhoto(photoName, target);
+      if (!mountedRef.current) return;
+      if (ok) {
+        showToast(`已移动到「${target || UNCATEGORIZED}」`, "success");
+        setQuickMovePhoto(null);
+        setQuickMoveTo(MOVE_UNSELECTED);
+      }
+    } catch (error) {
+      if (mountedRef.current) {
+        showToast(error instanceof Error ? error.message : "移动照片失败", "error");
+      }
+    } finally {
+      if (mountedRef.current) setQuickMoveBusy(false);
     }
   };
 
@@ -2207,15 +2264,26 @@ function FolderContent({
         document.body,
       )}
 
-      {quickMovePhoto && (
-        <div className="confirm-overlay" onClick={() => { setQuickMovePhoto(null); setQuickMoveTo(MOVE_UNSELECTED); }}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <p className="confirm-title">移动照片</p>
-            <p className="confirm-filename">{displayName(quickMovePhoto)}</p>
+      {quickMovePhoto && createPortal(
+        <div ref={quickMoveLayerRef} className="confirm-overlay" data-modal-layer onClick={closeQuickMoveDialog}>
+          <div
+            ref={quickMoveDialogRef}
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-move-dialog-title"
+            aria-describedby="quick-move-dialog-description"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p id="quick-move-dialog-title" className="confirm-title">移动照片</p>
+            <p id="quick-move-dialog-description" className="confirm-filename">{displayName(quickMovePhoto)}</p>
             <select
+              ref={quickMoveSelectRef}
               className="modal-move-select quick-move-select"
               value={quickMoveTo}
               onChange={(e) => setQuickMoveTo(e.target.value)}
+              disabled={quickMoveBusy}
             >
               <option value={MOVE_UNSELECTED} disabled>— 选择目标文件夹 —</option>
               <option value={MOVE_CREATE}>+ 新建文件夹…</option>
@@ -2225,11 +2293,14 @@ function FolderContent({
               ))}
             </select>
             <div className="confirm-actions">
-              <button className="confirm-cancel-btn" onClick={() => { setQuickMovePhoto(null); setQuickMoveTo(MOVE_UNSELECTED); }}>取消</button>
-              <button className="confirm-delete-btn" disabled={quickMoveTo === MOVE_UNSELECTED} onClick={() => void handleQuickMove()}>移动</button>
+              <button className="confirm-cancel-btn" onClick={closeQuickMoveDialog} disabled={quickMoveBusy}>取消</button>
+              <button className="confirm-delete-btn" disabled={quickMoveBusy || quickMoveTo === MOVE_UNSELECTED} onClick={() => void handleQuickMove()}>
+                {quickMoveBusy ? "移动中…" : "移动"}
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

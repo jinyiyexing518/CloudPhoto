@@ -16,6 +16,7 @@ export default function AutoStory({ photos }: Props) {
   const storyLayerRef = useRef<HTMLDivElement | null>(null);
   const storyDialogRef = useRef<HTMLDivElement | null>(null);
   const storyCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const navigationTimerRef = useRef<number | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -45,21 +46,35 @@ export default function AutoStory({ photos }: Props) {
     return photos.filter((p) => (p.folder ?? "").trim() === selectedFolder).slice().reverse();
   }, [photos, selectedFolder]);
 
-  const prev = useCallback(() => {
-    setAnimClass("story-exit-right");
-    setTimeout(() => {
-      setCurrentIndex((i) => (i - 1 + storyPhotos.length) % storyPhotos.length);
-      setAnimClass("story-enter");
-    }, 200);
-  }, [storyPhotos.length]);
+  const cancelPendingNavigation = useCallback(() => {
+    if (navigationTimerRef.current === null) return;
+    window.clearTimeout(navigationTimerRef.current);
+    navigationTimerRef.current = null;
+  }, []);
 
-  const next = useCallback(() => {
-    setAnimClass("story-exit-left");
-    setTimeout(() => {
-      setCurrentIndex((i) => (i + 1) % storyPhotos.length);
+  const scheduleNavigation = useCallback((direction: -1 | 1) => {
+    if (storyPhotos.length < 2) return;
+    cancelPendingNavigation();
+    setAnimClass(direction < 0 ? "story-exit-right" : "story-exit-left");
+    navigationTimerRef.current = window.setTimeout(() => {
+      navigationTimerRef.current = null;
+      setCurrentIndex((index) => (
+        index + direction + storyPhotos.length
+      ) % storyPhotos.length);
       setAnimClass("story-enter");
     }, 200);
-  }, [storyPhotos.length]);
+  }, [cancelPendingNavigation, storyPhotos.length]);
+
+  const prev = useCallback(() => scheduleNavigation(-1), [scheduleNavigation]);
+  const next = useCallback(() => scheduleNavigation(1), [scheduleNavigation]);
+
+  const jumpTo = useCallback((index: number) => {
+    cancelPendingNavigation();
+    setCurrentIndex(Math.max(0, Math.min(storyPhotos.length - 1, index)));
+    setAnimClass("story-enter");
+  }, [cancelPendingNavigation, storyPhotos.length]);
+
+  useEffect(() => cancelPendingNavigation, [cancelPendingNavigation]);
 
   // Auto-advance
   useEffect(() => {
@@ -75,11 +90,23 @@ export default function AutoStory({ photos }: Props) {
   const currentPhotoPoster = currentDerivativeSources[0];
 
   const closeStoryPlayer = useCallback(() => {
+    cancelPendingNavigation();
+    setAnimClass("story-enter");
     setPlaying(false);
     setPaused(false);
-  }, []);
+  }, [cancelPendingNavigation]);
+
+  useEffect(() => {
+    if (storyPhotos.length === 0) {
+      closeStoryPlayer();
+      setCurrentIndex(0);
+      return;
+    }
+    if (currentIndex >= storyPhotos.length) setCurrentIndex(storyPhotos.length - 1);
+  }, [closeStoryPlayer, currentIndex, storyPhotos.length]);
 
   const onStoryKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.target instanceof HTMLInputElement && event.target.type === "range") return;
     if (event.key === "ArrowLeft") {
       event.preventDefault();
       prev();
@@ -157,7 +184,7 @@ export default function AutoStory({ photos }: Props) {
 
         <button
           className="story-play-btn"
-          onClick={() => { setCurrentIndex(0); setPaused(false); setPlaying(true); }}
+          onClick={() => { cancelPendingNavigation(); setAnimClass("story-enter"); setCurrentIndex(0); setPaused(false); setPlaying(true); }}
           disabled={storyPhotos.length === 0}
         >
           ▶ 开始播放（{storyPhotos.length} 张）
@@ -238,15 +265,21 @@ export default function AutoStory({ photos }: Props) {
             </div>
           </div>
 
-          {/* Progress bar */}
+          {/* Progress scrubber */}
           <div className="story-player-progress">
-            {storyPhotos.map((_, i) => (
-              <div
-                key={i}
-                className={`story-progress-seg${i === currentIndex ? " active" : i < currentIndex ? " done" : ""}`}
-                onClick={() => { setCurrentIndex(i); setAnimClass("story-enter"); }}
-              />
-            ))}
+            <input
+              className="story-progress-scrubber"
+              type="range"
+              min={1}
+              max={storyPhotos.length}
+              value={currentIndex + 1}
+              aria-label="故事进度"
+              aria-valuetext={`${currentIndex + 1} / ${storyPhotos.length}：${currentPhoto.originalName ?? currentPhoto.name.split("/").pop()}`}
+              style={{
+                background: `linear-gradient(to right, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.95) ${((currentIndex + 1) / storyPhotos.length) * 100}%, rgba(255,255,255,0.35) ${((currentIndex + 1) / storyPhotos.length) * 100}%, rgba(255,255,255,0.35) 100%)`,
+              }}
+              onChange={(event) => jumpTo(Number(event.target.value) - 1)}
+            />
           </div>
 
           {/* Controls */}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import MediaThumb from "../shared/MediaThumb";
@@ -17,6 +17,9 @@ interface Props {
   userId: string;
   onViewPhoto?: (name: string) => void;
 }
+
+const CAPSULE_INITIAL_PHOTO_COUNT = 18;
+const CAPSULE_PHOTO_BATCH_SIZE = 12;
 
 function storageKey(userId: string) {
   return `cf_capsules_${userId}`;
@@ -41,6 +44,8 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
   const viewLayerRef = useRef<HTMLDivElement | null>(null);
   const viewDialogRef = useRef<HTMLDivElement | null>(null);
   const viewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const photoGridRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [capsules, setCapsules] = useState<Capsule[]>(() => loadCapsules(userId));
   const [showCreate, setShowCreate] = useState(false);
   const [openedCapsuleId, setOpenedCapsuleId] = useState<string | null>(null);
@@ -54,6 +59,8 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
   });
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [folderFilter, setFolderFilter] = useState("");
+  const [visiblePhotoCount, setVisiblePhotoCount] = useState(CAPSULE_INITIAL_PHOTO_COUNT);
+  const photoWindowSourceRef = useRef({ photos, userId, folderFilter, showCreate });
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -69,6 +76,52 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
         : photos.slice(0, 60),
     [photos, folderFilter],
   );
+  const photoWindowSourceChanged =
+    photoWindowSourceRef.current.photos !== photos
+    || photoWindowSourceRef.current.userId !== userId
+    || photoWindowSourceRef.current.folderFilter !== folderFilter
+    || photoWindowSourceRef.current.showCreate !== showCreate;
+  const renderedVisiblePhotoCount = photoWindowSourceChanged
+    ? CAPSULE_INITIAL_PHOTO_COUNT
+    : visiblePhotoCount;
+  const visiblePhotos = useMemo(
+    () => displayPhotos.slice(0, renderedVisiblePhotoCount),
+    [displayPhotos, renderedVisiblePhotoCount],
+  );
+
+  useEffect(() => {
+    photoWindowSourceRef.current = { photos, userId, folderFilter, showCreate };
+    setVisiblePhotoCount(CAPSULE_INITIAL_PHOTO_COUNT);
+    if (photoGridRef.current) photoGridRef.current.scrollTop = 0;
+  }, [folderFilter, photos, showCreate, userId]);
+
+  useEffect(() => {
+    if (!showCreate || renderedVisiblePhotoCount >= displayPhotos.length) return;
+    const root = photoGridRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel) return;
+
+    let stale = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (stale || !entry?.isIntersecting) return;
+        setVisiblePhotoCount((count) => Math.min(
+          displayPhotos.length,
+          count + CAPSULE_PHOTO_BATCH_SIZE,
+        ));
+      },
+      {
+        root: photoGridRef.current,
+        rootMargin: "0px 0px 40px 0px",
+        threshold: 0.01,
+      },
+    );
+    observer.observe(sentinel);
+    return () => {
+      stale = true;
+      observer.disconnect();
+    };
+  }, [displayPhotos.length, renderedVisiblePhotoCount, showCreate]);
 
   const handleCreate = () => {
     if (!title.trim() || selectedNames.size === 0) return;
@@ -274,8 +327,8 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   ))}
                 </select>
               </div>
-              <div className="capsule-photo-grid">
-                {displayPhotos.map((p) => {
+              <div ref={photoGridRef} className="capsule-photo-grid">
+                {visiblePhotos.map((p) => {
                   const sel = selectedNames.has(p.name);
                   return (
                     <button
@@ -300,6 +353,13 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                     </button>
                   );
                 })}
+                {renderedVisiblePhotoCount < displayPhotos.length && (
+                  <div
+                    ref={loadMoreSentinelRef}
+                    className="capsule-photo-sentinel"
+                    aria-hidden="true"
+                  />
+                )}
               </div>
             </div>
             <div className="capsule-dialog-footer">

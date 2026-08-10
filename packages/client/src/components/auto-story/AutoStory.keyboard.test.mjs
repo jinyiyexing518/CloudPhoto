@@ -24,8 +24,28 @@ test("StoryPlayer uses the shared modal boundary and restores its trigger", () =
 
 test("StoryPlayer keeps arrows and pause controls inside the modal boundary", () => {
   assert.match(storySource, /const onStoryKeyDown = useCallback[\s\S]*ArrowLeft[\s\S]*prev\(\)[\s\S]*ArrowRight[\s\S]*next\(\)/);
+  assert.match(storySource, /event\.target instanceof HTMLInputElement && event\.target\.type === "range"/);
   assert.match(storySource, /setPaused\(\(value\) => !value\)/);
   assert.doesNotMatch(storySource, /window\.addEventListener\("keydown", onKey\)/);
+});
+
+test("StoryPlayer exposes one semantic scrubber instead of per-photo controls", () => {
+  assert.match(playerSource, /<input[\s\S]*type="range"[\s\S]*min=\{1\}[\s\S]*max=\{storyPhotos\.length\}[\s\S]*value=\{currentIndex \+ 1\}/);
+  assert.match(playerSource, /aria-label="故事进度"/);
+  assert.match(playerSource, /aria-valuetext=\{`\$\{currentIndex \+ 1\} \/ \$\{storyPhotos\.length\}/);
+  assert.match(playerSource, /onChange=\{\(event\) => jumpTo\(Number\(event\.target\.value\) - 1\)\}/);
+  assert.doesNotMatch(playerSource, /storyPhotos\.map/);
+  assert.doesNotMatch(playerSource, /story-progress-seg/);
+});
+
+test("StoryPlayer cancels delayed navigation on rapid input, close, and unmount", () => {
+  assert.match(storySource, /navigationTimerRef = useRef<number \| null>\(null\)/);
+  assert.match(storySource, /window\.clearTimeout\(navigationTimerRef\.current\)/);
+  assert.match(storySource, /const scheduleNavigation = useCallback/);
+  assert.match(storySource, /closeStoryPlayer = useCallback\(\(\) => \{[\s\S]*cancelPendingNavigation\(\)/);
+  assert.match(storySource, /closeStoryPlayer = useCallback\(\(\) => \{[\s\S]*setAnimClass\("story-enter"\)/);
+  assert.match(storySource, /useEffect\(\(\) => cancelPendingNavigation, \[cancelPendingNavigation\]\)/);
+  assert.match(storySource, /const jumpTo = useCallback[\s\S]*cancelPendingNavigation\(\)/);
 });
 
 test("StoryPlayer stays on preview derivatives without passive original or video loading", () => {
