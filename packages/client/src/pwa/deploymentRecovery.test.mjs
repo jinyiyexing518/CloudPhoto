@@ -347,7 +347,7 @@ test("startup and panel contracts install recovery before React and isolate lazy
     assert.match(
       authenticated,
       new RegExp(
-        `display: activeTab === "${panel}"[\\s\\S]*?<ErrorBoundary[\\s\\S]*?key=\\{\\\`${panel}:`,
+        `workspaceTabPanelId\\("${panel}"\\)[\\s\\S]*?hidden=\\{activeTab !== "${panel}"\\}[\\s\\S]*?<ErrorBoundary[\\s\\S]*?key=\\{\\\`${panel}:`,
       ),
       `${panel} visibility wrapper must also hide its boundary fallback`,
     );
