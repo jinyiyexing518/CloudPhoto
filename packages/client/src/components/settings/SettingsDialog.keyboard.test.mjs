@@ -128,7 +128,7 @@ test("focus restoration requires a connected visible target and Settings cleans 
   assert.equal(connected.focusCount, 1);
   assert.equal(disconnected.focusCount, 0);
   assert.equal(hidden.focusCount, 0);
-  assert.match(boundarySource, /restoreFocus\(previousFocusRef\.current\)/);
+  assert.match(boundarySource, /restoreFocus\(restoreFocusRef\?\.current \?\? previousFocusRef\.current\)/);
 });
 
 test("Settings wires every key through the modal boundary and Escape through the close guard", () => {

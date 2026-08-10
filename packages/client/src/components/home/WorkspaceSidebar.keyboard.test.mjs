@@ -66,7 +66,7 @@ test("open sidebar is a labelled modal drawer with dynamic focus containment and
   assert.match(sidebarSource, /onEscape: requestClose/);
   assert.match(sidebarSource, /className="workspace-sidebar-backdrop"[\s\S]*onClick=\{onClose\}/);
   assert.match(boundarySource, /trapTabKey\(event, container, document\.activeElement\)/);
-  assert.match(boundarySource, /restoreFocus\(previousFocusRef\.current\)/);
+  assert.match(boundarySource, /restoreFocus\(restoreFocusRef\?\.current \?\? previousFocusRef\.current\)/);
 });
 
 test("FAB hands the real desktop or compact restore trigger to the sidebar", () => {
