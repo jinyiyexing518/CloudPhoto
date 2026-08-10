@@ -1,12 +1,14 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
-  type RefObject,
 } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import PasswordField from "./PasswordField";
 
 type AuthTab = "login" | "register";
 
@@ -14,85 +16,26 @@ interface AuthPageProps {
   onAuthIntent?: () => void;
 }
 
-interface PasswordFieldProps {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  autoComplete: "current-password" | "new-password";
-  descriptionId?: string;
-  invalid?: boolean;
-  inputRef?: RefObject<HTMLInputElement>;
-}
-
-function PasswordField({
-  id,
-  label,
-  value,
-  onChange,
-  placeholder,
-  autoComplete,
-  descriptionId,
-  invalid,
-  inputRef,
-}: PasswordFieldProps) {
-  const [visible, setVisible] = useState(false);
-
-  return (
-    <div className="auth-field">
-      <label htmlFor={id}>{label}</label>
-      <div className="auth-password">
-        <input
-          ref={inputRef}
-          id={id}
-          type={visible ? "text" : "password"}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          required
-          autoComplete={autoComplete}
-          aria-describedby={descriptionId}
-          aria-invalid={invalid || undefined}
-        />
-        <button
-          className="auth-password-toggle"
-          type="button"
-          onClick={() => setVisible((current) => !current)}
-          aria-controls={id}
-          aria-pressed={visible}
-          aria-label={`${visible ? "隐藏" : "显示"}${label}`}
-        >
-          {visible ? "隐藏" : "显示"}
-        </button>
-      </div>
-    </div>
-  );
-}
+let registerFormPromise: Promise<typeof import("./RegisterForm")> | null = null;
+const loadRegisterForm = () => {
+  registerFormPromise ??= import("./RegisterForm");
+  return registerFormPromise;
+};
+const RegisterForm = lazy(loadRegisterForm);
 
 export default function AuthPage({ onAuthIntent }: AuthPageProps) {
-  const { login, register } = useAuth();
+  const { login } = useAuth();
   const [tab, setTab] = useState<AuthTab>("login");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registrationOpened, setRegistrationOpened] = useState(false);
 
   const loginTabRef = useRef<HTMLButtonElement>(null);
   const registerTabRef = useRef<HTMLButtonElement>(null);
   const loginUsernameRef = useRef<HTMLInputElement>(null);
-  const regUsernameRef = useRef<HTMLInputElement>(null);
 
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-
-  const [regUsername, setRegUsername] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regDisplayName, setRegDisplayName] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regConfirm, setRegConfirm] = useState("");
-
-  const passwordIsLongEnough = regPassword.length >= 6;
-  const confirmHasValue = regConfirm.length > 0;
-  const passwordsMatch = confirmHasValue && regPassword === regConfirm;
 
   useEffect(() => {
     loginUsernameRef.current?.focus();
@@ -112,34 +55,11 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
     }
   };
 
-  const handleRegister = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    if (!passwordIsLongEnough) {
-      setError("密码至少需要 6 位");
-      return;
-    }
-    if (!passwordsMatch) {
-      setError("两次输入的密码不一致");
-      return;
-    }
-    onAuthIntent?.();
-    setLoading(true);
-    try {
-      await register({
-        username: regUsername.trim(),
-        email: regEmail.trim(),
-        displayName: regDisplayName.trim(),
-        password: regPassword,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "注册失败，请稍后重试");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const switchTab = (nextTab: AuthTab) => {
+    if (nextTab === "register") {
+      setRegistrationOpened(true);
+      void loadRegisterForm();
+    }
     setTab(nextTab);
     setError("");
   };
@@ -222,19 +142,21 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
               aria-controls="register-panel"
               tabIndex={tab === "register" ? 0 : -1}
               onClick={() => switchTab("register")}
+              onPointerEnter={() => void loadRegisterForm()}
+              onFocus={() => void loadRegisterForm()}
               onKeyDown={handleTabKeyDown}
             >
               注册
             </button>
           </div>
 
-          {error && (
+          {tab === "login" && error && (
             <div className="auth-error" role="alert" aria-live="assertive">
               {error}
             </div>
           )}
 
-          {tab === "login" ? (
+          {tab === "login" && (
             <div
               id="login-panel"
               role="tabpanel"
@@ -275,113 +197,23 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
                 </button>
               </form>
             </div>
-          ) : (
-            <div
-              id="register-panel"
-              role="tabpanel"
-              aria-labelledby="register-tab"
-            >
-              <form className="auth-form" onSubmit={handleRegister} aria-busy={loading}>
-                <div className="auth-field">
-                  <label htmlFor="register-username">用户名</label>
-                  <input
-                    ref={regUsernameRef}
-                    id="register-username"
-                    type="text"
-                    value={regUsername}
-                    onChange={(event) => setRegUsername(event.target.value)}
-                    placeholder="请输入用户名"
-                    required
-                    autoComplete="username"
-                    inputMode="text"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                  />
-                </div>
-                <div className="auth-field">
-                  <label htmlFor="register-display-name">昵称</label>
-                  <input
-                    id="register-display-name"
-                    type="text"
-                    value={regDisplayName}
-                    onChange={(event) => setRegDisplayName(event.target.value)}
-                    placeholder="输入希望显示的名称"
-                    required
-                    autoComplete="nickname"
-                  />
-                </div>
-                <div className="auth-field">
-                  <label htmlFor="register-email">邮箱</label>
-                  <input
-                    id="register-email"
-                    type="email"
-                    value={regEmail}
-                    onChange={(event) => setRegEmail(event.target.value)}
-                    placeholder="name@example.com"
-                    required
-                    autoComplete="email"
-                    inputMode="email"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                  />
-                </div>
-                <PasswordField
-                  id="register-password"
-                  label="密码"
-                  value={regPassword}
-                  onChange={setRegPassword}
-                  placeholder="至少 6 位"
-                  autoComplete="new-password"
-                  descriptionId="register-password-rule"
-                  invalid={regPassword.length > 0 && !passwordIsLongEnough}
-                />
-                <p
-                  id="register-password-rule"
-                  className={`auth-field-status${
-                    regPassword.length === 0
-                      ? ""
-                      : passwordIsLongEnough
-                        ? " is-valid"
-                        : " is-invalid"
-                  }`}
-                >
-                  <span aria-hidden="true">{passwordIsLongEnough ? "✓" : "•"}</span>
-                  {passwordIsLongEnough ? "已满足至少 6 位" : "密码至少需要 6 位"}
-                </p>
-                <PasswordField
-                  id="register-confirm"
-                  label="确认密码"
-                  value={regConfirm}
-                  onChange={setRegConfirm}
-                  placeholder="再次输入密码"
-                  autoComplete="new-password"
-                  descriptionId="register-confirm-status"
-                  invalid={confirmHasValue && !passwordsMatch}
-                />
-                <p
-                  id="register-confirm-status"
-                  className={`auth-field-status${
-                    !confirmHasValue ? "" : passwordsMatch ? " is-valid" : " is-invalid"
-                  }`}
+          )}
+          {registrationOpened && (
+            <Suspense
+              fallback={tab === "register" ? (
+                <div
+                  id="register-panel"
+                  className="auth-form"
+                  role="tabpanel"
+                  aria-labelledby="register-tab"
                   aria-live="polite"
                 >
-                  <span aria-hidden="true">{passwordsMatch ? "✓" : "•"}</span>
-                  {!confirmHasValue
-                    ? "再次输入以确认密码"
-                    : passwordsMatch
-                      ? "两次输入一致"
-                      : "两次输入不一致"}
-                </p>
-                <button
-                  className="auth-submit"
-                  type="submit"
-                  disabled={loading}
-                  aria-busy={loading}
-                >
-                  {loading ? "正在创建账号…" : "创建账号"}
-                </button>
-              </form>
-            </div>
+                  正在加载注册表单…
+                </div>
+              ) : null}
+            >
+              <RegisterForm active={tab === "register"} onAuthIntent={onAuthIntent} />
+            </Suspense>
           )}
         </section>
       </div>

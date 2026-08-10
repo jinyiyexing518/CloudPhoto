@@ -234,6 +234,12 @@ function checkHashedAssets(configPath) {
   if (authenticatedAppChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred AuthenticatedApp chunk");
   }
+  const registerFormChunks = assets.filter((asset) =>
+    /^RegisterForm-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (registerFormChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred RegisterForm chunk");
+  }
   const entryStylesheets = assets.filter((asset) =>
     /^index-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
   );
@@ -258,8 +264,8 @@ function checkHashedAssets(configPath) {
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
-  if (statSync(entryScripts[0]).size > 29_700) {
-    fail(configPath, "built login entry script must stay below 29.7 kB");
+  if (statSync(entryScripts[0]).size > 27_600) {
+    fail(configPath, "built login entry script must stay below 27.6 kB");
   }
   for (const workspaceMarker of [
     "Media route timed out",
@@ -269,6 +275,7 @@ function checkHashedAssets(configPath) {
     "读取照片列表缓存失败:",
     "写入照片列表缓存失败:",
     ":group:",
+    "正在创建账号…",
   ]) {
     if (entryScript.includes(workspaceMarker)) {
       fail(configPath, `workspace implementation leaked into login JavaScript: ${workspaceMarker}`);
@@ -295,6 +302,9 @@ function checkHashedAssets(configPath) {
   }
   if (serviceWorker.includes(`assets/${basename(authenticatedAppChunks[0])}`)) {
     fail(configPath, "deferred AuthenticatedApp chunk must not be downloaded by the precache");
+  }
+  if (serviceWorker.includes(`assets/${basename(registerFormChunks[0])}`)) {
+    fail(configPath, "deferred RegisterForm chunk must not be downloaded by the precache");
   }
   if (serviceWorker.includes(`assets/${basename(authenticatedStylesheets[0])}`)) {
     fail(configPath, "deferred AuthenticatedApp styles must not be downloaded by the precache");
