@@ -2429,7 +2429,7 @@ body {
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  cursor: pointer;
+  cursor: default;
   aspect-ratio: 1;
   display: flex;
   flex-direction: column;
@@ -2446,6 +2446,11 @@ body {
   transform: translateY(-3px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
   border-color: #93c5fd;
+}
+.folder-card--disabled:hover {
+  transform: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: transparent;
 }
 .folder-card--dragover {
   border-color: #0078d4;

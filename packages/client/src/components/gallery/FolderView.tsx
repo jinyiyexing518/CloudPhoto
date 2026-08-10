@@ -50,6 +50,11 @@ import {
   type BatchMutationResult,
 } from "../../transfer/batchMutationState";
 import { validateFolderRenameInput } from "../../transfer/folderRenameState";
+import {
+  getFolderDisplayName,
+  getFolderGroupLabel,
+  getFolderOpenLabel,
+} from "./folderCardAccessibility";
 
 let folderBatchMutationSequence = 0;
 
@@ -155,6 +160,7 @@ function FolderCard({
   const [editing, setEditing] = useState(false);
   const [editVal, setEditVal] = useState(name);
   const dragCount = useRef(0);
+  const displayName = getFolderDisplayName(name);
 
   const confirmRename = () => {
     if (interactionDisabled) return;
@@ -165,7 +171,9 @@ function FolderCard({
 
   return (
     <div
-      className={`folder-card${dragOver ? " folder-card--dragover" : ""}`}
+      className={`folder-card${dragOver ? " folder-card--dragover" : ""}${interactionDisabled ? " folder-card--disabled" : ""}`}
+      role="group"
+      aria-label={getFolderGroupLabel(name)}
       aria-disabled={interactionDisabled || undefined}
       onDragOver={(e) => {
         if (interactionDisabled) return;
@@ -213,14 +221,14 @@ function FolderCard({
         <button
           type="button"
           className="folder-card-open"
-          aria-label={`打开文件夹${name || UNCATEGORIZED}，${count} 张照片`}
+          aria-label={getFolderOpenLabel(name, count)}
           disabled={interactionDisabled}
           onClick={onClick}
         >
           <span className="folder-card-icon" aria-hidden="true">
             {hasSubFolders ? "📂" : "📁"}
           </span>
-          <span className="folder-card-name">{name || UNCATEGORIZED}</span>
+          <span className="folder-card-name">{displayName}</span>
           <span className="folder-card-count">{count} 张</span>
         </button>
       )}
@@ -228,7 +236,7 @@ function FolderCard({
         <button
           type="button"
           className="folder-card-rename-btn"
-          aria-label={`重命名文件夹${name || UNCATEGORIZED}`}
+          aria-label={`重命名文件夹 ${displayName}`}
           title="重命名文件夹"
           disabled={interactionDisabled}
           onClick={(e) => {
@@ -245,7 +253,7 @@ function FolderCard({
         <button
           type="button"
           className="folder-card-delete-btn"
-          aria-label={`删除文件夹${name || UNCATEGORIZED}`}
+          aria-label={`删除文件夹 ${displayName}`}
           title="删除文件夹（照片移入回收站）"
           disabled={interactionDisabled}
           onClick={(e) => {

@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-folder-card-keyboard-navigation",
+  "date": "2026-08-10",
+  "icon": "⌨️",
+  "title": "强化文件夹卡片键盘导航",
+  "type": "fix",
+  "desc": "根目录和子目录文件夹卡片现在提供清晰、独立的键盘打开入口。",
+  "details": "文件夹卡片外层改为带稳定名称的非交互 group；主打开区域是独立原生按钮，Enter、Space 和点击只走同一 onClick，busy 时真实 disabled。重命名与删除继续作为兄弟按钮保留各自 Tab stop、事件隔离和 focus-visible，不会误触打开；空白、超长及 emoji 文件夹名均保留有意义的完整可访问名称。拖放、视频封面逻辑和已登录 Header 安装入口约束保持不变。",
+  "seq": 1786377900000
+}

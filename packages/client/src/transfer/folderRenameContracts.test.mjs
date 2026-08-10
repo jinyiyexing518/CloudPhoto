@@ -33,15 +33,33 @@ test("FolderView validates locally and keeps root and recursive controls truly d
   assert.match(folder, /onDelete=\{onDeleteSubFolder[\s\S]{0,180}interactionDisabled=\{batchMutationBusy\}/);
 });
 
-test("folder cards expose a native keyboard entry target without nesting action buttons", () => {
-  assert.match(folder, /<button[\s\S]{0,120}className="folder-card-open"/);
-  assert.match(
-    folder,
-    /className="folder-card-open"[\s\S]{0,260}aria-label=\{`打开文件夹\$\{name \|\| UNCATEGORIZED\}，\$\{count\} 张照片`\}[\s\S]{0,180}disabled=\{interactionDisabled\}[\s\S]{0,180}onClick=\{onClick\}/,
+test("folder cards keep the group, open target, and actions as separate keyboard stops", () => {
+  const card = folder.slice(
+    folder.indexOf("function FolderCard("),
+    folder.indexOf("// ─── Props", folder.indexOf("function FolderCard(")),
   );
-  assert.match(folder, /className="folder-card-rename-btn"[\s\S]{0,320}e\.stopPropagation\(\)/);
-  assert.match(folder, /className="folder-card-delete-btn"[\s\S]{0,260}e\.stopPropagation\(\)/);
+  const openStart = card.indexOf('className="folder-card-open"');
+  const openEnd = card.indexOf("</button>", openStart);
+  const renameStart = card.indexOf('className="folder-card-rename-btn"');
+  const deleteStart = card.indexOf('className="folder-card-delete-btn"');
+  const outerTag = card.slice(card.indexOf("<div"), card.indexOf("onDragOver"));
+  const openButton = card.slice(card.lastIndexOf("<button", openStart), openEnd + "</button>".length);
+
+  assert.match(outerTag, /role="group"/);
+  assert.match(outerTag, /aria-label=\{getFolderGroupLabel\(name\)\}/);
+  assert.doesNotMatch(outerTag, /onClick|onKeyDown|tabIndex/);
+  assert.ok(openStart > 0 && openEnd < renameStart && renameStart < deleteStart);
+  assert.match(openButton, /type="button"/);
+  assert.match(openButton, /aria-label=\{getFolderOpenLabel\(name, count\)\}/);
+  assert.match(openButton, /disabled=\{interactionDisabled\}/);
+  assert.match(openButton, /onClick=\{onClick\}/);
+  assert.doesNotMatch(openButton, /onKeyDown|onKeyUp/);
+  assert.match(card.slice(renameStart, deleteStart), /e\.stopPropagation\(\)/);
+  assert.match(card.slice(deleteStart), /e\.stopPropagation\(\)/);
+  assert.doesNotMatch(card.slice(renameStart, deleteStart), /onClick=\{onClick\}/);
+  assert.doesNotMatch(card.slice(deleteStart), /onClick=\{onClick\}/);
   assert.match(headerCss, /\.folder-card-open:focus-visible[\s\S]{0,160}outline:/);
+  assert.match(headerCss, /\.folder-card-(rename|delete)-btn:focus-visible/);
 });
 
 test("authenticated shell owns token-safe rename lifecycle, workspace abort, and all departure guards", () => {
