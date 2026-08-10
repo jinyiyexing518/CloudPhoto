@@ -17,6 +17,7 @@ on:
       - "scripts/deployment-assets.mjs"
       - "scripts/security-headers.test.mjs"
       - "scripts/stale-deployment-browser.test.mjs"
+      - "scripts/test-photo-loading-behavior.mjs"
       - ".github/workflows/deploy-frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -76,6 +77,9 @@ jobs:
 
       - name: Verify stale deployment browser contracts
         run: node --test --test-force-exit scripts/deployment-asset-retention.test.mjs scripts/stale-deployment-browser.test.mjs
+
+      - name: Verify photo loading behavior
+        run: node scripts/test-photo-loading-behavior.mjs
 
       - name: Record deployment identity
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')

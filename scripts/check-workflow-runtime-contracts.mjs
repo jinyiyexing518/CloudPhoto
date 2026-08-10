@@ -102,7 +102,9 @@ const frontendGatePaths = [
   "scripts/deployment-asset-retention.test.mjs",
   "scripts/deployment-assets.mjs",
   "scripts/stale-deployment-browser.test.mjs",
+  "scripts/test-photo-loading-behavior.mjs",
 ];
+const frontendGateCommands = ["node scripts/test-photo-loading-behavior.mjs"];
 
 function indentation(line) {
   return line.match(/^\s*/)[0].length;
@@ -906,6 +908,11 @@ export function checkWorkflowRuntimeContracts(workflows) {
   for (const requiredPath of frontendGatePaths) {
     if (!deployPushPaths[frontendWorkflow]?.includes(requiredPath)) {
       issues.push(`${frontendWorkflow} must include frontend gate path ${requiredPath}`);
+    }
+  }
+  for (const requiredCommand of frontendGateCommands) {
+    if (!frontend?.text.includes(requiredCommand)) {
+      issues.push(`${frontendWorkflow} must execute frontend gate command ${requiredCommand}`);
     }
   }
 
