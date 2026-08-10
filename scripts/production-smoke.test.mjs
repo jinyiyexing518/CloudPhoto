@@ -234,6 +234,28 @@ test("rejects an invalid expected deployment SHA before issuing requests", () =>
   );
 });
 
+test("deployment-only scope requires a SHA and runs only identity checks", () => {
+  const sha = "a".repeat(40);
+  const checks = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_AZURE_FRONTEND_URL: "https://frontend.example",
+    PRODUCTION_DEPLOYED_SHA: sha,
+    PRODUCTION_SMOKE_SCOPE: "deployment",
+  });
+
+  assert.deepEqual(
+    checks.map(({ target, name }) => ({ target, name })),
+    [
+      { target: "primary", name: "deployment" },
+      { target: "azure", name: "deployment" },
+    ]
+  );
+  assert.throws(
+    () => createChecks({ PRODUCTION_SMOKE_SCOPE: "deployment" }),
+    /requires PRODUCTION_DEPLOYED_SHA/
+  );
+});
+
 test("rejects a homepage without the anti-framing security baseline", async () => {
   const homepageCheck = createChecks({
     PRODUCTION_BASE_URL: "https://primary.example",

@@ -135,3 +135,11 @@ jobs:
         env:
           PRODUCTION_DEPLOYED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.deployed_sha || '' }}
         run: node scripts/production-smoke.mjs
+
+      - name: Verify deployed artifact identity
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.should_check == 'true'
+        working-directory: .health-control
+        env:
+          PRODUCTION_DEPLOYED_SHA: ${{ steps.deployment_event.outputs.deployed_sha }}
+          PRODUCTION_SMOKE_SCOPE: deployment
+        run: node scripts/production-smoke.mjs

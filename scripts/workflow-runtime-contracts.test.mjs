@@ -356,6 +356,24 @@ test("rejects production health that can silently accept missing classifier outp
   );
 });
 
+test("rejects production health without a controller-owned artifact identity gate", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "      - name: Verify deployed artifact identity",
+    "      - name: Disabled deployed artifact identity"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("controller-owned deployment marker gate")
+    )
+  );
+});
+
 test("rejects a health classifier command with success-only filtering", () => {
   const path = ".github/workflows/production-health.yml";
   const health = readFileSync(

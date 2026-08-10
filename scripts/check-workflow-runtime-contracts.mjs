@@ -50,6 +50,8 @@ const productionHealthClassifierEnv = {
 };
 const productionHealthExpectedSha =
   "${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.deployed_sha || '' }}";
+const productionHealthIdentityCondition =
+  "github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.should_check == 'true'";
 const productionHealthClassificationValidationCommand = [
   'for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do',
   '  case "$value" in',
@@ -342,6 +344,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   let productionHealthClassification = null;
   let productionHealthClassificationValidation = null;
   let productionHealthCheck = null;
+  let productionHealthIdentityCheck = null;
   const concurrency = {
     group: rootChildField(text, "concurrency", "group"),
     cancelInProgress: rootChildField(text, "concurrency", "cancel-in-progress"),
@@ -408,6 +411,13 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         expectedSha: stepChildField(step, "env", "PRODUCTION_DEPLOYED_SHA"),
       };
     }
+    if (name === "Verify deployed artifact identity") {
+      productionHealthIdentityCheck = {
+        command: stepField(step, "run"),
+        expectedSha: stepChildField(step, "env", "PRODUCTION_DEPLOYED_SHA"),
+        scope: stepChildField(step, "env", "PRODUCTION_SMOKE_SCOPE"),
+      };
+    }
     if (name === "Validate deployment classification") {
       productionHealthClassificationValidation = {
         condition: stepField(step, "if"),
@@ -448,6 +458,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     productionHealthClassification,
     productionHealthClassificationValidation,
     productionHealthCheck,
+    productionHealthIdentityCheck,
     usesRepositorySwaToken,
     workflowDispatchModeDefault,
     workflowDispatchModes,
@@ -559,6 +570,21 @@ export function checkWorkflowRuntimeContracts(workflows) {
   ) {
     issues.push(
       `${productionHealthWorkflow} must ignore validation/coalesced frontend runs that never started production deployment`
+    );
+  }
+  if (
+    healthPolicy?.stepConditions["Verify deployed artifact identity"]
+      !== productionHealthIdentityCondition
+    || healthPolicy.stepWorkingDirectories["Verify deployed artifact identity"]
+      !== ".health-control"
+    || healthPolicy.productionHealthIdentityCheck?.expectedSha
+      !== "${{ steps.deployment_event.outputs.deployed_sha }}"
+    || healthPolicy.productionHealthIdentityCheck?.scope !== "deployment"
+    || healthPolicy.productionHealthIdentityCheck?.command
+      !== "node scripts/production-smoke.mjs"
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must keep a controller-owned deployment marker gate for historical deployed revisions`
     );
   }
   if (

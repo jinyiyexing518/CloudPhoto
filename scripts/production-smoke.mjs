@@ -247,6 +247,13 @@ export function createChecks(env = process.env) {
   const azureApiBaseUrl =
     env.PRODUCTION_AZURE_API_BASE_URL ?? DEFAULT_AZURE_API_BASE_URL;
   const expectedDeployedSha = env.PRODUCTION_DEPLOYED_SHA?.toLowerCase() ?? "";
+  const scope = env.PRODUCTION_SMOKE_SCOPE ?? "full";
+  if (scope !== "full" && scope !== "deployment") {
+    throw new Error("PRODUCTION_SMOKE_SCOPE must be full or deployment");
+  }
+  if (scope === "deployment" && !expectedDeployedSha) {
+    throw new Error("deployment scope requires PRODUCTION_DEPLOYED_SHA");
+  }
   if (expectedDeployedSha && !COMMIT_SHA_PATTERN.test(expectedDeployedSha)) {
     throw new Error("PRODUCTION_DEPLOYED_SHA must be a 40-character commit SHA");
   }
@@ -363,7 +370,9 @@ export function createChecks(env = process.env) {
     );
   }
 
-  return checks;
+  return scope === "deployment"
+    ? checks.filter(({ name }) => name === "deployment")
+    : checks;
 }
 
 function delay(milliseconds) {
