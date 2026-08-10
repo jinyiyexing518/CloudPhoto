@@ -15,19 +15,38 @@
 - **🔒 Canonical HSTS** — SWA 与 Nginx 模板统一为 `max-age=31536000; includeSubDomains; preload`；前端代理隐藏上游重复安全头，static/security 契约锁定模板，smoke 要求 SWA 唯一 canonical 且代理首值 canonical
 - **🌐 DNS 入口真实性** — 文档按权威 DNS 实测区分当前 apex/www 入口与尚未配置的 cn/global/智能 DNS，避免把 NXDOMAIN 主机声明为已上线
 - **🎯 Production Health 部署身份** — `workflow_run` checkout、分类、报告与线上 guard 统一绑定 triggering deployment `head_sha`；前端 artifact 发布 no-store SHA marker，主域和 SWA 必须精确匹配，避免 main 已前移时用未来 commit 脚本验证旧产物的假绿
+- **🔒 重要片段本地数据授权隔离** — 离线浏览统计和诊断按账号、角色与个人/群组工作区隔离；注销、401、切号或角色变化会同步清理私有照片、媒体和 moments，旧版无归属全局键不迁移给当前用户，应用代码缓存保留
+
+**体验修复**
+- **⌨️ 自动隐藏导航焦点可见性** — Header 与页签在 Tab/Shift+Tab、方向键或 Home/End 到达时立即恢复到视口；导航聚焦、菜单/侧栏或任意模态层活跃期间不再被滚动隐藏，移动端仅在页签条内 nearest 滚动
+- **🔎 工作区页签浅色对比度** — 六视图文字、数量徽章和键盘焦点环分别满足普通文本 4.5:1 与相邻背景 3:1；选中态同时使用粗体、底边和底纹，不只依赖颜色
+- **⌨️ 跳到当前主要内容** — 已登录页面首个键盘入口动态指向当前工作区面板，聚焦时才显示；可跳过 Header/页签，侧栏或模态层打开时不暴露后台入口，窄屏不产生布局位移或横向溢出
+- **⌨️ 照片操作菜单键盘闭环** — 普通模式照片主按钮可用 Shift+F10 / 菜单键打开具名菜单，支持方向键、Home/End、Enter/Space、Escape、外部点击、视口内定位和 connected-only 焦点恢复
+- **🗑️ 照片删除确认键盘边界** — 直接删除和操作菜单共用具名 alertdialog；默认聚焦取消并约束 Tab，Escape/外部关闭后恢复正确入口，删除请求进行中禁用操作并拒绝提前关闭或重复提交
+- **🎵 胶囊与故事媒体类型修正** — 音频缩略图改为零网络本地占位，胶囊仍可选择音频；自动故事只统计和播放图片及已有派生封面的视频，排除音频、未知类型和无封面视频
+- **💌 时光胶囊存储恢复** — 本地胶囊按用户与空间隔离，旧数据只迁入个人空间；损坏 JSON、非法日期、重复 ID、越界记录和 URL/SAS 名称会安全丢弃，读写/配额失败显式提示且不会显示伪成功
 
 ---
 
-### 2026-08-10 — 移动端布局稳定性与 PWA 兼容
+### 2026-08-10 — 可靠性、无障碍与媒体恢复
 
 **Bug 修复**
 - **⌨️ 自动隐藏 Header 焦点可见性** — 空间或头像触发器接收焦点、任一 Header 菜单打开、或菜单发起的弹窗活跃时立即显示并锁定 Header；弹窗关闭后仅向仍连接且可见的触发器恢复焦点，Tab 离开 Header 后才允许后续滚动再次隐藏
+- **📍 历史照片位置安全恢复** — 地点地址改由鉴权反向地理编码代理、有界缓存和空间隔离恢复；历史 NaN、越界、单边或缺失 GPS 会先只读估算，再按 MIME/Range、每页 8 MiB 预算和请求截止时间恢复。合法位置不下载原图，不完整扫描不清理或写完成标记
+- **⌨️ Header 菜单与嵌套弹窗** — 空间切换、用户菜单及群组/安装/快捷键/管理员弹窗补齐 menu/dialog 语义、方向键、Home/End、动态焦点循环、嵌套隔离和 connected-only 焦点恢复；pending 操作仍受关闭保护
+- **⚡ 时光胶囊与自动故事减载** — 胶囊照片区首批挂载 18 张、内部滚动每次追加 12 张并保留完整选择；自动故事无论 215+ 照片都只渲染一个原生 range scrubber，支持 Arrow/Home/End、点击、拖动及自动播放同步，并清理 200ms 过渡任务
+- **🖼️ 文件夹与照片卡片可访问操作** — 文件夹打开、重命名、删除和照片主操作改为独立原生按钮；触控目标至少 44×44，Enter/Space、`aria-pressed`、完整可访问名称、focus ring、拖放、右键和批量守卫保持一致
+- **📱 移动端快捷操作与日期** — 320–480px 默认折叠 FAB，200% 缩放下展开不越界并在操作、外部点按或 Escape 后收起；时间线、卡片和详情统一使用安全的 zh-CN 日期格式，日期控件与主要操作保持至少 44px
+- **🗺️ 记忆地图键盘与触控访问** — 标记保留 22px 视觉锚点但真实命中区扩为 44×44，使用照片名语义并支持 Tab/Enter/Space；详情与 GPS 编辑具备 stacked dialog 焦点边界、pending 关闭保护、迟到保存隔离和严格坐标校验
 - **⬆️ 失败上传进度真实性** — 413、部分网络失败和取消只保留实际上传字节，不再补成整文件或制造速度尖峰；重试/线路回退使用独立单调线传输计数采样速度，混合批次在照片库刷新期间保持守卫并明确显示成功/失败/取消结果，旧暂停状态不再遮住 settle 状态
-- **🚦 前端生产部署竞态** — 同一 production target 的 main push 与显式 production 手动运行不会再并发进入 Azure SWA；运行中的 upload 保留，额外 pending 在进入 Azure 前 coalesce，不再产生 Deployment Canceled failure。PR 与非 main 手动运行固定为 validation-only；production token 改由 main job 通过 OIDC 即时读取，旧分支 workflow 不再拥有仓库级生产凭据
+- **🚦 前端生产部署竞态** — 同一 production target 的 main push 与显式 production 手动运行不会再并发进入 Azure SWA；运行中的 upload 保留，额外 pending 在进入 Azure 前 coalesce，不再产生 Deployment Canceled failure。当前 workflow 中 PR 与非 main 手动运行固定为 validation-only，production token 由 main job 通过 OIDC 即时读取且不引用 repository token；删除旧 secret 是隔离历史分支 workflow 的运维前提
 - **🔄 跨部署 lazy chunk 404 自恢复** — 旧页面在新版本发布后请求已删除的 hashed chunk 时，安全会话最多自动刷新一次；上传、下载、语音、批量、回收站、维护和文件夹重命名期间保持 0 次刷新并在完成后恢复。文件夹/地图等 lazy panel 使用独立边界，失败不再瘫痪整个主区，用户界面不再暴露模块 URL 或技术错误
 - **📱 横向抖动与底部遮挡** — 320/390px 的本周概况保持 full-bleed 但不再扩大根文档，Tab 导航仍可自身横向滑动；≤360px 悬浮操作默认收纳为 48px 单入口，按需展开全部动作并支持 safe-area、Escape、焦点回归与 ARIA 状态
 - **🧰 侧栏筛选控件溢出** — 时间线侧栏改用显式容器级布局：搜索/清空与快捷筛选分组，筛选 chip 和网格尺寸按可用宽度重排；320–480px、200% 缩放和长中英文标签下保持完整可见、无横向滚动及 44px 触控目标，宽桌面布局不变
 - **📲 PWA capability 告警** — 保留 Apple meta 并补充标准 `mobile-web-app-capable=yes`，源码、构建产物和线上 smoke 共同校验
+
+**体验优化**
+- **⌨️ 工作区六视图页签导航** — 六个主视图补齐具名 tablist/tab/tabpanel、稳定关联 ID、roving tabindex、Arrow/Home/End 自动激活和窄屏 nearest 滚动；传输、mutation 或模态边界拒绝切换时，当前 selected 与焦点不漂移，隐藏 panel 的恢复 UI 也不会泄漏到当前视图
 
 ---
 

@@ -48,7 +48,7 @@
 - **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px 优先 thumbnail，其余优先 preview；缺少 preview 时继续复用 thumbnail，只有没有任何派生图才回退 original
 - **首屏封面优先级** — 时间线、重点片段和文件夹仅将前 6 张派生图标记为 `loading="eager"` + `fetchpriority="high"`，其余继续原生 lazy，避免首屏封面与屏外资源争抢连接
 - **视频封面体积压缩** — `setVideoThumbnail` 端点用 sharp 将 canvas 截帧（最大 1920×1080，~500KB）缩至 400px 再存储，体积缩小 **10–15×**
-- **视频按意图加载** — 网格只渲染持久化的 WebP 封面，不创建 video 元素；用户明确打开视频后使用 `preload="metadata"` 先取时长与起播所需范围
+- **视频按意图加载** — 网格只渲染持久化的 WebP 封面，不创建 video 元素；用户明确打开视频后才挂载 `preload="auto"` 播放器，由浏览器按 Range 获取起播数据
 - **视频中途卡死自恢复** — 同源 `/media` 用 2-byte Range 严格验证 `206`，跨域 Blob 由媒体元素 no-CORS 播放能力验证；播放态连续 4 秒无进展才有限换线，即使 `readyState=4` 也不会掩盖停滞，并恢复原时间点、播放意图、音量、静音与倍速。direct 不尝试 tainted canvas 截帧，pause/seek/切后台不会误切，两条线路都失败时结束 loading 并提供原位重试
 - **历史视频封面受控修复** — 无派生图、派生图线路全部失败，或 200/400px 派生图内容近乎纯白/纯灰的近视口卡片才在 idle 后进入全局队列；正常明亮但有纹理的画面不误判。同一 Blob 跨时间线/文件夹/故事只解码一次，未知网络并发 1、3G/4G 最多 2，saveData/离线/2G 为 0，并用 48 MiB 单文件、160 MiB 会话估算预算和最多 2 次带退避尝试阻止流量风暴。超过 48 MiB 的视频继续保持被动原文件请求为 0；用户主动播放后会复用现有 viewer，从非零时间点选择第一个非低信息、canvas 可读的已解码帧，只写一次 WebP。direct taint、第 0 帧和低信息帧均跳过且保持可重试，成功后 timeline/moments/folder 立即共用新封面
 - **动图懒加载** — `loading="lazy"`，GIF/HEIC 接近视口才发请求
@@ -63,6 +63,7 @@
 - **认证前样式分包** — 8,170 行工作区样式由 `AuthenticatedApp` 延迟加载，登录页仅保留完全一致的鉴权、会话恢复和 chunk 错误样式；首屏 CSS 从 128.56 kB 降至 9.38 kB（约 -93%，gzip 23.58 kB → 2.77 kB）
 - **认证服务直接导入** — `AuthContext` 不再通过 `photoApi` 兼容 barrel 获取登录与 token API，照片线路、媒体 fallback 等工作区代码不再被 Rollup 提升到登录入口；入口由 36.25 kB 降至 30.45 kB（约 -16%，gzip 12.84 kB → 11.03 kB）
 - **私有缓存生命周期分层** — `AuthContext` 只同步加载约 2 kB 的账号归属、generation 失效、在途写入 drain 与缓存删除逻辑；照片列表读写、裁剪和序列化留在认证后 chunk，入口由 30.45 kB 降至 28.84 kB（gzip 11.03 kB → 10.44 kB），且不削弱跨账号/角色缓存隔离
+- **重要片段本地数据授权隔离** — moments 离线统计与诊断按用户、角色、个人/群组工作区派生键，并复用 owner/generation 与延迟写入围栏；注销、401、切号或降权在 UI 更新前同步清理私有照片、媒体和 moments，旧无归属全局键 fail closed 删除，应用壳与 app-code 保留
 - **照片策略边界分层** — 账号 JWT 解析、通用 API 路由/hedge 与照片列表刷新、媒体缓存规则拆为独立模块；`http` 不再把 `:group:` 列表键等照片专用策略提升到登录入口，入口由 28.84 kB 降至 28.48 kB（gzip 10.44 kB → 10.31 kB）
 - **注册表单按意图加载** — 默认登录页不再携带注册字段、校验和提交逻辑；注册 Tab hover/focus 预载同一个 lazy Promise，打开后保持表单状态并继续在提交前预载工作区。入口由 28.48 kB 降至 26.58 kB（gzip 10.31 kB → 9.91 kB），注册逻辑成为独立 2.79 kB chunk
 - **更新弹窗 Idle 延后加载** — `WhatsNewPopup` 从 `AuthenticatedApp` 拆为独立 lazy chunk，照片列表 `loading=true` 时不挂载也不请求 changelog；`loading` 结束后仅在 `requestIdleCallback({ timeout: 2000 })`（含 `setTimeout` 兼容 fallback）空闲窗口挂载，且切回 loading/卸载会取消旧任务，避免迟到弹窗覆盖加载态。`AuthenticatedApp` 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB），并新增 `WhatsNewPopup-*.js` 3.81 kB chunk
@@ -74,7 +75,10 @@
 - **侧栏筛选容器级响应式** — 同一 `FilterBar` 以显式 sidebar variant 隔离抽屉布局，搜索/清空先行、快捷筛选与网格尺寸按容器自动换行；320–480px 与 200% 缩放下长标签和激活 chip 不再越界，所有交互保持至少 44px，宽桌面默认样式不变
 - **PWA 安全更新闸门** — `onNeedRefresh` 仅设置全局 `update-ready` 状态并发事件，不自动 `updateSW(true)`/刷新页面；登录页期间收到更新事件也会在进入工作区后恢复更新提示
 - **跨部署 chunk 一次性自愈** — pre-React 入口只识别同源 content-hashed JS/CSS 的 dynamic import/preload 失败，安全会话显式激活 waiting SW，再以 cache-busting 导航恢复，自动 reload 上限 **1 次**；危险操作期间 reload 为 **0**，完成后自动续接。时间线、文件夹、重要片段、地图、胶囊与故事各有 keyed ErrorBoundary，因此 FolderView 404 的故障域从整个主区缩至 **1 个 panel**；sessionStorage 只留 opaque 指纹和 allowlisted tab，生产 DOM 中 raw URL/stack 为 **0**。常驻恢复与 waiting-worker 控制令登录入口从 26.58 kB 增至 34.21 kB（gzip 9.91 → 12.76 kB），换取普通 Tab 与 installed PWA 的跨版本可恢复性
-- **前端 production 单目标串行** — 事故中 1 个可观测 PushEvent 生成了同 SHA 的 2 个 attempt-1 Frontend runs（398/399），旧 workflow 无 concurrency，两个 SWA upload 竞速后留下 1 success + 1 Azure Deployment Canceled failure。现在 main push 与 main 手动 production 共用一个不取消在途 upload 的 production group；同目标最多 1 running + 1 pending，更多事件仅在 Azure 前 coalesce，SWA 并发 upload 上限固定为 **1**。PR 与 validation upload 为 **0**，production job 通过 main OIDC 即时读取 SWA token；仓库级 deployment token 删除后，15 个未包含新 guard 的旧远端分支也无法取得生产凭据
+- **前端 production 单目标串行** — 事故中 1 个可观测 PushEvent 生成了同 SHA 的 2 个 attempt-1 Frontend runs（398/399），旧 workflow 无 concurrency，两个 SWA upload 竞速后留下 1 success + 1 Azure Deployment Canceled failure。现在 main push 与 main 手动 production 共用一个不取消在途 upload 的 production group；同目标最多 1 running + 1 pending，更多事件仅在 Azure 前 coalesce，SWA 并发 upload 上限固定为 **1**。PR 与 validation upload 为 **0**，当前 production job 通过 main OIDC 即时读取 SWA token且不引用 repository token；删除旧 secret 是让历史分支 workflow 同样失去凭据的运维前提
+- **胶囊与故事有界渲染** — 时光胶囊记忆区首批仅挂载 **18** 项、滚动或键盘到批次末项时追加 **12** 项且完整选择 Set 不丢失；自动故事只纳入图片和有安全派生封面的视频，并从逐项进度节点收敛为恒定 **1 个**原生 range scrubber，215+ 项时 DOM 规模仍有界，快速导航和卸载会清理 200ms 过渡任务
+- **媒体类型零误请求** — `MediaThumb` 对 audio/* 只渲染本地图标与“音频”badge，网络媒体元素为 **0**；时光胶囊仍可选择音频，自动故事统一排除 audio、unknown 和无派生封面视频
+- **胶囊存储防损坏边界** — 本地 key 按 user/workspace 隔离，legacy 只迁移 personal；100 胶囊 × 200 项、标题/名称长度、日期、重复 ID、URL/SAS 均经纯 normalization，读写或配额失败显式提示且 UI 只在持久化成功后更新
 - **Service Worker 私有媒体缓存**
   - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），媒体缓存既要减少同一会话重复下载，也不能跨越账号授权边界
   - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  
@@ -121,7 +125,7 @@
 - **OIDC 无密码 CI/CD** — GitHub Actions 通过 Azure Federated Credential 认证，无长期密码
 - **用户委托 SAS** — Blob 访问凭证由 Managed Identity 签发（无账户密钥），2h 有效期，最小权限
 - **文件夹重命名无覆盖事务** — 路径策略只接受规范相对路径与同 parent 末段改名，同时保留历史 Unicode source key；完整源/目标预检后，Azure Copy Blob 使用 destination `ifNoneMatch=*` 与 source ETag 原子拒绝竞态覆盖/旧版本搬移。copy/delete 各 4 路有界并发，rollback 仅 2 路；首个 copy 失败停止派发，已启动任务 settle 后统一回滚。copy 后复核 inventory，删除每个源前短租约锁住并验证目标 copyId + final ETag，源删除也受预检 ETag 保护；失败只清理仍可证明归属本操作的目标，保证每个媒体至少一份。根目录与递归文件夹卡片使用有名称的非交互 group 包裹独立原生打开按钮；空白、超长和 emoji 名称均生成完整可访问名称，重命名/删除作为至少 44×44 的独立兄弟 Tab stop，busy、拖放和焦点状态不会误触打开
-- **照片卡片原生键盘入口** — timeline、moments、insight strip 与 folder grid 共用语义 article；主按钮在普通模式打开、批量模式选择并暴露 `aria-pressed`，可访问名称只组合原文件名、媒体类型与日期。收藏/删除维持独立 44×44 操作和 focus ring，GIF、历史视频封面 repair、右键与拖放继续位于主按钮之外
+- **照片卡片原生键盘入口** — timeline、moments、insight strip 与 folder grid 共用具名语义 group；主按钮在普通模式打开、批量模式选择并暴露 `aria-pressed`，可访问名称只组合原文件名、媒体类型与日期。收藏/删除维持独立 44×44 操作和 focus ring；Shift+F10/菜单键可打开具名 menu，支持方向键、Home/End、Enter/Space、Escape 和 connected-only 回焦。删除确认复用 alertdialog boundary，默认聚焦取消、pending 期间拒绝关闭和重复提交；GIF、历史视频封面 repair 与拖放继续独立
 - **重命名流量与 HTTP 边界** — 源/目标预检分别用最多 101/1 条的 Azure 分页，整批复用一次可取消的 delegation-key 请求；单次最多 100 个 Blob，超过时 mutation 前返回 413。copy phase 最长 120 秒并按 copyId 直接终止在途 Azure copy，rollback 最长 60 秒；60 秒目标租约内的源删除关键区限为 20 秒，服务端 210 秒总边界低于客户端 220 秒上限。限流错误完全交给 Azure SDK 的 Retry-After 与指数退避，应用层不再包一层重试，避免 429/503/ServerBusy 时形成重试风暴
 
 ---
@@ -134,6 +138,7 @@
 - **本地降级兜底** — 后端不可用时跨刷新保持本地计数，恢复后自动同步
 - **历史上的今天** — 检测往年同月同日照片，按年份分组置顶
 - **EXIF 智能提取与位置修复** — `exifr` 解析 GPS + 拍摄时间（naive datetime 防 UTC+8 偏差 8h）；GPS 保存在 Blob metadata，Cosmos 索引失败会显式提示，历史维护可不下载已有 GPS 原图直接幂等对账
+- **新上传位置即时发布** — 空 MIME、octet-stream 与非标准 JPEG/HEIC 先用最多 64 字节签名/扩展名识别，客户端和 legacy 服务端各自具备 EXIF fallback；合法 GPS 写 Blob + Cosmos 后随上传响应合并到当前照片并刷新地图，地址失败明确显示“地址暂不可用”且不回显坐标
 
 ---
 
@@ -141,7 +146,7 @@
 
 - **多媒体全支持** — JPEG/PNG/HEIC/WebP/GIF/MP4/MOV/WebM（200MB）/语音备注/Android Motion Photo
 - **触摸手势** — 双指捏合缩放 + 双击缩放 + 水平滑动切换，CSS transform
-- **自动隐藏导航栏** — 下滚隐藏，上滚即恢复，300ms cubic-bezier
+- **自动隐藏导航栏** — 下滚隐藏，上滚即恢复；Tab/Shift+Tab、方向键、Home/End 到达 Header 或页签时立即 reveal 并保持焦点矩形可见，导航聚焦、菜单/侧栏或模态层活跃期间不会再次隐藏
 - **字节级上传进度** — `XHR.upload.onprogress` 驱动，显示 X.X / Y.Y MB
 - **批量 mutation 执行边界** — 时间线、重要片段和文件夹按 source key + operation token 独立聚合；迟到 progress/finally 不能清理新操作，rename/time/location 串行隔离失败，移动最多 4 并发并把 reject/`false` 都计入失败
 - **批量冲突入口互斥** — 同步 ref gate 阻止双击重入；mutation 期间原生 disabled 选择、全选、重命名、时间、位置、删除、移动确认和添加原图，位置搜索同步进入 saving 状态
@@ -155,6 +160,10 @@
 - **PWA meta 生产契约** — 源码、dist 与线上 smoke 同时守卫标准 `mobile-web-app-capable=yes` 和 Apple 兼容 meta，消除 Chromium 弃用告警而不牺牲 iOS 安装能力
 - **14 个键盘快捷键** + 快捷键速查表；交互控件与模态层具备背景快捷键安全边界
 - **图标控件无障碍语义** — 关闭、清空、导航、播放、收藏与编辑按钮具备明确 ARIA 名称，状态型控件同步暴露 pressed 状态
+- **六视图 WAI-ARIA 页签模型** — tablist/tab/tabpanel 以稳定 ID 关联并使用 roving tabindex；方向键循环激活、Home/End 首尾跳转，mutation/modal guard 拒绝时 selection 与焦点均不漂移，窄屏只做 nearest 横向滚动
+- **动态跳到主要内容入口** — 首个键盘焦点可直接跳过 Header 与六视图页签并进入当前 active panel；目标随页签同步，焦点时才显示，侧栏/模态层打开时退出后台 Tab 序列，320/390px 与 200% zoom 根级横向溢出为 **0**
+- **记忆地图完整键盘路径** — 22px 视觉标记保留地理锚点但交互命中区扩为 **44×44**；照片名语义、Tab/Enter/Space、详情/编辑 stacked modal、保存 pending、迟到回调和 connected-only 回焦形成闭环，搜索与坐标输入复用原生按钮和严格 finite/range parser
+- **Header 菜单与嵌套弹窗焦点链** — 空间切换和用户菜单统一支持方向键、Home/End、Escape、Tab 与 disabled skip；触发器获焦、菜单或子弹窗活跃时会 reveal 并锁定自动隐藏 Header。群组、安装、快捷键和管理员子弹窗共享 stacked modal boundary，pending 期间不可提前关闭且只向仍连接且可见的触发器恢复
 
 ---
 

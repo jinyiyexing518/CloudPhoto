@@ -5,6 +5,6 @@
   "title": "工作区六视图支持无障碍页签导航",
   "type": "improvement",
   "desc": "工作区顶部六个主视图现在可由读屏和键盘可靠识别、切换与恢复焦点。",
-  "details": "页签栏补齐中文可访问名、tablist/tab/tabpanel 语义、稳定关联 ID、aria-selected/controls 与 roving tabindex；方向键循环自动激活，Home/End 跳转首尾，动态数量不进入可访问名称。点击、快捷键、拖放和页签键盘导航继续共用现有切换及上传、下载、批量、回收站、维护和文件夹重命名守卫，拒绝时 selected 与焦点不漂移；打开模态层时后台页签隔离，移动端使用 nearest 滚动保持当前项可见且不引入页面横向溢出。",
+  "details": "页签栏补齐中文可访问名、tablist/tab/tabpanel 语义、稳定关联 ID、aria-selected/controls 与 roving tabindex；方向键循环自动激活，Home/End 跳转首尾，动态数量不进入可访问名称。点击、快捷键、拖放和页签键盘导航继续共用现有切换及上传、下载、批量、回收站、维护和文件夹重命名守卫，拒绝时 selected 与焦点不漂移；打开模态层时后台页签隔离，移动端使用 nearest 滚动保持当前项可见且不引入页面横向溢出。常驻 panel 的 hidden wrapper 包住 keyed recovery boundary，隐藏视图失败时恢复 UI 不会泄漏到当前页签。",
   "seq": 1786374952377
 }

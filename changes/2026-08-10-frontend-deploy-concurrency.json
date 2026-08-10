@@ -5,6 +5,6 @@
   "title": "前端生产部署改为单目标串行",
   "type": "fix",
   "desc": "重复的同版本发布不会再并发进入 Azure 部署，分支手动运行也不会覆盖生产。",
-  "details": "main 自动发布和 main 上显式选择 production 的手动运行共用单一 production group；运行中的 upload 不会被新 run 取消，额外 pending 会在进入 Azure 前合并，不再产生 Azure Deployment Canceled 红灯。PR 和非 main 手动运行固定为 validation-only。生产 token 由 main job 通过 OIDC 即时读取，旧分支不再持有仓库级部署凭据。",
+  "details": "main 自动发布和 main 上显式选择 production 的手动运行共用单一 production group；运行中的 upload 不会被新 run 取消，额外 pending 会在进入 Azure 前合并，不再产生 Azure Deployment Canceled 红灯。PR 和非 main 手动运行在当前 workflow 中固定为 validation-only。生产 token 由 main job 通过 OIDC 即时读取，当前 workflow 不再引用仓库级部署凭据；删除旧 repository secret 仍是阻止历史分支 workflow 取得生产凭据的运维前提。",
   "seq": 1786381000000
 }
