@@ -161,10 +161,8 @@ test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
     /requestAnimationFrame\(\(\) => compactToggleRef\.current\?\.focus\(\)\)/,
     "Escape must collapse and restore focus to the launcher",
   );
-  assert.match(
-    workspaceFab,
-    /restoreAfterHidden\.current = window\.matchMedia\("\(max-width: 480px\)"\)\.matches/,
-  );
+  assert.match(workspaceFab, /const compact = window\.matchMedia\("\(max-width: 480px\)"\)\.matches/);
+  assert.doesNotMatch(workspaceFab, /restoreAfterHidden/);
 
   const narrowSection = mediaBlock(480);
   const rail = cssBlock(".workspace-fab-rail", narrowSection);
@@ -196,16 +194,20 @@ test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
 });
 
 test("sidebar owns focus while open and the FAB restores the visible launcher", () => {
+  assert.match(workspaceSidebar, /createPortal\(/);
+  assert.match(workspaceSidebar, /data-modal-layer/);
   assert.match(workspaceSidebar, /role="dialog"/);
-  assert.match(workspaceSidebar, /aria-modal="true"/);
-  assert.match(workspaceSidebar, /toggleAttribute\("inert", !isOpen\)/);
-  assert.match(workspaceSidebar, /if \(isOpen\) closeButtonRef\.current\?\.focus\(\)/);
-  assert.match(
-    workspaceSidebar,
-    /handleModalKeyDown\(event, sidebarRef\.current, document\.activeElement, onClose\)/,
-  );
-  assert.match(workspaceSidebar, /hidden=\{!isOpen\}/);
-  assert.match(workspaceFab, /restoreAfterHidden\.current/);
+  assert.match(workspaceSidebar, /aria-modal=\{isOpen \? "true" : undefined\}/);
+  assert.match(workspaceSidebar, /sidebarRef\.current\.inert = !isOpen/);
+  assert.match(workspaceSidebar, /useModalFocusBoundary\(\{/);
+  assert.match(workspaceSidebar, /initialFocusRef: closeButtonRef/);
+  assert.match(workspaceSidebar, /restoreFocusTo/);
+  assert.match(workspaceSidebar, /onKeyDown: handleSidebarKeyDown/);
+  assert.match(workspaceSidebar, /aria-hidden=\{!isOpen\}/);
+  assert.doesNotMatch(workspaceSidebar, /\shidden=\{!isOpen\}/);
+  assert.match(workspaceFab, /const restoreTarget = compact \? compactToggleRef\.current : event\.currentTarget/);
+  assert.match(workspaceFab, /onOpenSidebar\(restoreTarget \?\? event\.currentTarget\)/);
+  assert.doesNotMatch(workspaceFab, /restoreAfterHidden/);
 });
 
 test("folder card actions keep 44px touch targets on desktop and mobile", () => {

@@ -3,6 +3,10 @@ import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { useToast } from "../../contexts/ToastContext";
 import {
+  getPhotoCalendarDayDistance,
+  getPhotoDateKey,
+} from "../../utils/dateFormat";
+import {
   advanceIncrementalWindow,
   createIncrementalRenderWindow,
   resolveIncrementalVisibleCount,
@@ -56,7 +60,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
   const [unlockDate, setUnlockDate] = useState(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() + 1);
-    return d.toISOString().slice(0, 10);
+    return getPhotoDateKey(d);
   });
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [folderFilter, setFolderFilter] = useState("");
@@ -64,7 +68,11 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
   const [photoScrollState, setPhotoScrollState] = useState({ sourceKey: "", scrolled: false });
   const migrationHandledRef = useRef(false);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = getPhotoDateKey(now);
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minimumUnlockDate = getPhotoDateKey(tomorrow);
 
   const folders = useMemo(
     () => [...new Set(photos.map((p) => (p.folder ?? "").trim()).filter(Boolean))].sort(),
@@ -147,6 +155,12 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
 
   const handleCreate = () => {
     if (!title.trim() || selectedNames.size === 0) return;
+    if (unlockDate < minimumUnlockDate) {
+      const message = "解锁日期至少需要设置为明天。";
+      setStorageError(message);
+      showToast(message, "error");
+      return;
+    }
     if (capsules.length >= MAX_CAPSULES) {
       const message = `最多保存 ${MAX_CAPSULES} 个时光胶囊，请先删除一个再创建。`;
       setStorageError(message);
@@ -158,7 +172,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
       title: title.trim().slice(0, MAX_TITLE_LENGTH),
       photoNames: [...selectedNames],
       unlockDate,
-      createdAt: new Date().toISOString().slice(0, 10),
+      createdAt: today,
     };
     const normalizedNewCapsule = normalizeCapsules([newCapsule])[0];
     if (!normalizedNewCapsule || normalizedNewCapsule.photoNames.length !== selectedNames.size) {
@@ -361,9 +375,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
           <h3 className="capsule-section-title">🔒 已锁定 ({locked.length})</h3>
           <div className="capsule-list">
             {locked.map((c) => {
-              const daysLeft = Math.ceil(
-                (new Date(c.unlockDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-              );
+              const daysLeft = getPhotoCalendarDayDistance(c.unlockDate, now) ?? 1;
               return (
                 <div key={c.id} className="capsule-card capsule-card--locked">
                   <div className="capsule-card-lock-icon">🔒</div>
@@ -419,7 +431,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
                 className="capsule-input"
                 type="date"
                 value={unlockDate}
-                min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
+                min={minimumUnlockDate}
                 onChange={(e) => setUnlockDate(e.target.value)}
               />
               <label className="capsule-label">
@@ -513,7 +525,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
               <button
                 className="capsule-confirm-btn"
                 onClick={handleCreate}
-                disabled={!title.trim() || selectedNames.size === 0}
+                disabled={!title.trim() || selectedNames.size === 0 || unlockDate < minimumUnlockDate}
               >创建胶囊 ({selectedNames.size} 项)</button>
             </div>
           </div>

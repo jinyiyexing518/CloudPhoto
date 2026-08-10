@@ -1,4 +1,5 @@
 const PHOTO_LOCALE = "zh-CN";
+const MILLISECONDS_PER_DAY = 86_400_000;
 
 type PhotoDateValue = string | number | Date;
 
@@ -65,6 +66,20 @@ export function getPhotoDateKey(value: PhotoDateValue): string {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+export function getPhotoCalendarDayDistance(
+  targetDateKey: string,
+  reference: PhotoDateValue = new Date(),
+): number | null {
+  const target = validDate(targetDateKey);
+  const current = validDate(reference);
+  if (!target || !current) return null;
+  const calendarIndex = (date: Date) =>
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round(
+    (calendarIndex(target) - calendarIndex(current)) / MILLISECONDS_PER_DAY,
+  );
 }
 
 export function formatPhotoDate(value: PhotoDateValue): string {

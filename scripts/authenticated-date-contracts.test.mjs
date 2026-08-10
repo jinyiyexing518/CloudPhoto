@@ -98,7 +98,7 @@ test("authenticated native controls share one typography scope", () => {
   assert.equal(declaration(cssBlock(".time-edit-chip"), "font-size"), "0.85rem");
   const capsuleClose = cssBlock(".capsule-dialog .dialog-close-btn");
   assert.equal(declaration(capsuleClose, "font-size"), "1rem");
-  assert.equal(declaration(capsuleClose, "color"), "#9ca3af");
+  assert.equal(declaration(capsuleClose, "color"), "#6b7280");
 });
 
 test("one zh-CN helper is stable under an English default locale and handles invalid input", () => {
@@ -230,9 +230,42 @@ test("native date inputs and YYYY-MM-DD serialization stay intact", () => {
   );
   assert.match(timeCapsule, /type="date"[\s\S]*value=\{unlockDate\}/);
   assert.match(timeCapsule, /unlockDate,/);
-  assert.match(timeCapsule, /toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(timeCapsule, /getPhotoDateKey/);
+  assert.match(timeCapsule, /return getPhotoDateKey\(d\)/);
+  assert.match(timeCapsule, /const today = getPhotoDateKey\(now\)/);
+  assert.match(timeCapsule, /createdAt: today/);
+  assert.match(timeCapsule, /min=\{minimumUnlockDate\}/);
+  assert.match(timeCapsule, /unlockDate < minimumUnlockDate/);
+  assert.match(timeCapsule, /getPhotoCalendarDayDistance\(c\.unlockDate, now\)/);
+  assert.match(
+    timeCapsule,
+    /disabled=\{!title\.trim\(\) \|\| selectedNames\.size === 0 \|\| unlockDate < minimumUnlockDate\}/,
+  );
+  assert.doesNotMatch(timeCapsule, /toISOString\(\)\.slice\(0, 10\)/);
   assert.doesNotMatch(
     `${filterBar}\n${photoTimeDialog}\n${timeCapsule}`,
     /type="text"[^>]*(?:dateVal|unlockDate|dateFrom|dateTo)/,
   );
+
+  const helperUrl = pathToFileURL(dateHelperPath).href;
+  const cases = [
+    ["Asia/Shanghai", "2026-08-10T16:30:00.000Z", "2026-08-11", "2026-08-12"],
+    ["America/Los_Angeles", "2026-08-11T01:30:00.000Z", "2026-08-10", "2026-08-11"],
+  ];
+  for (const [timezone, instant, expected, target] of cases) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `const { getPhotoDateKey, getPhotoCalendarDayDistance } = await import(${JSON.stringify(helperUrl + `?tz=${timezone}`)}); const now = new Date(${JSON.stringify(instant)}); console.log(JSON.stringify({ key: getPhotoDateKey(now), days: getPhotoCalendarDayDistance(${JSON.stringify(target)}, now) }));`,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, TZ: timezone },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout.trim()), { key: expected, days: 1 }, timezone);
+  }
 });
