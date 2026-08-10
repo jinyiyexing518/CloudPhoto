@@ -133,15 +133,9 @@ export default function AuthPage() {
     }
   };
 
-  const switchTab = (nextTab: AuthTab, focusFirstField = true) => {
+  const switchTab = (nextTab: AuthTab) => {
     setTab(nextTab);
     setError("");
-    if (focusFirstField) {
-      requestAnimationFrame(() => {
-        const firstField = nextTab === "login" ? loginUsernameRef : regUsernameRef;
-        firstField.current?.focus();
-      });
-    }
   };
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -156,7 +150,7 @@ export default function AuthPage() {
           : tab === "login"
             ? "register"
             : "login";
-    switchTab(nextTab, false);
+    switchTab(nextTab);
     requestAnimationFrame(() => {
       const nextTabButton = nextTab === "login" ? loginTabRef : registerTabRef;
       nextTabButton.current?.focus();
