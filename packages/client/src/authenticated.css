@@ -7500,6 +7500,7 @@ body {
   border-radius: 0;
 }
 .settings-tab:hover { color: #334155; }
+.settings-tab:disabled { opacity: 0.48; cursor: not-allowed; }
 .settings-tab.active {
   color: #0078d4;
   border-bottom-color: #0078d4;
@@ -7571,6 +7572,36 @@ body {
   font-size: 0.78rem;
   color: #64748b;
 }
+
+.maintenance-task-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #1e3a5f;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.maintenance-task-status--completed { background: #ecfdf5; color: #166534; }
+.maintenance-task-status--stopped { background: #fff7ed; color: #9a3412; }
+.maintenance-task-status--failed { background: #fef2f2; color: #b91c1c; }
+
+.maintenance-stop-btn {
+  border: 1px solid #c2410c;
+  border-radius: 7px;
+  background: #fff;
+  color: #c2410c;
+  padding: 6px 11px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.maintenance-stop-btn:hover { background: #fff7ed; }
 
 .settings-info-grid {
   display: grid;

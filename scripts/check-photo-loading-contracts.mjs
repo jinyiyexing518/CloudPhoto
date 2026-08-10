@@ -26,6 +26,7 @@ const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts")
 const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
+const maintenanceBackfillPaging = read("packages/client/src/services/maintenanceBackfillPaging.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
 const renderPolicy = read("packages/algorithm/src/render.ts");
@@ -446,7 +447,12 @@ requireText(metadataBackfill, 'filename.startsWith("_th_")', "metadata derivativ
 requireText(metadataBackfill, "syncPhotoLocationFromBlob(blockBlobClient", "current Blob GPS publication");
 requireText(metadataBackfill, "needsLatestLat", "independent latitude backfill");
 requireText(metadataBackfill, "needsLatestLon", "independent longitude backfill");
-requireText(photoApi, 'throw new Error("照片元数据回填未能继续分页")', "metadata client cursor guard");
+requireText(photoApi, 'paginationError: "照片元数据回填未能继续分页"', "metadata cursor error");
+requireText(
+  maintenanceBackfillPaging,
+  "if (!page.cursor || page.cursor === cursor) throw new Error(paginationError)",
+  "shared client cursor guard",
+);
 requireText(photoLocationSync, "const props = await readBlobProperties(blockBlobClient)", "GPS source refresh");
 requireText(photoLocationSync, "verified.etag === sourceEtag", "GPS post-publish ETag reconciliation");
 requireText(photoLocationSync, "publishedEtag", "GPS stale-publication tracking");

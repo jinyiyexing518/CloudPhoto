@@ -45,6 +45,14 @@ import {
   type BatchMutationEvent,
   type BatchMutationSource,
 } from "./transfer/batchMutationState";
+import {
+  getMaintenanceBannerText,
+  getMaintenanceGuardMessage,
+  isMaintenanceTaskActive,
+  reduceMaintenanceTaskEvent,
+  type MaintenanceTaskEvent,
+  type MaintenanceTaskState,
+} from "./transfer/maintenanceTaskState";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -359,6 +367,7 @@ function AppContent() {
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [voiceTransferStates, setVoiceTransferStates] = useState(createInitialVoiceTransferStates);
   const [batchMutationStates, setBatchMutationStates] = useState(createInitialBatchMutationStates);
+  const [maintenanceTask, setMaintenanceTask] = useState<MaintenanceTaskState | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const [momentsDisplayCount, setMomentsDisplayCount] = useState<number | null>(null);
@@ -414,7 +423,8 @@ function AppContent() {
     || downloading
     || deleteProgress !== null
     || voiceTransferState !== "idle"
-    || activeBatchMutation !== null;
+    || activeBatchMutation !== null
+    || isMaintenanceTaskActive(maintenanceTask);
 
   const handleVoiceStateChange = useCallback((source: VoiceTransferSource, state: VoiceTransferState) => {
     setVoiceTransferStates((current) => setVoiceTransferState(current, source, state));
@@ -446,11 +456,16 @@ function AppContent() {
     (event: BatchMutationEvent) => handleBatchMutationChange("folder", event),
     [handleBatchMutationChange],
   );
+  const handleMaintenanceStateChange = useCallback((event: MaintenanceTaskEvent) => {
+    setMaintenanceTask((current) => reduceMaintenanceTaskEvent(current, event));
+  }, []);
   const transferGuardMessage = voiceTransferState === "recording"
     ? "录音中，请先结束录音"
     : voiceTransferState === "uploading"
       ? "语音备注上传中，请勿离开当前页面"
-      : activeBatchMutation
+      : isMaintenanceTaskActive(maintenanceTask) && maintenanceTask
+        ? getMaintenanceGuardMessage(maintenanceTask)
+        : activeBatchMutation
         ? `${getBatchMutationLabel(activeBatchMutation.kind)}进行中（${activeBatchMutation.done}/${activeBatchMutation.total}），请勿离开当前页面`
         : "传输进行中，请稍候";
   const blockIfTransferring = useCallback(() => {
@@ -1827,6 +1842,7 @@ function AppContent() {
           initialFocusTarget={settingsFocusTarget}
           initialFocusItemId={settingsFocusItemId}
           onInstallApp={() => void handleInstallApp()}
+          onMaintenanceStateChange={handleMaintenanceStateChange}
         /></Suspense>
       )}
       {inviteToken && <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>}
@@ -1928,6 +1944,16 @@ function AppContent() {
               <div className="transfer-banner-row">
                 <span className="transfer-banner-icon">🎤</span>
                 <span className="transfer-banner-text">语音备注上传中，请勿关闭页面</span>
+              </div>
+            ) : isMaintenanceTaskActive(maintenanceTask) && maintenanceTask ? (
+              <div className="transfer-banner-row">
+                <span className="transfer-banner-icon">🧰</span>
+                <div className="transfer-banner-body">
+                  <span className="transfer-banner-text">{getMaintenanceBannerText(maintenanceTask)}</span>
+                  {maintenanceTask.failed > 0 && (
+                    <span className="transfer-banner-size">失败 {maintenanceTask.failed} 张</span>
+                  )}
+                </div>
               </div>
             ) : activeBatchMutation ? (
               <>

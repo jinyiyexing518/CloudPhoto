@@ -25,6 +25,10 @@ import {
   subscribeToAuthChanges,
 } from "./http";
 import {
+  runMaintenanceBackfillPages,
+  type MaintenanceBackfillProgress,
+} from "./maintenanceBackfillPaging";
+import {
   getPrivatePhotoCacheGeneration,
   readMemoryPhotoListCache,
   readPhotoListCache,
@@ -472,54 +476,138 @@ export async function permanentlyDeletePhoto(name: string): Promise<void> {
 }
 
 // ── Backfill ──────────────────────────────────────────────────────────────
-export async function backfillPhotoMetadata(groupId = ""): Promise<{ processed: number; updated: number; failed: number }> {
-  const totals = { processed: 0, updated: 0, failed: 0 };
-  const authGeneration = getAuthGeneration();
-  let hasMore = true;
-  let cursor = "";
-  while (hasMore) {
-    if (authGeneration !== getAuthGeneration()) throw new Error("登录状态已变更，照片元数据回填已停止");
-    const qp = new URLSearchParams(); if (groupId) qp.set("groupId", groupId); qp.set("limit", "30"); if (cursor) qp.set("cursor", cursor);
-    const response = await fetchWithTimeout(`${API_BASE}/photos/backfill?${qp}`, { method: "POST", headers: authHeaders() }, 120_000);
-    if (authGeneration !== getAuthGeneration()) {
-      await response.body?.cancel();
-      throw new Error("登录状态已变更，照片元数据回填已停止");
-    }
-    if (!response.ok) throw new Error(await parseApiError(response, "回填历史照片元数据失败"));
-    const result = await response.json() as { processed: number; updated: number; failed: number; hasMore: boolean; cursor?: string; };
-    totals.processed += result.processed; totals.updated += result.updated; totals.failed += result.failed;
-    hasMore = result.hasMore;
-    if (hasMore) {
-      if (!result.cursor || result.cursor === cursor) throw new Error("照片元数据回填未能继续分页");
-      cursor = result.cursor;
-    }
-  }
-  return totals;
+export interface PhotoMetadataBackfillProgress {
+  processed: number;
+  updated: number;
+  failed: number;
+  hasMore: boolean;
 }
 
-export async function backfillThumbnails(groupId = ""): Promise<{ processed: number; generated: number; skipped: number; failed: number }> {
-  const totals = { processed: 0, generated: 0, skipped: 0, failed: 0 };
+export interface ThumbnailBackfillProgress {
+  processed: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+  hasMore: boolean;
+}
+
+export interface PhotoMetadataBackfillOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: PhotoMetadataBackfillProgress) => void;
+}
+
+export interface ThumbnailBackfillOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: ThumbnailBackfillProgress) => void;
+}
+
+export async function backfillPhotoMetadata(
+  groupId = "",
+  options: PhotoMetadataBackfillOptions = {},
+): Promise<{ processed: number; updated: number; failed: number }> {
   const authGeneration = getAuthGeneration();
-  let hasMore = true;
-  let cursor = "";
-  while (hasMore) {
-    if (authGeneration !== getAuthGeneration()) throw new Error("登录状态已变更，缩略图回填已停止");
-    const qp = new URLSearchParams(); if (groupId) qp.set("groupId", groupId); qp.set("limit", "30"); if (cursor) qp.set("cursor", cursor);
-    const response = await fetchWithTimeout(`${API_BASE}/photos/backfill-thumbnails?${qp}`, { method: "POST", headers: authHeaders() }, 120_000);
+  const assertCurrentAuth = () => {
     if (authGeneration !== getAuthGeneration()) {
-      await response.body?.cancel();
+      throw new Error("登录状态已变更，照片元数据回填已停止");
+    }
+  };
+  const totals = await runMaintenanceBackfillPages({
+    signal: options.signal,
+    paginationError: "照片元数据回填未能继续分页",
+    requestPage: async (cursor, signal) => {
+      assertCurrentAuth();
+      const qp = new URLSearchParams();
+      if (groupId) qp.set("groupId", groupId);
+      qp.set("limit", "30");
+      if (cursor) qp.set("cursor", cursor);
+      const response = await fetchWithTimeout(
+        `${API_BASE}/photos/backfill?${qp}`,
+        { method: "POST", headers: authHeaders(), signal },
+        120_000,
+      );
+      if (authGeneration !== getAuthGeneration()) {
+        await response.body?.cancel();
+        assertCurrentAuth();
+      }
+      if (!response.ok) throw new Error(await parseApiError(response, "回填历史照片元数据失败"));
+      const result = await response.json() as {
+        processed: number;
+        updated: number;
+        failed: number;
+        hasMore: boolean;
+        cursor?: string;
+      };
+      assertCurrentAuth();
+      return { ...result, changed: result.updated, skipped: 0 };
+    },
+    onProgress: (progress: MaintenanceBackfillProgress) => {
+      options.onProgress?.({
+        processed: progress.processed,
+        updated: progress.changed,
+        failed: progress.failed,
+        hasMore: progress.hasMore,
+      });
+    },
+  });
+  return { processed: totals.processed, updated: totals.changed, failed: totals.failed };
+}
+
+export async function backfillThumbnails(
+  groupId = "",
+  options: ThumbnailBackfillOptions = {},
+): Promise<{ processed: number; generated: number; skipped: number; failed: number }> {
+  const authGeneration = getAuthGeneration();
+  const assertCurrentAuth = () => {
+    if (authGeneration !== getAuthGeneration()) {
       throw new Error("登录状态已变更，缩略图回填已停止");
     }
-    if (!response.ok) throw new Error(await parseApiError(response, "缩略图回填失败"));
-    const result = await response.json() as { processed: number; generated: number; skipped: number; failed: number; hasMore: boolean; cursor?: string; };
-    totals.processed += result.processed; totals.generated += result.generated; totals.skipped += result.skipped; totals.failed += result.failed;
-    hasMore = result.hasMore;
-    if (hasMore) {
-      if (!result.cursor || result.cursor === cursor) throw new Error("缩略图回填未能继续分页");
-      cursor = result.cursor;
-    }
-  }
-  return totals;
+  };
+  const totals = await runMaintenanceBackfillPages({
+    signal: options.signal,
+    paginationError: "缩略图回填未能继续分页",
+    requestPage: async (cursor, signal) => {
+      assertCurrentAuth();
+      const qp = new URLSearchParams();
+      if (groupId) qp.set("groupId", groupId);
+      qp.set("limit", "30");
+      if (cursor) qp.set("cursor", cursor);
+      const response = await fetchWithTimeout(
+        `${API_BASE}/photos/backfill-thumbnails?${qp}`,
+        { method: "POST", headers: authHeaders(), signal },
+        120_000,
+      );
+      if (authGeneration !== getAuthGeneration()) {
+        await response.body?.cancel();
+        assertCurrentAuth();
+      }
+      if (!response.ok) throw new Error(await parseApiError(response, "缩略图回填失败"));
+      const result = await response.json() as {
+        processed: number;
+        generated: number;
+        skipped: number;
+        failed: number;
+        hasMore: boolean;
+        cursor?: string;
+      };
+      assertCurrentAuth();
+      return { ...result, changed: result.generated };
+    },
+    onProgress: (progress: MaintenanceBackfillProgress) => {
+      options.onProgress?.({
+        processed: progress.processed,
+        generated: progress.changed,
+        skipped: progress.skipped,
+        failed: progress.failed,
+        hasMore: progress.hasMore,
+      });
+    },
+  });
+  return {
+    processed: totals.processed,
+    generated: totals.changed,
+    skipped: totals.skipped,
+    failed: totals.failed,
+  };
 }
 
 // ── Folder operations ─────────────────────────────────────────────────────

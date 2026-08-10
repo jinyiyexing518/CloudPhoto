@@ -14,6 +14,20 @@ import { copyText } from "../../services/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 import type { PwaInstallOutcome } from "../../pwa/installPrompt";
+import {
+  beginMaintenanceTask,
+  createMaintenanceTask,
+  finishMaintenanceTask,
+  getMaintenanceBannerText,
+  getMaintenanceTaskLabel,
+  isMaintenanceTaskActive,
+  maintenanceWorkspaceMatches,
+  reduceMaintenanceTaskEvent,
+  type MaintenanceTaskEvent,
+  type MaintenanceTaskGate,
+  type MaintenanceTaskKind,
+  type MaintenanceTaskState,
+} from "../../transfer/maintenanceTaskState";
 
 type SettingsTab = "profile" | "security" | "trash" | "diagnostics";
 type SettingsEntryTab = SettingsTab | "app";
@@ -41,6 +55,7 @@ interface Props {
   initialFocusTarget?: SettingsFocusTarget;
   initialFocusItemId?: string;
   onInstallApp?: () => void;
+  onMaintenanceStateChange?: (event: MaintenanceTaskEvent) => void;
 }
 
 export default function SettingsDialog({
@@ -53,6 +68,7 @@ export default function SettingsDialog({
   initialFocusTarget = "overview",
   initialFocusItemId,
   onInstallApp,
+  onMaintenanceStateChange,
 }: Props) {
   const appVersion = __APP_VERSION__;
   const appBuildTime = new Date(__APP_BUILD_TIME__);
@@ -109,43 +125,145 @@ export default function SettingsDialog({
   const [shareSearch, setShareSearch] = useState("");
   const [extendHours, setExtendHours] = useState("24");
 
-  // Backfill (metadata) state
-  const [backfillLoading, setBackfillLoading] = useState(false);
-  const [backfillResult, setBackfillResult] = useState<{ processed: number; updated: number; failed: number } | null>(null);
-  const [backfillError, setBackfillError] = useState("");
+  const [maintenanceTask, setMaintenanceTask] = useState<MaintenanceTaskState | null>(null);
+  const maintenanceTaskRef = useRef<MaintenanceTaskState | null>(null);
+  const maintenanceGateRef = useRef<MaintenanceTaskGate>({ current: null });
+  const maintenanceControllerRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  const currentGroupIdRef = useRef(currentGroupId ?? "");
+  const onMaintenanceStateChangeRef = useRef(onMaintenanceStateChange);
+  currentGroupIdRef.current = currentGroupId ?? "";
+  onMaintenanceStateChangeRef.current = onMaintenanceStateChange;
+  const maintenanceActive = isMaintenanceTaskActive(maintenanceTask);
 
-  // Thumbnail backfill state
-  const [thumbBackfillLoading, setThumbBackfillLoading] = useState(false);
-  const [thumbBackfillResult, setThumbBackfillResult] = useState<{ processed: number; generated: number; skipped: number; failed: number } | null>(null);
-  const [thumbBackfillError, setThumbBackfillError] = useState("");
+  const applyMaintenanceEvent = useCallback((event: MaintenanceTaskEvent) => {
+    const next = reduceMaintenanceTaskEvent(maintenanceTaskRef.current, event);
+    maintenanceTaskRef.current = next;
+    if (mountedRef.current) setMaintenanceTask(next);
+    onMaintenanceStateChangeRef.current?.(event);
+  }, []);
 
-  const handleThumbBackfill = async () => {
-    setThumbBackfillLoading(true);
-    setThumbBackfillResult(null);
-    setThumbBackfillError("");
+  const runMaintenanceTask = async (kind: MaintenanceTaskKind) => {
+    const operationId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    if (!beginMaintenanceTask(maintenanceGateRef.current, operationId, kind)) return;
+
+    const workspaceId = currentGroupIdRef.current;
+    const controller = new AbortController();
+    maintenanceControllerRef.current = controller;
+    applyMaintenanceEvent({
+      type: "start",
+      operation: createMaintenanceTask(operationId, kind, workspaceId),
+    });
+
     try {
-      const result = await backfillThumbnails(currentGroupId ?? "");
-      setThumbBackfillResult(result);
-    } catch (err) {
-      setThumbBackfillError(err instanceof Error ? err.message : "缩略图回填失败");
+      if (kind === "thumbnails") {
+        await backfillThumbnails(workspaceId, {
+          signal: controller.signal,
+          onProgress: (progress) => {
+            applyMaintenanceEvent({
+              type: "progress",
+              operationId,
+              processed: progress.processed,
+              changed: progress.generated,
+              skipped: progress.skipped,
+              failed: progress.failed,
+              hasMore: progress.hasMore,
+            });
+            if (currentGroupIdRef.current !== workspaceId) {
+              controller.abort(new DOMException("工作空间已变更，缩略图任务已停止", "AbortError"));
+            }
+          },
+        });
+      } else {
+        await backfillPhotoMetadata(workspaceId, {
+          signal: controller.signal,
+          onProgress: (progress) => {
+            applyMaintenanceEvent({
+              type: "progress",
+              operationId,
+              processed: progress.processed,
+              changed: progress.updated,
+              skipped: 0,
+              failed: progress.failed,
+              hasMore: progress.hasMore,
+            });
+            if (currentGroupIdRef.current !== workspaceId) {
+              controller.abort(new DOMException("工作空间已变更，元数据任务已停止", "AbortError"));
+            }
+          },
+        });
+      }
+      if (currentGroupIdRef.current !== workspaceId) {
+        throw new Error("工作空间已变更，维护任务结果已拒绝");
+      }
+      applyMaintenanceEvent({ type: "complete", operationId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${getMaintenanceTaskLabel(kind)}失败`;
+      if (controller.signal.aborted) {
+        applyMaintenanceEvent({
+          type: "stop",
+          operationId,
+          message: message.includes("工作空间已变更")
+            ? message
+            : "任务已停止，已保留完成页面的统计。",
+        });
+      } else {
+        applyMaintenanceEvent({ type: "fail", operationId, message });
+      }
     } finally {
-      setThumbBackfillLoading(false);
+      if (maintenanceControllerRef.current === controller) maintenanceControllerRef.current = null;
+      finishMaintenanceTask(maintenanceGateRef.current, operationId);
     }
   };
 
-  const handleBackfill = async () => {
-    setBackfillLoading(true);
-    setBackfillResult(null);
-    setBackfillError("");
-    try {
-      const result = await backfillPhotoMetadata(currentGroupId ?? "");
-      setBackfillResult(result);
-    } catch (err) {
-      setBackfillError(err instanceof Error ? err.message : "回填失败");
-    } finally {
-      setBackfillLoading(false);
-    }
+  const stopMaintenanceTask = () => {
+    const current = maintenanceTaskRef.current;
+    const controller = maintenanceControllerRef.current;
+    if (!current || !isMaintenanceTaskActive(current) || !controller || controller.signal.aborted) return;
+    applyMaintenanceEvent({
+      type: "request-stop",
+      operationId: current.operationId,
+      message: "正在停止任务，已完成的页面不会回滚。",
+    });
+    controller.abort(new DOMException("任务已停止", "AbortError"));
   };
+
+  const handleProtectedClose = () => {
+    if (isMaintenanceTaskActive(maintenanceTaskRef.current)) {
+      showToast("维护任务运行中，请先点击“停止任务”", "info");
+      return;
+    }
+    onClose();
+  };
+
+  useEffect(() => {
+    const current = maintenanceTaskRef.current;
+    if (!current || !isMaintenanceTaskActive(current) || maintenanceWorkspaceMatches(current, currentGroupId ?? "")) return;
+    const message = "工作空间已变更，维护任务已停止；已完成页面的统计已保留。";
+    applyMaintenanceEvent({ type: "request-stop", operationId: current.operationId, message });
+    maintenanceControllerRef.current?.abort(new DOMException(message, "AbortError"));
+    showToast(message, "error");
+  }, [applyMaintenanceEvent, currentGroupId, showToast]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const current = maintenanceTaskRef.current;
+      if (current && isMaintenanceTaskActive(current)) {
+        maintenanceControllerRef.current?.abort(
+          new DOMException("设置已卸载，维护任务已停止", "AbortError"),
+        );
+        onMaintenanceStateChangeRef.current?.({
+          type: "stop",
+          operationId: current.operationId,
+          message: "设置已卸载，维护任务已停止。",
+        });
+      }
+    };
+  }, []);
 
   const [shareLinksVersion, setShareLinksVersion] = useState(0);
   const shareLinks = useMemo(() => {
@@ -326,21 +444,21 @@ export default function SettingsDialog({
     : [];
 
   return (
-    <div className="dialog-overlay" onClick={onClose}>
+    <div className="dialog-overlay" onClick={handleProtectedClose}>
       <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="settings-header">
           <span>设置</span>
-          <button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭设置">✕</button>
+          <button type="button" className="dialog-close-btn" onClick={handleProtectedClose} aria-label="关闭设置">✕</button>
         </div>
 
         {/* Tab bar */}
         <div className="settings-tabs" ref={settingsTabsRef}>
-          <button className={`settings-tab${tab === "profile" ? " active" : ""}`} onClick={(e) => { setTab("profile"); scrollTabToCenter(e.currentTarget); }}>👤 个人信息</button>
-          <button className={`settings-tab${tab === "security" ? " active" : ""}`} onClick={(e) => { setTab("security"); scrollTabToCenter(e.currentTarget); }}>🔒 安全</button>
+          <button className={`settings-tab${tab === "profile" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("profile"); scrollTabToCenter(e.currentTarget); }}>👤 个人信息</button>
+          <button className={`settings-tab${tab === "security" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("security"); scrollTabToCenter(e.currentTarget); }}>🔒 安全</button>
           <button className={`settings-tab${tab === "app" ? " active" : ""}`} onClick={(e) => { setTab("app"); scrollTabToCenter(e.currentTarget); }}>📱 应用</button>
-          <button className={`settings-tab${tab === "diagnostics" ? " active" : ""}`} onClick={(e) => { setTab("diagnostics"); scrollTabToCenter(e.currentTarget); }}>🩺 诊断</button>
-          <button className={`settings-tab${tab === "trash" ? " active" : ""}`} onClick={(e) => { setTab("trash"); scrollTabToCenter(e.currentTarget); }}>🗑️ 回收站</button>
+          <button className={`settings-tab${tab === "diagnostics" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("diagnostics"); scrollTabToCenter(e.currentTarget); }}>🩺 诊断</button>
+          <button className={`settings-tab${tab === "trash" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("trash"); scrollTabToCenter(e.currentTarget); }}>🗑️ 回收站</button>
         </div>
 
         {/* Tab content */}
@@ -456,7 +574,11 @@ export default function SettingsDialog({
                   </div>
                 </div>
               </div>
-              <div className="settings-form settings-card" style={{ gap: 10 }}>
+              <div
+                className="settings-form settings-card"
+                style={{ gap: 10 }}
+                aria-busy={maintenanceActive && maintenanceTask?.kind === "thumbnails"}
+              >
                 <div className="settings-card-head">
                   <h3>生成历史缩略图</h3>
                 </div>
@@ -466,23 +588,28 @@ export default function SettingsDialog({
                 <button
                   type="button"
                   className="settings-save-btn"
-                  onClick={() => void handleThumbBackfill()}
-                  disabled={thumbBackfillLoading}
+                  onClick={() => void runMaintenanceTask("thumbnails")}
+                  disabled={maintenanceActive}
                 >
-                  {thumbBackfillLoading ? "正在生成…" : "开始生成缩略图"}
+                  {maintenanceTask?.kind === "thumbnails" && maintenanceActive ? "正在生成…" : "开始生成缩略图"}
                 </button>
-                {thumbBackfillResult && (
-                  <p className="add-admin-hint" style={{ color: "var(--color-success, #2e7d32)", marginTop: 4 }}>
-                    完成：处理 {thumbBackfillResult.processed} 张，生成 {thumbBackfillResult.generated} 张，跳过 {thumbBackfillResult.skipped} 张，失败 {thumbBackfillResult.failed} 张。
-                  </p>
-                )}
-                {thumbBackfillError && (
-                  <p className="add-admin-hint" style={{ color: "var(--color-error, #c62828)", marginTop: 4 }}>
-                    {thumbBackfillError}
-                  </p>
+                {maintenanceTask?.kind === "thumbnails" && (
+                  <div className={`maintenance-task-status maintenance-task-status--${maintenanceTask.phase}`} role="status" aria-live="polite">
+                    <span>{getMaintenanceBannerText(maintenanceTask)}</span>
+                    {maintenanceTask.message && <span>{maintenanceTask.message}</span>}
+                    {maintenanceActive && (
+                      <button type="button" className="maintenance-stop-btn" onClick={stopMaintenanceTask}>
+                        {maintenanceTask.phase === "stopping" ? "正在停止…" : "停止任务"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-              <div className="settings-form settings-card" style={{ gap: 10 }}>
+              <div
+                className="settings-form settings-card"
+                style={{ gap: 10 }}
+                aria-busy={maintenanceActive && maintenanceTask?.kind === "metadata"}
+              >
                 <div className="settings-card-head">
                   <h3>历史照片回填</h3>
                 </div>
@@ -492,20 +619,21 @@ export default function SettingsDialog({
                 <button
                   type="button"
                   className="settings-save-btn"
-                  onClick={() => void handleBackfill()}
-                  disabled={backfillLoading}
+                  onClick={() => void runMaintenanceTask("metadata")}
+                  disabled={maintenanceActive}
                 >
-                  {backfillLoading ? "正在回填…" : "开始回填"}
+                  {maintenanceTask?.kind === "metadata" && maintenanceActive ? "正在回填…" : "开始回填"}
                 </button>
-                {backfillResult && (
-                  <p className="add-admin-hint" style={{ color: "var(--color-success, #2e7d32)", marginTop: 4 }}>
-                    完成：共扫描 {backfillResult.processed} 张，更新 {backfillResult.updated} 张，失败 {backfillResult.failed} 张。
-                  </p>
-                )}
-                {backfillError && (
-                  <p className="add-admin-hint" style={{ color: "var(--color-error, #c62828)", marginTop: 4 }}>
-                    {backfillError}
-                  </p>
+                {maintenanceTask?.kind === "metadata" && (
+                  <div className={`maintenance-task-status maintenance-task-status--${maintenanceTask.phase}`} role="status" aria-live="polite">
+                    <span>{getMaintenanceBannerText(maintenanceTask)}</span>
+                    {maintenanceTask.message && <span>{maintenanceTask.message}</span>}
+                    {maintenanceActive && (
+                      <button type="button" className="maintenance-stop-btn" onClick={stopMaintenanceTask}>
+                        {maintenanceTask.phase === "stopping" ? "正在停止…" : "停止任务"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="settings-form settings-card" style={{ gap: 10 }}>
