@@ -40,7 +40,24 @@ test("falls back to server EXIF GPS only when the complete client pair is absent
   assert.equal(calls, 2);
 });
 
-test("rejects invalid client coordinates rather than persisting partial GPS", async () => {
-  assert.equal(await resolveUploadGps("91", "0", async () => null), null);
-  assert.equal(await resolveUploadGps("0", "-181", async () => null), null);
+test("invalid, partial, and non-finite client coordinates fall back to server EXIF", async () => {
+  let calls = 0;
+  const fallback = async () => {
+    calls += 1;
+    return { latitude: 35.6762, longitude: 139.6503 };
+  };
+  for (const pair of [
+    ["91", "0"],
+    ["0", "-181"],
+    ["NaN", "1"],
+    ["1", "NaN"],
+    ["12", ""],
+    ["", "34"],
+  ]) {
+    assert.deepEqual(await resolveUploadGps(pair[0], pair[1], fallback), {
+      gpsLat: "35.6762",
+      gpsLon: "139.6503",
+    });
+  }
+  assert.equal(calls, 6);
 });

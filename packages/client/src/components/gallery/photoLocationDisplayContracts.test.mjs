@@ -23,15 +23,17 @@ test("both gallery surfaces share the abortable photo identity hook", async () =
   assert.match(hook, /result\.identity === identity/);
 });
 
-test("an unavailable address still renders coordinates and location panels restore focus", async () => {
-  const [timeline, folders, batchOperations] = await Promise.all([
+test("address failures remain distinct from missing GPS without rendering coordinates", async () => {
+  const [timeline, folders, hook, batchOperations] = await Promise.all([
     source("PhotoGallery.tsx"),
     source("FolderView.tsx"),
+    source("usePhotoLocationAddress.ts"),
     source("../shared/BatchOperationsBar.tsx"),
   ]);
   for (const surface of [timeline, folders]) {
     assert.match(surface, /const selectedGps = readGpsCoordinates\(selectedPhoto\?\.gpsLat, selectedPhoto\?\.gpsLon\)/);
-    assert.match(surface, /geoAddress \?\? `\$\{selectedGps\.lat\.toFixed\(4\)\}°/);
+    assert.match(surface, /geoStatus === "unavailable"[\s\S]*\? "地址暂不可用"/);
+    assert.doesNotMatch(surface, /geoAddress \?\? `\$\{selectedGps\.lat\.toFixed\(4\)\}°/);
     assert.match(surface, /\{selectedGps && \(/);
     assert.match(surface, /\{!selectedGps && \(/);
     assert.match(surface, /const session = \+\+gpsSaveSessionRef\.current;[\s\S]*await updatePhotoGps\(targetPhoto\.name, lat, lon\);[\s\S]*!mountedRef\.current \|\| session !== gpsSaveSessionRef\.current/);
@@ -40,6 +42,8 @@ test("an unavailable address still renders coordinates and location panels resto
   }
   assert.match(batchOperations, /onApplyBatchGps\(lat, lon\)\.then\(\(applied\)[\s\S]*if \(!applied\) return;[\s\S]*batchGpsButtonRef\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
   assert.doesNotMatch(batchOperations, /showBatchGpsEdit[\s\S]{0,160}batchGpsButtonRef\.current/);
+  assert.match(hook, /"missing-coordinates"/);
+  assert.match(hook, /"unavailable"/);
 });
 
 test("memory map renders Cosmos locations only for the workspace that produced them", async () => {
@@ -54,6 +58,7 @@ test("memory map renders Cosmos locations only for the workspace that produced t
   assert.match(memoryMap, /showToast\(error instanceof Error \? error\.message/);
   assert.match(memoryMap, /setCosmosLocationState\(\{ workspace, locations \}\)/);
   assert.match(memoryMap, /controller\.abort\(new DOMException\("Workspace changed", "AbortError"\)\)/);
+  assert.match(memoryMap, /locationIndexRevision/);
   assert.match(app, /activeTab === "map" && resolvedPhotoWorkspaceId !== null/);
   assert.match(app, /groupId=\{resolvedPhotoWorkspaceId\}/);
 });

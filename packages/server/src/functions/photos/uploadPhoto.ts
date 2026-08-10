@@ -25,6 +25,10 @@ import {
   resolveUploadGps,
   uploadGpsMetadata,
 } from "./uploadGps";
+import {
+  isGenericUploadMimeType,
+  resolveUploadMediaType,
+} from "./uploadMediaType";
 import exifr from "exifr";
 // sharp is loaded lazily via require() so a missing/incompatible native binary
 // does not crash the entire function app on startup (would break login, etc.).
@@ -205,11 +209,13 @@ app.http("uploadPhoto", {
       const filename =
         request.query.get("filename") ?? `photo-${Date.now()}.jpg`;
       const contentType =
-        request.headers.get("content-type") ?? "image/jpeg";
-      const mimeType = contentType.split(";")[0].trim();
-      if (!ALLOWED_UPLOAD_MIME.has(mimeType)) {
+        request.headers.get("content-type") ?? "";
+      const initialMimeType = resolveUploadMediaType(contentType, filename);
+      const needsMimeSniff = initialMimeType === null && isGenericUploadMimeType(contentType);
+      if (initialMimeType === null && !needsMimeSniff) {
         return { status: 415, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "只支持图片和视频文件 (JPEG, PNG, WebP, MP4, MOV 等)" }) };
       }
+      let mimeType = initialMimeType ?? "image/jpeg";
       const isVideoUpload = ALLOWED_VIDEO_MIME.has(mimeType);
       const isAudioUpload = ALLOWED_AUDIO_MIME.has(mimeType);
       const maxBytes = isVideoUpload ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
@@ -263,11 +269,6 @@ app.http("uploadPhoto", {
       // Pre-compute thumbnail blob name so it can be stored in original's metadata.
       // Thumbnails live at the same folder level but with a _th_ prefix + .webp suffix.
       // listPhotos skips blobs whose filename starts with _th_.
-      const willGenerateThumb =
-        !ALLOWED_VIDEO_MIME.has(mimeType) &&
-        !ALLOWED_AUDIO_MIME.has(mimeType) &&
-        THUMBNAIL_MIME.has(mimeType);
-      // isAnimated is computed later; re-check after buf is available
       const {
         thumbnailName: thumbnailBlobName,
         previewName: previewBlobName,
@@ -321,6 +322,17 @@ app.http("uploadPhoto", {
         // Azure Blob metadata only allows ASCII — base64-encode all free-text fields
         const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
         const buf = Buffer.from(arrayBuffer);
+        if (needsMimeSniff) {
+          const sniffedMimeType = resolveUploadMediaType(contentType, filename, buf);
+          if (!sniffedMimeType || !ALLOWED_UPLOAD_MIME.has(sniffedMimeType)) {
+            return { status: 415, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "只支持图片和视频文件 (JPEG, PNG, WebP, MP4, MOV 等)" }) };
+          }
+          mimeType = sniffedMimeType;
+        }
+        const willGenerateThumb =
+          !ALLOWED_VIDEO_MIME.has(mimeType) &&
+          !ALLOWED_AUDIO_MIME.has(mimeType) &&
+          THUMBNAIL_MIME.has(mimeType);
         const isAnimated = !isVideoUpload && !isAudioUpload && detectAnimated(buf, mimeType);
 
       // Use client-supplied takenAt as the base; EXIF will override it below for images
@@ -368,7 +380,7 @@ app.http("uploadPhoto", {
       try {
         await blockBlobClient.uploadData(buf, {
           blobHTTPHeaders: {
-            blobContentType: contentType,
+            blobContentType: mimeType,
             blobCacheControl: "private, max-age=3600, immutable",
           },
           metadata: originalMetadata,

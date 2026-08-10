@@ -31,9 +31,9 @@ export async function resolveUploadGps(
   if (hasClientLat && hasClientLon) {
     const lat = parseFiniteCoordinate(clientLat, -90, 90);
     const lon = parseFiniteCoordinate(clientLon, -180, 180);
-    return lat === null || lon === null
-      ? null
-      : { gpsLat: String(lat), gpsLon: String(lon) };
+    if (lat !== null && lon !== null) {
+      return { gpsLat: String(lat), gpsLon: String(lon) };
+    }
   }
 
   const exif = await readExifGps();

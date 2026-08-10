@@ -25,6 +25,7 @@ import {
   parseRetryAfterMs,
   UploadRequestError,
 } from "./uploadRetry";
+import { detectUploadMediaType } from "../uploadLocation";
 
 const VIDEO_THUMB_WIDTH = 400;
 const VIDEO_THUMB_QUALITY = 0.75;
@@ -54,6 +55,7 @@ export async function uploadPhoto(
   folder?: string,
   groupId?: string,
 ): Promise<Photo> {
+  const detectedContentType = await detectUploadMediaType(file);
   const params = new URLSearchParams({ filename: file.name });
   if (uploadedBy) params.set("uploadedBy", uploadedBy);
   if (subject) params.set("subject", subject);
@@ -64,7 +66,9 @@ export async function uploadPhoto(
     `${API_BASE}/photos/upload?${params.toString()}`,
     {
       method: "POST",
-      headers: authHeaders({ "Content-Type": file.type || "application/octet-stream" }),
+      headers: authHeaders({
+        "Content-Type": detectedContentType ?? (file.type || "application/octet-stream"),
+      }),
       body: file,
     },
     60_000,
@@ -101,6 +105,7 @@ export async function uploadPhotoWithProgress(
   uploadId?: string,
   onAttemptStart?: () => void,
 ): Promise<Photo> {
+  const detectedContentType = await detectUploadMediaType(file);
   const params = new URLSearchParams({ filename: file.name });
   if (uploadedBy) params.set("uploadedBy", uploadedBy);
   if (subject) params.set("subject", subject);
@@ -111,7 +116,9 @@ export async function uploadPhotoWithProgress(
   if (takenAt) params.set("takenAt", takenAt);
   if (uploadId) params.set("uploadId", uploadId);
   const authGeneration = getAuthGeneration();
-  const headers = authHeaders({ "Content-Type": file.type || "application/octet-stream" });
+  const headers = authHeaders({
+    "Content-Type": detectedContentType ?? (file.type || "application/octet-stream"),
+  });
   const authorization = headers.Authorization;
   const requestToken = authorization?.startsWith("Bearer ")
     ? authorization.slice(7)

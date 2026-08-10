@@ -40,6 +40,7 @@ interface Props {
   photos: Photo[];
   groupId?: string;
   photosGroupId?: string | null;
+  locationIndexRevision?: number;
   onViewPhoto?: (name: string) => void;
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
 }
@@ -73,6 +74,7 @@ export default function MemoryMap({
   photos,
   groupId = "",
   photosGroupId = groupId,
+  locationIndexRevision = 0,
   onViewPhoto,
   onGpsUpdate,
 }: Props) {
@@ -127,7 +129,7 @@ export default function MemoryMap({
       },
     );
     return () => controller.abort(new DOMException("Workspace changed", "AbortError"));
-  }, [groupId, showToast]);
+  }, [groupId, locationIndexRevision, showToast]);
 
   // Manual GPS editing
   const [editTarget, setEditTarget] = useState<{ workspace: string; photo: Photo } | null>(null);

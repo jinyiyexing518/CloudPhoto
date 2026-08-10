@@ -357,7 +357,11 @@ function PhotoGallery({
     gpsSaveSessionRef.current += 1;
     setSavingGps(false);
   }, []);
-  const { address: geoAddress, loading: geoLoading } = usePhotoLocationAddress(selectedPhoto);
+  const {
+    address: geoAddress,
+    loading: geoLoading,
+    status: geoStatus,
+  } = usePhotoLocationAddress(selectedPhoto);
   const selectedGps = readGpsCoordinates(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
   const [downloading, setDownloading] = useState(false);
   const [copyingImage, setCopyingImage] = useState(false);
@@ -2085,7 +2089,11 @@ function PhotoGallery({
                         <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span>
-                              {geoLoading ? "正在定位..." : (geoAddress ?? `${selectedGps.lat.toFixed(4)}°, ${selectedGps.lon.toFixed(4)}°`)}
+                              {geoLoading
+                                ? "正在定位..."
+                                : geoStatus === "unavailable"
+                                  ? "地址暂不可用"
+                                  : (geoAddress ?? "地址暂不可用")}
                             </span>
                             <a
                               href={`https://maps.google.com/?q=${selectedGps.lat},${selectedGps.lon}`}

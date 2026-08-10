@@ -24,6 +24,13 @@ import {
 import { registerPrivatePhotoCacheReset } from "./services/privatePhotoCacheLifecycle";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
 import {
+  detectUploadMediaType,
+  isImageUploadType,
+  isVideoUploadType,
+  mergeUploadedPhoto,
+  normalizeExifGps,
+} from "./uploadLocation";
+import {
   WORKSPACE_TAB_ORDER,
   activateWorkspaceTabWithFocus,
   focusWorkspacePanel,
@@ -394,6 +401,7 @@ function AppContent() {
 
   // Location banner: shown briefly when entering a group or personal space
   const [locationBanner, setLocationBanner] = useState<string | null>(null);
+  const [locationIndexRevision, setLocationIndexRevision] = useState(0);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewTabsRef = useRef<HTMLDivElement | null>(null);
   const [viewTabsScrollable, setViewTabsScrollable] = useState(false);
@@ -1524,9 +1532,6 @@ function AppContent() {
       showToast(transferGuardMessage, "info");
       return;
     }
-    const IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
-    const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/mpeg", "video/3gpp", "video/3gpp2"]);
-    const ALLOWED_TYPES = new Set([...IMAGE_TYPES, ...VIDEO_TYPES]);
     const IMAGE_MAX = 20 * 1024 * 1024;   // 20 MB
     const VIDEO_MAX = 200 * 1024 * 1024;  // 200 MB
 
@@ -1536,10 +1541,14 @@ function AppContent() {
       return `${Math.round(bps)} B/s`;
     };
     const fileArray = Array.from(files);
-    const invalidType = fileArray.filter((f) => !ALLOWED_TYPES.has(f.type));
+    const detectedTypes = new Map(
+      await Promise.all(fileArray.map(async (file) => [file, await detectUploadMediaType(file)] as const)),
+    );
+    const invalidType = fileArray.filter((file) => detectedTypes.get(file) === null);
     const oversized = fileArray.filter((f) => {
-      if (!ALLOWED_TYPES.has(f.type)) return false;
-      return f.size > (VIDEO_TYPES.has(f.type) ? VIDEO_MAX : IMAGE_MAX);
+      const detectedType = detectedTypes.get(f) ?? null;
+      if (!detectedType) return false;
+      return f.size > (isVideoUploadType(detectedType) ? VIDEO_MAX : IMAGE_MAX);
     });
     if (invalidType.length > 0 || oversized.length > 0) {
       const msgs: string[] = [];
@@ -1548,8 +1557,9 @@ function AppContent() {
       showToast(msgs.join("; "), "error");
     }
     const valid = fileArray.filter((f) => {
-      if (!ALLOWED_TYPES.has(f.type)) return false;
-      return f.size <= (VIDEO_TYPES.has(f.type) ? VIDEO_MAX : IMAGE_MAX);
+      const detectedType = detectedTypes.get(f) ?? null;
+      if (!detectedType) return false;
+      return f.size <= (isVideoUploadType(detectedType) ? VIDEO_MAX : IMAGE_MAX);
     });
     if (valid.length === 0) return;
     if (uploadBatchRef.current) {
@@ -1693,30 +1703,30 @@ function AppContent() {
         worker: async (queueItem, controls) => {
           const uploadFile = queueItem.file;
           const uploadId = uploadIds.get(uploadFile);
+          const uploadMediaType = detectedTypes.get(uploadFile) ?? await detectUploadMediaType(uploadFile);
           if (!uploadId) throw new Error(`Missing upload id for ${uploadFile.name}`);
           if (currentGroupIdRef.current !== uploadWorkspaceId) {
           batchController.abort(new UploadWorkspaceChangedError());
           }
           if (batchController.signal.aborted) throw batchAbortReason();
 
-          const videoThumbnailPromise = uploadFile.type.startsWith("video/")
+          const videoThumbnailPromise = isVideoUploadType(uploadMediaType)
           ? extractVideoThumbnail(uploadFile).catch(() => null)
           : Promise.resolve<Blob | null>(null);
 
           let gpsLat: string | undefined;
           let gpsLon: string | undefined;
           let videoTakenAt: string | undefined;
-          if (uploadFile.type.startsWith("image/")) {
+          if (isImageUploadType(uploadMediaType)) {
           try {
             const exifrLib = await import("exifr");
-            const gps = await exifrLib.gps(uploadFile);
-            if (gps?.latitude != null && gps?.longitude != null
-                && isFinite(gps.latitude) && isFinite(gps.longitude)) {
-              gpsLat = String(gps.latitude);
-              gpsLon = String(gps.longitude);
+            const gps = normalizeExifGps(await exifrLib.gps(uploadFile));
+            if (gps) {
+              gpsLat = gps.gpsLat;
+              gpsLon = gps.gpsLon;
             }
           } catch { /* EXIF extraction is best-effort */ }
-          } else if (uploadFile.type.startsWith("video/")) {
+          } else if (isVideoUploadType(uploadMediaType)) {
           try {
             const meta = await extractVideoMetadata(uploadFile);
             gpsLat = meta.gpsLat;
@@ -1766,7 +1776,7 @@ function AppContent() {
           }
           }
           if (!uploadedPhoto) throw new Error(`Upload did not complete: ${uploadFile.name}`);
-          const uploadedVideoNeedsThumbnail = uploadFile.type.startsWith("video/");
+          const uploadedVideoNeedsThumbnail = isVideoUploadType(uploadMediaType);
           if (uploadedVideoNeedsThumbnail) {
             markVideoThumbnailPersistencePending(uploadedPhoto.name, true);
           }
@@ -1775,11 +1785,10 @@ function AppContent() {
           !batchController.signal.aborted
           && currentGroupIdRef.current === uploadWorkspaceId
           ) {
-          mutatePhotos((previous) => (
-            previous.some((photo) => photo.name === uploadedPhoto.name)
-              ? previous
-              : [...previous, uploadedPhoto]
-          ));
+          mutatePhotos((previous) => mergeUploadedPhoto(previous, uploadedPhoto));
+          if (hasValidGps(uploadedPhoto.gpsLat, uploadedPhoto.gpsLon)) {
+            setLocationIndexRevision((revision) => revision + 1);
+          }
           if (uploadedPhoto.locationIndexPending) {
             showToast(uploadedPhoto.warning ?? "照片 GPS 已保存，位置索引将在维护任务中自动重试", "info");
           }
@@ -2959,6 +2968,7 @@ function AppContent() {
                         photos={photos}
                         groupId={resolvedPhotoWorkspaceId}
                         photosGroupId={photosGroupId}
+                        locationIndexRevision={locationIndexRevision}
                         onViewPhoto={jumpToTimelinePhoto}
                         onGpsUpdate={(name, lat, lon) =>
                           mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))

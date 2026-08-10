@@ -11,6 +11,7 @@ function workspaceForPhoto(name: string): string {
 export function usePhotoLocationAddress(photo: Photo | null): {
   address: string | null;
   loading: boolean;
+  status: "missing-coordinates" | "loading" | "resolved" | "unavailable";
 } {
   const photoName = photo?.name ?? "";
   const gps = readGpsCoordinates(photo?.gpsLat, photo?.gpsLon);
@@ -22,11 +23,17 @@ export function usePhotoLocationAddress(photo: Photo | null): {
     identity: string;
     address: string | null;
     loading: boolean;
-  }>({ identity: "", address: null, loading: false });
+    status: "missing-coordinates" | "loading" | "resolved" | "unavailable";
+  }>({ identity: "", address: null, loading: false, status: "missing-coordinates" });
 
   useEffect(() => {
     const controller = new AbortController();
-    setResult({ identity, address: null, loading: hasCoordinates });
+    setResult({
+      identity,
+      address: null,
+      loading: hasCoordinates,
+      status: hasCoordinates ? "loading" : "missing-coordinates",
+    });
     if (!hasCoordinates) {
       return () => controller.abort();
     }
@@ -36,11 +43,18 @@ export function usePhotoLocationAddress(photo: Photo | null): {
       workspace: workspaceForPhoto(photoName),
     }).then(
       (value) => {
-        if (!controller.signal.aborted) setResult({ identity, address: value, loading: false });
+        if (!controller.signal.aborted) {
+          setResult({
+            identity,
+            address: value,
+            loading: false,
+            status: value ? "resolved" : "unavailable",
+          });
+        }
       },
       (error: unknown) => {
         if (!controller.signal.aborted && !(error instanceof Error && error.name === "AbortError")) {
-          setResult({ identity, address: null, loading: false });
+          setResult({ identity, address: null, loading: false, status: "unavailable" });
         }
       },
     ).finally(() => {
@@ -54,6 +68,10 @@ export function usePhotoLocationAddress(photo: Photo | null): {
   }, [hasCoordinates, identity, lat, lon, photoName]);
 
   return result.identity === identity
-    ? { address: result.address, loading: result.loading }
-    : { address: null, loading: hasCoordinates };
+    ? { address: result.address, loading: result.loading, status: result.status }
+    : {
+        address: null,
+        loading: hasCoordinates,
+        status: hasCoordinates ? "loading" : "missing-coordinates",
+      };
 }

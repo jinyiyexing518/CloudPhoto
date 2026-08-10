@@ -1,5 +1,13 @@
 # 更新日志
 
+### 2026-08-11 — 新上传照片位置闭环
+
+**Bug 修复**
+- **📍 新上传 JPEG/HEIC 位置立即可见** — 浏览器空 MIME、`application/octet-stream` 和非标准 JPEG/HEIC MIME 通过有界签名/扩展名识别；客户端坐标不完整、NaN 或越界时服务端回退 EXIF。合法 GPS 写入 Blob metadata、同步 Cosmos、合并到同名 React 照片并显式刷新记忆地图；地址服务失败显示“地址暂不可用”，不再伪装成无 GPS 或回显坐标
+- **🧪 iPhone HEIC 行为证据** — 生成式 JPEG/HEIC fixture 同时验证当前 `exifr` 的浏览器 `File` 与服务端 `Buffer` 读取路径，避免仅按格式名推断支持
+
+---
+
 ### 2026-08-11 — 统一生产 HSTS 与入口文档
 
 **安全修复**

@@ -14,8 +14,9 @@ test("client EXIF coordinates flow into the upload query without dropping zero",
     source("packages/client/src/services/uploadApi.ts"),
   ]);
   assert.match(app, /exifrLib\.gps\((?:valid\[i\]|uploadFile)\)/);
-  assert.match(app, /gpsLat = String\(gps\.latitude\)/);
-  assert.match(app, /gpsLon = String\(gps\.longitude\)/);
+  assert.match(app, /normalizeExifGps\(await exifrLib\.gps\(uploadFile\)\)/);
+  assert.match(app, /gpsLat = gps\.gpsLat/);
+  assert.match(app, /gpsLon = gps\.gpsLon/);
   assert.match(app, /uploadPhotoWithProgress\([\s\S]*gpsLat,[\s\S]*gpsLon,/);
   assert.match(uploadApi, /gpsLat !== undefined && gpsLat\.trim\(\) !== ""/);
   assert.match(uploadApi, /params\.set\("gpsLat", gpsLat\)/);
@@ -29,6 +30,8 @@ test("server fallback, Blob metadata, upload response, and refreshed list share 
   ]);
   assert.match(upload, /resolveUploadGps\(gpsLat, gpsLon/);
   assert.match(upload, /exifr\.gps\(buf\)/);
+  assert.match(upload, /resolveUploadMediaType\(contentType, filename/);
+  assert.match(upload, /resolveUploadMediaType\(contentType, filename, buf\)/);
   assert.match(upload, /\.\.\.uploadGpsMetadata\(resolvedGps\)/);
   assert.match(upload, /const gps = readGpsMetadata\(metadata\)/);
   assert.match(upload, /\.\.\.\(gps \?\? \{\}\)/);

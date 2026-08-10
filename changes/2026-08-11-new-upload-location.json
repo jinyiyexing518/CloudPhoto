@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-new-upload-location",
+  "date": "2026-08-11",
+  "icon": "📍",
+  "title": "修复新上传照片位置",
+  "type": "fix",
+  "desc": "新上传的 JPEG/HEIC 照片现在会可靠保留 GPS，并立即出现在详情与记忆地图中。",
+  "details": "浏览器未提供 MIME、返回 application/octet-stream 或非标准 JPEG/HEIC MIME 时，客户端会用有界文件头与扩展名识别图片并执行 exifr；服务端 legacy upload 也独立识别真实媒体类型。缺失、单边、NaN 或越界的客户端坐标会回退到服务端 EXIF，合法 GPS 原子写入 Blob metadata 并同步 Cosmos。上传响应会覆盖同名缓存项中的 GPS、拍摄时间、最新 SAS 与派生图，并触发地图位置索引刷新。反向地理编码失败显示“地址暂不可用”，与无 GPS 明确区分且不在诊断文案中暴露坐标。生成式 JPEG/HEIC fixture 同时锁定浏览器 File 与服务端 Buffer 的 exifr 行为。",
+  "seq": 1786411421837
+}
