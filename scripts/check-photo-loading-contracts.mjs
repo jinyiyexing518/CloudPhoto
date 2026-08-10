@@ -14,6 +14,7 @@ const requireText = (source, text, label) => {
 const app = read("packages/client/src/App.tsx");
 const auth = read("packages/client/src/contexts/AuthContext.tsx");
 const groupContext = read("packages/client/src/contexts/GroupContext.tsx");
+const groupSwitcher = read("packages/client/src/components/groups/GroupSwitcher.tsx");
 const groupApi = read("packages/client/src/services/groupApi.ts");
 const http = read("packages/client/src/services/http.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
@@ -101,6 +102,13 @@ requireText(groupContext, "listGroupsApi(controller.signal)", "group refresh can
 requireText(groupContext, "generation !== refreshGenerationRef.current", "stale group result guard");
 requireText(groupContext, "groupsOwnerIdRef.current === user.id", "first-render group ownership guard");
 requireText(groupContext, "userId !== currentUserIdRef.current", "stale group callback guard");
+requireText(groupContext, 'setGroupsError("群组加载失败，请重试")', "visible group load failure");
+const groupFailure = groupContext.slice(
+  groupContext.indexOf("    } catch {"),
+  groupContext.indexOf("    } finally {", groupContext.indexOf("    } catch {")),
+);
+assert(!groupFailure.includes("setGroups([])"), "a transient group failure must preserve same-user groups");
+requireText(groupSwitcher, "onClick={() => void refreshGroups()}", "group load retry");
 requireText(http, "canHedgeOnAlternateRoute", "safe route hedge guard");
 requireText(http, "canRetryOnAlternateRoute", "failure-only route retry guard");
 requireText(http, "isSafeReplayMethod(method)", "unsafe route replay exclusion");

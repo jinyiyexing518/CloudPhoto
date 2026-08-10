@@ -100,7 +100,11 @@ export function classifyProxyProbe(input: {
   status: number;
   contentType: string;
   route?: string;
+  server?: string;
 }): ProxyProbeResult {
+  if (input.ok && /\bnginx(?:\/|\b)/i.test(input.server ?? "")) {
+    return "proxy";
+  }
   if (input.ok && input.contentType.includes("application/json")) {
     return input.route === "cloudphoto-proxy" ? "proxy" : "not-proxy";
   }

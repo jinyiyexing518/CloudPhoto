@@ -5,6 +5,6 @@
   "title": "修复更新日志接口并增加线上健康监控",
   "type": "fix",
   "desc": "修复更新日志查询与同日排序边界，并通过并行重试持续监控首页、代理健康标识、登录态和更新日志接口",
-  "details": "Nginx /healthz 返回 cloudphoto-proxy；SWA 同路径返回不可缓存的 cloudphoto-frontend JSON 兜底，避免旧代理配置回落 SPA。客户端仅将明确的 proxy 标识视为同源 API 代理，线上 smoke 接受两种入口并分别验证主域、Azure 首页、认证和更新日志。",
+  "details": "Nginx /healthz 返回 cloudphoto-proxy；SWA 同路径返回不可缓存的 cloudphoto-frontend JSON 兜底，避免旧代理配置回落 SPA。直达 SWA 时客户端使用 Azure API；旧 Nginx 反代 frontend fallback 时通过同源 Nginx Server 标识继续使用 /api。线上 smoke 接受两种入口并分别验证主域、Azure 首页、认证和更新日志。",
   "seq": 1786087146835
 }

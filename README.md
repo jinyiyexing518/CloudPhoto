@@ -60,7 +60,7 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 详细部署步骤见 [DEPLOYMENT.md](doc/DEPLOYMENT.md)。
 
-本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境下，`cloudphotos.top` / `cn.cloudphotos.top` 优先走同源 `/api`；`www`、SWA 和其他全球入口优先直连 Azure Functions。只读请求和登录/刷新等可安全重试的请求在线路网络或网关故障时双向回退；照片列表、动态视频、回收站和地理搜索等高成本读取不会仅因 5 秒内未返回响应头就向同一后端重放。非幂等写请求不会在发送后自动重放，避免重复上传或修改。
+本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境下，`cloudphotos.top` / `cn.cloudphotos.top` 优先走同源 `/api`；`www` 会探测当前智能 DNS 落点，确认响应来自 Nginx 时走同源 `/api`，直达 SWA 时走 Azure Functions；其他全球入口优先直连 Azure Functions。只读请求和登录/刷新等可安全重试的请求在线路网络或网关故障时双向回退；照片列表、动态视频、回收站和地理搜索等高成本读取不会仅因 5 秒内未返回响应头就向同一后端重放。非幂等写请求不会在发送后自动重放，避免重复上传或修改。
 
 媒体也使用双线路：客户端对同一张原图执行两个无响应体的 `HEAD` 探测，在 Blob 直连和 `/media` 代理中缓存 30 分钟内最快的线路；胜出后立即取消另一探测。图片、视频、语音、动图预载、剪贴板复制和下载预检共用有限次换线逻辑，失败不会在直连/代理间循环；所有非 `206` 的 Range 响应都会主动取消响应体，避免忽略 Range 的线路继续下载完整视频。海外用户通常直连 Blob，避免所有流量绕行 VM；大陆网络则可自动选择 Nginx 代理。
 
@@ -79,7 +79,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 | `www.cloudphotos.top`（中国大陆线路） | `CNAME cn.cloudphotos.top` | 智能 DNS 大陆解析 |
 | `www.cloudphotos.top`（境外线路） | `CNAME global.cloudphotos.top` | 智能 DNS 境外解析 |
 
-`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，返回 `cloudphoto-proxy` 供智能 DNS 与客户端识别；SWA 同一路径提供 `cloudphoto-frontend` JSON 兜底，保持旧 Nginx 配置可被监控但不会让客户端误判为 API 代理。定时线上 smoke 会校验入口标识并分别检查两套 API。`www` 同时落到两个平台时必须使用可自动续签的 DNS-01 插件签发证书，避免 HTTP-01 校验被地域解析到另一端；`infra/setup.sh` 会拒绝缺少 DNS 插件参数或不可续签的 `--manual` 模式。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
+`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，返回 `cloudphoto-proxy` 供智能 DNS 与客户端识别；SWA 同一路径提供 `cloudphoto-frontend` JSON 兜底。旧 Nginx 尚未热重载时可能把该 frontend JSON 继续反代给 `www`，客户端会同时检查同源响应的 Nginx `Server` 标识，避免把仍可用的 `/api` 错判为跨域直连。定时线上 smoke 会校验入口标识并分别检查两套 API。`www` 同时落到两个平台时必须使用可自动续签的 DNS-01 插件签发证书，避免 HTTP-01 校验被地域解析到另一端；`infra/setup.sh` 会拒绝缺少 DNS 插件参数或不可续签的 `--manual` 模式。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
 
 ---
 

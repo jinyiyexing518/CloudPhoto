@@ -181,6 +181,27 @@ assert.equal(
   policy.classifyProxyProbe({
     ok: true,
     status: 200,
+    contentType: "application/json",
+    route: "cloudphoto-frontend",
+    server: "nginx/1.24.0 (Ubuntu)",
+  }),
+  "proxy",
+  "an older Nginx config may proxy the frontend health fallback while /api is still available",
+);
+assert.equal(
+  policy.classifyProxyProbe({
+    ok: true,
+    status: 200,
+    contentType: "application/json",
+    route: "cloudphoto-frontend",
+  }),
+  "not-proxy",
+  "a direct SWA response must keep using the Azure API",
+);
+assert.equal(
+  policy.classifyProxyProbe({
+    ok: true,
+    status: 200,
     contentType: "text/html; charset=utf-8",
   }),
   "not-proxy",
@@ -315,6 +336,28 @@ const httpUrl = await compileTypeScript(
     .replace('"./photoLoadingPolicy"', JSON.stringify(policyUrl)),
 );
 const http = await import(httpUrl);
+
+{
+  let healthCalls = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    assert(url.endsWith("/healthz"));
+    healthCalls += 1;
+    return Response.json({ status: "ok", route: "cloudphoto-frontend" }, {
+      status: 200,
+      headers: {
+        Server: "nginx/1.24.0 (Ubuntu)",
+      },
+    });
+  };
+  assert.equal(
+    await http.resolveApiUrl("https://cloudphoto-api.azurewebsites.net/api/groups"),
+    "https://www.cloudphotos.top/api/groups",
+    "www must recognize its live Nginx route even before /healthz returns JSON",
+  );
+  assert.equal(healthCalls, 1);
+  http.invalidateApiProxyProbe();
+}
 
 {
   let healthCalls = 0;

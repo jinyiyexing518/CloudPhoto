@@ -5,7 +5,14 @@ import CreateGroupDialog from "./CreateGroupDialog";
 import GroupSettings from "./GroupSettings";
 
 export default function GroupSwitcher() {
-  const { groups, currentGroupId, setCurrentGroupId, refreshGroups, loadingGroups } = useGroup();
+  const {
+    groups,
+    currentGroupId,
+    setCurrentGroupId,
+    refreshGroups,
+    loadingGroups,
+    groupsError,
+  } = useGroup();
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [settingsGroupId, setSettingsGroupId] = useState<string | null>(null);
@@ -52,6 +59,16 @@ export default function GroupSwitcher() {
             {groups.length > 0 && <div className="group-dropdown-divider" />}
 
             {loadingGroups && <div className="group-dropdown-loading">加载中…</div>}
+
+            {groupsError && !loadingGroups && (
+              <button
+                type="button"
+                className="group-dropdown-error"
+                onClick={() => void refreshGroups()}
+              >
+                {groupsError}
+              </button>
+            )}
 
             {groups.map((g) => (
               <div key={g.id} className={`group-dropdown-item${currentGroupId === g.id ? " active" : ""}`}>

@@ -9,6 +9,7 @@ interface GroupContextValue {
   refreshGroups: () => Promise<void>;
   loadingGroups: boolean;
   groupsLoaded: boolean;
+  groupsError: string | null;
 }
 
 const GroupContext = createContext<GroupContextValue>({
@@ -18,6 +19,7 @@ const GroupContext = createContext<GroupContextValue>({
   refreshGroups: async () => {},
   loadingGroups: false,
   groupsLoaded: false,
+  groupsError: null,
 });
 const EMPTY_GROUPS: Group[] = [];
 
@@ -27,6 +29,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
   const [currentGroupId, _setCurrentGroupId] = useState<string>("");
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
   const restoredRef = useRef(false);
   const refreshGenerationRef = useRef(0);
   const refreshAbortRef = useRef<AbortController | null>(null);
@@ -49,12 +52,14 @@ export function GroupProvider({ children }: { children: ReactNode }) {
       refreshAbortRef.current = null;
       setGroups([]);
       setGroupsLoaded(false);
+      setGroupsError(null);
       setLoadingGroups(false);
       return;
     }
     const controller = new AbortController();
     refreshAbortRef.current = controller;
     setLoadingGroups(true);
+    setGroupsError(null);
     try {
       const list = await listGroupsApi(controller.signal);
       if (
@@ -72,8 +77,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
         || userId !== currentUserIdRef.current
       ) return;
       groupsOwnerIdRef.current = userId;
-      setGroups([]);
-      setGroupsLoaded(true);
+      setGroupsError("群组加载失败，请重试");
     } finally {
       if (
         generation === refreshGenerationRef.current
@@ -94,6 +98,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     _setCurrentGroupId("");
     setGroups([]);
     setGroupsLoaded(false);
+    setGroupsError(null);
     setLoadingGroups(false);
     restoredRef.current = false;
     if (user) void refreshGroups();
@@ -108,6 +113,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
   const visibleGroups = groupsAreCurrent ? groups : EMPTY_GROUPS;
   const visibleGroupId = groupsAreCurrent ? currentGroupId : "";
   const visibleGroupsLoaded = groupsAreCurrent && groupsLoaded;
+  const visibleGroupsError = groupsAreCurrent ? groupsError : null;
 
   // After groups load for the first time per login, restore last-used group
   useEffect(() => {
@@ -138,6 +144,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
       refreshGroups,
       loadingGroups,
       groupsLoaded: visibleGroupsLoaded,
+      groupsError: visibleGroupsError,
     }}>
       {children}
     </GroupContext.Provider>

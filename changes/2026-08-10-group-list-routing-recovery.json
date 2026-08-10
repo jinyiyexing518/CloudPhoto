@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-group-list-routing-recovery",
+  "date": "2026-08-10",
+  "icon": "👥",
+  "title": "修复 www 入口群组消失",
+  "type": "fix",
+  "desc": "修复智能 DNS 尚落在 Nginx 时被错误当作 Azure 直连、导致群组请求遭 CORS 拒绝并显示为空的问题。",
+  "details": "www 现在可从同源 Nginx Server 标识确认 /api 代理，即使旧 Nginx 把 cloudphoto-frontend 健康兜底继续反代也不会误判；直达 SWA 仍使用 Azure API。群组刷新失败不再清空同一用户已显示的群组，并在群组菜单提供明确的点击重试入口。",
+  "seq": 1786332974639
+}

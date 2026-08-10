@@ -230,6 +230,7 @@ function getSameOriginProxyProbe(): Promise<ProxyProbeResult> {
         status: response.status,
         contentType,
         route,
+        server: response.headers.get("server") ?? undefined,
       });
     } catch {
       return "transient";
