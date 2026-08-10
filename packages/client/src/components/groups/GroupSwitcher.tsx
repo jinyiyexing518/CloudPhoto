@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useGroup } from "../../contexts/GroupContext";
+import { focusMenuItem, handleMenuKeyDown } from "../shared/menuKeyboard";
 import CreateGroupDialog from "./CreateGroupDialog";
 import GroupSettings from "./GroupSettings";
 
@@ -8,6 +9,9 @@ interface GroupSwitcherProps {
   disabled?: boolean;
   onBeforeSelect?: (nextGroupId: string) => boolean;
 }
+
+const GROUP_SWITCHER_TRIGGER_ID = "group-switcher-trigger";
+const GROUP_SWITCHER_MENU_ID = "group-switcher-menu";
 
 export default function GroupSwitcher({ disabled = false, onBeforeSelect }: GroupSwitcherProps) {
   const {
@@ -23,30 +27,50 @@ export default function GroupSwitcher({ disabled = false, onBeforeSelect }: Grou
   const [showCreate, setShowCreate] = useState(false);
   const [settingsGroupId, setSettingsGroupId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const closeMenu = (restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) closeMenu(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      focusMenuItem(menuRef.current, "selected");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [groups.length, groupsError, loadingGroups, open]);
+
+  useEffect(() => {
+    if (disabled && open) closeMenu(true);
+  }, [disabled, open]);
 
   const currentLabel =
     currentGroupId === ""
       ? "个人空间"
       : groups.find((g) => g.id === currentGroupId)?.name ?? "群组";
 
-  const select = (id: string) => {
+  const select = (id: string): boolean => {
     if (id === currentGroupId && selectionRestored) {
-      setOpen(false);
-      return;
+      closeMenu(true);
+      return true;
     }
-    if (disabled) return;
-    if (onBeforeSelect && !onBeforeSelect(id)) return;
+    if (disabled) return false;
+    if (onBeforeSelect && !onBeforeSelect(id)) return false;
     setCurrentGroupId(id);
-    setOpen(false);
+    closeMenu(true);
+    return true;
   };
 
   const handleCreated = async () => {
@@ -57,27 +81,65 @@ export default function GroupSwitcher({ disabled = false, onBeforeSelect }: Grou
   return (
     <>
       <div className="group-switcher" ref={ref}>
-        <button className="group-switcher-btn" onClick={() => setOpen((v) => !v)} disabled={disabled}>
+        <button
+          ref={triggerRef}
+          id={GROUP_SWITCHER_TRIGGER_ID}
+          type="button"
+          className="group-switcher-btn"
+          onClick={() => setOpen((value) => !value)}
+          onKeyDown={(event) => {
+            if (!["ArrowDown", "Enter", " "].includes(event.key)) return;
+            event.preventDefault();
+            setOpen(true);
+          }}
+          disabled={disabled}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={GROUP_SWITCHER_MENU_ID}
+        >
           {currentGroupId ? "👥" : "🏠"} <span className="group-switcher-label">{currentLabel}</span>
-          <span className="group-switcher-chevron">▾</span>
+          <span className="group-switcher-chevron" aria-hidden="true">▾</span>
         </button>
 
         {open && (
-          <div className="group-dropdown">
-            <div
+          <div
+            ref={menuRef}
+            id={GROUP_SWITCHER_MENU_ID}
+            className="group-dropdown"
+            role="menu"
+            aria-labelledby={GROUP_SWITCHER_TRIGGER_ID}
+            onKeyDown={(event) => {
+              if (!menuRef.current) return;
+              handleMenuKeyDown(
+                event,
+                menuRef.current,
+                document.activeElement,
+                closeMenu,
+              );
+            }}
+          >
+            <button
+              type="button"
+              role="menuitemradio"
+              tabIndex={-1}
+              aria-checked={currentGroupId === ""}
               className={`group-dropdown-item${currentGroupId === "" ? " active" : ""}`}
-              onClick={() => select("")}
+              onClick={(event) => {
+                if (!select("")) event.currentTarget.focus();
+              }}
             >
               🏠 个人空间
-            </div>
+            </button>
 
-            {groups.length > 0 && <div className="group-dropdown-divider" />}
+            {groups.length > 0 && <div className="group-dropdown-divider" role="separator" />}
 
-            {loadingGroups && <div className="group-dropdown-loading">加载中…</div>}
+            {loadingGroups && <div className="group-dropdown-loading" role="status">加载中…</div>}
 
             {groupsError && !loadingGroups && (
               <button
                 type="button"
+                role="menuitem"
+                tabIndex={-1}
                 className="group-dropdown-error"
                 onClick={() => void refreshGroups()}
               >
@@ -86,18 +148,36 @@ export default function GroupSwitcher({ disabled = false, onBeforeSelect }: Grou
             )}
 
             {groups.map((g) => (
-              <div key={g.id} className={`group-dropdown-item${currentGroupId === g.id ? " active" : ""}`}>
-                <span onClick={() => select(g.id)} className="group-dropdown-label">
+              <div
+                key={g.id}
+                role="none"
+                className={`group-dropdown-row${currentGroupId === g.id ? " active" : ""}`}
+              >
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  tabIndex={-1}
+                  aria-checked={currentGroupId === g.id}
+                  className="group-dropdown-item group-dropdown-label"
+                  onClick={(event) => {
+                    if (!select(g.id)) event.currentTarget.focus();
+                  }}
+                >
                   <span className="group-dropdown-name">👥 {g.name}</span>
                   {g.myRole === "admin" && <span className="group-role-tag">管理员</span>}
-                </span>
+                </button>
                 {g.myRole === "admin" && (
                   <button
                     type="button"
+                    role="menuitem"
+                    tabIndex={-1}
                     className="group-settings-btn"
                     aria-label={`打开${g.name}的群组设置`}
                     title="群组设置"
-                    onClick={(e) => { e.stopPropagation(); setSettingsGroupId(g.id); setOpen(false); }}
+                    onClick={() => {
+                      closeMenu(true);
+                      setSettingsGroupId(g.id);
+                    }}
                   >
                     ⚙
                   </button>
@@ -105,10 +185,19 @@ export default function GroupSwitcher({ disabled = false, onBeforeSelect }: Grou
               </div>
             ))}
 
-            <div className="group-dropdown-divider" />
-            <div className="group-dropdown-item group-dropdown-create" onClick={() => { setShowCreate(true); setOpen(false); }}>
+            <div className="group-dropdown-divider" role="separator" />
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              className="group-dropdown-item group-dropdown-create"
+              onClick={() => {
+                closeMenu(true);
+                setShowCreate(true);
+              }}
+            >
               ＋ 新建群组
-            </div>
+            </button>
           </div>
         )}
       </div>

@@ -22,6 +22,7 @@ import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { useToast } from "./contexts/ToastContext";
 import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
+import { focusMenuItem, handleMenuKeyDown } from "./components/shared/menuKeyboard";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
 import { usePwaInstall } from "./pwa/usePwaInstall";
 import {
@@ -94,6 +95,8 @@ const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPag
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 const WHATS_NEW_IDLE_TIMEOUT_MS = 2_000;
+const USER_MENU_TRIGGER_ID = "user-menu-trigger";
+const USER_MENU_ID = "user-menu";
 let folderRenameSequence = 0;
 
 function scheduleIdleMount(task: () => void) {
@@ -348,6 +351,11 @@ function AppContent() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const userAvatarButtonRef = useRef<HTMLButtonElement | null>(null);
+  const userMenuPopupRef = useRef<HTMLDivElement | null>(null);
+  const closeUserMenu = useCallback((restoreFocus: boolean) => {
+    setUserMenuOpen(false);
+    if (restoreFocus) userAvatarButtonRef.current?.focus();
+  }, []);
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -652,11 +660,19 @@ function AppContent() {
   useEffect(() => {
     function handleOutsideClick(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
+        closeUserMenu(false);
       }
     }
     if (userMenuOpen) document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [closeUserMenu, userMenuOpen]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      focusMenuItem(userMenuPopupRef.current, "first");
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [userMenuOpen]);
 
   useEffect(() => {
@@ -2030,28 +2046,54 @@ function AppContent() {
         <div className="user-avatar-wrap" ref={userMenuRef}>
           <button
             ref={userAvatarButtonRef}
+            id={USER_MENU_TRIGGER_ID}
+            type="button"
             className={`user-avatar-btn${user?.role === "admin" ? " user-avatar-btn--admin" : ""}`}
             onClick={() => setUserMenuOpen((v) => !v)}
-            aria-haspopup="true"
+            onKeyDown={(event) => {
+              if (!["ArrowDown", "Enter", " "].includes(event.key)) return;
+              event.preventDefault();
+              setUserMenuOpen(true);
+            }}
+            aria-haspopup="menu"
             aria-expanded={userMenuOpen}
+            aria-controls={USER_MENU_ID}
             aria-label={`${userMenuOpen ? "关闭" : "打开"}用户菜单：${user?.displayName ?? "用户"}`}
             title={user?.displayName}
           >
             {user?.displayName?.[0]?.toUpperCase() ?? "U"}
           </button>
           {userMenuOpen && (
-            <div className="user-menu-dropdown">
-              <div className="user-menu-header">
+            <div
+              ref={userMenuPopupRef}
+              id={USER_MENU_ID}
+              className="user-menu-dropdown"
+              role="menu"
+              aria-labelledby={USER_MENU_TRIGGER_ID}
+              onKeyDown={(event) => {
+                if (!userMenuPopupRef.current) return;
+                handleMenuKeyDown(
+                  event,
+                  userMenuPopupRef.current,
+                  document.activeElement,
+                  closeUserMenu,
+                );
+              }}
+            >
+              <div className="user-menu-header" role="presentation">
                 <div className="user-menu-name">{user?.displayName}</div>
                 <div className="user-menu-sub">
                   <span>@{user?.username}</span>
                   {user?.role === "admin" && <span className="role-badge">Admin</span>}
                 </div>
               </div>
-              <button className="user-menu-item" onClick={openSettingsFromUserMenu} disabled={folderRenameOperation !== null}>
+              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={openSettingsFromUserMenu} disabled={folderRenameOperation !== null}>
                 <span className="user-menu-item-icon">⚙️</span> 设置
               </button>
               <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
                 className="user-menu-item"
                 disabled={isStandalone}
                 onClick={() => { setUserMenuOpen(false); void handleInstallApp(); }}
@@ -2059,19 +2101,19 @@ function AppContent() {
                 <span className="user-menu-item-icon">{isStandalone ? "✅" : "📲"}</span>
                 {isStandalone ? "已安装应用" : "安装应用"}
               </button>
-              <button className="user-menu-item" onClick={() => { setShowShortcutsHelp(true); setUserMenuOpen(false); }}>
+              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={() => { setShowShortcutsHelp(true); setUserMenuOpen(false); }}>
                 <span className="user-menu-item-icon">⌨️</span> 快捷键
               </button>
               {user?.username === SUPER_ADMIN && (
                 <>
-                  <div className="user-menu-divider" />
-                  <button className="user-menu-item" onClick={() => { setShowAddAdmin(true); setUserMenuOpen(false); }}>
+                  <div className="user-menu-divider" role="separator" />
+                  <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={() => { setShowAddAdmin(true); setUserMenuOpen(false); }}>
                     <span className="user-menu-item-icon">➕</span> 添加管理员
                   </button>
                 </>
               )}
-              <div className="user-menu-divider" />
-              <button className="user-menu-item user-menu-item--danger" onClick={() => { logout(); setUserMenuOpen(false); }}>
+              <div className="user-menu-divider" role="separator" />
+              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item user-menu-item--danger" onClick={() => { logout(); setUserMenuOpen(false); }}>
                 <span className="user-menu-item-icon">🚪</span> 退出登录
               </button>
             </div>

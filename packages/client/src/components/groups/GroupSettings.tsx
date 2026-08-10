@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import {
   GroupDetail, GroupMember, PendingInvite,
   getGroupApi, updateGroupApi, deleteGroupApi,
@@ -6,6 +6,7 @@ import {
   createInviteApi, listGroupInvitesApi, cancelInviteApi,
 } from "../../services/groupApi";
 import { useAuth } from "../../contexts/AuthContext";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 interface Props {
   groupId: string;
@@ -16,12 +17,17 @@ interface Props {
 
 export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }: Props) {
   const { user } = useAuth();
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   // Edit name/desc
   const [editingInfo, setEditingInfo] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
   const [descInput, setDescInput] = useState("");
 
@@ -35,6 +41,11 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
   // Delete confirm
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const mutationPending = savingInfo
+    || removingMemberId !== null
+    || inviting
+    || cancellingId !== null
+    || deleting;
 
   const loadGroup = async () => {
     setLoading(true);
@@ -55,7 +66,9 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
     try {
       const invs = await listGroupInvitesApi(groupId);
       setPendingInvites(invs);
-    } catch { /* non-critical */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载邀请失败");
+    }
   };
 
   useEffect(() => {
@@ -65,7 +78,13 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
 
   const saveInfo = async (e: FormEvent) => {
     e.preventDefault();
-    if (!nameInput.trim()) return;
+    if (mutationPending) return;
+    if (!nameInput.trim()) {
+      setError("请输入群组名称");
+      return;
+    }
+    setSavingInfo(true);
+    setError("");
     try {
       await updateGroupApi(groupId, { name: nameInput.trim(), description: descInput.trim() });
       setEditingInfo(false);
@@ -73,23 +92,34 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
       await loadGroup();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingInfo(false);
     }
   };
 
   const handleRemove = async (member: GroupMember) => {
+    if (mutationPending) return;
     if (!confirm(`确认移除 ${member.displayName}？`)) return;
+    setRemovingMemberId(member.userId);
+    setError("");
     try {
       await removeMemberApi(groupId, member.userId);
       await loadGroup();
     } catch (err) {
       setError(err instanceof Error ? err.message : "移除失败");
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
   const handleInvite = async (e: FormEvent) => {
     e.preventDefault();
+    if (mutationPending) return;
     const val = inviteInput.trim();
-    if (!val) return;
+    if (!val) {
+      setInviteMsg("请输入用户名或邮箱地址");
+      return;
+    }
     setInviting(true);
     setInviteMsg("");
     try {
@@ -112,37 +142,68 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
   };
 
   const handleCancelInvite = async (inviteId: string) => {
+    if (mutationPending) return;
     setCancellingId(inviteId);
+    setError("");
     try {
       await cancelInviteApi(inviteId);
       await loadInvites();
-    } catch { /* ignore */ } finally {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "撤销邀请失败");
+    } finally {
       setCancellingId(null);
     }
   };
 
   const handleDelete = async () => {
+    if (mutationPending) return;
     setDeleting(true);
+    setError("");
     try {
       await deleteGroupApi(groupId);
       onDeleted();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
       setDeleting(false);
-      setConfirmDelete(false);
     }
   };
 
+  const requestClose = () => {
+    if (mutationPending) return;
+    onClose();
+  };
+
+  useModalFocusBoundary({
+    active: true,
+    layerRef,
+    containerRef: dialogRef,
+    initialFocusRef: closeButtonRef,
+    onEscape: () => {
+      if (mutationPending) return false;
+      onClose();
+      return true;
+    },
+  });
+
   return (
-    <div className="dialog-overlay" onClick={onClose}>
-      <div className="group-settings-dialog" onClick={(e) => e.stopPropagation()}>
+    <div ref={layerRef} className="dialog-overlay" data-modal-layer onClick={requestClose}>
+      <div
+        ref={dialogRef}
+        className="group-settings-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="group-settings-dialog-title"
+        aria-busy={loading || mutationPending}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="add-admin-header">
-          <span>群组设置</span>
-          <button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭群组设置">✕</button>
+          <span id="group-settings-dialog-title">群组设置</span>
+          <button ref={closeButtonRef} type="button" className="dialog-close-btn" onClick={requestClose} disabled={mutationPending} aria-label="关闭群组设置">✕</button>
         </div>
 
-        {error && <div className="auth-error">{error}</div>}
-        {loading && <div className="group-settings-loading">加载中…</div>}
+        {error && <div className="auth-error" role="alert">{error}</div>}
+        {loading && <div className="group-settings-loading" role="status">加载中…</div>}
 
         {group && (
           <>
@@ -152,15 +213,15 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                 <form onSubmit={saveInfo} className="group-info-form">
                   <div className="auth-field">
                     <label>群组名称</label>
-                    <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} maxLength={60} autoFocus />
+                    <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} maxLength={60} autoFocus disabled={savingInfo} />
                   </div>
                   <div className="auth-field">
                     <label>简介</label>
-                    <input type="text" value={descInput} onChange={(e) => setDescInput(e.target.value)} maxLength={120} />
+                    <input type="text" value={descInput} onChange={(e) => setDescInput(e.target.value)} maxLength={120} disabled={savingInfo} />
                   </div>
                   <div className="group-info-actions">
-                    <button type="submit" className="add-admin-submit">保存</button>
-                    <button type="button" className="add-admin-cancel" onClick={() => setEditingInfo(false)}>取消</button>
+                    <button type="submit" className="add-admin-submit" disabled={savingInfo}>{savingInfo ? "保存中…" : "保存"}</button>
+                    <button type="button" className="add-admin-cancel" onClick={() => setEditingInfo(false)} disabled={savingInfo}>取消</button>
                   </div>
                 </form>
               ) : (
@@ -169,7 +230,7 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                     <div className="group-info-name">{group.name}</div>
                     {group.description && <div className="group-info-desc">{group.description}</div>}
                   </div>
-                  <button className="group-edit-btn" onClick={() => setEditingInfo(true)}>编辑</button>
+                  <button type="button" className="group-edit-btn" onClick={() => setEditingInfo(true)} disabled={mutationPending}>编辑</button>
                 </div>
               )}
             </section>
@@ -190,6 +251,7 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                         type="button"
                         className="group-remove-btn"
                         onClick={() => handleRemove(m)}
+                        disabled={mutationPending}
                         aria-label={`移除成员${m.displayName}`}
                         title="移除"
                       >✕</button>
@@ -214,14 +276,16 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                   value={inviteInput}
                   onChange={(e) => setInviteInput(e.target.value)}
                   maxLength={120}
+                  disabled={mutationPending}
                 />
-                <button type="submit" className="group-add-btn" disabled={inviting}>
+                <button type="submit" className="group-add-btn" disabled={mutationPending}>
                   {inviting ? "…" : "发送邀请"}
                 </button>
               </form>
               {inviteMsg && (
                 <div
                   className={inviteMsg.startsWith("✅") ? "group-add-success" : "auth-error"}
+                  role={inviteMsg.startsWith("✅") ? "status" : "alert"}
                   style={{ marginTop: 6 }}
                 >
                   {inviteMsg}
@@ -242,7 +306,8 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                         </div>
                         <button
                           className="group-remove-btn"
-                          disabled={cancellingId === inv.id}
+                          type="button"
+                          disabled={mutationPending}
                           onClick={() => handleCancelInvite(inv.id)}
                         >
                           {cancellingId === inv.id ? "…" : "撤销"}
@@ -260,14 +325,14 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                 <div className="group-delete-confirm">
                   <span>确认解散群组「{group.name}」？此操作不可撤销。</span>
                   <div className="group-info-actions">
-                    <button className="confirm-delete-btn" onClick={handleDelete} disabled={deleting}>
+                    <button type="button" className="confirm-delete-btn" onClick={handleDelete} disabled={deleting}>
                       {deleting ? "删除中…" : "确认解散"}
                     </button>
-                    <button className="add-admin-cancel" onClick={() => setConfirmDelete(false)}>取消</button>
+                    <button type="button" className="add-admin-cancel" onClick={() => setConfirmDelete(false)} disabled={deleting}>取消</button>
                   </div>
                 </div>
               ) : (
-                <button className="group-dissolve-btn" onClick={() => setConfirmDelete(true)}>解散群组</button>
+                <button type="button" className="group-dissolve-btn" onClick={() => setConfirmDelete(true)} disabled={mutationPending}>解散群组</button>
               )}
             </section>
           </>
