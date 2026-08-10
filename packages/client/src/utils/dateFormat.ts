@@ -75,6 +75,21 @@ export function formatPhotoDate(value: PhotoDateValue): string {
   });
 }
 
+export function formatPhotoLongDate(value: PhotoDateValue): string {
+  return format(value, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+export function formatPhotoMonthDay(value: PhotoDateValue): string {
+  return format(value, {
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export function formatPhotoDateTime(value: PhotoDateValue): string {
   return format(value, {
     year: "numeric",
@@ -82,6 +97,18 @@ export function formatPhotoDateTime(value: PhotoDateValue): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
+  });
+}
+
+export function formatPhotoDateTimeSeconds(value: PhotoDateValue): string {
+  return format(value, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   });
 }

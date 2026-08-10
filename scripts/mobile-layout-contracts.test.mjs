@@ -9,6 +9,9 @@ const styles = read("packages/client/src/authenticated.css");
 const workspaceFab = read(
   "packages/client/src/components/home/floating/WorkspaceFab.tsx",
 );
+const workspaceSidebar = read(
+  "packages/client/src/components/home/WorkspaceSidebar.tsx",
+);
 const authenticatedApp = read("packages/client/src/AuthenticatedApp.tsx");
 const sourceHtml = read("packages/client/index.html");
 let distHtml = "";
@@ -66,6 +69,24 @@ test("320px and 390px keep full-bleed summary inside the root document", () => {
     declaration(cssBlock(".view-tabs-shell-wrap"), "--view-tabs-inline-padding"),
   );
   const mobileSection = mediaBlock(680);
+  const mobileApp = cssBlock(".app", mobileSection);
+  assert.equal(
+    declaration(mobileApp, "--mobile-authenticated-header-height"),
+    "52px",
+  );
+  const mobileHeaderHeight = declaration(
+    cssBlock(".app-header", mobileSection),
+    "min-height",
+  );
+  const mobileTabsTop = declaration(
+    cssBlock(".view-tabs-shell-wrap", mobileSection),
+    "top",
+  );
+  assert.equal(
+    mobileHeaderHeight,
+    "calc(var(--mobile-authenticated-header-height) + env(safe-area-inset-top, 0px))",
+  );
+  assert.equal(mobileTabsTop, mobileHeaderHeight);
   const mobilePadding = px(
     declaration(
       cssBlock(".view-tabs-shell-wrap", mobileSection),
@@ -125,6 +146,25 @@ test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
   assert.match(workspaceFab, /if \(event\.key !== "Escape"\) return;/);
   assert.match(workspaceFab, /compactToggleRef\.current\?\.focus\(\)/);
   assert.match(workspaceFab, /compactFirstActionRef\.current\?\.focus\(\)/);
+  assert.match(workspaceFab, /document\.addEventListener\("pointerdown", collapseOutside\)/);
+  assert.match(
+    workspaceFab,
+    /if \(railRef\.current\?\.contains\(event\.target as Node\)\) return;/,
+  );
+  assert.match(
+    workspaceFab,
+    /setCompactExpanded\(false\);[\s\S]*action\(\);/,
+    "executed actions must collapse without restoring focus to the launcher",
+  );
+  assert.match(
+    workspaceFab,
+    /requestAnimationFrame\(\(\) => compactToggleRef\.current\?\.focus\(\)\)/,
+    "Escape must collapse and restore focus to the launcher",
+  );
+  assert.match(
+    workspaceFab,
+    /restoreAfterHidden\.current = window\.matchMedia\("\(max-width: 480px\)"\)\.matches/,
+  );
 
   const narrowSection = mediaBlock(480);
   const rail = cssBlock(".workspace-fab-rail", narrowSection);
@@ -134,6 +174,8 @@ test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
   assert.match(rail, /env\(safe-area-inset-bottom,\s*0px\)/);
   assert.equal(px(declaration(toggle, "width")), 48);
   assert.equal(px(declaration(toggle, "min-height")), 48);
+  assert.equal(declaration(rail, "left"), "auto !important");
+  assert.equal(declaration(rail, "top"), "auto !important");
   assert.match(
     cssBlock(".workspace-fab-actions", narrowSection),
     /display\s*:\s*none/,
@@ -146,6 +188,24 @@ test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
   const defaultFabArea = 48 * 48;
   const formerFabArea = 200 * (58 + 10 + 48);
   assert(defaultFabArea < formerFabArea / 10);
+  assert.doesNotMatch(
+    mediaBlock(360),
+    /workspace-fab/,
+    "the 360px folder-card reflow must not reintroduce a competing FAB breakpoint",
+  );
+});
+
+test("sidebar owns focus while open and the FAB restores the visible launcher", () => {
+  assert.match(workspaceSidebar, /role="dialog"/);
+  assert.match(workspaceSidebar, /aria-modal="true"/);
+  assert.match(workspaceSidebar, /toggleAttribute\("inert", !isOpen\)/);
+  assert.match(workspaceSidebar, /if \(isOpen\) closeButtonRef\.current\?\.focus\(\)/);
+  assert.match(
+    workspaceSidebar,
+    /handleModalKeyDown\(event, sidebarRef\.current, document\.activeElement, onClose\)/,
+  );
+  assert.match(workspaceSidebar, /hidden=\{!isOpen\}/);
+  assert.match(workspaceFab, /restoreAfterHidden\.current/);
 });
 
 test("folder card actions keep 44px touch targets on desktop and mobile", () => {
@@ -158,6 +218,11 @@ test("folder card actions keep 44px touch targets on desktop and mobile", () => 
   assert.match(
     cssBlock(".folder-card-rename-btn:focus-visible,\n.folder-card-delete-btn:focus-visible"),
     /outline\s*:\s*3px solid #005a9e/,
+  );
+  assert(
+    styles.lastIndexOf("@media (max-width: 360px)")
+      > styles.indexOf("@media (display-mode: standalone)"),
+    "the narrow single-column safeguard must override standalone two-column grids",
   );
   assert.match(
     cssBlock(

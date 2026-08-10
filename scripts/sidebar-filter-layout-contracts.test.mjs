@@ -64,7 +64,7 @@ test("FilterBar exposes an explicit sidebar variant without changing the default
   assert.match(filterBar, /variant\s*=\s*"default"/);
   assert.match(
     filterBar,
-    /className=\{`filter-bar filter-bar--\$\{variant\}`\}/,
+    /className=\{`filter-bar filter-bar--\$\{variant\}\$\{variant === "sidebar" \? " auth-native-control-scope" : ""\}`\}/,
   );
   assert.match(workspaceSidebar, /<FilterBar[\s\S]*variant="sidebar"/);
 
@@ -173,6 +173,44 @@ test("closed drawer transition stays off-canvas without changing 320px or 390px 
     assert(drawerWidth > 0);
     assert.equal(viewportWidth - drawerWidth, 12);
   }
+});
+
+test("sidebar native controls share typography and retain the accessible date picker", () => {
+  const nativeControls = cssBlock(
+    ".auth-native-control-scope :where(input, select, button)",
+  );
+  assert.equal(declaration(nativeControls, "font-family"), "inherit");
+  assert.equal(declaration(nativeControls, "font-size"), "0.85rem");
+  assert.equal(declaration(nativeControls, "line-height"), "1.25");
+  assert.equal(declaration(nativeControls, "font-weight"), "400");
+  assert.equal(declaration(nativeControls, "color"), "#374151");
+  assert.equal(px(declaration(nativeControls, "min-height")), 44);
+  const sharedControlRule = styles.indexOf(
+    ".auth-native-control-scope :where(input, select, button)",
+  );
+  const searchInputRule = styles.indexOf(".search-input {");
+  assert(sharedControlRule >= 0 && searchInputRule > sharedControlRule);
+  assert.equal(declaration(cssBlock(".search-input"), "font-size"), "1rem");
+
+  const chipRemove = cssBlock(
+    ".filter-bar--sidebar .filter-chip-remove",
+  );
+  assert.equal(declaration(chipRemove, "font-size"), "0.85rem");
+  assert.equal(declaration(chipRemove, "line-height"), "1.25");
+
+  const dateControl = cssBlock(
+    '.auth-native-control-scope :where(input[type="date"], input[type="time"])',
+  );
+  assert.equal(
+    declaration(dateControl, "font-variant-numeric"),
+    "tabular-nums",
+  );
+  assert.match(filterBar, /type="date"/);
+  assert.doesNotMatch(
+    styles,
+    /\.filter-bar--sidebar[^}]*calendar-picker-indicator[^}]*?(?:display\s*:\s*none|opacity\s*:\s*0|visibility\s*:\s*hidden)/s,
+    "the native date picker indicator must remain available",
+  );
 });
 
 test("sidebar containment fixes overflow at the source and keeps desktop layout stable", () => {

@@ -83,7 +83,7 @@ export default function FilterBar({
   if (filters.folder) activeChips.push({ label: `📁 ${filters.folder}`, key: "folder" });
 
   return (
-    <div className={`filter-bar filter-bar--${variant}`}>
+    <div className={`filter-bar filter-bar--${variant}${variant === "sidebar" ? " auth-native-control-scope" : ""}`}>
       <div className="filter-main-row">
         <div className="filter-search-row">
           <div className="search-input-wrap">

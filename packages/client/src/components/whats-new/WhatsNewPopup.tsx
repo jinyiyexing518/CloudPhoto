@@ -10,9 +10,10 @@ import {
   subscribeModalStack,
   type ModalTimerHandles,
 } from "../shared/modalFocus";
+import { formatPhotoMonthDay } from "../../utils/dateFormat";
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+  return formatPhotoMonthDay(dateStr);
 }
 
 const IDLE_DELAY_MS = 5000;    // 5s 无操作后开始淡出

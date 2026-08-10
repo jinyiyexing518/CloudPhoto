@@ -20,6 +20,7 @@ import {
   getMapMarkerLabel,
   getPhotoDisplayName as displayName,
 } from "./memoryMapAccessibility";
+import { formatPhotoLongDate } from "../../utils/dateFormat";
 
 // Module-level Leaflet cache - avoids re-importing on every effect run
 let cachedLeaflet: typeof import("leaflet") | null = null;
@@ -573,7 +574,7 @@ export default function MemoryMap({
               {selected.photo?.subject && <div className="memory-map-detail-subject">🏷 {selected.photo.subject}</div>}
               {selected.photo?.createdAt && (
                 <div className="memory-map-detail-date">
-                  🗓 {new Date(selected.photo.createdAt).toLocaleDateString("zh-CN")}
+                  🗓 {formatPhotoLongDate(selected.photo.createdAt)}
                 </div>
               )}
               <div className="memory-map-detail-actions">

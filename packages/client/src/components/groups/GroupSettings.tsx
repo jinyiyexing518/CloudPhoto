@@ -7,6 +7,7 @@ import {
 } from "../../services/groupApi";
 import { useAuth } from "../../contexts/AuthContext";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+import { formatPhotoLongDate } from "../../utils/dateFormat";
 
 interface Props {
   groupId: string;
@@ -301,7 +302,7 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                         <div className="group-member-info">
                           <span className="group-member-name">{inv.email}</span>
                           <span className="group-member-role">
-                            {new Date(inv.expiresAt).toLocaleDateString("zh-CN")} 到期
+                            {formatPhotoLongDate(inv.expiresAt)} 到期
                           </span>
                         </div>
                         <button

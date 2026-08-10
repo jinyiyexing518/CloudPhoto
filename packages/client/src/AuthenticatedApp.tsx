@@ -43,6 +43,7 @@ import {
   type ViewTab,
 } from "./keyboard/workspaceTabs";
 import { getHeaderVisibilityAction } from "./headerAutoHide";
+import { formatPhotoDateTimeSeconds } from "./utils/dateFormat";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
@@ -1108,7 +1109,7 @@ function AppContent() {
     const latestPhoto = [...photos].sort((a, b) => getPhotoUploadTimestamp(b) - getPhotoUploadTimestamp(a))[0];
     if (!latestPhoto) return "暂无上传记录";
     const timestamp = getPhotoUploadTimestamp(latestPhoto);
-    return timestamp ? new Date(timestamp).toLocaleString("zh-CN") : "暂无上传时间";
+    return timestamp ? (formatPhotoDateTimeSeconds(timestamp) || "暂无上传时间") : "暂无上传时间";
   }, [photos]);
 
   const expiringSoonShareLinks = useMemo(() => {

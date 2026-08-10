@@ -1248,6 +1248,21 @@ body {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Authenticated native controls share typography without replacing browser pickers. */
+.auth-native-control-scope :where(input, select, button) {
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  font-weight: 400;
+  color: #374151;
+  min-height: 44px;
+}
+
+.auth-native-control-scope :where(input[type="date"], input[type="time"]) {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
 /* ─── Time Capsule ────────────────────────────────────────────────────────── */
 .capsule-wrap { padding: 0 0 32px; }
 .capsule-header {
@@ -1400,7 +1415,7 @@ body {
   padding: 10px 12px;
   border: 1.5px solid #e2e8f0;
   border-radius: 10px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   outline: none;
   background: #f8fafc;
 }
@@ -1461,7 +1476,7 @@ body {
   color: #475569;
   border: none;
   border-radius: 10px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 .capsule-confirm-btn {
@@ -1471,7 +1486,7 @@ body {
   color: #fff;
   border: none;
   border-radius: 10px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 .capsule-confirm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -5332,7 +5347,7 @@ body {
   border: 1.5px solid #d1d5db;
   border-radius: 20px;
   background: #f9fafb;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   color: #374151;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
@@ -5366,7 +5381,7 @@ body {
   padding: 8px 10px;
   border: 1.5px solid #d1d5db;
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: #111827;
   background: #fff;
   transition: border-color 0.15s;
@@ -5396,13 +5411,25 @@ body {
   border: none;
   border-radius: 8px;
   padding: 8px 22px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.85rem;
+  font-weight: 400;
   cursor: pointer;
   transition: background 0.15s;
 }
 .time-edit-save-btn:hover:not(:disabled) { background: #005fa3; }
 .time-edit-save-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.time-edit-dialog .confirm-cancel-btn {
+  font-size: 0.85rem;
+  line-height: 1.25;
+  font-weight: 400;
+}
+
+.capsule-dialog .dialog-close-btn {
+  color: #9ca3af;
+  font-size: 1rem;
+  line-height: 1;
+}
 
 /* ── Location Search Panel ───────────────────────────────────────────────── */
 .location-search-panel {
@@ -5759,6 +5786,7 @@ body {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  font-variant-numeric: tabular-nums;
 }
 
 .filter-bar--sidebar .grid-size-toggle {
@@ -5796,6 +5824,8 @@ body {
   flex: 0 0 44px;
   min-width: 44px;
   min-height: 44px;
+  font-size: 0.85rem;
+  line-height: 1.25;
 }
 
 .filter-bar--sidebar .filter-panel {
@@ -5817,6 +5847,7 @@ body {
   width: 100%;
   min-width: 0;
   min-height: 44px;
+  padding: 8px 10px;
 }
 
 @container (max-width: 260px) {
@@ -6962,10 +6993,14 @@ body {
    ============================================================ */
 @media (max-width: 680px) {
 
+  .app {
+    --mobile-authenticated-header-height: 52px;
+  }
+
   /* ── Header ── */
   .app-header {
     padding: calc(4px + env(safe-area-inset-top, 0px)) 12px 4px;
-    min-height: calc(52px + env(safe-area-inset-top, 0px));
+    min-height: calc(var(--mobile-authenticated-header-height) + env(safe-area-inset-top, 0px));
     gap: 8px;
   }
 
@@ -7013,6 +7048,14 @@ body {
     height: 44px;
     font-size: 0.9rem;
   }
+
+  .favorite-btn:focus-visible,
+  .delete-btn:focus-visible,
+  .user-avatar-btn:focus-visible {
+    outline: 3px solid #0078d4;
+    outline-offset: 2px;
+  }
+
   .user-menu-dropdown {
     right: 0;
     min-width: 180px;
@@ -7074,7 +7117,7 @@ body {
 
   .view-tabs-shell-wrap {
     --view-tabs-inline-padding: 12px;
-    top: calc(52px + env(safe-area-inset-top, 0px));
+    top: calc(var(--mobile-authenticated-header-height) + env(safe-area-inset-top, 0px));
   }
 
   .view-tabs-shell {
@@ -8709,7 +8752,10 @@ body {
 
   .workspace-fab-actions {
     display: none;
-    width: min(200px, calc(100vw - 24px));
+    width: min(200px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    max-height: calc(100vh - 84px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .workspace-fab-pill {

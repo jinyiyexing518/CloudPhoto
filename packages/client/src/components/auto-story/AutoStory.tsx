@@ -5,6 +5,7 @@ import { fallbackMediaSource } from "../../services/mediaRoute";
 import { BLANK_GIF, selectGridMediaSources } from "@cloudphoto/algorithm";
 import MediaThumb from "../shared/MediaThumb";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+import { formatPhotoLongDate } from "../../utils/dateFormat";
 
 interface Props {
   photos: Photo[];
@@ -279,7 +280,7 @@ export default function AutoStory({ photos }: Props) {
               {currentPhoto.originalName ?? currentPhoto.name.split("/").pop()}
             </div>
             <div className="story-player-date">
-              {new Date(currentPhoto.createdAt ?? currentPhoto.lastModified ?? "").toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
+              {formatPhotoLongDate(currentPhoto.createdAt ?? currentPhoto.lastModified ?? "")}
             </div>
           </div>
 

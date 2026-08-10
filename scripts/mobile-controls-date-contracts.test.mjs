@@ -136,7 +136,10 @@ test("compact FAB covers common phones and remains bounded at 200% zoom", () => 
   assert.equal(px(declaration(rail, "width")), 48);
   assert.equal(declaration(rail, "left"), "auto !important");
   assert.equal(declaration(rail, "top"), "auto !important");
-  assert.equal(declaration(actions, "width"), "min(200px, calc(100vw - 24px))");
+  assert.equal(
+    declaration(actions, "width"),
+    "min(200px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))",
+  );
   assert.equal(declaration(pill, "min-width"), "0");
   assert.equal(declaration(pill, "width"), "100%");
 

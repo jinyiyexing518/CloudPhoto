@@ -2,9 +2,9 @@
   "id": "2026-08-10-sidebar-filter-reflow",
   "date": "2026-08-10",
   "icon": "🧰",
-  "title": "修复时间线侧栏筛选控件溢出",
+  "title": "修复侧栏筛选、日期与移动触控遮挡",
   "type": "fix",
-  "desc": "时间线侧栏中的搜索、清空、快捷筛选和网格尺寸会按抽屉宽度自动重排，不再出现控件裁切或白色溢出条。",
-  "details": "FilterBar 新增显式 sidebar variant，搜索与清空保持首行，快捷筛选、结果数和网格尺寸按容器换行；长中英文标签与激活 chip 在 320–480px 和 200% 缩放下保持完整可见，抽屉与页面无横向滚动，所有交互至少 44px。默认宽桌面布局、PWA Header 安装约束和视频封面修复队列保持不变。",
-  "seq": 1786374346485
+  "desc": "时间线侧栏按抽屉宽度自动重排；认证日期控件与中文显示保持一致，移动照片动作和头像具备完整命中区，WorkspaceFab 在常见手机宽度也不再遮挡照片。",
+  "details": "FilterBar 使用显式 sidebar variant，搜索与清空保持首行，快捷筛选、结果数和网格尺寸按容器换行；长中英文标签与激活 chip 在 320–480px 和 200% 缩放下保持完整可见，抽屉与页面无横向滚动，所有交互至少 44px。真实 320px 视口下自然 262px 抽屉的筛选行从 224/245px overflow 修复为 224/224px，所有可见控件都在内容左右边界内；打开侧栏后焦点进入关闭按钮并保持在 dialog 内，关闭恢复可见入口。FilterBar、PhotoTimeEditDialog 与 TimeCapsule 复用同一 native-control scope，继承认证界面 Segoe UI 字体栈、0.85rem 基础字号、1.25 行高与 44px 高度，日期/时间使用 tabular numerals，同时保留原生 date picker、日历图标和 YYYY-MM-DD 状态/API 值。认证界面日期展示统一经过一个显式 zh-CN helper；时间线分组、照片卡片、时间线/文件夹查看器在非中文默认 locale 下仍输出稳定中文格式，两个查看器保持同一 preset，时间线和纯日期均用本地中午保护，在西时区不减一天，无效日期安全回退。390×844 下仅把照片卡片收藏/删除和 header 头像命中区提升为 44×44px，中心命中准确、相邻目标无重叠并提供 3px focus-visible outline；320/360px 文件夹网格切换为单列，移动/收藏/删除目标完整留在卡片内且互不重叠；mobile header 与 sticky tabs 共用 60px offset variable。现有 WorkspaceFab compact breakpoint 从 360px 改为 480px，在 320/360/390/430/480px 默认只显示 safe-area-aware 48px launcher，强制覆盖桌面拖动位置；展开 actions 完整留在 viewport 内且无 document overflow，Escape 保留 launcher 焦点，外部点击只收起，action 执行前先把焦点交给可见 launcher 再收起，因此新 UI 不会捕获隐藏 action 或被延迟抢焦点。group switcher、tabs、quick chips、folder actions 与 map markers 保持原有 ≥24px 紧凑密度。默认宽桌面布局、PWA Header 安装约束、播放/模态框改进和视频封面修复队列保持不变。",
+  "seq": 1786378141181
 }

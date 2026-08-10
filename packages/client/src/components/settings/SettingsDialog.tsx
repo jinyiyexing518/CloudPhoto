@@ -32,6 +32,7 @@ import TrashView from "../gallery/TrashView";
 import type { PwaInstallOutcome } from "../../pwa/installPrompt";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 import { getSettingsCloseGuardMessage } from "./settingsCloseGuard";
+import { formatPhotoDateTimeSeconds } from "../../utils/dateFormat";
 import {
   beginMaintenanceTask,
   createMaintenanceTask,
@@ -103,7 +104,7 @@ export default function SettingsDialog({
   const appBuildTime = new Date(__APP_BUILD_TIME__);
   const appBuildTimeText = Number.isNaN(appBuildTime.getTime())
     ? __APP_BUILD_TIME__
-    : appBuildTime.toLocaleString("zh-CN");
+    : formatPhotoDateTimeSeconds(appBuildTime);
   const { user, updateProfile } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
@@ -813,9 +814,9 @@ export default function SettingsDialog({
                         >
                           <div className="settings-share-meta">
                             <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
-                            <div className="settings-share-expire">创建：{new Date(item.createdAt).toLocaleString()}</div>
-                            <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()} · 状态：{statusText}</div>
-                            <div className="settings-share-expire">浏览量：{item.viewCount} · 最近访问：{item.lastViewedAt ? new Date(item.lastViewedAt).toLocaleString() : "暂无"}</div>
+                            <div className="settings-share-expire">创建：{formatPhotoDateTimeSeconds(item.createdAt)}</div>
+                            <div className="settings-share-expire">到期：{formatPhotoDateTimeSeconds(item.expiresAt)} · 状态：{statusText}</div>
+                            <div className="settings-share-expire">浏览量：{item.viewCount} · 最近访问：{item.lastViewedAt ? formatPhotoDateTimeSeconds(item.lastViewedAt) : "暂无"}</div>
                           </div>
                           <div className="settings-share-actions">
                             <button type="button" onClick={() => void copyShareLink(publicUrl)}>复制</button>
@@ -856,7 +857,7 @@ export default function SettingsDialog({
                       <div key={item.id} className="settings-share-item">
                         <div className="settings-share-meta">
                           <div className="settings-share-name" title={item.displayName}>{item.displayName}</div>
-                          <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()}</div>
+                          <div className="settings-share-expire">到期：{formatPhotoDateTimeSeconds(item.expiresAt)}</div>
                         </div>
                         <div className="settings-share-actions">
                           <button type="button" onClick={() => void copyShareLink(item.url, shareLinksContext)}>复制</button>
@@ -925,7 +926,7 @@ export default function SettingsDialog({
                   </div>
                   <div className="settings-info-row">
                     <span className="settings-info-label">最近本地浏览</span>
-                    <span className="settings-info-value">{diagnostics.localMomentsLastViewedAt ? new Date(diagnostics.localMomentsLastViewedAt).toLocaleString("zh-CN") : "暂无"}</span>
+                    <span className="settings-info-value">{diagnostics.localMomentsLastViewedAt ? formatPhotoDateTimeSeconds(diagnostics.localMomentsLastViewedAt) : "暂无"}</span>
                   </div>
                   <div className="settings-info-row">
                     <span className="settings-info-label">持久化状态</span>
@@ -942,7 +943,7 @@ export default function SettingsDialog({
                   {diagnostics.persistenceUpdatedAt && (
                     <div className="settings-info-row">
                       <span className="settings-info-label">状态时间</span>
-                      <span className="settings-info-value">{new Date(diagnostics.persistenceUpdatedAt).toLocaleString("zh-CN")}</span>
+                      <span className="settings-info-value">{formatPhotoDateTimeSeconds(diagnostics.persistenceUpdatedAt)}</span>
                     </div>
                   )}
                   {diagnostics.persistenceMessage && (

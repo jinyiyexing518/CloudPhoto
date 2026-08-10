@@ -50,7 +50,7 @@ export default function PhotoTimeEditDialog({ currentIso, saving, onSave, onClos
     <div ref={layerRef} className="confirm-overlay" data-modal-layer onClick={onClose}>
       <div
         ref={dialogRef}
-        className="time-edit-dialog"
+        className="time-edit-dialog auth-native-control-scope"
         role="dialog"
         aria-modal="true"
         aria-labelledby="photo-time-edit-title"

@@ -3,6 +3,7 @@ import { Photo, listTrashPhotos, restorePhoto, permanentlyDeletePhoto } from "..
 import MediaThumb from "../shared/MediaThumb";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { formatPhotoDate } from "../../utils/dateFormat";
 import {
   createTrashMutation,
   getTrashMutationBannerText,
@@ -370,7 +371,7 @@ export default function TrashView({ groupId, onRestored, onMutationStateChange, 
                 {folderPhotos.map((photo) => {
                   const displayName = photo.originalName || photo.name.split("/").pop() || photo.name;
                   const deletedDate = photo.deletedAt
-                    ? new Date(photo.deletedAt).toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" })
+                    ? formatPhotoDate(photo.deletedAt)
                     : "未知";
                   const deletedBy = photo.deletedByName
                     ? photo.deletedBy === user?.id

@@ -391,7 +391,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
         <div ref={createLayerRef} className="capsule-dialog-overlay" data-modal-layer onClick={closeCreateDialog}>
           <div
             ref={createDialogRef}
-            className="capsule-dialog"
+            className="capsule-dialog auth-native-control-scope"
             role="dialog"
             aria-modal="true"
             aria-labelledby="capsule-create-title"
