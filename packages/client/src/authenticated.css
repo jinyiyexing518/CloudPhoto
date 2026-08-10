@@ -370,13 +370,14 @@ body {
 /* Wrap + shell share the same white surface as app-header, forming one unified
    navigation bar. The wrap holds the sticky/shadow; the shell is transparent. */
 .view-tabs-shell-wrap {
+  --view-tabs-inline-padding: 24px;
   position: sticky;
   top: calc(52px + env(safe-area-inset-top, 0px));
   z-index: 9;
   background: #fff;
   /* Break out of app-main's 24px padding to fill full page width */
-  margin: 0 -24px;
-  padding: 6px 24px 6px;
+  margin: 0 calc(-1 * var(--view-tabs-inline-padding));
+  padding: 6px var(--view-tabs-inline-padding);
   margin-bottom: 0;
   border-radius: 0;
   border-bottom: 1px solid #e2e8f0;
@@ -3888,6 +3889,17 @@ body {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
+.workspace-fab-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.workspace-fab-compact-toggle {
+  display: none;
+}
+
 .workspace-fab-rail--hidden {
   opacity: 0;
   pointer-events: none;
@@ -6451,11 +6463,8 @@ body {
   }
 
   .view-tabs-shell-wrap {
+    --view-tabs-inline-padding: 12px;
     top: calc(52px + env(safe-area-inset-top, 0px));
-    margin-left: -12px;
-    margin-right: -12px;
-    padding-left: 12px;
-    padding-right: 12px;
   }
 
   .view-tabs-shell {
@@ -6763,13 +6772,6 @@ body {
   .insight-strip {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 10px;
-  }
-
-  /* ── Weekly summary card: adjust for mobile 12px padding ── */
-  .weekly-summary-card {
-    margin-left: -12px;
-    margin-right: -12px;
-    margin-bottom: 0;
   }
 
   /* ── Modal image ── */
@@ -8003,7 +8005,7 @@ body {
 /* ── 9. Weekly summary card ─────────────────────── */
 .weekly-summary-card {
   /* Extend full-width inside wrap and cancel the wrap's 6px bottom padding */
-  margin: 0 -24px -6px;
+  margin: 0 calc(-1 * var(--view-tabs-inline-padding)) -6px;
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
   overflow: hidden;
@@ -8054,6 +8056,50 @@ body {
 .weekly-summary-row strong { color: #334155; font-weight: 600; }
 .weekly-summary-row--highlight { color: #15803d; }
 .weekly-summary-row--highlight strong { color: #15803d; }
+
+@media (max-width: 360px) {
+  .workspace-fab-rail {
+    width: 48px;
+    right: calc(12px + env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    left: auto !important;
+    top: auto !important;
+    align-items: flex-end;
+    gap: 8px;
+    cursor: default;
+  }
+
+  .workspace-fab-actions {
+    display: none;
+    width: 200px;
+  }
+
+  .workspace-fab-rail--expanded .workspace-fab-actions {
+    display: flex;
+  }
+
+  .workspace-fab-compact-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    min-height: 48px;
+    flex: 0 0 48px;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+    color: #fff;
+    box-shadow: 0 12px 28px rgba(30, 58, 138, 0.24);
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .workspace-fab-compact-toggle:focus-visible {
+    outline: 3px solid #93c5fd;
+    outline-offset: 3px;
+  }
+}
 
 /* ── 10. Share summary (copy report) button ─────── */
 .share-summary-btn {

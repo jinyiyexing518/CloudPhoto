@@ -49,6 +49,11 @@ const SECURE_HOMEPAGE_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "SAMEORIGIN",
 };
+const INSTALLABLE_HOME_HTML = [
+  "<!doctype html><title>Cloud Photo</title>",
+  '<meta name="mobile-web-app-capable" content="yes">',
+  '<meta name="apple-mobile-web-app-capable" content="yes">',
+].join("");
 
 async function withServer(handler, run) {
   const server = http.createServer(handler);
@@ -177,12 +182,40 @@ test("rejects a homepage without the anti-framing security baseline", async () =
     delete headers[header];
     await assert.rejects(
       homepageCheck.validate(new Response(
-        "<!doctype html><title>Cloud Photo</title>",
+        INSTALLABLE_HOME_HTML,
         { headers },
       )),
       expectedError,
     );
   }
+});
+
+test("rejects a homepage without standard and Apple mobile capability metadata", async () => {
+  const homepageCheck = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+  }).find(({ target, name }) => target === "primary" && name === "homepage");
+  assert(homepageCheck);
+
+  await assert.rejects(
+    homepageCheck.validate(new Response(
+      INSTALLABLE_HOME_HTML.replace(
+        '<meta name="mobile-web-app-capable" content="yes">',
+        "",
+      ),
+      { headers: SECURE_HOMEPAGE_HEADERS },
+    )),
+    /mobile-web-app-capable/,
+  );
+  await assert.rejects(
+    homepageCheck.validate(new Response(
+      INSTALLABLE_HOME_HTML.replace(
+        '<meta name="apple-mobile-web-app-capable" content="yes">',
+        "",
+      ),
+      { headers: SECURE_HOMEPAGE_HEADERS },
+    )),
+    /apple-mobile-web-app-capable/,
+  );
 });
 
 test("rejects a manifest with an unsafe MIME type or incomplete metadata", async () => {
@@ -282,7 +315,7 @@ test("passes the primary and Azure production contracts with timings", async () 
     (request, response) => {
       if (request.url === "/primary" || request.url === "/azure") {
         response.writeHead(200, SECURE_HOMEPAGE_HEADERS);
-        response.end("<!doctype html><title>Cloud Photo</title>");
+        response.end(INSTALLABLE_HOME_HTML);
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
         response.end('{"status":"ok","route":"cloudphoto-frontend"}');
@@ -337,7 +370,7 @@ test("retries and fails when either changelog response is not an array", async (
     (request, response) => {
       if (request.url === "/primary" || request.url === "/azure") {
         response.writeHead(200, SECURE_HOMEPAGE_HEADERS);
-        response.end("<!doctype html><title>Cloud Photo</title>");
+        response.end(INSTALLABLE_HOME_HTML);
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
         response.end('{"status":"ok","route":"cloudphoto-frontend"}');
@@ -418,7 +451,7 @@ test("runs all checks concurrently and reports an isolated failure in order", as
     if (url.endsWith("/api/changelogs")) {
       return Response.json([]);
     }
-    return new Response("<!doctype html><title>Cloud Photo</title>", {
+    return new Response(INSTALLABLE_HOME_HTML, {
       headers: SECURE_HOMEPAGE_HEADERS,
     });
   };

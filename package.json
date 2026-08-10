@@ -14,6 +14,7 @@
     "dev:client": "yarn workspace cloudphoto-client dev",
     "dev:server": "yarn workspace cloudphoto-server start",
     "test:photo-loading-contracts": "node packages/client/src/services/videoCoverRepairPolicy.test.mjs && node scripts/check-photo-loading-contracts.mjs",
+    "test:mobile-layout-contracts": "node --test scripts/mobile-layout-contracts.test.mjs",
     "test:whats-new-accessibility": "node --test packages/client/src/components/whats-new/WhatsNewPopup.test.mjs",
     "test:pwa-install": "node --test packages/client/src/pwa/installPrompt.test.mjs",
     "test:workflow-contracts": "node --test scripts/workflow-runtime-contracts.test.mjs && node scripts/check-workflow-runtime-contracts.mjs",

@@ -139,6 +139,8 @@
 - **更新与传输互斥** — 上传/下载/批量删除/回收站 mutation/语音备注录制或上传/批量 mutation/历史维护任务期间，PWA「立即更新」按钮禁用；同一全局守卫同步阻止切 Tab、切群组、beforeunload，并在横幅显示准确类型与累计进度
 - **文件夹重命名 operation 边界** — operationId/workspaceId/token-safe reducer 与同步 ref gate 防双击和 stale finally；FolderCard 根层/递归层及批量、上传、移动、删除入口真实 disabled。空间漂移 AbortSignal 只停止客户端等待；成功、失败或超时均通过当前 workspace 的最新 callback 强制远端对账；横幅显示 `A → B` 而不虚构服务端百分比
 - **PWA** — Service Worker + Manifest，可安装到桌面/手机
+- **移动端布局源头治理** — 本周概况用共享 inline padding 变量维持 full-bleed，320/390px 根文档横向滚动归零而不禁用 Tab 自身横向滑动；≤360px FAB 默认收纳为 48px safe-area 入口，展开/收起具备键盘焦点与 ARIA 状态
+- **PWA meta 生产契约** — 源码、dist 与线上 smoke 同时守卫标准 `mobile-web-app-capable=yes` 和 Apple 兼容 meta，消除 Chromium 弃用告警而不牺牲 iOS 安装能力
 - **14 个键盘快捷键** + 快捷键速查表；交互控件与模态层具备背景快捷键安全边界
 - **图标控件无障碍语义** — 关闭、清空、导航、播放、收藏与编辑按钮具备明确 ARIA 名称，状态型控件同步暴露 pressed 状态
 

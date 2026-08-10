@@ -1,0 +1,144 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const read = (relativePath) =>
+  readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
+
+const styles = read("packages/client/src/authenticated.css");
+const workspaceFab = read(
+  "packages/client/src/components/home/floating/WorkspaceFab.tsx",
+);
+const authenticatedApp = read("packages/client/src/AuthenticatedApp.tsx");
+const sourceHtml = read("packages/client/index.html");
+let distHtml = "";
+try {
+  distHtml = read("packages/client/dist/index.html");
+} catch {
+  // The dist assertion below reports the missing build output as a contract failure.
+}
+
+function cssBlock(selector, source = styles) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = source.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`));
+  assert(match, `missing CSS block for ${selector}`);
+  return match[1];
+}
+
+function mediaBlock(maxWidth) {
+  const marker = `@media (max-width: ${maxWidth}px)`;
+  const start = styles.indexOf(marker);
+  assert.notEqual(start, -1, `missing ${marker}`);
+  const open = styles.indexOf("{", start);
+  let depth = 1;
+  for (let index = open + 1; index < styles.length; index += 1) {
+    if (styles[index] === "{") depth += 1;
+    if (styles[index] === "}") depth -= 1;
+    if (depth === 0) return styles.slice(open + 1, index);
+  }
+  assert.fail(`unterminated ${marker}`);
+}
+
+function declaration(block, property) {
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = block.match(new RegExp(`${escaped}\\s*:\\s*([^;]+)`));
+  assert(match, `missing ${property} declaration`);
+  return match[1].trim();
+}
+
+function px(value) {
+  const match = value.match(/^(\d+)px$/);
+  assert(match, `expected a pixel value, received ${value}`);
+  return Number(match[1]);
+}
+
+test("320px and 390px keep full-bleed summary inside the root document", () => {
+  assert.doesNotMatch(
+    styles,
+    /(?:html|body)\s*(?:,\s*(?:html|body)\s*)?\{[^}]*overflow-x\s*:\s*(?:hidden|clip)/s,
+    "document overflow must be fixed at the source, not globally hidden",
+  );
+
+  const desktopPadding = px(
+    declaration(cssBlock(".view-tabs-shell-wrap"), "--view-tabs-inline-padding"),
+  );
+  const mobileSection = mediaBlock(680);
+  const mobilePadding = px(
+    declaration(
+      cssBlock(".view-tabs-shell-wrap", mobileSection),
+      "--view-tabs-inline-padding",
+    ),
+  );
+  assert.equal(desktopPadding, 24);
+  assert.equal(mobilePadding, 12);
+  assert.match(
+    cssBlock(".weekly-summary-card"),
+    /margin\s*:\s*0 calc\(-1 \* var\(--view-tabs-inline-padding\)\) -6px/,
+  );
+
+  for (const viewport of [320, 390]) {
+    const wrapperContentWidth = viewport - (2 * mobilePadding);
+    const summaryWidth = wrapperContentWidth + (2 * mobilePadding);
+    const summaryLeft = mobilePadding - mobilePadding;
+    const rootMaxScrollX = Math.max(0, summaryLeft + summaryWidth - viewport);
+    assert.equal(summaryLeft, 0, `${viewport}px summary must start at x=0`);
+    assert.equal(summaryWidth, viewport, `${viewport}px summary must stay full-bleed`);
+    assert.equal(rootMaxScrollX, 0, `${viewport}px root must not scroll horizontally`);
+  }
+
+  assert.match(cssBlock(".weekly-summary-title"), /flex-shrink\s*:\s*0/);
+  assert.match(cssBlock(".weekly-summary-toggle"), /width\s*:\s*100%/);
+});
+
+test("tab strip retains its own intentional horizontal scrolling", () => {
+  assert.match(cssBlock(".view-tabs"), /overflow-x\s*:\s*auto/);
+  assert.match(cssBlock(".view-tabs-scroll-area"), /overflow\s*:\s*hidden/);
+  assert.match(authenticatedApp, /ref=\{viewTabsRef\}[\s\S]*onScroll=/);
+});
+
+test("narrow FAB defaults to one safe-area-aware 48px launcher", () => {
+  assert.match(workspaceFab, /const \[compactExpanded, setCompactExpanded\] = useState\(false\)/);
+  assert.match(workspaceFab, /aria-expanded=\{compactExpanded\}/);
+  assert.match(workspaceFab, /aria-controls="workspace-fab-actions"/);
+  assert.match(workspaceFab, /if \(event\.key !== "Escape"\) return;/);
+  assert.match(workspaceFab, /compactToggleRef\.current\?\.focus\(\)/);
+  assert.match(workspaceFab, /compactFirstActionRef\.current\?\.focus\(\)/);
+
+  const narrowSection = mediaBlock(360);
+  const rail = cssBlock(".workspace-fab-rail", narrowSection);
+  const toggle = cssBlock(".workspace-fab-compact-toggle", narrowSection);
+  assert.equal(px(declaration(rail, "width")), 48);
+  assert.match(rail, /env\(safe-area-inset-right,\s*0px\)/);
+  assert.match(rail, /env\(safe-area-inset-bottom,\s*0px\)/);
+  assert.equal(px(declaration(toggle, "width")), 48);
+  assert.equal(px(declaration(toggle, "min-height")), 48);
+  assert.match(
+    cssBlock(".workspace-fab-actions", narrowSection),
+    /display\s*:\s*none/,
+  );
+  assert.match(
+    cssBlock(".workspace-fab-rail--expanded .workspace-fab-actions", narrowSection),
+    /display\s*:\s*flex/,
+  );
+
+  const defaultFabArea = 48 * 48;
+  const formerFabArea = 200 * (58 + 10 + 48);
+  assert(defaultFabArea < formerFabArea / 10);
+});
+
+test("PWA capability metadata is present in source and build output", () => {
+  for (const [label, html] of [["source", sourceHtml], ["dist", distHtml]]) {
+    assert.match(
+      html,
+      /<meta name="mobile-web-app-capable" content="yes"\s*\/?>/,
+      `${label} HTML must include the standard mobile capability meta`,
+    );
+    assert.match(
+      html,
+      /<meta name="apple-mobile-web-app-capable" content="yes"\s*\/?>/,
+      `${label} HTML must retain the Apple capability meta`,
+    );
+  }
+  assert.doesNotMatch(authenticatedApp, /header-install-button/);
+  assert.doesNotMatch(styles, /\.header-install-button/);
+});

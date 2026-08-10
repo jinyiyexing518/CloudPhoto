@@ -44,6 +44,9 @@ jobs:
           # Full URL of the Azure Function App, e.g. https://cloudphoto-api.azurewebsites.net/api
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
 
+      - name: Verify mobile layout and PWA metadata contracts
+        run: yarn test:mobile-layout-contracts
+
       - name: Verify static cache contract
         run: yarn check:static-cache packages/client/public/staticwebapp.config.json packages/client/dist/staticwebapp.config.json
 

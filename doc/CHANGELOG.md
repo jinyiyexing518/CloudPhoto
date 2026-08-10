@@ -1,5 +1,13 @@
 # 更新日志
 
+### 2026-08-10 — 移动端布局稳定性与 PWA 兼容
+
+**Bug 修复**
+- **📱 横向抖动与底部遮挡** — 320/390px 的本周概况保持 full-bleed 但不再扩大根文档，Tab 导航仍可自身横向滑动；≤360px 悬浮操作默认收纳为 48px 单入口，按需展开全部动作并支持 safe-area、Escape、焦点回归与 ARIA 状态
+- **📲 PWA capability 告警** — 保留 Apple meta 并补充标准 `mobile-web-app-capable=yes`，源码、构建产物和线上 smoke 共同校验
+
+---
+
 ### v1.9.0 — Algorithm Package · 流量优化深化 · 下载体验重构
 
 **Bug 修复**

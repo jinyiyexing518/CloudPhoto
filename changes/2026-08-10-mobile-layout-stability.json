@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-mobile-layout-stability",
+  "date": "2026-08-10",
+  "icon": "📱",
+  "title": "移动端布局稳定性与 PWA 兼容修复",
+  "desc": "修复 320/390px 本周概况导致的横向滚动，并将 ≤360px 悬浮操作收纳为可访问的单入口；补充标准 PWA capability meta。",
+  "details": "full-bleed 周报与导航共用响应式 inline padding，保留 Tab 自身横向滚动；窄屏 FAB 支持展开、Escape、焦点回归、44px 以上触控和 safe-area；源码、dist 与生产 smoke 同时校验标准及 Apple meta。",
+  "type": "fix",
+  "seq": 1786371687091
+}

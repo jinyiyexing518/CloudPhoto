@@ -50,6 +50,12 @@ async function validateHomepage(response) {
   if (!headerValues(response, "referrer-policy").includes("same-origin")) {
     throw new Error("homepage is missing Referrer-Policy: same-origin");
   }
+  if (!/<meta name=["']mobile-web-app-capable["'] content=["']yes["']\s*\/?>/i.test(body)) {
+    throw new Error("homepage is missing mobile-web-app-capable: yes");
+  }
+  if (!/<meta name=["']apple-mobile-web-app-capable["'] content=["']yes["']\s*\/?>/i.test(body)) {
+    throw new Error("homepage is missing apple-mobile-web-app-capable: yes");
+  }
 }
 
 async function validateManifest(response) {

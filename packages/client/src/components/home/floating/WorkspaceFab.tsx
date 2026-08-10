@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 interface Props {
   activeTab: "timeline" | "moments";
@@ -18,6 +18,7 @@ export default function WorkspaceFab({
   onPrimaryChipClick,
   onSecondaryChipClick,
 }: Props) {
+  const [compactExpanded, setCompactExpanded] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
     try {
       const saved = localStorage.getItem("fab-pos");
@@ -39,7 +40,19 @@ export default function WorkspaceFab({
   });
 
   const railRef = useRef<HTMLDivElement>(null);
+  const compactToggleRef = useRef<HTMLButtonElement>(null);
+  const compactFirstActionRef = useRef<HTMLButtonElement>(null);
+  const compactWasExpanded = useRef(false);
   const drag = useRef({ active: false, hasDragged: false, mx: 0, my: 0, ox: 0, oy: 0 });
+
+  useEffect(() => {
+    if (compactExpanded) {
+      compactFirstActionRef.current?.focus();
+    } else if (compactWasExpanded.current) {
+      compactToggleRef.current?.focus();
+    }
+    compactWasExpanded.current = compactExpanded;
+  }, [compactExpanded]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as Element).closest("button")) return;
@@ -87,35 +100,56 @@ export default function WorkspaceFab({
     });
   }, []);
 
+  const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape") return;
+    if (!compactExpanded) return;
+    event.preventDefault();
+    setCompactExpanded(false);
+  }, [compactExpanded]);
+
   return (
     <div
       ref={railRef}
-      className={`workspace-fab-rail${hidden ? " workspace-fab-rail--hidden" : ""}`}
+      className={`workspace-fab-rail${compactExpanded ? " workspace-fab-rail--expanded" : ""}${hidden ? " workspace-fab-rail--hidden" : ""}`}
       style={pos ? ({ left: pos.x, top: pos.y, right: "unset", bottom: "unset" } as React.CSSProperties) : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onKeyDown={onKeyDown}
     >
-      <button className="workspace-fab-pill" onClick={onOpenSidebar}>
-        <span className="workspace-fab-icon">{activeTab === "timeline" ? "⚙" : "✦"}</span>
-        <span className="workspace-fab-copy">
-          <strong>{activeTab === "timeline" ? "筛选与整理" : "片段洞察"}</strong>
-          <em>{activeTab === "timeline" ? "打开时间线侧栏" : "打开重要片段侧栏"}</em>
-        </span>
-        {filterCount > 0 && (
-          <span className="workspace-fab-filter-badge" title={`${filterCount}个筛选条件已激活`}>
-            {filterCount}
+      <div id="workspace-fab-actions" className="workspace-fab-actions">
+        <button ref={compactFirstActionRef} className="workspace-fab-pill" onClick={onOpenSidebar}>
+          <span className="workspace-fab-icon">{activeTab === "timeline" ? "⚙" : "✦"}</span>
+          <span className="workspace-fab-copy">
+            <strong>{activeTab === "timeline" ? "筛选与整理" : "片段洞察"}</strong>
+            <em>{activeTab === "timeline" ? "打开时间线侧栏" : "打开重要片段侧栏"}</em>
           </span>
-        )}
-      </button>
-      <div className="workspace-fab-chip-group">
-        <button className="workspace-fab-chip" onClick={onPrimaryChipClick}>
-          {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>最近<br />上传</span> : <span style={{ lineHeight: 1.2 }}>分享<br />管理</span>}
+          {filterCount > 0 && (
+            <span className="workspace-fab-filter-badge" title={`${filterCount}个筛选条件已激活`}>
+              {filterCount}
+            </span>
+          )}
         </button>
-        <button className="workspace-fab-chip workspace-fab-chip--secondary" onClick={onSecondaryChipClick}>
-          {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>去<br />整理</span> : <span style={{ lineHeight: 1.2 }}>看<br />诊断</span>}
-        </button>
+        <div className="workspace-fab-chip-group">
+          <button className="workspace-fab-chip" onClick={onPrimaryChipClick}>
+            {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>最近<br />上传</span> : <span style={{ lineHeight: 1.2 }}>分享<br />管理</span>}
+          </button>
+          <button className="workspace-fab-chip workspace-fab-chip--secondary" onClick={onSecondaryChipClick}>
+            {activeTab === "timeline" ? <span style={{ lineHeight: 1.2 }}>去<br />整理</span> : <span style={{ lineHeight: 1.2 }}>看<br />诊断</span>}
+          </button>
+        </div>
       </div>
+      <button
+        ref={compactToggleRef}
+        className="workspace-fab-compact-toggle"
+        type="button"
+        aria-expanded={compactExpanded}
+        aria-controls="workspace-fab-actions"
+        aria-label={compactExpanded ? "收起快捷操作" : "展开快捷操作"}
+        onClick={() => setCompactExpanded((expanded) => !expanded)}
+      >
+        <span aria-hidden="true">{compactExpanded ? "×" : "⋮"}</span>
+      </button>
     </div>
   );
 }
