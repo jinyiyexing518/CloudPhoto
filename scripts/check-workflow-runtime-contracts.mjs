@@ -387,7 +387,13 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     const run = stepField(step, "run");
     if (run) {
       runCommands.push(run);
-      runSteps.push({ command: run, job: step.job, order });
+      runSteps.push({
+        command: run,
+        condition: stepField(step, "if"),
+        continueOnError: stepField(step, "continue-on-error"),
+        job: step.job,
+        order,
+      });
     }
     if (uses?.startsWith("actions/checkout@")) {
       checkoutFetchDepths.push({
@@ -641,22 +647,26 @@ export function checkWorkflowRuntimeContracts(workflows) {
     } else if (
       frontendArtifactUpload
       && (
-        retentionStep.job !== "build"
+        retentionStep.condition !== null
+        || ![null, "false"].includes(retentionStep.continueOnError)
+        || retentionStep.job !== "build"
         || retentionStep.order >= frontendArtifactUpload.order
       )
     ) {
-      issues.push(`${frontendWorkflow} must prepare bounded deployment assets in build before upload`);
+      issues.push(`${frontendWorkflow} must prepare bounded deployment assets unconditionally in build before upload`);
     }
     if (!browserContractStep) {
       issues.push(`${frontendWorkflow} must run the stale deployment browser contracts`);
     } else if (
       frontendArtifactUpload
       && (
-        browserContractStep.job !== "build"
+        browserContractStep.condition !== null
+        || ![null, "false"].includes(browserContractStep.continueOnError)
+        || browserContractStep.job !== "build"
         || browserContractStep.order >= frontendArtifactUpload.order
       )
     ) {
-      issues.push(`${frontendWorkflow} must run stale deployment browser contracts in build before upload`);
+      issues.push(`${frontendWorkflow} must run stale deployment browser contracts unconditionally in build before upload`);
     }
   }
   if (!healthConcurrency) {

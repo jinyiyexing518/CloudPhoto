@@ -899,12 +899,68 @@ test("rejects retention gates moved after frontend artifact staging", () => {
 
   assert.ok(
     result.issues.some((issue) =>
-      issue.includes("bounded deployment assets in build before upload")
+      issue.includes("bounded deployment assets unconditionally in build before upload")
     )
   );
   assert.ok(
     result.issues.some((issue) =>
-      issue.includes("browser contracts in build before upload")
+      issue.includes("browser contracts unconditionally in build before upload")
+    )
+  );
+});
+
+test("rejects skipped retention gates", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  )
+    .replace(
+      "      - name: Retain bounded deployment assets",
+      "      - name: Retain bounded deployment assets\n        if: false"
+    )
+    .replace(
+      "      - name: Verify stale deployment browser contracts",
+      "      - name: Verify stale deployment browser contracts\n        if: false"
+    );
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("bounded deployment assets unconditionally")
+    )
+  );
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("browser contracts unconditionally")
+    )
+  );
+});
+
+test("rejects failure-tolerant retention gates", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  )
+    .replace(
+      "      - name: Retain bounded deployment assets",
+      "      - name: Retain bounded deployment assets\n        continue-on-error: true"
+    )
+    .replace(
+      "      - name: Verify stale deployment browser contracts",
+      "      - name: Verify stale deployment browser contracts\n        continue-on-error: true"
+    );
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("bounded deployment assets unconditionally")
+    )
+  );
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("browser contracts unconditionally")
     )
   );
 });
