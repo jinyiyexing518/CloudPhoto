@@ -44,9 +44,11 @@ export function GroupProvider({ children }: { children: ReactNode }) {
 
   // Public setter — also persists to localStorage
   const setCurrentGroupId = useCallback((id: string) => {
+    selectionOwnerIdRef.current = user?.id ?? null;
+    setSelectionRestored(Boolean(user));
     _setCurrentGroupId(id);
     if (user) localStorage.setItem(`cf_group_${user.username}`, id);
-  }, [user?.username]);
+  }, [user?.id, user?.username]);
 
   const refreshGroups = useCallback(async () => {
     const userId = user?.id ?? null;

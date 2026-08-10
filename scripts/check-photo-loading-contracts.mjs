@@ -325,6 +325,21 @@ for (const [name, source] of [
   );
 }
 requireText(app, "resolvePhotoWorkspaceRequest", "resolved workspace request policy reuse");
+requireText(
+  groupContext,
+  "selectionOwnerIdRef.current = user?.id ?? null;",
+  "explicit workspace selection ownership",
+);
+requireText(
+  groupContext,
+  "setSelectionRestored(Boolean(user));",
+  "explicit personal recovery after group-list failure",
+);
+requireText(
+  groupSwitcher,
+  "id === currentGroupId && selectionRestored",
+  "unresolved personal selection must remain actionable",
+);
 const fetchPhotosSource = app.slice(
   app.indexOf("const fetchPhotos = useCallback"),
   app.indexOf("const fetchPhotosRef = useRef"),

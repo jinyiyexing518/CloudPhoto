@@ -16,6 +16,7 @@ export default function GroupSwitcher({ disabled = false, onBeforeSelect }: Grou
     setCurrentGroupId,
     refreshGroups,
     loadingGroups,
+    selectionRestored,
     groupsError,
   } = useGroup();
   const [open, setOpen] = useState(false);
@@ -38,7 +39,7 @@ export default function GroupSwitcher({ disabled = false, onBeforeSelect }: Grou
       : groups.find((g) => g.id === currentGroupId)?.name ?? "群组";
 
   const select = (id: string) => {
-    if (id === currentGroupId) {
+    if (id === currentGroupId && selectionRestored) {
       setOpen(false);
       return;
     }
