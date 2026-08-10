@@ -46,6 +46,7 @@ test("capsule observes an internal sentinel and renders only the current derivat
   assert.match(capsuleSource, /!showCreateRef\.current[\s\S]*displayPhotoSourceKeyRef\.current !== observerSourceKey/);
   assert.match(capsuleSource, /observer\.observe\(sentinel\)/);
   assert.match(authenticatedCss, /\.capsule-photo-sentinel\s*\{[^}]*margin-top:\s*96px;/);
+  assert.match(capsuleSource, /visibleIndex !== visibleDisplayPhotos\.length - 1[\s\S]*matches\(":focus-visible"\)[\s\S]*advanceIncrementalWindow/);
   assert.match(capsuleSource, /showCreate,[\s\S]*visiblePhotoCount,[\s\S]*\]\);/);
   assert.match(capsuleSource, /key="capsule-photo-sentinel"[\s\S]*ref=\{capsulePhotoSentinelRef\}/);
   assert.match(capsuleSource, /active = false;[\s\S]*observer\.disconnect\(\)/);

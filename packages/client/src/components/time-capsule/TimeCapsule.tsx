@@ -404,7 +404,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   });
                 }}
               >
-                {visibleDisplayPhotos.map((p) => {
+                {visibleDisplayPhotos.map((p, visibleIndex) => {
                   const sel = selectedNames.has(p.name);
                   return (
                     <button
@@ -414,6 +414,19 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                       data-capsule-photo-name={p.name}
                       aria-label={`${sel ? "取消选择" : "选择"}照片${p.originalName ?? p.name}`}
                       aria-pressed={sel}
+                      onFocus={(event) => {
+                        if (
+                          visibleIndex !== visibleDisplayPhotos.length - 1
+                          || !hasMoreDisplayPhotos
+                          || !event.currentTarget.matches(":focus-visible")
+                        ) return;
+                        setPhotoRenderWindow((current) => advanceIncrementalWindow(
+                          current,
+                          displayPhotoSourceKey,
+                          displayPhotos.length,
+                          visibleIndex,
+                        ));
+                      }}
                       onClick={() => {
                         const next = new Set(selectedNames);
                         sel ? next.delete(p.name) : next.add(p.name);
