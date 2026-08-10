@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { createPortal } from "react-dom";
-import MediaThumb from "../shared/MediaThumb";
 import {
   Photo,
   updatePhotoSubject,
@@ -1472,27 +1471,22 @@ function PhotoGallery({
               const engagementPercent = Math.max(6, Math.min(100, Math.round(engagement / 4)));
               const rankBadge = rank <= 3 ? (rank === 1 ? "🏆" : rank === 2 ? "🥈" : "🥉") : "⭐";
               return (
-                <article
-                  key={photo.name}
-                  className="moments-card"
-                  role="button"
-                  tabIndex={batchMutationBusy ? -1 : 0}
-                  aria-disabled={batchMutationBusy || undefined}
-                  onClick={(event) => {
-                    if (batchMutationBusy) return;
-                    event.currentTarget.focus({ preventScroll: true });
-                    openModal(photo);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    event.currentTarget.click();
-                  }}
-                >
+                <div key={photo.name} className="moments-card">
                   <div className="moments-rank">{rankBadge} #{rank}</div>
-                  <div className="media-thumb-wrap">
-                    <MediaThumb url={photo.url} thumbnailUrl={photo.thumbnailUrl} previewUrl={photo.previewUrl} alt={display} contentType={photo.contentType} className="moments-thumb" priority={index < GALLERY_EAGER_MEDIA_COUNT} />
-                  </div>
+                  <PhotoCard
+                    photo={photo}
+                    priority={index < GALLERY_EAGER_MEDIA_COUNT}
+                    onClick={() => !selectMode && openModal(photo)}
+                    onDelete={() => onDelete(photo.name)}
+                    onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+                    onThumbnailUpdate={onThumbnailUpdate}
+                    selected={selectMode ? selected.has(photo.name) : undefined}
+                    onSelect={selectMode ? (e) => {
+                      e.stopPropagation();
+                      if (!batchMutationBusy) togglePhoto(photo.name);
+                    } : undefined}
+                    interactionDisabled={batchMutationBusy}
+                  />
                   <div className="moments-card-body">
                     <div className="moments-title-row">
                       <div className="moments-title" title={display}>{display}</div>
@@ -1510,7 +1504,7 @@ function PhotoGallery({
                     <div className="moments-meta">👤 {photo.createdBy ?? "未知"} · {dateText}</div>
                     <div className="moments-meta">最近查看：{lastViewedAt ? formatDate(lastViewedAt) : "还没人看过"}{topViewer ? ` · 常看：${topViewer}` : ""}</div>
                   </div>
-                </article>
+                </div>
               );
             })}
           </div>

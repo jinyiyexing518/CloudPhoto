@@ -2955,7 +2955,6 @@ body {
   border-radius: 16px;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, #f8fbff 100%);
-  cursor: pointer;
   transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
 }
 
@@ -2976,20 +2975,26 @@ body {
   padding: 3px 8px;
   font-size: 0.72rem;
   font-weight: 700;
+  pointer-events: none;
 }
 
-.moments-thumb {
-  width: 100%;
-  height: 182px;
-  object-fit: cover;
-  display: block;
+.moments-card > .photo-card {
+  border-radius: 0;
+  box-shadow: none;
 }
 
-/* wrapper that gives position:relative for MediaThumb's video badge */
-.media-thumb-wrap {
-  position: relative;
-  display: block;
-  overflow: hidden;
+.moments-card > .photo-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.moments-card > .photo-card .photo-name,
+.moments-card > .photo-card .photo-meta {
+  display: none;
+}
+
+.moments-card > .photo-card .photo-info {
+  justify-content: flex-end;
 }
 
 .moments-card-body {
@@ -4274,9 +4279,29 @@ body {
   position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   background: #f3f4f6;
   flex-shrink: 0;
+}
+
+.photo-card-primary {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 0;
+  border-radius: 12px 12px 0 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.photo-card-primary:disabled { cursor: default; }
+.photo-card-primary:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: -4px;
 }
 
 .photo-thumbnail img,
@@ -4312,6 +4337,7 @@ body {
     radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.18) 0 18%, transparent 19%),
     linear-gradient(145deg, #374151, #111827);
 }
+.video-thumb-placeholder { pointer-events: none; }
 
 .video-thumb-placeholder-icon {
   font-size: 1.35rem;
@@ -4329,6 +4355,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
@@ -4339,6 +4366,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  min-width: 0;
 }
 
 .delete-btn {
@@ -4385,6 +4413,26 @@ body {
   flex-shrink: 0;
   padding: 2px 4px;
   line-height: 1;
+}
+
+.move-btn,
+.favorite-btn,
+.delete-btn {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  touch-action: manipulation;
+}
+
+.move-btn:focus-visible,
+.favorite-btn:focus-visible,
+.delete-btn:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: 2px;
 }
 
 .favorite-btn:hover {
@@ -4820,6 +4868,7 @@ body {
 /* Container that centers the large play button */
 .gif-play-center {
   position: absolute;
+  z-index: 2;
   inset: 0;
   display: flex;
   align-items: center;
@@ -4873,10 +4922,11 @@ body {
 /* Small circular pause button, bottom-right — invisible until hover */
 .gif-pause-corner-btn {
   position: absolute;
+  z-index: 2;
   bottom: 8px;
   right: 8px;
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.52);
   border: 1.5px solid rgba(255, 255, 255, 0.6);
@@ -4892,13 +4942,24 @@ body {
   padding: 0;
 }
 
-.photo-thumbnail:hover .gif-pause-corner-btn {
+.photo-card:hover .gif-pause-corner-btn {
   opacity: 1;
+}
+.gif-pause-corner-btn:focus-visible {
+  opacity: 1;
+  outline: 3px solid #fff;
+  outline-offset: 2px;
 }
 
 .gif-pause-corner-btn:hover {
   background: rgba(0, 0, 0, 0.78);
   transform: scale(1.12);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .gif-pause-corner-btn {
+    opacity: 1;
+  }
 }
 
 /* GIF badge inside the review modal */
@@ -7299,6 +7360,7 @@ body {
   z-index: 2;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+  pointer-events: none;
 }
 .photo-select-badge--on {
   background: #0078d4;

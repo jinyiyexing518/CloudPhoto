@@ -159,6 +159,26 @@ test("folder card actions keep 44px touch targets on desktop and mobile", () => 
   }
 });
 
+test("photo card actions keep 44px targets on timeline and moments mobile grids", () => {
+  const actions = cssBlock(".move-btn,\n.favorite-btn,\n.delete-btn");
+  assert(px(declaration(actions, "min-width")) >= 44);
+  assert(px(declaration(actions, "min-height")) >= 44);
+  assert.match(actions, /display\s*:\s*inline-flex/);
+  assert.match(
+    cssBlock(".move-btn:focus-visible,\n.favorite-btn:focus-visible,\n.delete-btn:focus-visible"),
+    /outline\s*:\s*3px solid #005a9e/,
+  );
+  for (const selector of [".move-btn", ".favorite-btn", ".delete-btn"]) {
+    for (const maxWidth of [680, 360]) {
+      assert.doesNotMatch(
+        mediaBlock(maxWidth),
+        new RegExp(`${selector.replaceAll(".", "\\.")}\\s*\\{[^}]*(?:min-)?(?:width|height)\\s*:`),
+        `${selector} must inherit the shared 44px target at ${maxWidth}px`,
+      );
+    }
+  }
+});
+
 test("PWA capability metadata is present in source and build output", () => {
   for (const [label, html] of [["source", sourceHtml], ["dist", distHtml]]) {
     assert.match(
