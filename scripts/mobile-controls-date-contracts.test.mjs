@@ -160,19 +160,20 @@ test("compact FAB collapses after actions and outside interaction without losing
   assert.match(workspaceFab, /requestAnimationFrame\(\(\) => compactToggleRef\.current\?\.focus\(\)\)/);
   assert.match(workspaceFab, /compactFirstActionRef\.current\?\.focus\(\)/);
   assert.match(workspaceFab, /aria-expanded=\{compactExpanded\}/);
-  assert.match(
-    workspaceFab,
-    /restoreAfterHidden\.current = window\.matchMedia\("\(max-width: 480px\)"\)\.matches/,
-  );
-  assert.match(workspaceFab, /target === "compact"[\s\S]*compactToggleRef[\s\S]*compactFirstActionRef/);
+  assert.match(workspaceFab, /const restoreTarget = compact \? compactToggleRef\.current : event\.currentTarget/);
+  assert.match(workspaceFab, /onOpenSidebar\(restoreTarget \?\? event\.currentTarget\)/);
+  assert.doesNotMatch(workspaceFab, /restoreAfterHidden/);
   assert.match(workspaceFab, /onClick=\{openSidebarFromFab\}/);
   assert.match(workspaceFab, /runCompactAction\(onPrimaryChipClick, primaryChipRef, activeTab === "timeline"\)/);
   assert.match(workspaceFab, /runCompactAction\(onSecondaryChipClick, secondaryChipRef, activeTab === "timeline"\)/);
   assert.match(workspaceFab, /if \(compact && !restoreFocus\) compactToggleRef\.current\?\.focus\(\);[\s\S]*action\(\)/);
   assert.doesNotMatch(workspaceFab, /compactWasExpanded/);
-  assert.match(workspaceSidebar, /if \(isOpen\) closeButtonRef\.current\?\.focus\(\)/);
+  assert.match(workspaceSidebar, /useModalFocusBoundary/);
+  assert.match(workspaceSidebar, /initialFocusRef: closeButtonRef/);
   assert.match(workspaceSidebar, /ref=\{closeButtonRef\}[^>]*workspace-sidebar-close/);
-  assert.match(workspaceSidebar, /hidden=\{!isOpen\}/);
+  assert.match(workspaceSidebar, /sidebarRef\.current\.inert = !isOpen/);
+  assert.match(workspaceSidebar, /aria-hidden=\{!isOpen\}/);
+  assert.doesNotMatch(workspaceSidebar, /\shidden=\{!isOpen\}/);
 });
 
 test("photo actions and avatar expose non-overlapping 44px hitboxes", () => {

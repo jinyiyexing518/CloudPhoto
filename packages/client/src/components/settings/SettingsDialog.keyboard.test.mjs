@@ -4,6 +4,7 @@ import test from "node:test";
 
 const settingsSource = readFileSync(new URL("./SettingsDialog.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../AuthenticatedApp.tsx", import.meta.url), "utf8");
+const boundarySource = readFileSync(new URL("../shared/useModalFocusBoundary.ts", import.meta.url), "utf8");
 const modalFocus = import("../shared/modalFocus.ts");
 const closeGuard = import("./settingsCloseGuard.ts");
 
@@ -50,8 +51,10 @@ test("Settings exposes dialog semantics and an explicit initial focus target", (
   assert.match(settingsSource, /aria-labelledby="settings-dialog-title"/);
   assert.match(settingsSource, /id="settings-dialog-title"/);
   assert.match(settingsSource, /ref=\{closeButtonRef\}/);
-  assert.match(settingsSource, /focusElement\(closeButtonRef\.current\)/);
-  assert.match(settingsSource, /previousFocusRef\.current = restoreFocusTo/);
+  assert.match(settingsSource, /createPortal\(/);
+  assert.match(settingsSource, /data-modal-layer/);
+  assert.match(settingsSource, /useModalFocusBoundary\(\{[\s\S]*initialFocusRef: closeButtonRef/);
+  assert.match(settingsSource, /restoreFocusTo,/);
   assert.match(appSource, /restoreFocusTo=\{settingsRestoreFocusRef\.current\}/);
   assert.match(appSource, /settingsRestoreFocusRef\.current = userAvatarButtonRef\.current/);
 });
@@ -125,18 +128,14 @@ test("focus restoration requires a connected visible target and Settings cleans 
   assert.equal(connected.focusCount, 1);
   assert.equal(disconnected.focusCount, 0);
   assert.equal(hidden.focusCount, 0);
-  assert.match(
-    settingsSource,
-    /return \(\) => \{[\s\S]*restoreFocus\(previousFocusRef\.current\);[\s\S]*previousFocusRef\.current = null;/,
-  );
+  assert.match(boundarySource, /restoreFocus\(previousFocusRef\.current\)/);
 });
 
 test("Settings wires every key through the modal boundary and Escape through the close guard", () => {
-  assert.match(settingsSource, /onKeyDown=\{handleDialogKeyDown\}/);
-  assert.match(
-    settingsSource,
-    /handleModalKeyDown\(event, dialog, document\.activeElement, handleProtectedClose\)/,
-  );
+  assert.match(settingsSource, /useModalFocusBoundary\(\{[\s\S]*onEscape: handleProtectedClose/);
+  assert.match(settingsSource, /if \(guardMessage\) \{[\s\S]*return false;[\s\S]*onClose\(\);[\s\S]*return true;/);
+  assert.match(boundarySource, /trapTabKey\(event, container, document\.activeElement\)/);
+  assert.match(boundarySource, /onEscapeRef\.current\(event\)/);
 });
 
 test("deferred WhatsNew cannot overlap Settings or steal its focus", () => {

@@ -3890,11 +3890,11 @@ body {
   position: fixed;
   top: 0;
   right: 0;
-  width: clamp(300px, 80vw, 460px);
+  width: min(460px, calc(100vw - 24px));
   height: 100dvh;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(108%);
+  transform: translateX(calc(100% + 24px));
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease;
   z-index: 25;
 }
@@ -5749,6 +5749,7 @@ body {
 
 .filter-bar--sidebar .grid-size-toggle {
   flex: 0 0 auto;
+  flex-wrap: wrap;
   margin-left: 0;
 }
 
@@ -8991,5 +8992,11 @@ body {
   .transfer-banner-track {
     margin-left: -12px;
     margin-right: -12px;
+  }
+}
+
+@media (max-width: 240px) {
+  .workspace-sidebar {
+    width: calc(100vw - 12px);
   }
 }

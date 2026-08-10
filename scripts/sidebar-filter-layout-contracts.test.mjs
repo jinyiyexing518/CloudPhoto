@@ -32,6 +32,20 @@ function containerBlock(maxWidth) {
   assert.fail(`unterminated ${marker}`);
 }
 
+function mediaBlock(maxWidth) {
+  const marker = `@media (max-width: ${maxWidth}px)`;
+  const start = styles.indexOf(marker);
+  assert.notEqual(start, -1, `missing ${marker}`);
+  const open = styles.indexOf("{", start);
+  let depth = 1;
+  for (let index = open + 1; index < styles.length; index += 1) {
+    if (styles[index] === "{") depth += 1;
+    if (styles[index] === "}") depth -= 1;
+    if (depth === 0) return styles.slice(open + 1, index);
+  }
+  assert.fail(`unterminated ${marker}`);
+}
+
 function declaration(block, property) {
   const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = block.match(new RegExp(`${escaped}\\s*:\\s*([^;]+)`));
@@ -124,11 +138,40 @@ test("sidebar controls and long labels remain measurable at 320-480px and 200% z
   const panel = cssBlock(".filter-bar--sidebar .filter-panel");
   assert.equal(declaration(panel, "grid-template-columns"), "minmax(0, 1fr)");
 
-  for (const drawerWidth of [320, 456, 480, 228]) {
-    const contentWidth = drawerWidth - 36;
-    assert(contentWidth >= 192);
-    assert(44 <= contentWidth);
-    assert(3 * 44 + 2 * 2 <= contentWidth);
+  const gridToggle = cssBlock(".filter-bar--sidebar .grid-size-toggle");
+  assert.equal(declaration(gridToggle, "flex-wrap"), "wrap");
+
+  for (const physicalWidth of [320, 360, 390, 430, 480]) {
+    for (const zoom of [1, 2]) {
+      const viewportWidth = physicalWidth / zoom;
+      const drawerWidth = viewportWidth <= 240
+        ? viewportWidth - 12
+        : Math.min(viewportWidth * 0.82, 380);
+      const contentWidth = drawerWidth - 36;
+      assert(contentWidth >= 2 * 44 + 2, `${physicalWidth}px at ${zoom * 100}% must fit two 44px controls`);
+    }
+  }
+});
+
+test("closed drawer transition stays off-canvas without changing 320px or 390px layout", () => {
+  const drawer = cssBlock(".workspace-sidebar");
+  assert.equal(declaration(drawer, "width"), "min(460px, calc(100vw - 24px))");
+  assert.equal(
+    declaration(cssBlock(".workspace-sidebar", mediaBlock(680)), "width"),
+    "min(82vw, 380px)",
+  );
+  assert.equal(
+    declaration(cssBlock(".workspace-sidebar", mediaBlock(240)), "width"),
+    "calc(100vw - 12px)",
+  );
+  assert.equal(declaration(drawer, "transform"), "translateX(calc(100% + 24px))");
+  assert.match(declaration(drawer, "transition"), /transform/);
+  assert.doesNotMatch(drawer, /(?:display|visibility)\s*:/);
+
+  for (const viewportWidth of [160, 195]) {
+    const drawerWidth = viewportWidth - 12;
+    assert(drawerWidth > 0);
+    assert.equal(viewportWidth - drawerWidth, 12);
   }
 });
 

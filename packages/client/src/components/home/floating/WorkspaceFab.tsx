@@ -1,11 +1,11 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 
 interface Props {
   activeTab: "timeline" | "moments";
   hidden: boolean;
   /** Count of currently active filters — displayed as a badge on the pill */
   filterCount?: number;
-  onOpenSidebar: () => void;
+  onOpenSidebar: (trigger: HTMLButtonElement) => void;
   onPrimaryChipClick: () => void;
   onSecondaryChipClick: () => void;
 }
@@ -44,7 +44,6 @@ export default function WorkspaceFab({
   const compactFirstActionRef = useRef<HTMLButtonElement>(null);
   const primaryChipRef = useRef<HTMLButtonElement>(null);
   const secondaryChipRef = useRef<HTMLButtonElement>(null);
-  const restoreAfterHidden = useRef<"compact" | "pill" | null>(null);
   const drag = useRef({ active: false, hasDragged: false, mx: 0, my: 0, ox: 0, oy: 0 });
 
   useEffect(() => {
@@ -63,16 +62,6 @@ export default function WorkspaceFab({
     return () => document.removeEventListener("pointerdown", collapseOutside);
   }, [compactExpanded]);
 
-  useEffect(() => {
-    if (hidden || !restoreAfterHidden.current) return;
-    const target = restoreAfterHidden.current;
-    restoreAfterHidden.current = null;
-    requestAnimationFrame(() => {
-      if (target === "compact") compactToggleRef.current?.focus();
-      else compactFirstActionRef.current?.focus();
-    });
-  }, [hidden]);
-
   const runCompactAction = useCallback((
     action: () => void,
     desktopTarget: React.RefObject<HTMLButtonElement>,
@@ -90,12 +79,11 @@ export default function WorkspaceFab({
     }
   }, []);
 
-  const openSidebarFromFab = useCallback(() => {
-    restoreAfterHidden.current = window.matchMedia("(max-width: 480px)").matches
-      ? "compact"
-      : "pill";
+  const openSidebarFromFab = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    const compact = window.matchMedia("(max-width: 480px)").matches;
+    const restoreTarget = compact ? compactToggleRef.current : event.currentTarget;
     setCompactExpanded(false);
-    onOpenSidebar();
+    onOpenSidebar(restoreTarget ?? event.currentTarget);
   }, [onOpenSidebar]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {

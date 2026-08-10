@@ -63,7 +63,7 @@ import { focusMenuItem, handleMenuKeyDown } from "./components/shared/menuKeyboa
 import ShortcutsHelpDialog from "./components/auth/ShortcutsHelpDialog";
 import InstallGuideDialog from "./components/auth/InstallGuideDialog";
 import DeploymentRecoveryNotice from "./components/shared/DeploymentRecoveryNotice";
-import { restoreFocus } from "./components/shared/modalFocus";
+import { isScrollableModalTouchTarget, restoreFocus } from "./components/shared/modalFocus";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
 import { usePwaInstall } from "./pwa/usePwaInstall";
 import {
@@ -391,6 +391,7 @@ function AppContent() {
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const settingsRestoreFocusRef = useRef<HTMLElement | null>(null);
+  const sidebarRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsEntryTab>("profile");
   const [settingsFocusTarget, setSettingsFocusTarget] = useState<SettingsFocusTarget>("overview");
@@ -767,6 +768,15 @@ function AppContent() {
     );
   }, []);
 
+  const closeWorkspaceSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
+
+  const openWorkspaceSidebar = useCallback((trigger: HTMLButtonElement) => {
+    sidebarRestoreFocusRef.current = trigger;
+    setSidebarOpen(true);
+  }, []);
+
   const switchTab = useCallback((tab: ViewTab) => {
     if (tab === activeTabRef.current) return true;
     if (blockIfTransferring()) return false;
@@ -774,9 +784,9 @@ function AppContent() {
     localStorage.setItem(tabKey, tab);
     window.scrollTo({ top: 0, behavior: "smooth" });
     // Close sidebar when switching to folder view
-    if (tab === "folder") setSidebarOpen(false);
+    if (tab === "folder") closeWorkspaceSidebar();
     return true;
-  }, [blockIfTransferring, tabKey]);
+  }, [blockIfTransferring, closeWorkspaceSidebar, tabKey]);
 
   const focusWorkspaceTab = (tab: ViewTab) => {
     const tabElement = document.getElementById(workspaceTabId(tab));
@@ -891,15 +901,16 @@ function AppContent() {
   }, [userMenuOpen]);
 
   useEffect(() => {
-    if (!sidebarOpen) return;
+    if (!sidebarOpen || activeTab === "folder") return;
     scrollLockYRef.current = window.scrollY;
     // Desktop: overflow:hidden prevents wheel/keyboard scroll.
     // iOS Safari: position:fixed on body breaks overflow:scroll in fixed children (the sidebar),
     // so we suppress scroll via touchmove instead.
     document.body.style.overflow = "hidden";
     const preventBodyScroll = (e: TouchEvent) => {
-      const sidebarContent = document.querySelector(".workspace-sidebar-content");
-      if (sidebarContent && sidebarContent.contains(e.target as Node)) return;
+      const activeModalLayer = document.querySelector('[data-modal-layer]:not([inert])');
+      const target = e.target instanceof Element ? e.target : null;
+      if (activeModalLayer && isScrollableModalTouchTarget(target, activeModalLayer)) return;
       e.preventDefault();
     };
     document.addEventListener("touchmove", preventBodyScroll, { passive: false });
@@ -908,7 +919,7 @@ function AppContent() {
       document.removeEventListener("touchmove", preventBodyScroll);
       window.scrollTo({ top: scrollLockYRef.current, behavior: "auto" });
     };
-  }, [sidebarOpen]);
+  }, [activeTab, sidebarOpen]);
 
   // Derived lists for filter dropdowns
   const uploaders = useMemo(
@@ -1416,8 +1427,16 @@ function AppContent() {
         switchTab("story");
       }
       if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (activeTabRef.current === "folder") return;
         e.preventDefault();
-        setSidebarOpen((v) => !v);
+        setSidebarOpen((isOpen) => {
+          if (!isOpen) {
+            sidebarRestoreFocusRef.current = document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+          }
+          return !isOpen;
+        });
       }
       if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (activeFiltersCount > 0) {
@@ -2816,7 +2835,7 @@ function AppContent() {
                 activeTab={activeTab as "timeline" | "moments"}
                 hidden={sidebarOpen}
                 filterCount={activeTab === "timeline" ? activeFiltersCount : 0}
-                onOpenSidebar={() => setSidebarOpen(true)}
+                onOpenSidebar={openWorkspaceSidebar}
                 onPrimaryChipClick={activeTab === "timeline" ? jumpToRecentUploads : () => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
                 onSecondaryChipClick={activeTab === "timeline" ? jumpToOrganize : () => openSettingsTab("diagnostics", "diagnostics")}
               />
@@ -3105,7 +3124,8 @@ function AppContent() {
             onJumpUncategorized={jumpToUncategorizedPhotos}
             onOpenManagedShares={() => openSettingsTab("app", "managed-shares", managedShareLinks[0]?.id)}
             onOpenDiagnostics={() => openSettingsTab("diagnostics", "diagnostics")}
-            onClose={() => setSidebarOpen(false)}
+            onClose={closeWorkspaceSidebar}
+            restoreFocusTo={sidebarRestoreFocusRef.current}
             gridSize={gridSize}
             onGridSizeChange={handleGridSizeChange}
           />

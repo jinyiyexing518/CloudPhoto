@@ -1,5 +1,8 @@
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import FilterBar, { FilterState, GridSize } from "../gallery/FilterBar";
+import { isModalShortcutTarget } from "../shared/modalFocus";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 interface MomentsStats {
   total: number;
@@ -40,6 +43,7 @@ interface Props {
   onOpenManagedShares: () => void;
   onOpenDiagnostics: () => void;
   onClose: () => void;
+  restoreFocusTo?: HTMLElement | null;
   gridSize?: GridSize;
   onGridSizeChange?: (size: GridSize) => void;
 }
@@ -81,15 +85,47 @@ export default function WorkspaceSidebar({
   onOpenManagedShares,
   onOpenDiagnostics,
   onClose,
+  restoreFocusTo,
   gridSize,
   onGridSizeChange,
 }: Props) {
   const topbarRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (isOpen) closeButtonRef.current?.focus();
+  const requestClose = useCallback(() => {
+    onClose();
+    return true;
+  }, [onClose]);
+
+  const handleSidebarKeyDown = useCallback((event: KeyboardEvent) => {
+    if (
+      event.key.toLowerCase() !== "s"
+      || event.ctrlKey
+      || event.metaKey
+      || event.altKey
+      || event.isComposing
+      || event.repeat
+      || isModalShortcutTarget(event.target)
+    ) return;
+    event.preventDefault();
+    onClose();
+  }, [onClose]);
+
+  useModalFocusBoundary({
+    active: isOpen && activeTab !== "folder",
+    layerRef,
+    containerRef: sidebarRef,
+    initialFocusRef: closeButtonRef,
+    restoreFocusTo,
+    onEscape: requestClose,
+    onKeyDown: handleSidebarKeyDown,
+  });
+
+  useLayoutEffect(() => {
+    if (sidebarRef.current) sidebarRef.current.inert = !isOpen;
   }, [isOpen]);
 
   // iOS Safari requires an explicit pixel height on the scroll container.
@@ -109,19 +145,23 @@ export default function WorkspaceSidebar({
 
   if (activeTab === "folder") return null;
 
-  return (
-    <>
-      {isOpen && <div className="workspace-sidebar-backdrop" onClick={onClose} />}
+  return createPortal(
+    <div ref={layerRef} className="workspace-sidebar-layer" data-modal-layer>
+      {isOpen && <div className="workspace-sidebar-backdrop" aria-hidden="true" onClick={onClose} />}
       <aside
+        ref={sidebarRef}
         className={`workspace-sidebar${isOpen ? " workspace-sidebar--open" : ""}`}
-        hidden={!isOpen}
         aria-hidden={!isOpen}
+        role="dialog"
+        aria-modal={isOpen ? "true" : undefined}
+        aria-labelledby="workspace-sidebar-title"
+        tabIndex={-1}
       >
         <div className="workspace-sidebar-shell">
           <div className="workspace-sidebar-topbar" ref={topbarRef}>
             <div>
               <span className="workspace-sidebar-kicker">{activeTab === "timeline" ? "Timeline" : "Moments"}</span>
-              <h2>{activeTab === "timeline" ? "侧边工具栏" : "片段侧边栏"}</h2>
+              <h2 id="workspace-sidebar-title">{activeTab === "timeline" ? "侧边工具栏" : "片段侧边栏"}</h2>
             </div>
             <button ref={closeButtonRef} type="button" className="workspace-sidebar-close" onClick={onClose} aria-label="关闭侧边工具栏">✕</button>
           </div>
@@ -209,6 +249,7 @@ export default function WorkspaceSidebar({
           </div>
         </div>
       </aside>
-    </>
+    </div>,
+    document.body,
   );
 }

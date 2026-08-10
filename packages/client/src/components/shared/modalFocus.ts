@@ -101,6 +101,29 @@ export function isModalShortcutTarget(target: EventTarget | null): boolean {
   ));
 }
 
+type ModalScrollStyle = Pick<CSSStyleDeclaration, "overflowX" | "overflowY">;
+
+export function isScrollableModalTouchTarget(
+  target: Element | null,
+  modalLayer: Element,
+  readStyle: (element: Element) => ModalScrollStyle = (element) => window.getComputedStyle(element),
+): boolean {
+  if (!target || !modalLayer.contains(target)) return false;
+
+  let current: Element | null = target;
+  while (current && current !== modalLayer) {
+    const style = readStyle(current);
+    const scrollElement = current as HTMLElement;
+    const canScrollY = /(auto|scroll)/.test(style.overflowY)
+      && scrollElement.scrollHeight > scrollElement.clientHeight;
+    const canScrollX = /(auto|scroll)/.test(style.overflowX)
+      && scrollElement.scrollWidth > scrollElement.clientWidth;
+    if (canScrollY || canScrollX) return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
 function restoreModalIsolation(): void {
   for (const [element, snapshot] of isolationSnapshots) {
     element.inert = snapshot.inert;

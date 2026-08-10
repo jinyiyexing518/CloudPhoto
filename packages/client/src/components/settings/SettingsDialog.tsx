@@ -5,8 +5,8 @@ import {
   useEffect,
   FormEvent,
   useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useGroup } from "../../contexts/GroupContext";
 import {
@@ -22,11 +22,7 @@ import { copyText } from "../../services/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 import type { PwaInstallOutcome } from "../../pwa/installPrompt";
-import {
-  focusElement,
-  handleModalKeyDown,
-  restoreFocus,
-} from "../shared/modalFocus";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 import { getSettingsCloseGuardMessage } from "./settingsCloseGuard";
 import {
   beginMaintenanceTask,
@@ -115,9 +111,9 @@ export default function SettingsDialog({
   const [tab, setTab] = useState<SettingsEntryTab>(initialTab);
   const settingsBodyRef = useRef<HTMLDivElement | null>(null);
   const settingsTabsRef = useRef<HTMLDivElement | null>(null);
+  const layerRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const managedSharesRef = useRef<HTMLDivElement | null>(null);
   const diagnosticsRef = useRef<HTMLDivElement | null>(null);
   const managedShareItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -309,23 +305,27 @@ export default function SettingsDialog({
     controller.abort(new DOMException("任务已停止", "AbortError"));
   };
 
-  const handleProtectedClose = () => {
+  const handleProtectedClose = useCallback(() => {
     const guardMessage = getSettingsCloseGuardMessage({
       maintenanceActive: isMaintenanceTaskActive(maintenanceTaskRef.current),
       trashActive: isTrashMutationActive(trashMutationRef.current),
     });
     if (guardMessage) {
       showToast(guardMessage, "info");
-      return;
+      return false;
     }
     onClose();
-  };
+    return true;
+  }, [onClose, showToast]);
 
-  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    handleModalKeyDown(event, dialog, document.activeElement, handleProtectedClose);
-  };
+  useModalFocusBoundary({
+    active: true,
+    layerRef,
+    containerRef: dialogRef,
+    initialFocusRef: closeButtonRef,
+    restoreFocusTo,
+    onEscape: handleProtectedClose,
+  });
 
   useEffect(() => {
     const current = maintenanceTaskRef.current;
@@ -351,18 +351,6 @@ export default function SettingsDialog({
           message: "设置已卸载，维护任务已停止。",
         });
       }
-    };
-  }, []);
-
-  useEffect(() => {
-    previousFocusRef.current = restoreFocusTo ?? (
-      document.activeElement instanceof HTMLElement ? document.activeElement : null
-    );
-    focusElement(closeButtonRef.current);
-
-    return () => {
-      restoreFocus(previousFocusRef.current);
-      previousFocusRef.current = null;
     };
   }, []);
 
@@ -523,8 +511,8 @@ export default function SettingsDialog({
     ? shareLinks.filter((item) => !!item && typeof item.id === "string" && typeof item.url === "string")
     : [];
 
-  return (
-    <div className="dialog-overlay" onClick={handleProtectedClose}>
+  return createPortal(
+    <div ref={layerRef} className="dialog-overlay" data-modal-layer onClick={handleProtectedClose}>
       <div
         ref={dialogRef}
         className="settings-dialog"
@@ -532,7 +520,6 @@ export default function SettingsDialog({
         aria-modal="true"
         aria-labelledby="settings-dialog-title"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleDialogKeyDown}
       >
         {/* Header */}
         <div className="settings-header">
@@ -975,6 +962,7 @@ export default function SettingsDialog({
 
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
