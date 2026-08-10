@@ -57,6 +57,7 @@ function PhotoCard({
   onThumbnailUpdate,
 }: Props) {
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
+  const isAudio = photo.contentType?.startsWith("audio/") ?? false;
   const isGif = photo.contentType === "image/gif";
   const isAnimated = photo.isAnimated || isGif;
   // Motion photo = animated JPEG (Android/Google Motion Photo) — browser can't play the video part
@@ -393,8 +394,16 @@ function PhotoCard({
             className="photo-thumbnail"
             data-media-policy={GRID_MEDIA_POLICY_MARKER}
           >
-            {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
-            {useVideoThumb ? (
+            {!isAudio && !imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
+            {isAudio ? (
+              <>
+                <span className="audio-thumb-placeholder" aria-hidden="true">
+                  <span className="audio-thumb-placeholder-icon">🎙</span>
+                  <span className="audio-thumb-placeholder-text">语音备忘录</span>
+                </span>
+                <span className="photo-audio-badge" aria-hidden="true">音频</span>
+              </>
+            ) : useVideoThumb ? (
               <img
                 ref={videoThumbImgRef}
                 crossOrigin="anonymous"

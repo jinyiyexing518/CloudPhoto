@@ -5,7 +5,7 @@ export type PhotoAction = "move" | "favorite" | "unfavorite" | "delete";
 export interface PhotoCardLabelInput {
   displayName: string;
   isVideo: boolean;
-  mediaKind?: "GIF" | "动态照片" | "动图";
+  mediaKind?: "GIF" | "动态照片" | "动图" | "音频";
   favorite: boolean;
   takenDate?: string | null;
   uploadDate?: string | null;
@@ -20,6 +20,7 @@ export interface PhotoMediaKindInput {
 
 export function getPhotoMediaKind(input: PhotoMediaKindInput): PhotoCardLabelInput["mediaKind"] {
   const contentType = input.contentType?.toLowerCase();
+  if (contentType?.startsWith("audio/")) return "音频";
   if (contentType === "image/gif") return "GIF";
   if (!input.isAnimated) return undefined;
   if (contentType === "image/jpeg" || contentType === "image/jpg") return "动态照片";

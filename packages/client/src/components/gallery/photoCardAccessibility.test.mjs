@@ -143,6 +143,44 @@ test("animated photo labels expose the visible media subtype", () => {
   );
 });
 
+test("audio PhotoCards stay local, are named accurately, and retain keyboard actions", () => {
+  assert.equal(getPhotoMediaKind({ contentType: "audio/webm" }), "音频");
+  const labelInput = {
+    displayName: "家庭语音备忘录.webm",
+    isVideo: false,
+    mediaKind: "音频",
+    favorite: true,
+    takenDate: "2026年8月10日",
+    uploadDate: "2026年8月11日",
+  };
+  const primaryLabel = getPhotoPrimaryActionLabel(labelInput);
+  assert.match(primaryLabel, /^打开音频 家庭语音备忘录\.webm/);
+  assert.match(primaryLabel, /拍摄日期 2026年8月10日/);
+  assert.match(primaryLabel, /上传日期 2026年8月11日/);
+  assert.match(primaryLabel, /已收藏/);
+  assert.doesNotMatch(primaryLabel, /https?:|blob\.core|sig=/);
+
+  assert.match(card, /const isAudio = photo\.contentType\?\.startsWith\("audio\/"\) \?\? false/);
+  const audioBranch = card.match(/\{isAudio \? \(([\s\S]*?)\) : useVideoThumb \? \(/)?.[1];
+  assert.ok(audioBranch, "PhotoCard must render audio before any image or video branch");
+  assert.match(audioBranch, /audio-thumb-placeholder/);
+  assert.match(audioBranch, /语音备忘录/);
+  assert.match(audioBranch, /photo-audio-badge/);
+  assert.match(audioBranch, />音频</);
+  assert.doesNotMatch(audioBranch, /<(?:img|video|audio)\b/);
+  assert.doesNotMatch(audioBranch, /\bsrc=/);
+  assert.match(card, /\{!isAudio && !imgLoaded && \(!isVideo \|\| useVideoThumb\)/);
+
+  const primary = card.match(/<button[\s\S]*?ref=\{primaryActionRef\}[\s\S]*?<\/button>/)?.[0];
+  assert.ok(primary, "audio cards must use the shared native primary action");
+  assert.match(primary, /onClick=\{handlePrimaryAction\}/);
+  assert.match(card, /onContextMenu=\{\(e\) => \{[\s\S]*?openContextMenu\(/);
+  const deleteAction = card.match(/<button[\s\S]*?className="delete-btn"[\s\S]*?<\/button>/)?.[0];
+  assert.ok(deleteAction, "audio cards must retain the sibling delete action");
+  assert.match(deleteAction, /e\.stopPropagation\(\)/);
+  assert.match(deleteAction, /setShowConfirm\(true\)/);
+});
+
 test("visible names and action labels never fall back to internal media URLs", () => {
   const internalName = "private/user/blob/1786375577-secret.jpg";
   const mediaUrl = "https://storage.example/private/blob.jpg?sig=secret";
