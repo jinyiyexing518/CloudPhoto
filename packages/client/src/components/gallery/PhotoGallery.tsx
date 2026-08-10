@@ -302,6 +302,7 @@ function PhotoGallery({
   const viewerLayerRef = useRef<HTMLDivElement | null>(null);
   const viewerDialogRef = useRef<HTMLDivElement | null>(null);
   const viewerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const gpsEditButtonRef = useRef<HTMLButtonElement | null>(null);
   const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -1603,6 +1604,7 @@ function PhotoGallery({
               ✕
             </button>
             <button
+              ref={gpsEditButtonRef}
               type="button"
               className="modal-fullscreen-btn"
               onClick={() => setIsFullscreen((v) => !v)}
@@ -2085,6 +2087,7 @@ function PhotoGallery({
                               saving={savingGps}
                               onSelect={(lat, lon) => void saveGps(lat, lon)}
                               onClose={() => setEditingGps(false)}
+                              returnFocusRef={gpsEditButtonRef}
                             />
                           )}
                         </span>
@@ -2097,6 +2100,7 @@ function PhotoGallery({
                           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <em className="modal-empty">未记录</em>
                             <button
+                              ref={gpsEditButtonRef}
                               type="button"
                               className="modal-edit-btn"
                               aria-label={editingGps ? "关闭位置搜索" : "添加位置"}
@@ -2109,6 +2113,7 @@ function PhotoGallery({
                               saving={savingGps}
                               onSelect={(lat, lon) => void saveGps(lat, lon)}
                               onClose={() => setEditingGps(false)}
+                              returnFocusRef={gpsEditButtonRef}
                             />
                           )}
                         </span>

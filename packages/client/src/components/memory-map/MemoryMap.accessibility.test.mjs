@@ -45,7 +45,7 @@ test("map detail and GPS edit overlays use the shared modal boundary", async () 
   assert.match(locationSearch, /<button[\s\S]*className="location-search-coord-preview"/);
   assert.match(locationSearch, /<li[\s\S]*<button[\s\S]*className="location-search-result"/);
   assert.doesNotMatch(locationSearch, /<(?:div|li)[^>]*className="location-search-(?:coord-preview|result)"/);
-  assert.match(locationSearch, /e\.key === "Escape"[\s\S]*e\.stopPropagation\(\);[\s\S]*onClose\(\)/);
+  assert.match(locationSearch, /e\.key === "Escape"[\s\S]*e\.stopPropagation\(\);[\s\S]*onClose\(\)[\s\S]*returnFocusRef\?\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
   assert.match(css, /\.location-search-result\s*\{[\s\S]*min-height:\s*44px/);
   assert.match(css, /\.location-search-coord-preview\s*\{[\s\S]*min-height:\s*44px/);
 });
@@ -63,6 +63,7 @@ test("manual coordinates and no-GPS photo controls expose complete contracts", a
   assert.match(memoryMap, /useEffect\(\(\) => \{[\s\S]*mountedRef\.current = true;[\s\S]*mountedRef\.current = false;[\s\S]*editSessionRef\.current \+= 1/);
   assert.match(memoryMap, /target\.workspace !== workspaceRef\.current/);
   assert.match(memoryMap, /pendingMarkerFocusRef\.current = \{[\s\S]*name: target\.photo\.name[\s\S]*expiresAt: Date\.now\(\) \+ 1_000/);
+  assert.match(memoryMap, /existingMarker\?\.isConnected[\s\S]*editRestoreFocusRef\.current = existingMarker/);
   assert.match(memoryMap, /restoreSavedPhotoFocus\(p\.name, element\)/);
   assert.match(memoryMap, /editRestoreFocusRef\.current = element;[\s\S]*element\.focus\(\{ preventScroll: true \}\)/);
 });

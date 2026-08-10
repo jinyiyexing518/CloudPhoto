@@ -88,6 +88,7 @@ export default function MemoryMap({
   const editLayerRef = useRef<HTMLDivElement>(null);
   const editDialogRef = useRef<HTMLDivElement>(null);
   const manualLatRef = useRef<HTMLInputElement>(null);
+  const searchToggleRef = useRef<HTMLButtonElement>(null);
   const editRestoreFocusRef = useRef<HTMLElement | null>(null);
   const editSessionRef = useRef(0);
   const mountedRef = useRef(true);
@@ -383,7 +384,10 @@ export default function MemoryMap({
         || session !== editSessionRef.current
         || target.workspace !== workspaceRef.current
       ) return;
-      if (editRestoreFocusRef.current?.matches(".memory-map-nogps-item")) {
+      const existingMarker = markerMapRef.current.get(target.photo.name)?.element;
+      if (existingMarker?.isConnected) {
+        editRestoreFocusRef.current = existingMarker;
+      } else if (editRestoreFocusRef.current?.matches(".memory-map-nogps-item")) {
         pendingMarkerFocusRef.current = {
           name: target.photo.name,
           expiresAt: Date.now() + 1_000,
@@ -603,7 +607,7 @@ export default function MemoryMap({
             <div className="map-gps-section-label">
               搜索地址
               {!showLocationSearch && (
-                <button className="map-gps-search-toggle" onClick={() => setShowLocationSearch(true)}>
+                <button ref={searchToggleRef} className="map-gps-search-toggle" onClick={() => setShowLocationSearch(true)}>
                   搜索 →
                 </button>
               )}
@@ -613,6 +617,7 @@ export default function MemoryMap({
                 saving={saving}
                 onSelect={(lat, lon) => void saveGps(lat, lon)}
                 onClose={() => setShowLocationSearch(false)}
+                returnFocusRef={searchToggleRef}
               />
             )}
 

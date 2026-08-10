@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type RefObject } from "react";
 import { searchLocation, LocationSearchResult } from "../../utils/geocode";
 import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 
@@ -6,6 +6,7 @@ interface Props {
   saving: boolean;
   onSelect: (lat: string, lon: string) => void;
   onClose: () => void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 /** Split "天安门广场, 东城区, 北京市, 100010, 中国" into primary + secondary parts */
@@ -32,7 +33,7 @@ function parseCoords(q: string): { lat: number; lon: number } | null {
  * - Enter key triggers search immediately
  * - Result names truncated to first 2 segments for readability
  */
-export default function LocationSearchPanel({ saving, onSelect, onClose }: Props) {
+export default function LocationSearchPanel({ saving, onSelect, onClose, returnFocusRef }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LocationSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -96,6 +97,10 @@ export default function LocationSearchPanel({ saving, onSelect, onClose }: Props
     } else if (e.key === "Escape") {
       e.stopPropagation();
       onClose();
+      window.requestAnimationFrame(() => {
+        const target = returnFocusRef?.current;
+        if (target?.isConnected) target.focus({ preventScroll: true });
+      });
     }
   };
 

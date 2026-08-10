@@ -86,6 +86,7 @@ export default function BatchOperationsBar({
   const confirmLayerRef = useRef<HTMLDivElement | null>(null);
   const confirmDialogRef = useRef<HTMLDivElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const batchGpsButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
   const requestClose = useCallback(() => {
@@ -148,6 +149,7 @@ export default function BatchOperationsBar({
               修改时间 ({selectedCount})
             </button>
             <button
+              ref={batchGpsButtonRef}
               className={`batch-select-btn${showBatchGpsEdit ? " active" : ""}`}
               onClick={onToggleBatchGpsEdit}
               disabled={busy}
@@ -196,6 +198,7 @@ export default function BatchOperationsBar({
             saving={busy}
             onSelect={(lat, lon) => onApplyBatchGps(lat, lon)}
             onClose={onCancelBatchGpsEdit}
+            returnFocusRef={batchGpsButtonRef}
           />
         </div>
       )}
