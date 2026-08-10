@@ -11,7 +11,7 @@
  *   - COSMOS_DATABASE env var (optional, defaults to "cloudphoto")
  *   - Authenticated via one of:
  *       Local:          az login  (Azure CLI)
- *       GitHub Actions: azure/login@v2 with OIDC (WorkloadIdentity)
+ *       GitHub Actions: azure/login@v3 with OIDC (WorkloadIdentity)
  *
  * Usage:
  *   node scripts/sync-changelog.mjs

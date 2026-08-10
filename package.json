@@ -14,6 +14,7 @@
     "dev:client": "yarn workspace cloudphoto-client dev",
     "dev:server": "yarn workspace cloudphoto-server start",
     "test:photo-loading-contracts": "node scripts/check-photo-loading-contracts.mjs",
+    "test:workflow-contracts": "node --test scripts/workflow-runtime-contracts.test.mjs && node scripts/check-workflow-runtime-contracts.mjs",
     "change": "node scripts/create-change.mjs",
     "changes:collect": "node scripts/collect-changes.mjs",
     "test:production-smoke": "node --test scripts/production-smoke.test.mjs",

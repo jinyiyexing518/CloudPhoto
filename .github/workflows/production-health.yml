@@ -41,6 +41,12 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Test workflow runtime parser
+        run: node --test scripts/workflow-runtime-contracts.test.mjs
+
+      - name: Verify workflow runtimes
+        run: node scripts/check-workflow-runtime-contracts.mjs
+
       - name: Test smoke checks
         run: node --test scripts/production-smoke.test.mjs
 

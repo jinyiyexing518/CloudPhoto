@@ -12,7 +12,7 @@
 | 存储 | Azure Blob Storage（用户委托 SAS，无账户密钥） | East Asia |
 | 数据库 | Azure Cosmos DB NoSQL（托管身份，无连接字符串） | East Asia |
 | 反向代理 | Nginx 1.24 · HTTP/2 · Let's Encrypt SSL · TCP BBR 拥塞控制（中国大陆入口） | Azure VM B2s · Southeast Asia |
-| CI/CD | GitHub Actions + OIDC 无密码部署 | GitHub |
+| CI/CD | GitHub Actions · Node 24 · OIDC 无密码部署 | GitHub |
 
 ---
 
