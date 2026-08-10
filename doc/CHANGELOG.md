@@ -13,6 +13,7 @@
 **安全修复**
 - **🔒 Canonical HSTS** — SWA 与 Nginx 模板统一为 `max-age=31536000; includeSubDomains; preload`；前端代理隐藏上游重复安全头，static/security 契约锁定模板，smoke 要求 SWA 唯一 canonical 且代理首值 canonical
 - **🌐 DNS 入口真实性** — 文档按权威 DNS 实测区分当前 apex/www 入口与尚未配置的 cn/global/智能 DNS，避免把 NXDOMAIN 主机声明为已上线
+- **🎯 Production Health 部署身份** — `workflow_run` checkout、分类、报告与线上 guard 统一绑定 triggering deployment `head_sha`；前端 artifact 发布 no-store SHA marker，主域和 SWA 必须精确匹配，避免 main 已前移时用未来 commit 脚本验证旧产物的假绿
 
 ---
 

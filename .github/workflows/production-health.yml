@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}
+  group: production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}
   cancel-in-progress: true
 
 jobs:
@@ -25,8 +25,18 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Checkout
+      - name: Checkout health controller
+        if: github.event_name == 'workflow_run'
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: .health-control
+
+      - name: Checkout current revision
+        if: github.event_name != 'workflow_run'
+        uses: actions/checkout@v5
+        with:
+          path: .deployment
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -40,33 +50,88 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOYMENT_RUN_ID: ${{ github.event.workflow_run.id }}
           DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.name }}
-        run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" >> "$GITHUB_OUTPUT"
+          DEPLOYMENT_EVENT: ${{ github.event.workflow_run.event }}
+          DEPLOYMENT_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          DEPLOYMENT_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOYMENT_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" --event "$DEPLOYMENT_EVENT" --head-branch "$DEPLOYMENT_HEAD_BRANCH" --head-sha "$DEPLOYMENT_SHA" --conclusion "$DEPLOYMENT_CONCLUSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate deployment classification
+        if: github.event_name == 'workflow_run'
+        shell: bash
+        env:
+          CANONICAL_DEPLOYMENT: ${{ steps.deployment_event.outputs.canonical_deployment }}
+          DEPLOYED_SHA: ${{ steps.deployment_event.outputs.deployed_sha }}
+          DEPLOYMENT_STARTED: ${{ steps.deployment_event.outputs.deployment_started }}
+          SHOULD_CHECK: ${{ steps.deployment_event.outputs.should_check }}
+          SHOULD_REJECT: ${{ steps.deployment_event.outputs.should_reject }}
+        run: |
+          for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do
+            case "$value" in
+              true|false) ;;
+              *) echo "::error::Deployment classifier did not emit a complete boolean contract."; exit 1 ;;
+            esac
+          done
+          if [[ "$SHOULD_CHECK" == "true" && ! "$DEPLOYED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Deployment classifier did not emit a valid deployed SHA."
+            exit 1
+          fi
+          if [[ "$SHOULD_CHECK" == "true" && "$SHOULD_REJECT" == "true" ]]; then
+            echo "::error::Deployment classifier emitted contradictory actions."
+            exit 1
+          fi
+          if [[ "$DEPLOYMENT_STARTED" == "true" && "$SHOULD_CHECK" != "true" && "$SHOULD_REJECT" != "true" ]]; then
+            echo "::error::Deployment classifier left a started deployment without a verdict."
+            exit 1
+          fi
 
       - name: Reject failed deployment
-        if: github.event_name == 'workflow_run' && steps.deployment_event.outputs.deployment_started == 'true' && github.event.workflow_run.conclusion != 'success'
+        if: github.event_name == 'workflow_run' && steps.deployment_event.outputs.should_reject == 'true'
         env:
           DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.name }}
           DEPLOYMENT_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          DEPLOYED_SHA: ${{ steps.deployment_event.outputs.deployed_sha }}
         run: |
-          echo "::error::${DEPLOYMENT_WORKFLOW} finished with ${DEPLOYMENT_CONCLUSION}; production health cannot pass."
+          echo "::error::${DEPLOYMENT_WORKFLOW} deployment ${DEPLOYED_SHA:-unknown} is non-canonical or finished with ${DEPLOYMENT_CONCLUSION}; production health cannot pass."
           exit 1
 
+      - name: Report deployment target
+        if: github.event_name == 'workflow_run' && steps.deployment_event.outputs.should_check == 'true'
+        env:
+          DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.name }}
+          DEPLOYED_SHA: ${{ steps.deployment_event.outputs.deployed_sha }}
+        run: echo "::notice::Validating ${DEPLOYMENT_WORKFLOW} deployment ${DEPLOYED_SHA}."
+
+      - name: Checkout deployed revision
+        if: github.event_name == 'workflow_run' && steps.deployment_event.outputs.should_check == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          path: .deployment
+
       - name: Test workflow runtime parser
-        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
+        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'
+        working-directory: .deployment
         run: node --test scripts/workflow-runtime-contracts.test.mjs
 
       - name: Verify workflow runtimes
-        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
+        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'
+        working-directory: .deployment
         run: node scripts/check-workflow-runtime-contracts.mjs
 
       - name: Test smoke checks
-        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
+        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'
+        working-directory: .deployment
         run: node --test scripts/production-smoke.test.mjs
 
       - name: Verify security header contracts
-        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
+        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'
+        working-directory: .deployment
         run: yarn test:security
 
       - name: Check production
-        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
+        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'
+        working-directory: .deployment
+        env:
+          PRODUCTION_DEPLOYED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.deployed_sha || '' }}
         run: node scripts/production-smoke.mjs

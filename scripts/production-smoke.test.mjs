@@ -167,6 +167,73 @@ test("builds primary and Azure checks from base URL overrides", () => {
   );
 });
 
+test("adds exact deployment marker checks when a deployed SHA is expected", () => {
+  const sha = "a".repeat(40);
+  const checks = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_AZURE_FRONTEND_URL: "https://frontend.example",
+    PRODUCTION_DEPLOYED_SHA: sha,
+  });
+
+  assert.deepEqual(
+    checks
+      .filter(({ name }) => name === "deployment")
+      .map(({ target, url }) => ({ target, url })),
+    [
+      {
+        target: "primary",
+        url: `https://primary.example/deployment.json?sha=${sha}`,
+      },
+      {
+        target: "azure",
+        url: `https://frontend.example/deployment.json?sha=${sha}`,
+      },
+    ]
+  );
+});
+
+test("accepts only the exact no-store deployment marker SHA", async () => {
+  const expectedSha = "a".repeat(40);
+  const deploymentCheck = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_DEPLOYED_SHA: expectedSha,
+  }).find(({ target, name }) => target === "primary" && name === "deployment");
+  assert(deploymentCheck);
+
+  const markerResponse = (sha, extra = {}) => new Response(
+    JSON.stringify({ sha, ...extra }),
+    {
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "application/json",
+      },
+    }
+  );
+
+  await assert.doesNotReject(deploymentCheck.validate(markerResponse(expectedSha)));
+  await assert.rejects(
+    deploymentCheck.validate(markerResponse("b".repeat(40))),
+    /does not match expected SHA/
+  );
+  await assert.rejects(
+    deploymentCheck.validate(markerResponse(expectedSha, { branch: "main" })),
+    /does not match expected SHA/
+  );
+  await assert.rejects(
+    deploymentCheck.validate(new Response(JSON.stringify({ sha: expectedSha }), {
+      headers: { "content-type": "application/json" },
+    })),
+    /Cache-Control: no-store/
+  );
+});
+
+test("rejects an invalid expected deployment SHA before issuing requests", () => {
+  assert.throws(
+    () => createChecks({ PRODUCTION_DEPLOYED_SHA: "7e2862c" }),
+    /40-character commit SHA/
+  );
+});
+
 test("rejects a homepage without the anti-framing security baseline", async () => {
   const homepageCheck = createChecks({
     PRODUCTION_BASE_URL: "https://primary.example",

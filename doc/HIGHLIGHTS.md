@@ -165,6 +165,7 @@
 - **邮件邀请** — 7 天有效链接，未接受前不加入群组
 - **软删除 + 回收站** — `deletedAt` 标记，支持按原路径恢复
 - **分离部署 Workflow** — 前后端独立 CI，按变更路径触发
+- **部署 SHA 闭环验收** — Frontend artifact 写入只含 commit SHA 的 no-store marker；Production Health checkout triggering `head_sha`，并要求主域与 SWA 直连产物精确匹配，杜绝 main 前移后用未来脚本验证旧部署的假绿
 - **新加坡 VM 反向代理** — Nginx + TCP BBR + HTTP/2，中国大陆直接访问，Let's Encrypt 自动续签
 
 ---

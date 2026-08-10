@@ -63,6 +63,11 @@ jobs:
           # Full URL of the Azure Function App, e.g. https://cloudphoto-api.azurewebsites.net/api
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
 
+      - name: Record deployment identity
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')
+        shell: bash
+        run: printf '{"sha":"%s"}\n' "$GITHUB_SHA" > packages/client/dist/deployment.json
+
       - name: Verify mobile layout and PWA metadata contracts
         run: yarn test:mobile-layout-contracts
 

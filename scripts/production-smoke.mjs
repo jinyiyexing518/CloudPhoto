@@ -14,6 +14,7 @@ const RETRY_DELAY_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 const CANONICAL_HSTS = "max-age=31536000; includeSubDomains; preload";
 const LEGACY_VM_HSTS = "max-age=31536000; includeSubDomains";
+const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 function joinUrl(baseUrl, path) {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
@@ -206,14 +207,51 @@ async function validateProxyHealth(response) {
   }
 }
 
+function deploymentUrl(override, baseUrl, expectedSha) {
+  const url = new URL(override ?? "/deployment.json", baseUrl);
+  url.searchParams.set("sha", expectedSha);
+  return url.href;
+}
+
+function validateDeployment(expectedSha) {
+  return async (response) => {
+    if (response.status !== 200) {
+      throw new Error(`expected 200, received ${response.status}`);
+    }
+    if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+      throw new Error("deployment marker is not JSON");
+    }
+    if (!headerValues(response, "cache-control").includes("no-store")) {
+      throw new Error("deployment marker must use Cache-Control: no-store");
+    }
+
+    let body;
+    try {
+      body = await response.json();
+    } catch {
+      throw new Error("deployment marker is not valid JSON");
+    }
+    if (
+      body?.sha !== expectedSha
+      || Object.keys(body ?? {}).length !== 1
+    ) {
+      throw new Error(`deployment marker does not match expected SHA ${expectedSha}`);
+    }
+  };
+}
+
 export function createChecks(env = process.env) {
   const primaryBaseUrl = env.PRODUCTION_BASE_URL ?? DEFAULT_BASE_URL;
   const azureFrontendUrl =
     env.PRODUCTION_AZURE_FRONTEND_URL ?? DEFAULT_AZURE_FRONTEND_URL;
   const azureApiBaseUrl =
     env.PRODUCTION_AZURE_API_BASE_URL ?? DEFAULT_AZURE_API_BASE_URL;
+  const expectedDeployedSha = env.PRODUCTION_DEPLOYED_SHA?.toLowerCase() ?? "";
+  if (expectedDeployedSha && !COMMIT_SHA_PATTERN.test(expectedDeployedSha)) {
+    throw new Error("PRODUCTION_DEPLOYED_SHA must be a 40-character commit SHA");
+  }
 
-  return [
+  const checks = [
     {
       target: "primary",
       name: "homepage",
@@ -299,6 +337,33 @@ export function createChecks(env = process.env) {
       validate: validateChangelogs,
     },
   ];
+
+  if (expectedDeployedSha) {
+    checks.splice(3, 0,
+      {
+        target: "primary",
+        name: "deployment",
+        url: deploymentUrl(
+          env.PRODUCTION_DEPLOYMENT_URL,
+          primaryBaseUrl,
+          expectedDeployedSha,
+        ),
+        validate: validateDeployment(expectedDeployedSha),
+      },
+      {
+        target: "azure",
+        name: "deployment",
+        url: deploymentUrl(
+          env.PRODUCTION_AZURE_DEPLOYMENT_URL,
+          azureFrontendUrl,
+          expectedDeployedSha,
+        ),
+        validate: validateDeployment(expectedDeployedSha),
+      },
+    );
+  }
+
+  return checks;
 }
 
 function delay(milliseconds) {

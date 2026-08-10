@@ -10,6 +10,16 @@
     "seq": 1786411421837
   },
   {
+    "id": "2026-08-11-production-health-deployed-sha",
+    "date": "2026-08-11",
+    "icon": "🎯",
+    "title": "生产健康检查绑定实际部署版本",
+    "type": "fix",
+    "desc": "部署后检查现在验证触发它的版本，不会再用后来 main 的脚本为旧产物误报成功。",
+    "details": "workflow_run 的 checkout、事件分类和报告统一使用 triggering head_sha；前端产物增加仅含 commit SHA 的 no-store deployment marker，主域代理与 SWA 直连必须同时精确匹配。Frontend、Backend 与普通检查使用隔离并发组，validation、部署前合并和后端事件保持原有语义。",
+    "seq": 1786407600000
+  },
+  {
     "id": "2026-08-11-private-moments-auth-scope",
     "date": "2026-08-11",
     "icon": "🔒",

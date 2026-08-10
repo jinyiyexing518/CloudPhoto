@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { classifyDeploymentStarted } from "./classify-deployment-event.mjs";
+import {
+  classifyDeploymentEvent,
+  classifyDeploymentStarted,
+} from "./classify-deployment-event.mjs";
 import {
   checkWorkflowRuntimeContracts,
   inspectWorkflow,
@@ -100,6 +103,42 @@ jobs:
 `,
     },
   ]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("without hiding deployment failures")
+    )
+  );
+});
+
+test("rejects generic health runs that can cancel frontend SHA verification", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}",
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("without hiding deployment failures")
+    )
+  );
+});
+
+test("rejects frontend validation runs that can cancel deployment SHA verification", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}",
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
   assert.ok(
     result.issues.some((issue) =>
@@ -281,14 +320,50 @@ test("rejects production health without deployment-event classification", () => 
   );
 });
 
+test("rejects production health that checks out the current workflow SHA", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "          ref: ${{ github.event.workflow_run.head_sha }}\n          path: .deployment",
+    "          ref: ${{ github.sha }}\n          path: .deployment"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("triggering deployed SHA")
+    )
+  );
+});
+
+test("rejects production health that can silently accept missing classifier outputs", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "      - name: Validate deployment classification",
+    "      - name: Disabled deployment classification validation"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("fail closed when classifier outputs are missing")
+    )
+  );
+});
+
 test("rejects a health classifier command with success-only filtering", () => {
   const path = ".github/workflows/production-health.yml";
   const health = readFileSync(
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    'node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW"',
-    'jq \'.jobs |= map(select(.conclusion == "success"))\' | node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW"'
+    'node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW"',
+    'jq \'.jobs |= map(select(.conclusion == "success"))\' | node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW"'
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
@@ -348,6 +423,68 @@ test("keeps backend workflow failures classified as deployment events", () => {
     }),
     true
   );
+});
+
+test("binds each successful deployment health event to its triggering SHA", () => {
+  const workflowName = "Deploy Frontend (Azure Static Web Apps)";
+  const jobs = [{
+    name: "Deploy production",
+    started_at: "2026-08-11T16:43:00Z",
+    conclusion: "success",
+  }];
+  const aaSha = `aa029f4${"0".repeat(33)}`;
+  const laterSha = `7e2862c${"1".repeat(33)}`;
+
+  const first = classifyDeploymentEvent({
+    workflowName,
+    workflowEvent: "push",
+    headBranch: "main",
+    headSha: aaSha,
+    conclusion: "success",
+    jobs,
+  });
+  const later = classifyDeploymentEvent({
+    workflowName,
+    workflowEvent: "push",
+    headBranch: "main",
+    headSha: laterSha,
+    conclusion: "success",
+    jobs,
+  });
+
+  assert.deepEqual(first, {
+    canonicalDeployment: true,
+    deployedSha: aaSha,
+    deploymentStarted: true,
+    shouldCheck: true,
+    shouldReject: false,
+  });
+  assert.equal(later.deployedSha, laterSha);
+  assert.equal(later.shouldCheck, true);
+  assert.notEqual(first.deployedSha, later.deployedSha);
+});
+
+test("fails closed for a non-main or malformed deployment identity", () => {
+  const workflowName = "Deploy Frontend (Azure Static Web Apps)";
+  const jobs = [{
+    name: "Deploy production",
+    started_at: "2026-08-11T16:43:00Z",
+    conclusion: "success",
+  }];
+
+  for (const input of [
+    { workflowEvent: "workflow_dispatch", headBranch: "feature", headSha: "a".repeat(40) },
+    { workflowEvent: "push", headBranch: "main", headSha: "not-a-sha" },
+  ]) {
+    const result = classifyDeploymentEvent({
+      workflowName,
+      conclusion: "success",
+      jobs,
+      ...input,
+    });
+    assert.equal(result.shouldCheck, false);
+    assert.equal(result.shouldReject, true);
+  }
 });
 
 test("rejects a string dispatch input that can bypass the production choice", () => {

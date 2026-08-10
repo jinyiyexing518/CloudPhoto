@@ -13,9 +13,10 @@ const requiredContractWorkflows = [
   ".github/workflows/production-health.yml",
   ".github/workflows/sync-changelog.yml",
 ];
+const productionHealthWorkingDirectory = ".deployment";
 const productionHealthWorkflow = ".github/workflows/production-health.yml";
 const productionHealthConcurrencyGroup =
-  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}";
+  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}";
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const frontendProductionConcurrencyGroup =
   "deploy-frontend-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && 'production' || github.event_name == 'pull_request' && format('validation-pr-{0}', github.event.pull_request.number) || format('validation-{0}', github.ref_name) }}";
@@ -24,15 +25,51 @@ const frontendCancelInProgress =
 const frontendUploadCondition =
   "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')";
 const frontendUploadToken = "${{ steps.swa_token.outputs.deployment_token }}";
+const frontendDeploymentMarkerCommand =
+  `printf '{"sha":"%s"}\\n' "$GITHUB_SHA" > packages/client/dist/deployment.json`;
 const frontendDispatchModes = ["validate", "production"];
 const frontendRunName =
   "${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && format('Validate frontend · {0}', github.ref_name) || github.event_name == 'workflow_dispatch' && inputs.mode == 'validate' && 'Validate frontend · main' || github.event_name == 'workflow_dispatch' && 'Deploy frontend production · main' || github.event_name == 'pull_request' && format('Validate frontend · PR #{0}', github.event.pull_request.number) || github.workflow }}";
 const productionHealthRejectCondition =
-  "github.event_name == 'workflow_run' && steps.deployment_event.outputs.deployment_started == 'true' && github.event.workflow_run.conclusion != 'success'";
+  "github.event_name == 'workflow_run' && steps.deployment_event.outputs.should_reject == 'true'";
 const productionHealthCheckCondition =
-  "github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'";
+  "github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'";
+const productionHealthControllerRef = "${{ github.sha }}";
+const productionHealthDeployedRef = "${{ github.event.workflow_run.head_sha }}";
+const productionHealthControllerCondition = "github.event_name == 'workflow_run'";
+const productionHealthCurrentCondition = "github.event_name != 'workflow_run'";
+const productionHealthDeployedCondition =
+  "github.event_name == 'workflow_run' && steps.deployment_event.outputs.should_check == 'true'";
 const productionHealthClassifierCommand =
-  'gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" >> "$GITHUB_OUTPUT"';
+  'gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node .health-control/scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" --event "$DEPLOYMENT_EVENT" --head-branch "$DEPLOYMENT_HEAD_BRANCH" --head-sha "$DEPLOYMENT_SHA" --conclusion "$DEPLOYMENT_CONCLUSION" >> "$GITHUB_OUTPUT"';
+const productionHealthClassifierEnv = {
+  DEPLOYMENT_CONCLUSION: "${{ github.event.workflow_run.conclusion }}",
+  DEPLOYMENT_EVENT: "${{ github.event.workflow_run.event }}",
+  DEPLOYMENT_HEAD_BRANCH: "${{ github.event.workflow_run.head_branch }}",
+  DEPLOYMENT_SHA: "${{ github.event.workflow_run.head_sha }}",
+};
+const productionHealthExpectedSha =
+  "${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.deployed_sha || '' }}";
+const productionHealthClassificationValidationCommand = [
+  'for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do',
+  '  case "$value" in',
+  "    true|false) ;;",
+  '    *) echo "::error::Deployment classifier did not emit a complete boolean contract."; exit 1 ;;',
+  "  esac",
+  "done",
+  'if [[ "$SHOULD_CHECK" == "true" && ! "$DEPLOYED_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
+  '  echo "::error::Deployment classifier did not emit a valid deployed SHA."',
+  "  exit 1",
+  "fi",
+  'if [[ "$SHOULD_CHECK" == "true" && "$SHOULD_REJECT" == "true" ]]; then',
+  '  echo "::error::Deployment classifier emitted contradictory actions."',
+  "  exit 1",
+  "fi",
+  'if [[ "$DEPLOYMENT_STARTED" == "true" && "$SHOULD_CHECK" != "true" && "$SHOULD_REJECT" != "true" ]]; then',
+  '  echo "::error::Deployment classifier left a started deployment without a verdict."',
+  "  exit 1",
+  "fi",
+].join("\n");
 const productionHealthGuardedSteps = [
   "Test workflow runtime parser",
   "Verify workflow runtimes",
@@ -242,6 +279,20 @@ function stepChildField(step, parent, field) {
   return null;
 }
 
+function stepBlockScalar(step, field) {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const fieldPattern = new RegExp(`^\\s{${step.indent + 2}}${escaped}:\\s*\\|\\s*$`);
+  const fieldIndex = step.lines.findIndex((line) => fieldPattern.test(line));
+  if (fieldIndex < 0) return null;
+
+  return step.lines
+    .slice(fieldIndex + 1)
+    .filter((line) => indentation(line) > step.indent + 2)
+    .map((line) => line.slice(step.indent + 4))
+    .join("\n")
+    .trim();
+}
+
 export function inspectWorkflow(text, path = "workflow.yml") {
   const azureLoginRefs = [];
   const setupNodeVersions = [];
@@ -276,6 +327,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     "type",
   ]);
   const staticWebAppActions = [];
+  const checkoutRefs = [];
   const activeSource = text
     .split(/\r?\n/)
     .filter((line) => !/^\s*#/.test(line))
@@ -284,8 +336,12 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     /secrets\s*(?:\.\s*AZURE_STATIC_WEB_APPS_API_TOKEN|\[\s*["']AZURE_STATIC_WEB_APPS_API_TOKEN["']\s*\])/i
       .test(activeSource);
   const stepConditions = {};
+  const stepWorkingDirectories = {};
   let frontendTokenResolver = null;
+  let frontendDeploymentMarker = null;
   let productionHealthClassification = null;
+  let productionHealthClassificationValidation = null;
+  let productionHealthCheck = null;
   const concurrency = {
     group: rootChildField(text, "concurrency", "group"),
     cancelInProgress: rootChildField(text, "concurrency", "cancel-in-progress"),
@@ -308,6 +364,15 @@ export function inspectWorkflow(text, path = "workflow.yml") {
       });
     }
 
+    if (uses?.startsWith("actions/checkout@")) {
+      checkoutRefs.push({
+        name,
+        condition: stepField(step, "if"),
+        path: stepChildField(step, "with", "path"),
+        ref: stepChildField(step, "with", "ref"),
+      });
+    }
+
     if (stepField(step, "run") === "node scripts/check-workflow-runtime-contracts.mjs") {
       contractInvocations.push(path);
     }
@@ -325,11 +390,38 @@ export function inspectWorkflow(text, path = "workflow.yml") {
 
     if (name) {
       stepConditions[name] = stepField(step, "if");
+      stepWorkingDirectories[name] = stepField(step, "working-directory");
     }
     if (name === "Classify deployment event") {
       productionHealthClassification = {
         condition: stepField(step, "if"),
         ghToken: stepChildField(step, "env", "GH_TOKEN"),
+        deploymentConclusion: stepChildField(step, "env", "DEPLOYMENT_CONCLUSION"),
+        deploymentEvent: stepChildField(step, "env", "DEPLOYMENT_EVENT"),
+        deploymentHeadBranch: stepChildField(step, "env", "DEPLOYMENT_HEAD_BRANCH"),
+        deploymentSha: stepChildField(step, "env", "DEPLOYMENT_SHA"),
+        command: stepField(step, "run"),
+      };
+    }
+    if (name === "Check production") {
+      productionHealthCheck = {
+        expectedSha: stepChildField(step, "env", "PRODUCTION_DEPLOYED_SHA"),
+      };
+    }
+    if (name === "Validate deployment classification") {
+      productionHealthClassificationValidation = {
+        condition: stepField(step, "if"),
+        canonicalDeployment: stepChildField(step, "env", "CANONICAL_DEPLOYMENT"),
+        deployedSha: stepChildField(step, "env", "DEPLOYED_SHA"),
+        deploymentStarted: stepChildField(step, "env", "DEPLOYMENT_STARTED"),
+        shouldCheck: stepChildField(step, "env", "SHOULD_CHECK"),
+        shouldReject: stepChildField(step, "env", "SHOULD_REJECT"),
+        command: stepBlockScalar(step, "run"),
+      };
+    }
+    if (name === "Record deployment identity") {
+      frontendDeploymentMarker = {
+        condition: stepField(step, "if"),
         command: stepField(step, "run"),
       };
     }
@@ -342,6 +434,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
 
   return {
     azureLoginRefs,
+    checkoutRefs,
     setupNodeVersions,
     contractInvocations,
     concurrency,
@@ -349,8 +442,12 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     runName: quotedRootScalar(text, "run-name"),
     staticWebAppActions,
     stepConditions,
+    stepWorkingDirectories,
     frontendTokenResolver,
+    frontendDeploymentMarker,
     productionHealthClassification,
+    productionHealthClassificationValidation,
+    productionHealthCheck,
     usesRepositorySwaToken,
     workflowDispatchModeDefault,
     workflowDispatchModes,
@@ -446,6 +543,14 @@ export function checkWorkflowRuntimeContracts(workflows) {
     !healthPolicy?.productionHealthClassification
     || healthPolicy.productionHealthClassification.condition !== "github.event_name == 'workflow_run'"
     || healthPolicy.productionHealthClassification.ghToken !== "${{ secrets.GITHUB_TOKEN }}"
+    || healthPolicy.productionHealthClassification.deploymentConclusion
+      !== productionHealthClassifierEnv.DEPLOYMENT_CONCLUSION
+    || healthPolicy.productionHealthClassification.deploymentEvent
+      !== productionHealthClassifierEnv.DEPLOYMENT_EVENT
+    || healthPolicy.productionHealthClassification.deploymentHeadBranch
+      !== productionHealthClassifierEnv.DEPLOYMENT_HEAD_BRANCH
+    || healthPolicy.productionHealthClassification.deploymentSha
+      !== productionHealthClassifierEnv.DEPLOYMENT_SHA
     || healthPolicy.productionHealthClassification.command !== productionHealthClassifierCommand
     || healthPolicy.stepConditions["Reject failed deployment"] !== productionHealthRejectCondition
     || productionHealthGuardedSteps.some(
@@ -454,6 +559,52 @@ export function checkWorkflowRuntimeContracts(workflows) {
   ) {
     issues.push(
       `${productionHealthWorkflow} must ignore validation/coalesced frontend runs that never started production deployment`
+    );
+  }
+  if (
+    healthPolicy?.productionHealthClassificationValidation?.condition
+      !== "github.event_name == 'workflow_run'"
+    || healthPolicy.productionHealthClassificationValidation.canonicalDeployment
+      !== "${{ steps.deployment_event.outputs.canonical_deployment }}"
+    || healthPolicy.productionHealthClassificationValidation.deployedSha
+      !== "${{ steps.deployment_event.outputs.deployed_sha }}"
+    || healthPolicy.productionHealthClassificationValidation.deploymentStarted
+      !== "${{ steps.deployment_event.outputs.deployment_started }}"
+    || healthPolicy.productionHealthClassificationValidation.shouldCheck
+      !== "${{ steps.deployment_event.outputs.should_check }}"
+    || healthPolicy.productionHealthClassificationValidation.shouldReject
+      !== "${{ steps.deployment_event.outputs.should_reject }}"
+    || healthPolicy.productionHealthClassificationValidation.command
+      !== productionHealthClassificationValidationCommand
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must fail closed when classifier outputs are missing or contradictory`
+    );
+  }
+  const healthCheckouts = Object.fromEntries(
+    (healthPolicy?.checkoutRefs ?? []).map((checkout) => [checkout.name, checkout])
+  );
+  if (
+    healthPolicy?.checkoutRefs.length !== 3
+    || healthCheckouts["Checkout health controller"]?.condition
+      !== productionHealthControllerCondition
+    || healthCheckouts["Checkout health controller"]?.ref !== productionHealthControllerRef
+    || healthCheckouts["Checkout health controller"]?.path !== ".health-control"
+    || healthCheckouts["Checkout current revision"]?.condition
+      !== productionHealthCurrentCondition
+    || healthCheckouts["Checkout current revision"]?.ref !== null
+    || healthCheckouts["Checkout current revision"]?.path !== productionHealthWorkingDirectory
+    || healthCheckouts["Checkout deployed revision"]?.condition
+      !== productionHealthDeployedCondition
+    || healthCheckouts["Checkout deployed revision"]?.ref !== productionHealthDeployedRef
+    || healthCheckouts["Checkout deployed revision"]?.path !== productionHealthWorkingDirectory
+    || productionHealthGuardedSteps.some(
+      (name) => healthPolicy.stepWorkingDirectories[name] !== productionHealthWorkingDirectory
+    )
+    || healthPolicy.productionHealthCheck?.expectedSha !== productionHealthExpectedSha
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must checkout and verify the triggering deployed SHA instead of the current main SHA`
     );
   }
   if (!frontendPolicy) {
@@ -483,6 +634,8 @@ export function checkWorkflowRuntimeContracts(workflows) {
       || frontendPolicy.staticWebAppActions[0]?.token !== frontendUploadToken
       || frontendPolicy.usesRepositorySwaToken
       || !frontendPolicy.frontendTokenResolver
+      || frontendPolicy.frontendDeploymentMarker?.condition !== frontendUploadCondition
+      || frontendPolicy.frontendDeploymentMarker?.command !== frontendDeploymentMarkerCommand
       || !frontendPolicy.frontendTokenResolver.source.includes(
         "az staticwebapp secrets list"
       )
