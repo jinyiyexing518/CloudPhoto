@@ -627,6 +627,10 @@ const http = await import(httpUrl);
     "packages/client/src/services/mediaRoute.ts",
     (source) => source.replaceAll("import.meta.env", "({})"),
   );
+  let preferredRouteChanges = 0;
+  const unsubscribeRoute = mediaRoute.subscribeToPreferredMediaRoute(() => {
+    preferredRouteChanges += 1;
+  });
   const calls = [];
   globalThis.fetch = async (input) => {
     const url = String(input);
@@ -641,6 +645,12 @@ const http = await import(httpUrl);
   assert.equal(calls.length, 2);
   assert(calls[0].includes("blob.core.windows.net"));
   assert(calls[1].includes("cloudphotos.top/media/"));
+  const staleDirectUrl = "https://photostorage.blob.core.windows.net/photos/stale-video.mp4?sig=old";
+  assert(
+    mediaRoute.getPreferredMediaUrl(staleDirectUrl).includes("cloudphotos.top/media/"),
+    "playback must re-route a URL frozen before the preferred route changed",
+  );
+  assert.equal(preferredRouteChanges, 1, "a late route probe must notify an open playback surface");
 
   const timeoutCalls = [];
   globalThis.fetch = (input, init) => {
@@ -659,6 +669,13 @@ const http = await import(httpUrl);
   );
   assert.equal(await timeoutResponse.text(), "timeout-alternate");
   assert.equal(timeoutCalls.length, 2, "a stalled media route must advance after its own timeout");
+  const staleProxyUrl = mediaRoute.toProxyMediaUrl(staleDirectUrl);
+  assert(
+    mediaRoute.getPreferredMediaUrl(staleProxyUrl).includes("blob.core.windows.net"),
+    "playback must recover a direct URL from stale proxy-routed photo state",
+  );
+  assert.equal(preferredRouteChanges, 2, "alternate-route recovery must notify playback once");
+  unsubscribeRoute();
 
   const bodyTimeoutCalls = [];
   globalThis.fetch = (input, init) => {

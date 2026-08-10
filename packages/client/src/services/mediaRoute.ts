@@ -112,9 +112,19 @@ function defaultRoute(): MediaRoute {
 
 let preferredRoute: MediaRoute = readCachedRoute() ?? defaultRoute();
 let routeProbe: Promise<MediaRoute> | null = null;
+const preferredRouteListeners = new Set<() => void>();
+
+export function subscribeToPreferredMediaRoute(listener: () => void): () => void {
+  preferredRouteListeners.add(listener);
+  return () => preferredRouteListeners.delete(listener);
+}
 
 function rememberRoute(route: MediaRoute): void {
+  const changed = route !== preferredRoute;
   preferredRoute = route;
+  if (changed) {
+    for (const listener of preferredRouteListeners) listener();
+  }
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(

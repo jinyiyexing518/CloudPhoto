@@ -24,7 +24,9 @@ import { copyText } from "../../services/share/clipboard";
 import {
   fallbackMediaSource,
   fetchMediaWithFallback,
+  getPreferredMediaUrl,
   preloadImageWithFallback,
+  subscribeToPreferredMediaRoute,
 } from "../../services/mediaRoute";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
@@ -311,6 +313,8 @@ function PhotoGallery({
   const focusCardRef = useRef<HTMLDivElement | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [selectedVideoRoute, setSelectedVideoRoute] = useState<{ name: string; url: string } | null>(null);
+  const videoRouteLockedRef = useRef(false);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
   const [savingSubject, setSavingSubject] = useState(false);
@@ -337,6 +341,24 @@ function PhotoGallery({
   // Progressive GIF loading in the viewer: show thumbnail immediately, upgrade to full GIF silently
   const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+
+  useEffect(() => {
+    const photo = selectedPhoto;
+    videoRouteLockedRef.current = false;
+    if (!photo?.contentType?.startsWith("video/")) {
+      setSelectedVideoRoute(null);
+      return;
+    }
+    const refreshRoute = () => {
+      if (videoRouteLockedRef.current) return;
+      setSelectedVideoRoute({
+        name: photo.name,
+        url: getPreferredMediaUrl(photo.url),
+      });
+    };
+    refreshRoute();
+    return subscribeToPreferredMediaRoute(refreshRoute);
+  }, [selectedPhoto?.contentType, selectedPhoto?.name, selectedPhoto?.url]);
   const [sharing, setSharing] = useState(false);
   const [shareHours, setShareHours] = useState("24");
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -1159,6 +1181,12 @@ function PhotoGallery({
   const groups = groupByDate(visiblePhotos, sortKey);
   if (reverseOrder) groups.reverse();
   const hasMore = !momentsMode && visibleCount < flatPhotos.length;
+  const selectedVideoUrl = selectedPhoto
+    ? selectedVideoRoute?.name === selectedPhoto.name
+      ? selectedVideoRoute.url
+      : getPreferredMediaUrl(selectedPhoto.url)
+    : "";
+  const selectedVideoPoster = selectedPhoto?.thumbnailUrl ?? selectedPhoto?.previewUrl;
 
   return (
     <>
@@ -1467,15 +1495,19 @@ function PhotoGallery({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
                   <video
-                    key={`${selectedPhoto.url}:${videoRetryKey}`}
+                    key={`${selectedVideoUrl}:${videoRetryKey}`}
                     crossOrigin="anonymous"
-                    src={selectedPhoto.url}
-                    poster={selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl}
+                    src={selectedVideoUrl}
+                    poster={selectedVideoPoster ? getPreferredMediaUrl(selectedVideoPoster) : undefined}
                     className="modal-image modal-video"
                     controls
                     playsInline
                     preload="none"
-                    onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
+                    onPlay={() => {
+                      videoRouteLockedRef.current = true;
+                      setVideoError(false);
+                      setVideoBuffering(true);
+                    }}
                     onPlaying={(event) => {
                       setVideoBuffering(false);
                       const photoName = selectedPhoto.name;
