@@ -848,19 +848,19 @@ test("requires frontend gate script changes to trigger frontend validation", () 
   );
 });
 
-test("reads checkout depth and rejects a frontend deploy without retention gates", () => {
+test("requires full history and rejects a frontend deploy without retention gates", () => {
   const inspected = inspectWorkflow(`
 jobs:
   deploy:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 50
+          fetch-depth: 0
       - run: node scripts/deployment-assets.mjs
 `, ".github/workflows/deploy-frontend.yml");
   assert.deepEqual(inspected.checkoutFetchDepths, [{
     path: ".github/workflows/deploy-frontend.yml",
-    depth: "50",
+    depth: "0",
   }]);
   assert.ok(inspected.runCommands.includes("node scripts/deployment-assets.mjs"));
 

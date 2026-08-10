@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -126,11 +126,54 @@ async function waitFor(predicate, timeoutMs = 10_000) {
       last = await predicate();
       if (last) return last;
     } catch (error) {
+      if (error instanceof BrowserLaunchError) throw error;
       last = error;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Timed out waiting for browser condition: ${String(last)}`);
+}
+
+class BrowserLaunchError extends Error {}
+
+const sleep = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForProcessExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.pid === undefined) return true;
+  return Promise.race([
+    new Promise((resolve) => child.once("exit", () => resolve(true))),
+    sleep(timeoutMs).then(() => false),
+  ]);
+}
+
+async function removeBrowserProfile(profile) {
+  const transient = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await rm(profile, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!transient.has(error.code) || attempt === 19) throw error;
+      await sleep(100 * (attempt + 1));
+    }
+  }
+}
+
+async function disposeBrowserProcess(child, browserClient, profile) {
+  if (browserClient) {
+    await Promise.race([
+      browserClient.send("Browser.close").catch(() => {}),
+      sleep(2_000),
+    ]);
+    browserClient.close();
+  }
+  if (!await waitForProcessExit(child, 5_000)) {
+    child.kill();
+    await waitForProcessExit(child, 5_000);
+  }
+  child.unref();
+  await removeBrowserProfile(profile);
 }
 
 async function openPage(debugPort, url) {
@@ -145,60 +188,65 @@ async function openPage(debugPort, url) {
   return client;
 }
 
-async function launchBrowser() {
-  const executable = await findBrowser();
+export async function launchBrowser(executableOverride, profileParent = tmpdir()) {
+  const executable = executableOverride ?? await findBrowser();
   if (!executable) return null;
-  const profile = await mkdtemp(join(tmpdir(), "cloudphoto-browser-"));
-  const child = spawn(executable, [
-    "--headless=new",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-sync",
-    "--disable-gpu",
-    "--window-size=390,844",
-    "about:blank",
-  ], { stdio: "ignore" });
-  const portFile = join(profile, "DevToolsActivePort");
-  const endpoint = await waitFor(async () => {
-    try {
-      const [port, path] = (await readFile(portFile, "utf8")).split(/\r?\n/);
-      return Number(port) && path ? { debugPort: Number(port), path } : null;
-    } catch {
-      if (child.exitCode !== null) {
-        throw new Error(`Browser exited with ${child.exitCode}`);
+  const profile = await mkdtemp(join(profileParent, "cloudphoto-browser-"));
+  let child;
+  let browserClient;
+  try {
+    child = spawn(executable, [
+      "--headless=new",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-crash-reporter",
+      "--disable-sync",
+      "--disable-gpu",
+      "--window-size=390,844",
+      "about:blank",
+    ], { stdio: "ignore" });
+    let spawnError;
+    child.once("error", (error) => {
+      spawnError = error;
+    });
+    const portFile = join(profile, "DevToolsActivePort");
+    const endpoint = await waitFor(async () => {
+      if (spawnError) {
+        throw new BrowserLaunchError(
+          `Browser failed to start: ${spawnError.message}`,
+          { cause: spawnError },
+        );
       }
-      return 0;
-    }
-  });
-  const browserClient = new CdpClient(
-    `ws://127.0.0.1:${endpoint.debugPort}${endpoint.path}`,
-  );
-  await browserClient.connect();
-  return {
-    debugPort: endpoint.debugPort,
-    profile,
-    async dispose() {
-      const exited = child.exitCode === null
-        ? new Promise((resolve) => child.once("exit", resolve))
-        : Promise.resolve();
-      await Promise.race([
-        browserClient.send("Browser.close").catch(() => {}),
-        new Promise((resolve) => setTimeout(resolve, 2_000)),
-      ]);
-      browserClient.close();
-      await Promise.race([
-        exited,
-        new Promise((resolve) => setTimeout(resolve, 2_000)),
-      ]);
-      if (child.exitCode === null) child.kill();
-      child.unref();
-      await rm(profile, { recursive: true, force: true });
-    },
-  };
+      try {
+        const [port, path] = (await readFile(portFile, "utf8")).split(/\r?\n/);
+        return Number(port) && path ? { debugPort: Number(port), path } : null;
+      } catch {
+        if (child.exitCode !== null) {
+          throw new BrowserLaunchError(`Browser exited with ${child.exitCode}`);
+        }
+        return 0;
+      }
+    });
+    browserClient = new CdpClient(
+      `ws://127.0.0.1:${endpoint.debugPort}${endpoint.path}`,
+    );
+    await browserClient.connect();
+    return {
+      debugPort: endpoint.debugPort,
+      profile,
+      async dispose() {
+        await disposeBrowserProcess(child, browserClient, profile);
+      },
+    };
+  } catch (error) {
+    if (child) await disposeBrowserProcess(child, browserClient, profile);
+    else await removeBrowserProfile(profile);
+    throw error;
+  }
 }
 
 async function writeFixtureDist(root, kind) {
@@ -440,6 +488,32 @@ async function runScenario({ retain, evidenceName, emulateStandalone = false }) 
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test("browser launch failure removes its isolated profile", async () => {
+  const profileParent = await mkdtemp(join(tmpdir(), "cloudphoto-browser-launch-test-"));
+  try {
+    await assert.rejects(
+      launchBrowser(process.execPath, profileParent),
+      /Browser exited/,
+    );
+    assert.deepEqual(await readdir(profileParent), []);
+  } finally {
+    await rm(profileParent, { recursive: true, force: true });
+  }
+});
+
+test("browser spawn error removes its isolated profile", async () => {
+  const profileParent = await mkdtemp(join(tmpdir(), "cloudphoto-browser-spawn-test-"));
+  try {
+    await assert.rejects(
+      launchBrowser(join(profileParent, "missing-browser"), profileParent),
+      /Browser (?:failed to start|exited)/,
+    );
+    assert.deepEqual(await readdir(profileParent), []);
+  } finally {
+    await rm(profileParent, { recursive: true, force: true });
+  }
+});
 
 test("RED: old active app-shell fails when the new deployment deletes lazy CSS/JS", async (t) => {
   const result = await runScenario({

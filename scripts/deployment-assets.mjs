@@ -95,8 +95,12 @@ function assertConfig(config) {
   }
 }
 
-export function validateDeploymentManifest(manifest) {
-  if (manifest?.version !== MANIFEST_VERSION || !Array.isArray(manifest.generations)) {
+export function validateDeploymentManifest(manifest, { allowEmpty = false } = {}) {
+  if (
+    manifest?.version !== MANIFEST_VERSION
+    || !Array.isArray(manifest.generations)
+    || (!allowEmpty && manifest.generations.length === 0)
+  ) {
     throw new Error("Invalid deployment asset manifest");
   }
   const generationIds = new Set();
@@ -272,10 +276,13 @@ export async function mergeDeploymentAssets({
   if (typeof fetchAsset !== "function") {
     throw new Error("Deployment retention requires an asset fetcher");
   }
-  validateDeploymentManifest({
-    version: MANIFEST_VERSION,
-    generations: previousManifest.generations ?? [],
-  });
+  validateDeploymentManifest(
+    {
+      version: MANIFEST_VERSION,
+      generations: previousManifest.generations ?? [],
+    },
+    { allowEmpty: true },
+  );
   const current = {
     id: generationId,
     assets: await assetsFromDist(distDir),

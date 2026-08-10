@@ -33,6 +33,14 @@ async function writeAsset(distDir, path, content) {
   };
 }
 
+test("rejects an empty live deployment manifest", async () => {
+  const { validateDeploymentManifest } = await import("./deployment-assets.mjs");
+  assert.throws(
+    () => validateDeploymentManifest({ version: 1, generations: [] }),
+    /invalid deployment asset manifest/i,
+  );
+});
+
 test("retains old hashed JS/CSS with a bounded, integrity-checked manifest", async () => {
   const files = await fixture();
   try {

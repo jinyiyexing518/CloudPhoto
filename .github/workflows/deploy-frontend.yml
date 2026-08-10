@@ -13,7 +13,10 @@ on:
       - "package.json"
       - "scripts/auth-layout-cdp.mjs"
       - "scripts/check-static-cache-config.mjs"
+      - "scripts/deployment-asset-retention.test.mjs"
+      - "scripts/deployment-assets.mjs"
       - "scripts/security-headers.test.mjs"
+      - "scripts/stale-deployment-browser.test.mjs"
       - ".github/workflows/deploy-frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -42,7 +45,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 50
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v7

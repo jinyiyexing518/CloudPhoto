@@ -209,15 +209,19 @@ function saveIntent(storage: RecoveryStorage | null, intent: RecoveryNavigationI
 }
 
 export function consumeDeploymentRecoveryIntent(
-  storage: Pick<Storage, "getItem" | "removeItem"> = sessionStorage,
+  storage?: Pick<Storage, "getItem" | "removeItem">,
 ): RecoveryNavigationIntent | null {
+  let resolvedStorage: Pick<Storage, "getItem" | "removeItem"> | undefined;
   try {
-    const parsed = JSON.parse(storage.getItem(RECOVERY_INTENT_KEY) ?? "null") as RecoveryNavigationIntent | null;
-    storage.removeItem(RECOVERY_INTENT_KEY);
+    resolvedStorage = storage ?? sessionStorage;
+    const parsed = JSON.parse(
+      resolvedStorage.getItem(RECOVERY_INTENT_KEY) ?? "null",
+    ) as RecoveryNavigationIntent | null;
+    resolvedStorage.removeItem(RECOVERY_INTENT_KEY);
     return safeIntent(parsed);
   } catch (error) {
     try {
-      storage.removeItem(RECOVERY_INTENT_KEY);
+      resolvedStorage?.removeItem(RECOVERY_INTENT_KEY);
     } catch {
       // The caller already receives a fail-closed null intent.
     }
@@ -258,10 +262,8 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
     if (
       !manual
       && failure
-      && (
-        (attemptId !== null && record.attempts.includes(attemptId))
-        || record.chunks.includes(failure.fingerprint)
-      )
+      && attemptId !== null
+      && record.attempts.includes(attemptId)
     ) {
       setState(manualRecoveryState("exhausted", "新版资源仍未加载，请刷新新版或稍后重试。"));
       return;
@@ -285,7 +287,7 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
     if (!manual && failure && attemptId) {
       const persisted = writeRecord(options.storage, {
         attempts: [...record.attempts, attemptId],
-        chunks: [...record.chunks, failure.fingerprint],
+        chunks: record.chunks,
       });
       if (!persisted) {
         recoveryInFlight = false;

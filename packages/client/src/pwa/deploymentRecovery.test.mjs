@@ -60,6 +60,7 @@ function createDangerousOperationGate(initialActive = false) {
 
 function createFixture({
   active = false,
+  buildId = "1397991e",
   online = true,
   storage = new MemoryStorage(),
   updater = true,
@@ -76,7 +77,7 @@ function createFixture({
   const coordinator = createDeploymentRecoveryCoordinator({
     target,
     storage,
-    buildId: "1397991e",
+    buildId,
     origin: "https://cloudphotos.top",
     isOnline: () => currentlyOnline,
     getDangerousOperationSnapshot: gate.getSnapshot,
@@ -278,6 +279,24 @@ test("same chunk/build cannot auto-reload twice and leaves an actionable state",
   assert.equal(second.coordinator.getState().secondaryActionLabel, "稍后重试");
 });
 
+test("URL-less Safari failures get one recovery for each distinct build", async () => {
+  const storage = new MemoryStorage();
+  const first = createFixture({ buildId: "build-a", storage });
+  first.target.dispatchEvent(new FakePreloadErrorEvent(
+    new TypeError("Importing a module script failed."),
+  ));
+  await flushRecovery();
+  assert.equal(first.calls.hardRefresh, 1);
+  first.coordinator.dispose();
+
+  const second = createFixture({ buildId: "build-b", storage });
+  second.target.dispatchEvent(new FakePreloadErrorEvent(
+    new TypeError("Importing a module script failed."),
+  ));
+  await flushRecovery();
+  assert.equal(second.calls.hardRefresh, 1);
+});
+
 test("blocked session storage never permits an unbounded automatic refresh", async () => {
   const storage = new MemoryStorage();
   storage.setItem = () => {
@@ -296,34 +315,20 @@ test("blocked session storage never permits an unbounded automatic refresh", asy
 });
 
 test("blocked sessionStorage getter fails closed before React startup", async () => {
-  const source = await import("./deploymentRecovery.ts");
-  const target = new EventTarget();
-  Object.defineProperties(target, {
-    location: {
-      value: {
-        href: "https://cloudphotos.top/",
-        origin: "https://cloudphotos.top",
-        replace() {},
-      },
-    },
-    navigator: { value: { onLine: true } },
-    history: { value: { state: null, replaceState() {} } },
-    sessionStorage: {
-      get() {
-        throw new DOMException("Storage blocked", "SecurityError");
-      },
+  const original = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    get() {
+      throw new DOMException("Storage blocked", "SecurityError");
     },
   });
-
-  assert.doesNotThrow(() => source.installDeploymentRecovery(target, "test-build"));
-  assert.equal(
-    source.reportLazyBoundaryFailure(
-      new Error("Unable to preload CSS for /assets/AuthenticatedApp-blocked1.css"),
-    ),
-    true,
-  );
-  await flushRecovery();
-  assert.equal(source.getDeploymentRecoveryState().status, "exhausted");
+  try {
+    assert.doesNotThrow(() => consumeDeploymentRecoveryIntent());
+    assert.equal(consumeDeploymentRecoveryIntent(), null);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "sessionStorage", original);
+    else delete globalThis.sessionStorage;
+  }
 });
 
 test("blocked storage removal cannot escape recovery intent consumption", () => {

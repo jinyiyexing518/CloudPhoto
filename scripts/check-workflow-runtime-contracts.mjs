@@ -97,7 +97,12 @@ const runtimeAlgorithmPaths = [
   "packages/algorithm/package.json",
   "packages/algorithm/tsconfig.json",
 ];
-const frontendGatePaths = ["scripts/auth-layout-cdp.mjs"];
+const frontendGatePaths = [
+  "scripts/auth-layout-cdp.mjs",
+  "scripts/deployment-asset-retention.test.mjs",
+  "scripts/deployment-assets.mjs",
+  "scripts/stale-deployment-browser.test.mjs",
+];
 
 function indentation(line) {
   return line.match(/^\s*/)[0].length;
@@ -600,9 +605,9 @@ export function checkWorkflowRuntimeContracts(workflows) {
   } else {
     if (
       inspectedFrontend.checkoutFetchDepths.length !== 1
-      || inspectedFrontend.checkoutFetchDepths[0].depth !== "50"
+      || inspectedFrontend.checkoutFetchDepths[0].depth !== "0"
     ) {
-      issues.push(`${frontendWorkflow} must fetch 50 commits for the bounded bootstrap generation`);
+      issues.push(`${frontendWorkflow} must fetch full history for pinned bootstrap generations`);
     }
     if (!inspectedFrontend.runCommands.includes(retentionCommand)) {
       issues.push(`${frontendWorkflow} must prepare bounded deployment assets before upload`);
