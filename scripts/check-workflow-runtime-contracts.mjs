@@ -88,6 +88,7 @@ const runtimeAlgorithmPaths = [
   "packages/algorithm/package.json",
   "packages/algorithm/tsconfig.json",
 ];
+const frontendGatePaths = ["scripts/auth-layout-cdp.mjs"];
 
 function indentation(line) {
   return line.match(/^\s*/)[0].length;
@@ -696,6 +697,11 @@ export function checkWorkflowRuntimeContracts(workflows) {
           `${path} must use only runtime algorithm paths, found ${configuredPath}`
         );
       }
+    }
+  }
+  for (const requiredPath of frontendGatePaths) {
+    if (!deployPushPaths[frontendWorkflow]?.includes(requiredPath)) {
+      issues.push(`${frontendWorkflow} must include frontend gate path ${requiredPath}`);
     }
   }
 

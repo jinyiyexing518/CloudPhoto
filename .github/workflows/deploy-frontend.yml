@@ -11,6 +11,7 @@ on:
       - "packages/client/**"
       - "infra/nginx.conf"
       - "package.json"
+      - "scripts/auth-layout-cdp.mjs"
       - "scripts/check-static-cache-config.mjs"
       - "scripts/security-headers.test.mjs"
       - ".github/workflows/deploy-frontend.yml"
