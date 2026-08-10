@@ -771,12 +771,16 @@ const http = await import(httpUrl);
     export const getPreferredMediaUrl = (url) => url;
     export const routeMediaUrls = (photo) => photo;
   `).toString("base64")}`;
+  const uploadRetryUrl = await compileTypeScript(
+    "packages/client/src/services/uploadRetry.ts",
+  );
   const uploadApi = await importTypeScript(
     "packages/client/src/services/uploadApi.ts",
     (source) => source
       .replace('"../utils/apiBase"', JSON.stringify(apiBaseUrl))
       .replace('"./http"', JSON.stringify(httpUrl))
-      .replace('"./mediaRoute"', JSON.stringify(mediaStubUrl)),
+      .replace('"./mediaRoute"', JSON.stringify(mediaStubUrl))
+      .replace('"./uploadRetry"', JSON.stringify(uploadRetryUrl)),
   );
   const file = { name: "photo.jpg", type: "image/jpeg" };
   await assert.rejects(
