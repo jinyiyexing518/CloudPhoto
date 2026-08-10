@@ -120,6 +120,7 @@ import {
   type UploadRequestError,
   waitForUploadRetry,
 } from "./services/uploadRetry";
+import { hasValidGps } from "./utils/gpsCoordinates";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -802,7 +803,7 @@ function AppContent() {
       if (filters.favoriteOnly && !p.favorite) return false;
       if (filters.missingSubjectOnly && Boolean(p.subject?.trim())) return false;
       if (filters.uncategorizedOnly && Boolean((p.folder ?? "").trim())) return false;
-      if (filters.noGpsOnly && Boolean(p.gpsLat)) return false;
+      if (filters.noGpsOnly && hasValidGps(p.gpsLat, p.gpsLon)) return false;
       if (filters.folder && (p.folder ?? "").trim() !== filters.folder) return false;
       return true;
     });
@@ -924,7 +925,7 @@ function AppContent() {
     map: {
       label: "记忆地图",
       icon: "🗺️",
-      count: photos.filter((photo) => photo.gpsLat).length || null,
+      count: photos.filter((photo) => hasValidGps(photo.gpsLat, photo.gpsLon)).length || null,
     },
     capsule: { label: "时光胶囊", icon: "💌", count: null },
     story: { label: "自动故事", icon: "🎬", count: null },

@@ -12,6 +12,7 @@ import {
 import MediaThumb from "../shared/MediaThumb";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import { useToast } from "../../contexts/ToastContext";
+import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 
 // Module-level Leaflet cache - avoids re-importing on every effect run
 let cachedLeaflet: typeof import("leaflet") | null = null;
@@ -118,32 +119,36 @@ export default function MemoryMap({
     // Merge: Cosmos locations are the source of truth for GPS coords;
     // enrich with full Photo object when available (provides URL, subject, etc.)
     const fromCosmos: GeoPin[] = cosmosLocations
-      .filter((l) => !isNaN(l.lat) && !isNaN(l.lon))
-      .map((l) => ({
-        name: l.name,
-        lat: l.lat,
-        lon: l.lon,
-        originalName: l.originalName,
-        contentType: l.contentType,
-        photo: photoMap.get(l.name),
-      }));
+      .flatMap((location) => {
+        const gps = readGpsCoordinates(String(location.lat), String(location.lon));
+        return gps
+          ? [{
+              name: location.name,
+              lat: gps.lat,
+              lon: gps.lon,
+              originalName: location.originalName,
+              contentType: location.contentType,
+              photo: photoMap.get(location.name),
+            }]
+          : [];
+      });
 
     // Also include photos with GPS that aren't in Cosmos yet (e.g. just uploaded this session)
-    const cosmosNames = new Set(cosmosLocations.map((l) => l.name));
+    const cosmosNames = new Set(fromCosmos.map((location) => location.name));
     const fromPhotosOnly: GeoPin[] = currentPhotos
-      .filter((p) => p.gpsLat && p.gpsLon && !cosmosNames.has(p.name))
+      .filter((p) => !cosmosNames.has(p.name))
       .flatMap((p) => {
-        const lat = parseFloat(p.gpsLat!);
-        const lon = parseFloat(p.gpsLon!);
-        if (isNaN(lat) || isNaN(lon)) return [];
-        return [{ name: p.name, lat, lon, originalName: p.originalName, contentType: p.contentType, photo: p } satisfies GeoPin];
+        const gps = readGpsCoordinates(p.gpsLat, p.gpsLon);
+        if (!gps) return [];
+        return [{ name: p.name, lat: gps.lat, lon: gps.lon, originalName: p.originalName, contentType: p.contentType, photo: p } satisfies GeoPin];
       });
 
     return [...fromCosmos, ...fromPhotosOnly];
   }, [cosmosLocations, groupId, photos, photosGroupId]);
 
   const noGpsPhotos = useMemo(
-    () => (photosGroupId === groupId ? photos : []).filter((p) => !p.gpsLat || !p.gpsLon),
+    () => (photosGroupId === groupId ? photos : [])
+      .filter((p) => !readGpsCoordinates(p.gpsLat, p.gpsLon)),
     [groupId, photos, photosGroupId],
   );
 
@@ -271,21 +276,26 @@ export default function MemoryMap({
 
   const saveGps = async (lat: string, lon: string) => {
     if (!editTarget) return;
+    const gps = readGpsCoordinates(lat, lon);
+    if (!gps) {
+      showToast("请输入有效的纬度（-90 到 90）和经度（-180 到 180）", "error");
+      return;
+    }
     setSaving(true);
     try {
-      await updatePhotoGps(editTarget.name, lat, lon);
-      onGpsUpdate?.(editTarget.name, lat, lon);
+      const normalizedLat = String(gps.lat);
+      const normalizedLon = String(gps.lon);
+      await updatePhotoGps(editTarget.name, normalizedLat, normalizedLon);
+      onGpsUpdate?.(editTarget.name, normalizedLat, normalizedLon);
       closeEdit();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "更新照片位置失败", "error");
     } finally {
       setSaving(false);
     }
   };
 
-  const canSaveManual =
-    manualLat.trim() !== "" &&
-    manualLon.trim() !== "" &&
-    !isNaN(parseFloat(manualLat)) &&
-    !isNaN(parseFloat(manualLon));
+  const canSaveManual = readGpsCoordinates(manualLat, manualLon) !== null;
 
   const NO_GPS_PAGE = 24;
   const visibleNoGps = noGpsExpanded

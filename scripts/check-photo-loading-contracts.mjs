@@ -47,6 +47,7 @@ const nginx = read("infra/nginx.conf");
 const setup = read("infra/setup.sh");
 const upload = read("packages/server/src/functions/photos/uploadPhoto.ts");
 const metadataBackfill = read("packages/server/src/functions/photos/backfillPhotoMetadata.ts");
+const metadataRecovery = read("packages/server/src/functions/photos/photoMetadataRecovery.ts");
 const backfill = read("packages/server/src/functions/photos/backfillThumbnails.ts");
 const backfillCursor = read("packages/server/src/functions/photos/backfillCursor.ts");
 const photoLocationSync = read("packages/server/src/utils/cosmos/photoLocationSync.ts");
@@ -554,24 +555,33 @@ assert(backfill.indexOf("thumbClient.uploadData") < backfill.indexOf('setMeta(la
 for (const source of [upload, backfill, setVideoThumb]) {
   requireText(source, "ifMatch:", "derivative metadata ETag");
 }
-requireText(metadataBackfill, "const props = await blockBlobClient.getProperties()", "fresh metadata backfill read");
-requireText(metadataBackfill, "conditions: { ifMatch: props.etag }", "metadata backfill ETag");
+requireText(metadataBackfill, "downloadToBuffer(", "bounded metadata range read");
+requireText(metadataBackfill, "conditions: { ifMatch: etag }", "metadata range source ETag");
+requireText(metadataBackfill, "conditions: { ifMatch: sourceEtag }", "metadata write source ETag");
 assert(
-  metadataBackfill.indexOf("const props = await blockBlobClient.getProperties()")
-    < metadataBackfill.indexOf("const buf = await blockBlobClient.downloadToBuffer()"),
-  "metadata EXIF extraction must bind to a pre-download source ETag",
+  metadataBackfill.indexOf("conditions: { ifMatch: etag }")
+    < metadataBackfill.indexOf("conditions: { ifMatch: sourceEtag }"),
+  "metadata EXIF extraction and write must bind to one listed source ETag",
 );
 assert(
-  !metadataBackfill.includes("isPreconditionFailed(error)"),
+  !/downloadToBuffer\(\s*\)/.test(metadataBackfill)
+    && !metadataBackfill.includes("isPreconditionFailed(error)"),
   "metadata backfill must not retry stale EXIF against a replacement Blob",
 );
 requireText(metadataBackfill, 'request.query.get("cursor")', "metadata progress cursor");
 requireText(metadataBackfill, '!request.query.has("limit")', "legacy partial-backfill rejection");
 requireText(metadataBackfill, "listing.byPage({", "paged metadata listing");
 requireText(metadataBackfill, 'filename.startsWith("_th_")', "metadata derivative exclusion");
-requireText(metadataBackfill, "syncPhotoLocationFromBlob(blockBlobClient", "current Blob GPS publication");
-requireText(metadataBackfill, "needsLatestLat", "independent latitude backfill");
-requireText(metadataBackfill, "needsLatestLon", "independent longitude backfill");
+requireText(metadataBackfill, "syncPhotoLocationFromBlob(", "current Blob GPS publication");
+requireText(metadataBackfill, 'request.query.get("dryRun") === "true"', "metadata read-only estimate");
+requireText(metadataBackfill, "PAGE_BYTE_BUDGET = 8 * 1024 * 1024", "metadata page byte budget");
+requireText(metadataRecovery, "setGpsMetadata(latestMetadata, extracted.gps)", "atomic GPS recovery");
+requireText(metadataRecovery, "deleteGpsMetadata(latestMetadata)", "atomic invalid GPS cleanup");
+assert(
+  metadataRecovery.indexOf("if (incomplete) {")
+    < metadataRecovery.indexOf("const latestMetadata = { ...input.metadata }"),
+  "incomplete scans must return before metadata writes or index reconciliation",
+);
 requireText(photoApi, 'paginationError: "照片元数据回填未能继续分页"', "metadata cursor error");
 requireText(
   maintenanceBackfillPaging,

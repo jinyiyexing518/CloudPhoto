@@ -116,10 +116,14 @@ export async function getUserById(userId: string): Promise<UserDoc | null> {
   } catch { return null; }
 }
 
-export async function isGroupMember(groupId: string, userId: string): Promise<boolean> {
+export async function isGroupMember(
+  groupId: string,
+  userId: string,
+  abortSignal?: AbortSignal,
+): Promise<boolean> {
   try {
     const container = await getGroupsContainer();
-    const { resource } = await container.item(groupId, groupId).read<GroupDoc>();
+    const { resource } = await container.item(groupId, groupId).read<GroupDoc>({ abortSignal });
     return resource?.members.some((m) => m.userId === userId) ?? false;
   } catch { return false; }
 }

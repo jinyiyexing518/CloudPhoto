@@ -15,10 +15,10 @@ test("reports cumulative metadata progress after every verified page", async () 
   });
 
   assert.deepEqual(progress, [
-    { processed: 30, changed: 20, skipped: 0, indexReconciled: 0, failed: 1, hasMore: true },
-    { processed: 37, changed: 24, skipped: 0, indexReconciled: 0, failed: 1, hasMore: false },
+    { processed: 30, changed: 20, skipped: 0, indexReconciled: 0, failed: 1, candidates: 0, estimatedBytes: 0, bytesRead: 0, recovered: 0, cleanedInvalid: 0, trulyMissing: 0, skippedBudget: 0, hasMore: true },
+    { processed: 37, changed: 24, skipped: 0, indexReconciled: 0, failed: 1, candidates: 0, estimatedBytes: 0, bytesRead: 0, recovered: 0, cleanedInvalid: 0, trulyMissing: 0, skippedBudget: 0, hasMore: false },
   ]);
-  assert.deepEqual(totals, { processed: 37, changed: 24, skipped: 0, indexReconciled: 0, failed: 1 });
+  assert.deepEqual(totals, { processed: 37, changed: 24, skipped: 0, indexReconciled: 0, failed: 1, candidates: 0, estimatedBytes: 0, bytesRead: 0, recovered: 0, cleanedInvalid: 0, trulyMissing: 0, skippedBudget: 0 });
 });
 
 test("reports cumulative thumbnail progress after every verified page", async () => {
@@ -39,6 +39,13 @@ test("reports cumulative thumbnail progress after every verified page", async ()
     skipped: 26,
     indexReconciled: 0,
     failed: 1,
+    candidates: 0,
+    estimatedBytes: 0,
+    bytesRead: 0,
+    recovered: 0,
+    cleanedInvalid: 0,
+    trulyMissing: 0,
+    skippedBudget: 0,
     hasMore: false,
   });
 });
@@ -71,7 +78,50 @@ test("caller abort prevents the next page request and preserves prior progress",
     skipped: 17,
     indexReconciled: 0,
     failed: 1,
+    candidates: 0,
+    estimatedBytes: 0,
+    bytesRead: 0,
+    recovered: 0,
+    cleanedInvalid: 0,
+    trulyMissing: 0,
+    skippedBudget: 0,
     hasMore: true,
+  });
+
+  test("aggregates dry-run and recovery traffic metrics across stable cursors", async () => {
+    const pages = [
+      {
+        processed: 30, changed: 2, skipped: 1, indexReconciled: 28, failed: 0,
+        candidates: 4, estimatedBytes: 1_000, bytesRead: 600, recovered: 2,
+        cleanedInvalid: 1, trulyMissing: 1, skippedBudget: 1,
+        hasMore: true, cursor: "next",
+      },
+      {
+        processed: 2, changed: 1, skipped: 0, indexReconciled: 2, failed: 0,
+        candidates: 1, estimatedBytes: 200, bytesRead: 150, recovered: 1,
+        cleanedInvalid: 0, trulyMissing: 0, skippedBudget: 0,
+        hasMore: false,
+      },
+    ];
+    const totals = await runMaintenanceBackfillPages({
+      requestPage: async () => pages.shift(),
+      paginationError: "cannot continue",
+    });
+
+    assert.deepEqual(totals, {
+      processed: 32,
+      changed: 3,
+      skipped: 1,
+      indexReconciled: 30,
+      failed: 0,
+      candidates: 5,
+      estimatedBytes: 1_200,
+      bytesRead: 750,
+      recovered: 3,
+      cleanedInvalid: 1,
+      trulyMissing: 1,
+      skippedBudget: 1,
+    });
   });
 });
 

@@ -507,6 +507,13 @@ export async function permanentlyDeletePhoto(name: string, signal?: AbortSignal)
 export interface PhotoMetadataBackfillProgress {
   processed: number;
   updated: number;
+  candidates: number;
+  estimatedBytes: number;
+  bytesRead: number;
+  recovered: number;
+  cleanedInvalid: number;
+  trulyMissing: number;
+  skippedBudget: number;
   indexReconciled: number;
   failed: number;
   hasMore: boolean;
@@ -522,6 +529,7 @@ export interface ThumbnailBackfillProgress {
 
 export interface PhotoMetadataBackfillOptions {
   signal?: AbortSignal;
+  dryRun?: boolean;
   onProgress?: (progress: PhotoMetadataBackfillProgress) => void;
 }
 
@@ -533,7 +541,7 @@ export interface ThumbnailBackfillOptions {
 export async function backfillPhotoMetadata(
   groupId = "",
   options: PhotoMetadataBackfillOptions = {},
-): Promise<{ processed: number; updated: number; indexReconciled: number; failed: number }> {
+): Promise<Omit<PhotoMetadataBackfillProgress, "hasMore">> {
   const authGeneration = getAuthGeneration();
   const assertCurrentAuth = () => {
     if (authGeneration !== getAuthGeneration()) {
@@ -548,6 +556,7 @@ export async function backfillPhotoMetadata(
       const qp = new URLSearchParams();
       if (groupId) qp.set("groupId", groupId);
       qp.set("limit", "30");
+      if (options.dryRun) qp.set("dryRun", "true");
       if (cursor) qp.set("cursor", cursor);
       const response = await fetchWithTimeout(
         `${API_BASE}/photos/backfill?${qp}`,
@@ -563,17 +572,31 @@ export async function backfillPhotoMetadata(
         processed: number;
         updated: number;
         indexReconciled: number;
+        candidates: number;
+        estimatedBytes: number;
+        bytesRead: number;
+        recovered: number;
+        cleanedInvalid: number;
+        trulyMissing: number;
+        skippedBudget: number;
         failed: number;
         hasMore: boolean;
         cursor?: string;
       };
       assertCurrentAuth();
-      return { ...result, changed: result.updated, skipped: 0 };
+      return { ...result, changed: result.updated, skipped: result.skippedBudget };
     },
     onProgress: (progress: MaintenanceBackfillProgress) => {
       options.onProgress?.({
         processed: progress.processed,
         updated: progress.changed,
+        candidates: progress.candidates,
+        estimatedBytes: progress.estimatedBytes,
+        bytesRead: progress.bytesRead,
+        recovered: progress.recovered,
+        cleanedInvalid: progress.cleanedInvalid,
+        trulyMissing: progress.trulyMissing,
+        skippedBudget: progress.skippedBudget,
         indexReconciled: progress.indexReconciled,
         failed: progress.failed,
         hasMore: progress.hasMore,
@@ -583,6 +606,13 @@ export async function backfillPhotoMetadata(
   return {
     processed: totals.processed,
     updated: totals.changed,
+    candidates: totals.candidates,
+    estimatedBytes: totals.estimatedBytes,
+    bytesRead: totals.bytesRead,
+    recovered: totals.recovered,
+    cleanedInvalid: totals.cleanedInvalid,
+    trulyMissing: totals.trulyMissing,
+    skippedBudget: totals.skippedBudget,
     indexReconciled: totals.indexReconciled,
     failed: totals.failed,
   };

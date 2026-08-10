@@ -130,8 +130,8 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 - **移动照片** — 通过 UI 或拖拽在文件夹间移动照片
 - **时间线视图** — 按日期分组的照片时间线，默认最新在前
 - **📷/☁ 排序方式切换** — 可在「拍摄时间」与「上传时间」两种排序之间切换；无拍摄时间时自动回退到上传时间
-- **受保护的历史维护任务** — 历史缩略图生成与照片元数据回填按绑定账号空间的不透明游标逐页执行；设置页实时显示累计处理/生成或更新/跳过/失败数，可停止并保留已完成页统计。任务期间禁止重复启动、关闭设置、切 Tab/空间、关闭页面或激活 PWA 更新；切号、卸载或空间漂移会中止当前请求及后续分页
-- **照片地点可靠恢复** — 照片 GPS 继续以 Blob metadata 为事实源；上传响应会明确标记暂未写入 Cosmos 位置索引的情况，历史元数据维护无需重新下载已有 GPS 的原图即可幂等修复索引。详情地址优先通过鉴权后的 `/api/geocode/reverse` 获取，失败时仅直连 Nominatim 一次，并始终保留坐标兜底显示
+- **受保护的历史维护任务** — 历史缩略图生成与照片元数据回填按绑定账号空间的不透明游标逐页执行；位置恢复先做只读 dry-run，展示候选数和预计读取量并要求确认，执行时显示恢复、真实缺失、无效清理、预算跳过和实际读取字节。任务期间禁止重复启动、关闭设置、切 Tab/空间、关闭页面或激活 PWA 更新；切号、卸载或空间漂移会中止当前请求及后续分页
+- **照片地点可靠恢复** — 照片 GPS 继续以 Blob metadata 为事实源；纬度/经度按有限数值和 `[-90,90]`/`[-180,180]` 原子校验，空白、`NaN`、Infinity、越界及单边值均进入恢复。维护仅对非删除图片做按 MIME 分层、每文件硬上限和每页 8 MiB 预算的 Blob range EXIF 扫描；完整无 GPS 才清理无效 pair 并删除陈旧索引，不完整扫描保留为可重试。已有合法 GPS 不下载原图并可幂等重建索引
 - **以照片为主的聚焦工具栏** — 首页顶部工具栏轻量展示当前空间、数量、运行模式及高价值导航入口
 - **全高局部宽侧边栏** — 时间线和重要片段使用占横向 80%–90% 的右侧全高面板，其余区域变暗，视觉上明确是「侧面弹出工具面板」
 - **侧栏筛选自适应重排** — 时间线 `FilterBar` 通过显式 sidebar variant 按容器宽度重排：搜索与清空保持独立首行，快捷筛选和网格尺寸自动换行；320–480px、200% 缩放、长中英文标签和激活 chip 均保持完整可见及 44px 触控目标，桌面默认布局不变
@@ -372,7 +372,7 @@ previewName       2048 px WebP 名称（仅在 derivative 上传成功后以 ETa
 | `POST`   | `/api/photos/move` | ✓ | 将照片移动到其他文件夹 |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | 更新主题/文件夹/原始名称/拍摄时间/GPS；冲突返回 `409` |
 | `DELETE` | `/api/photos?name=<blobName>` | ✓ | 软删除照片；冲突返回 `409` |
-| `POST`   | `/api/photos/backfill?limit=30[&groupId=<id>&cursor=<opaque>]` | ✓ | 分页扫描照片：缺少 `takenAt`/GPS 时从 EXIF 回填；已有合法 GPS 时不下载原图、直接修复位置索引。返回 `{ processed, updated, indexReconciled, failed, hasMore, cursor? }` |
+| `POST`   | `/api/photos/backfill?limit=30[&groupId=<id>&cursor=<opaque>&dryRun=true]` | ✓ | 分页恢复非删除图片元数据；`dryRun=true` 只读 metadata 并估算候选/字节，执行时以 ETag 条件 range 读取和写回。返回 `{ processed, updated, candidates, estimatedBytes, bytesRead, recovered, cleanedInvalid, trulyMissing, skippedBudget, indexReconciled, failed, hasMore, cursor }` |
 
 **`GET /api/photos` 所有权规则：**
 - `?groupId=<id>` — 请求者必须是该群组成员

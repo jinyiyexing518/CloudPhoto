@@ -37,7 +37,7 @@ test("tracks cumulative thumbnail progress and derives accurate copy", () => {
   );
 });
 
-test("tracks metadata progress without inventing skipped totals or percentages", () => {
+test("tracks metadata recovery, missing, budget, and byte progress", () => {
   let state = reduceMaintenanceTaskEvent(null, {
     type: "start",
     operation: createMaintenanceTask("meta-1", "metadata", ""),
@@ -49,14 +49,21 @@ test("tracks metadata progress without inventing skipped totals or percentages",
     changed: 18,
     skipped: 0,
     failed: 2,
+    candidates: 20,
+    estimatedBytes: 2_000_000,
+    bytesRead: 1_500_000,
+    recovered: 10,
+    cleanedInvalid: 4,
+    trulyMissing: 6,
+    skippedBudget: 2,
     hasMore: true,
   });
 
   assert.equal(
     getMaintenanceBannerText(state),
-    "回填照片元数据：已处理 30 张，更新 18 张，失败 2 张",
+    "回填照片元数据：候选 20 张，恢复 10 张，确认缺失 6 张，清理无效 4 张，预算跳过 2 张，读取 1.4 MiB，失败 2 张",
   );
-  assert.doesNotMatch(getMaintenanceBannerText(state), /%|跳过/);
+  assert.doesNotMatch(getMaintenanceBannerText(state), /%/);
 });
 
 test("stale progress and completion cannot overwrite or clear a newer operation", () => {

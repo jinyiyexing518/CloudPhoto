@@ -40,6 +40,9 @@ test("memory map renders Cosmos locations only for the workspace that produced t
   ]);
   assert.match(memoryMap, /cosmosLocationState\.workspace === groupId/);
   assert.match(memoryMap, /photosGroupId === groupId \? photos : \[\]/);
+  assert.match(memoryMap, /new Set\(fromCosmos\.map\(\(location\) => location\.name\)\)/);
+  assert.match(memoryMap, /readGpsCoordinates\(manualLat, manualLon\) !== null/);
+  assert.match(memoryMap, /showToast\(error instanceof Error \? error\.message/);
   assert.match(memoryMap, /setCosmosLocationState\(\{ workspace, locations \}\)/);
   assert.match(memoryMap, /controller\.abort\(new DOMException\("Workspace changed", "AbortError"\)\)/);
   assert.match(app, /activeTab === "map" && resolvedPhotoWorkspaceId !== null/);

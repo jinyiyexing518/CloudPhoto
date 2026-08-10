@@ -16,6 +16,7 @@ import {
   PhotoDerivativeNames,
   resolveListedPhotoDerivatives,
 } from "./photoDerivatives";
+import { readGpsMetadata } from "../../utils/photos/gpsCoordinates";
 
 // Azure Blob metadata is ASCII-only; free-text fields are stored as base64
 function decodeMeta(raw: string | undefined): string | undefined {
@@ -122,6 +123,7 @@ app.http("listPhotos", {
           ...(storedPreviewName ? { previewName: storedPreviewName } : {}),
         });
 
+        const gps = readGpsMetadata(blob.metadata);
         photos.push({
           name: blob.name,
           originalName: decodeMeta(getMeta(blob.metadata, "originalName")),
@@ -141,8 +143,8 @@ app.http("listPhotos", {
           lastModifiedBy: decodeMeta(getMeta(blob.metadata, "lastModifiedBy")),
           voiceMemoName,
           voiceMemoUrl: voiceMemoName ? generateSasUrlWithKey(voiceMemoName, delegationKey) : undefined,
-          gpsLat: getMeta(blob.metadata, "gpsLat"),
-          gpsLon: getMeta(blob.metadata, "gpsLon"),
+          gpsLat: gps?.gpsLat,
+          gpsLon: gps?.gpsLon,
           takenAt: getMeta(blob.metadata, "takenAt"),
           isAnimated: getMeta(blob.metadata, "isAnimated") === "1" || blob.properties.contentType === "image/gif",
         });

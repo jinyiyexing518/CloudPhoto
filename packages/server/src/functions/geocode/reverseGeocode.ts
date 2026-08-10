@@ -11,6 +11,7 @@ import {
   NominatimQueueFullError,
   NominatimUpstreamError,
 } from "../../utils/geocode/nominatimGateway";
+import { parseFiniteCoordinate } from "../../utils/photos/gpsCoordinates";
 
 interface ReverseResult {
   display_name?: string;
@@ -27,16 +28,6 @@ interface ReverseResult {
     neighbourhood?: string;
     road?: string;
   };
-}
-
-function parseFiniteCoordinate(
-  raw: string | null,
-  min: number,
-  max: number,
-): number | null {
-  if (raw === null || raw.trim() === "") return null;
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= min && value <= max ? value : null;
 }
 
 function appendUnique(parts: string[], value: string | undefined): void {

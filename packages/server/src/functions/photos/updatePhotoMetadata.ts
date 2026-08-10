@@ -7,6 +7,10 @@ import {
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
+import {
+  readGpsMetadata,
+  setGpsMetadata,
+} from "../../utils/photos/gpsCoordinates";
 
 function decodeMeta(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -62,6 +66,19 @@ app.http("updatePhotoMetadata", {
         gpsLon?: string;
         takenAt?: string;
       };
+      const gpsUpdate = body.gpsLat !== undefined || body.gpsLon !== undefined
+        ? readGpsMetadata({
+            gpsLat: body.gpsLat ?? "",
+            gpsLon: body.gpsLon ?? "",
+          })
+        : undefined;
+      if (gpsUpdate === null) {
+        return {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "gpsLat and gpsLon must be a complete valid coordinate pair" }),
+        };
+      }
 
       const blobServiceClient = getBlobServiceClient();
       const containerClient =
@@ -108,8 +125,7 @@ app.http("updatePhotoMetadata", {
             existing.voiceMemoName = body.voiceMemoName;
           }
         }
-        if (body.gpsLat !== undefined) existing.gpsLat = body.gpsLat;
-        if (body.gpsLon !== undefined) existing.gpsLon = body.gpsLon;
+        if (gpsUpdate) setGpsMetadata(existing, gpsUpdate);
         if (body.takenAt !== undefined) existing.takenAt = body.takenAt;
         if (body.updatedBy) existing.lastModifiedBy = b64(body.updatedBy);
         existing.lastModifiedAt = now;
