@@ -1214,14 +1214,21 @@ function PhotoGallery({
         window.prompt("复制分享链接", finalUrl);
       }
       const displayName = selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })();
-      addRecentShareLink(shareContext, {
+      const persistence = addRecentShareLink(shareContext, {
         photoName: selectedPhoto.name,
         displayName,
         url: finalUrl,
         expiresAt,
       });
+      if (!persistence.persisted && persistence.reason === "stale-context") return;
       onShareCreated?.(selectedPhoto.name);
-      showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
+      const successMessage = copied
+        ? `分享链接已复制（到期：${formatDate(expiresAt)}）`
+        : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`;
+      showToast(
+        persistence.persisted ? successMessage : `${successMessage}；未保存到最近记录`,
+        persistence.persisted ? "success" : "info",
+      );
     } catch (e) {
       showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");
     } finally {

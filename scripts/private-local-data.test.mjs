@@ -196,7 +196,7 @@ const shareInput = {
 const accountAShareContext = shareStore.captureRecentShareLinksContext();
 assert(accountAShareContext, "an authenticated scope must create a recent-share write context");
 assert.equal(
-  shareStore.addRecentShareLink(accountAShareContext, shareInput),
+  shareStore.addRecentShareLink(accountAShareContext, shareInput).persisted,
   true,
   "the current account may persist its own recent public share link",
 );
@@ -359,8 +359,8 @@ assert.equal(
   shareStore.addRecentShareLink(staleShareContext, {
     ...shareInput,
     url: "https://example.test/share?token=stale-public-token",
-  }),
-  false,
+  }).reason,
+  "stale-context",
   "a stale share response must not persist after an account or role switch",
 );
 assert.equal(values.has("cloudphoto_moments_insights_v1"), false, "stale writes must not recreate legacy keys");
@@ -421,13 +421,15 @@ await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
 
 const shareRaceContext = shareStore.captureRecentShareLinksContext();
 const shareRaceKey = shareStore.privateShareLinksStorageKey(shareRaceContext);
-afterSetItem = () => localStorage.removeItem("cloudphoto_private_cache_owner_v1");
+afterSetItem = () => {
+  void lifecycle.clearPrivatePhotoCaches();
+};
 assert.equal(
   shareStore.addRecentShareLink(shareRaceContext, {
     ...shareInput,
     url: "https://example.test/share?token=cross-tab-public-token",
-  }),
-  false,
+  }).reason,
+  "stale-context",
   "a cross-tab owner change during setItem must reject a share-link write",
 );
 assert.equal(values.has(shareRaceKey), false, "a rejected cross-tab share write must be rolled back");
@@ -442,8 +444,8 @@ assert.equal(
   shareStore.addRecentShareLink(invalidShareContext, {
     ...shareInput,
     displayName: "x".repeat(shareStore.RECENT_SHARE_LINKS_MAX_BYTES),
-  }),
-  false,
+  }).reason,
+  "invalid-entry",
   "oversized recent-share entries must be rejected",
 );
 
@@ -461,12 +463,73 @@ assert(
   "authenticated share responses must remain generation-fenced when local persistence is unavailable",
 );
 assert.equal(
-  shareStore.addRecentShareLink(storageBlockedContext, shareInput),
-  false,
+  shareStore.addRecentShareLink(storageBlockedContext, shareInput).reason,
+  "storage-unavailable",
   "blocked local persistence must not create an unowned recent-share record",
 );
 localStorage.setItem = storageSetItem;
 await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
+
+const quotaContext = shareStore.captureRecentShareLinksContext();
+const quotaKey = shareStore.privateShareLinksStorageKey(quotaContext);
+const originalGetItem = localStorage.getItem;
+const originalRemoveItem = localStorage.removeItem;
+localStorage.setItem = function setItemAtQuota(key, value) {
+  if (key === quotaKey) {
+    throw new DOMException("Quota exceeded", "QuotaExceededError");
+  }
+  return storageSetItem.call(this, key, value);
+};
+assert.deepEqual(
+  shareStore.addRecentShareLink(quotaContext, shareInput),
+  { persisted: false, reason: "storage-unavailable" },
+  "quota failures must be explicit without escaping after server share creation",
+);
+assert.deepEqual(
+  shareStore.listRecentShareLinks(quotaContext),
+  [],
+  "quota failures must not make recent-share listing throw",
+);
+localStorage.setItem = storageSetItem;
+assert.equal(shareStore.addRecentShareLink(quotaContext, shareInput).persisted, true);
+localStorage.getItem = function getItemWithPrivacyError(key) {
+  if (key === quotaKey) throw new DOMException("Storage blocked", "SecurityError");
+  return originalGetItem.call(this, key);
+};
+assert.deepEqual(
+  shareStore.listRecentShareLinks(quotaContext),
+  [],
+  "privacy-mode getItem failures must fail closed without crashing Settings",
+);
+assert.deepEqual(
+  shareStore.removeRecentShareLink(quotaContext, "missing"),
+  { persisted: false, reason: "storage-unavailable" },
+  "remove must report an unavailable store instead of throwing",
+);
+localStorage.getItem = function getItemWithOwnerPrivacyError(key) {
+  if (key === "cloudphoto_private_cache_owner_v1") {
+    throw new DOMException("Storage blocked", "SecurityError");
+  }
+  return originalGetItem.call(this, key);
+};
+assert.deepEqual(
+  shareStore.clearRecentShareLinks(quotaContext),
+  { persisted: false, reason: "storage-unavailable" },
+  "clear must not bypass an unavailable persisted owner marker",
+);
+assert(values.has(quotaKey), "a clear without a verified owner marker must not mutate scoped storage");
+localStorage.getItem = originalGetItem;
+localStorage.removeItem = function removeItemWithPrivacyError(key) {
+  if (key === quotaKey) throw new DOMException("Storage blocked", "SecurityError");
+  return originalRemoveItem.call(this, key);
+};
+assert.deepEqual(
+  shareStore.clearRecentShareLinks(quotaContext),
+  { persisted: false, reason: "storage-unavailable" },
+  "clear must report an unavailable store instead of throwing",
+);
+localStorage.removeItem = originalRemoveItem;
+localStorage.removeItem(quotaKey);
 
 {
   const expirationDb = createFakeWorkboxExpirationDb([
@@ -621,6 +684,7 @@ assert(
 const gallery = await read("packages/client/src/components/gallery/PhotoGallery.tsx");
 const folderView = await read("packages/client/src/components/gallery/FolderView.tsx");
 const clipboard = await read("packages/client/src/services/share/clipboard.ts");
+const http = await read("packages/client/src/services/http.ts");
 const app = await read("packages/client/src/AuthenticatedApp.tsx");
 const settings = await read("packages/client/src/components/settings/SettingsDialog.tsx");
 for (const [label, source] of [["gallery", gallery], ["home", app], ["settings", settings]]) {
@@ -647,7 +711,41 @@ for (const [label, source] of [["gallery", gallery], ["folder", folderView]]) {
     `${label} must reject stale share responses before and after asynchronous clipboard access`,
   );
   assert(source.includes("addRecentShareLink(shareContext,"), `${label} must write through its captured private-data context`);
+  assert(
+    source.includes('persistence.reason === "stale-context"')
+    && source.includes("未保存到最近记录"),
+    `${label} must keep a created link usable while distinguishing stale auth from local persistence failure`,
+  );
 }
+assert.equal(
+  gallery.match(/await createPhotoShareLink/g)?.length,
+  1,
+  "PhotoGallery must issue exactly one non-idempotent create request per share action",
+);
+assert.equal(
+  folderView.match(/await createPhotoShareLink/g)?.length,
+  1,
+  "FolderView must issue exactly one non-idempotent photo-share create request per action",
+);
+assert.equal(
+  folderView.match(/await createFolderShareLink/g)?.length,
+  1,
+  "FolderView must issue exactly one non-idempotent folder-share create request per action",
+);
+const unauthorizedRetry = http.slice(http.indexOf("export function fetchWithTimeout"));
+assert.equal(
+  unauthorizedRetry.match(/canReplayRequest\(input, init\)/g)?.length,
+  2,
+  "both 401 recovery branches must use the endpoint-aware replay guard",
+);
+assert(
+  http.includes('request?.suffix !== "/photos/share"'),
+  "share creation must be excluded from route and auth replay despite using GET",
+);
+assert(
+  http.includes("const safeToReplay = canReplayRequest(primaryInput, init);"),
+  "same-origin route recovery must not bypass the endpoint-aware share replay guard",
+);
 assert(
   folderView.includes("`cf_path_${contextKey}`") && folderView.includes("`cf_xf_${contextKey}`"),
   "folder path and empty-folder keys must retain their existing workspace context",
@@ -662,4 +760,9 @@ assert(
   && settings.includes("removeRecentShareLink(shareLinksContext, item.id)")
   && settings.includes("clearRecentShareLinks(shareLinksContext)"),
   "every Settings action on a local share must stay bound to the context that rendered it",
+);
+assert(
+  settings.includes("无法删除本地分享记录")
+  && settings.includes("无法清空本地分享记录"),
+  "Settings must surface storage failures without crashing or claiming success",
 );

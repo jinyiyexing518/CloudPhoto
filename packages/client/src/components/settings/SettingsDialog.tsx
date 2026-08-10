@@ -839,7 +839,13 @@ export default function SettingsDialog({
                       type="button"
                       className="settings-share-clear"
                       onClick={() => {
-                        if (!clearRecentShareLinks(shareLinksContext)) return;
+                        const persistence = clearRecentShareLinks(shareLinksContext);
+                        if (!persistence.persisted) {
+                          if (persistence.reason !== "stale-context") {
+                            showToast("无法清空本地分享记录，请检查浏览器存储权限", "error");
+                          }
+                          return;
+                        }
                         refreshShareLinks();
                         showToast("已清空本地分享记录", "success");
                       }}
@@ -874,7 +880,13 @@ export default function SettingsDialog({
                           <button
                             type="button"
                             onClick={() => {
-                              if (!removeRecentShareLink(shareLinksContext, item.id)) return;
+                              const persistence = removeRecentShareLink(shareLinksContext, item.id);
+                              if (!persistence.persisted) {
+                                if (persistence.reason !== "stale-context") {
+                                  showToast("无法删除本地分享记录，请检查浏览器存储权限", "error");
+                                }
+                                return;
+                              }
                               refreshShareLinks();
                             }}
                           >

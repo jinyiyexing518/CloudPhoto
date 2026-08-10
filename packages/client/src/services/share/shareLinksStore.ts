@@ -1,7 +1,7 @@
 import {
   capturePrivateLocalDataContext,
+  getPrivateLocalDataStorageContextStatus,
   isPrivateLocalDataContextCurrent,
-  isPrivateLocalDataStorageContextCurrent,
   privateLocalDataStorageKey,
   type PrivateLocalDataContext,
 } from "../privateLocalDataLifecycle.ts";
@@ -23,6 +23,23 @@ const MAX_DISPLAY_NAME_LENGTH = 512;
 const MAX_URL_LENGTH = 4096;
 
 export type RecentShareLinksContext = PrivateLocalDataContext;
+
+export type RecentShareLinksPersistenceResult =
+  | { persisted: true }
+  | {
+      persisted: false;
+      reason: "stale-context" | "storage-unavailable" | "invalid-entry" | "payload-too-large";
+    };
+
+type RecentShareLinksReadResult =
+  | { items: RecentShareLink[]; readable: true }
+  | {
+      items: [];
+      readable: false;
+      reason: "stale-context" | "storage-unavailable";
+    };
+
+const PERSISTED: RecentShareLinksPersistenceResult = { persisted: true };
 
 export function captureRecentShareLinksContext(): RecentShareLinksContext | null {
   return capturePrivateLocalDataContext();
@@ -81,21 +98,30 @@ function sanitizeShareLink(value: unknown): RecentShareLink | null {
   };
 }
 
-function removeInvalidStorage(key: string): boolean {
+function removeInvalidStorage(key: string): RecentShareLinksPersistenceResult {
   try {
     localStorage.removeItem(key);
-    return true;
+    return PERSISTED;
   } catch {
-    // Invalid private data remains inaccessible when storage itself is unavailable.
-    return false;
+    return { persisted: false, reason: "storage-unavailable" };
   }
 }
 
-function read(context: RecentShareLinksContext): RecentShareLink[] {
+function read(context: RecentShareLinksContext): RecentShareLinksReadResult {
   const key = privateShareLinksStorageKey(context);
+  let raw: string | null;
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
+    raw = localStorage.getItem(key);
+  } catch {
+    return { items: [], readable: false, reason: "storage-unavailable" };
+  }
+  if (!raw) {
+    const status = getPrivateLocalDataStorageContextStatus(context);
+    return status === "current"
+      ? { items: [], readable: true }
+      : { items: [], readable: false, reason: status };
+  }
+  try {
     if (raw.length > RECENT_SHARE_LINKS_MAX_BYTES) throw new Error("Recent share payload too large");
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length > MAX_ITEMS) {
@@ -103,30 +129,53 @@ function read(context: RecentShareLinksContext): RecentShareLink[] {
     }
     const items = parsed.map(sanitizeShareLink);
     if (items.some((item) => !item)) throw new Error("Invalid recent share entry");
-    return isPrivateLocalDataStorageContextCurrent(context)
-      ? items as RecentShareLink[]
-      : [];
+    const status = getPrivateLocalDataStorageContextStatus(context);
+    return status === "current"
+      ? { items: items as RecentShareLink[], readable: true }
+      : { items: [], readable: false, reason: status };
   } catch {
-    removeInvalidStorage(key);
-    return [];
+    const cleanup = removeInvalidStorage(key);
+    return cleanup.persisted
+      ? { items: [], readable: true }
+      : { items: [], readable: false, reason: "storage-unavailable" };
   }
 }
 
-function write(context: RecentShareLinksContext, items: RecentShareLink[]): boolean {
-  if (!isPrivateLocalDataStorageContextCurrent(context)) return false;
+function write(
+  context: RecentShareLinksContext,
+  items: RecentShareLink[],
+): RecentShareLinksPersistenceResult {
+  const initialStatus = getPrivateLocalDataStorageContextStatus(context);
+  if (initialStatus !== "current") {
+    return { persisted: false, reason: initialStatus };
+  }
   const sanitized = items.slice(0, MAX_ITEMS).map(sanitizeShareLink);
-  if (sanitized.some((item) => !item)) return false;
+  if (sanitized.some((item) => !item)) {
+    return { persisted: false, reason: "invalid-entry" };
+  }
   const serialized = JSON.stringify(sanitized);
-  if (serialized.length > RECENT_SHARE_LINKS_MAX_BYTES) return false;
+  if (serialized.length > RECENT_SHARE_LINKS_MAX_BYTES) {
+    return { persisted: false, reason: "payload-too-large" };
+  }
   const key = privateShareLinksStorageKey(context);
   try {
     localStorage.setItem(key, serialized);
-    if (isPrivateLocalDataStorageContextCurrent(context)) return true;
-    if (localStorage.getItem(key) === serialized) removeInvalidStorage(key);
-    return false;
   } catch {
-    return false;
+    return {
+      persisted: false,
+      reason: isPrivateLocalDataContextCurrent(context)
+        ? "storage-unavailable"
+        : "stale-context",
+    };
   }
+  const finalStatus = getPrivateLocalDataStorageContextStatus(context);
+  if (finalStatus === "current") return PERSISTED;
+  try {
+    if (localStorage.getItem(key) === serialized) removeInvalidStorage(key);
+  } catch {
+    // The write remains fenced and inaccessible without a matching owner marker.
+  }
+  return { persisted: false, reason: finalStatus };
 }
 
 export function listRecentShareLinks(
@@ -135,40 +184,56 @@ export function listRecentShareLinks(
   if (!context) return [];
   const now = Date.now();
   const stored = read(context);
-  const items = stored.filter((x) => {
+  if (!stored.readable) return [];
+  const items = stored.items.filter((x) => {
     const expires = new Date(x.expiresAt).getTime();
     return Number.isFinite(expires) && expires > now;
   });
-  if (items.length !== stored.length && !write(context, items)) return [];
-  return isPrivateLocalDataStorageContextCurrent(context) ? items : [];
+  if (items.length !== stored.items.length) write(context, items);
+  return getPrivateLocalDataStorageContextStatus(context) === "current" ? items : [];
 }
 
 export function addRecentShareLink(
   context: RecentShareLinksContext | null,
   input: Omit<RecentShareLink, "id" | "createdAt">,
-): boolean {
-  if (!isRecentShareLinksContextCurrent(context)) return false;
+): RecentShareLinksPersistenceResult {
+  if (!isRecentShareLinksContextCurrent(context)) {
+    return { persisted: false, reason: "stale-context" };
+  }
   const nowIso = new Date().toISOString();
   const item = sanitizeShareLink({
     ...input,
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: nowIso,
   });
-  if (!item) return false;
-  const prev = read(context).filter((x) => x.url !== input.url);
-  return write(context, [item, ...prev]);
+  if (!item) return { persisted: false, reason: "invalid-entry" };
+  const prev = read(context);
+  if (!prev.readable) return { persisted: false, reason: prev.reason };
+  return write(context, [item, ...prev.items.filter((x) => x.url !== input.url)]);
 }
 
 export function removeRecentShareLink(
   context: RecentShareLinksContext | null,
   id: string,
-): boolean {
-  if (!context) return false;
-  return write(context, read(context).filter((x) => x.id !== id));
+): RecentShareLinksPersistenceResult {
+  if (!context) return { persisted: false, reason: "stale-context" };
+  const stored = read(context);
+  if (!stored.readable) return { persisted: false, reason: stored.reason };
+  return write(context, stored.items.filter((x) => x.id !== id));
 }
 
-export function clearRecentShareLinks(context: RecentShareLinksContext | null): boolean {
-  if (!isPrivateLocalDataStorageContextCurrent(context)) return false;
-  return removeInvalidStorage(privateShareLinksStorageKey(context))
-    && isPrivateLocalDataStorageContextCurrent(context);
+export function clearRecentShareLinks(
+  context: RecentShareLinksContext | null,
+): RecentShareLinksPersistenceResult {
+  if (!context) return { persisted: false, reason: "stale-context" };
+  const initialStatus = getPrivateLocalDataStorageContextStatus(context);
+  if (initialStatus !== "current") {
+    return { persisted: false, reason: initialStatus };
+  }
+  const result = removeInvalidStorage(privateShareLinksStorageKey(context));
+  if (!result.persisted) return result;
+  const finalStatus = getPrivateLocalDataStorageContextStatus(context);
+  return finalStatus === "current"
+    ? PERSISTED
+    : { persisted: false, reason: finalStatus };
 }

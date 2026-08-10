@@ -11,6 +11,11 @@ export interface PrivateLocalDataContext {
   generation: number;
 }
 
+export type PrivateLocalDataStorageContextStatus =
+  | "current"
+  | "stale-context"
+  | "storage-unavailable";
+
 let privateLocalDataGeneration = 0;
 const resetListeners = new Set<() => void>();
 
@@ -40,15 +45,23 @@ export function isPrivateLocalDataContextCurrent(
     && getPrivatePhotoCacheOwner() === context.authScope;
 }
 
+export function getPrivateLocalDataStorageContextStatus(
+  context: PrivateLocalDataContext | null,
+): PrivateLocalDataStorageContextStatus {
+  if (!isPrivateLocalDataContextCurrent(context)) return "stale-context";
+  try {
+    return localStorage.getItem(PRIVATE_CACHE_OWNER_KEY) === context.authScope
+      ? "current"
+      : "storage-unavailable";
+  } catch {
+    return "storage-unavailable";
+  }
+}
+
 export function isPrivateLocalDataStorageContextCurrent(
   context: PrivateLocalDataContext | null,
 ): context is PrivateLocalDataContext {
-  if (!isPrivateLocalDataContextCurrent(context)) return false;
-  try {
-    return localStorage.getItem(PRIVATE_CACHE_OWNER_KEY) === context.authScope;
-  } catch {
-    return false;
-  }
+  return getPrivateLocalDataStorageContextStatus(context) === "current";
 }
 
 export function privateLocalDataStorageKey(

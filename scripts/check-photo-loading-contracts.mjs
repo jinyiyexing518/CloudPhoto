@@ -267,7 +267,7 @@ requireText(groupSwitcher, "onClick={() => void refreshGroups()}", "group load r
 requireText(http, "canHedgeOnAlternateRoute", "safe route hedge guard");
 requireText(http, "canRetryOnAlternateRoute", "failure-only route retry guard");
 requireText(http, "isSafeReplayMethod(method)", "unsafe route replay exclusion");
-requireText(http, "const safeToReplay = isSafeReplayMethod", "misrouted unsafe request replay guard");
+requireText(http, "const safeToReplay = canReplayRequest", "endpoint-aware misrouted request replay guard");
 requireText(http, "raceHedgedAttempts", "non-destructive route hedge");
 for (const path of ["/photos", "/photos/locations", "/photos/motion-video", "/photos/trash", "/geocode/search"]) {
   requireText(routingPolicy, `"${path}"`, `expensive GET hedge exclusion ${path}`);

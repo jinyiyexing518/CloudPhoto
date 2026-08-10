@@ -74,6 +74,8 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 旧版全局 `cloudphoto_moments_*_v1` 和 `cf_recent_share_links` 数据没有可信账号归属，首次会话准备或退出页刷新时会直接删除而不会自动迁移给当前账号；只留下不含照片名、账号、诊断正文或公开分享 token 的清理标记。所有延迟写入都携带授权 owner + generation，分享请求在联网前固定 generation，退出或切号后返回的旧响应无法重建旧全局键或已失效范围的数据。云端托管分享仍由服务端管理；网格大小、FAB 位置、安装提示和按工作区限定的文件夹路径不属于这次私有数据清理范围。
 
+公开分享链接由服务端成功创建后，即使浏览器因配额、隐私模式或存储权限无法写入近期记录，当前链接仍会正常显示并复制，界面会单独提示“未保存到最近记录”且不会重试非幂等的创建请求。近期记录的读取、删除和清空也会安全处理浏览器存储异常；认证 generation 失效仍优先中止显示与持久化，避免旧账号链接跨会话出现。
+
 Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutable`，短于 2 小时 SAS；Nginx CORS 仅回显 `cloudphotos.top` 受信域和实际 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`，不会接受任意 `*.azurestaticapps.net`。
 
 SWA 与 Nginx 模板统一使用 `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`。静态契约强制两端配置统一；生产 smoke 要求 SWA 直连值唯一且严格 canonical，并要求 Nginx 入口的第一个 effective HSTS 严格 canonical。Nginx 前端代理模板隐藏 SWA 上游的 HSTS、X-Content-Type-Options 与 X-Frame-Options，再由本地统一发出。仓库中的 Nginx 模板不会自动热加载到 VM，必须按部署文档手动应用后，线上尾部旧值与重复头才会消失；发布期间首值已 canonical 但尾部仍有旧本地值属于不阻断浏览器策略的基础设施 drift，不能宣称已完成 VM 热加载。

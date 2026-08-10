@@ -117,10 +117,14 @@ function requestMethod(input: RequestInfo, init?: RequestInit): string {
   ).toUpperCase();
 }
 
-function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
+function canReplayRequest(input: RequestInfo, init?: RequestInit): boolean {
   const method = requestMethod(input, init);
   const request = parseApiRequest(input);
   return isSafeReplayMethod(method) && request?.suffix !== "/photos/share";
+}
+
+function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
+  return canReplayRequest(input, init);
 }
 
 function canHedgeOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
@@ -292,7 +296,7 @@ async function fetchWithProxyFallback(
 
   const handleMissingSameOriginRoute = async (response: Response): Promise<Response> => {
     const primaryRequest = parseApiRequest(primaryInput);
-    const safeToReplay = isSafeReplayMethod(requestMethod(primaryInput, init));
+    const safeToReplay = canReplayRequest(primaryInput, init);
     const contentType = response.headers.get("content-type") ?? "";
     const routeMissing = (
       safeToReplay
@@ -575,7 +579,7 @@ export function fetchWithTimeout(
         if (requestAuthGeneration !== _authGeneration) return res;
         const newToken = await recoverFromUnauthorized(requestToken, controller.signal);
         if (newToken && requestAuthGeneration === _authGeneration) {
-          if (!isSafeReplayMethod(requestMethod(input, init))) return res;
+          if (!canReplayRequest(input, init)) return res;
           if (res.body) void res.body.cancel().catch(() => undefined);
           const retryHeaders = {
             ...(init?.headers as Record<string, string> ?? {}),
@@ -599,7 +603,7 @@ export function fetchWithTimeout(
         );
         if (sameScopeReplacement && requestAuthGeneration === _authGeneration) {
           if (replacementToken !== requestToken) {
-            if (!isSafeReplayMethod(requestMethod(input, init))) return res;
+            if (!canReplayRequest(input, init)) return res;
             if (res.body) void res.body.cancel().catch(() => undefined);
             const retryHeaders = new Headers(init?.headers);
             retryHeaders.set("Authorization", `Bearer ${replacementToken}`);

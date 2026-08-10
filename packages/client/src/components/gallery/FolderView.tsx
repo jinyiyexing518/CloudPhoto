@@ -629,14 +629,21 @@ export default function FolderView({
       if (!copied) {
         window.prompt("复制分享链接", url);
       }
-      addRecentShareLink(shareContext, {
+      const persistence = addRecentShareLink(shareContext, {
         photoName: `folder:${currentGroupId ?? "personal"}:${currentPath}`,
         displayName: currentPath === "" ? "未分类" : `文件夹：${currentPath}`,
         url,
         expiresAt,
       });
+      if (!persistence.persisted && persistence.reason === "stale-context") return;
       setShowShareFolderDialog(false);
-      showToast(copied ? `文件夹分享链接已复制（到期：${formatDate(expiresAt)}）` : `文件夹分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
+      const successMessage = copied
+        ? `文件夹分享链接已复制（到期：${formatDate(expiresAt)}）`
+        : `文件夹分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`;
+      showToast(
+        persistence.persisted ? successMessage : `${successMessage}；未保存到最近记录`,
+        persistence.persisted ? "success" : "info",
+      );
     } catch (e) {
       showToast(e instanceof Error ? `创建文件夹分享失败：${e.message}` : "创建文件夹分享失败", "error");
     } finally {
@@ -1456,14 +1463,21 @@ function FolderContent({
       if (!copied) {
         window.prompt("复制分享链接", finalUrl);
       }
-      addRecentShareLink(shareContext, {
+      const persistence = addRecentShareLink(shareContext, {
         photoName: selectedPhoto.name,
         displayName: displayName(selectedPhoto),
         url: finalUrl,
         expiresAt,
       });
+      if (!persistence.persisted && persistence.reason === "stale-context") return;
       onShareCreated?.(selectedPhoto.name);
-      showToast(copied ? `分享链接已复制（到期：${formatDate(expiresAt)}）` : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`, "success");
+      const successMessage = copied
+        ? `分享链接已复制（到期：${formatDate(expiresAt)}）`
+        : `分享链接已生成（到期：${formatDate(expiresAt)}），请手动复制`;
+      showToast(
+        persistence.persisted ? successMessage : `${successMessage}；未保存到最近记录`,
+        persistence.persisted ? "success" : "info",
+      );
     } catch (e) {
       showToast(e instanceof Error ? `创建分享链接失败：${e.message}` : "创建分享链接失败", "error");
     } finally {
