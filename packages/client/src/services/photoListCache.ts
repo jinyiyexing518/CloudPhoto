@@ -15,6 +15,7 @@ const memoryPhotoLists = new Map<string, MemoryEntry>();
 let cleanupChain: Promise<void> = Promise.resolve();
 let cacheGeneration = 0;
 const activePersistentWrites = new Set<Promise<void>>();
+const persistentWriteChains = new Map<string, Promise<void>>();
 
 function cacheUrl(key: string): string | null {
   if (typeof window === "undefined" || !("caches" in window)) return null;
@@ -74,17 +75,24 @@ async function prunePersistentCache(cache: Cache): Promise<void> {
   );
 }
 
-export async function readPhotoListCache<T>(key: string): Promise<T[] | null> {
+export async function readPhotoListCache<T>(
+  key: string,
+  expectedGeneration = cacheGeneration,
+): Promise<T[] | null> {
   const url = cacheUrl(key);
   if (!url) return null;
 
   try {
+    await cleanupChain;
+    if (expectedGeneration !== cacheGeneration) return null;
     const cache = await window.caches.open(PHOTO_LIST_CACHE_NAME);
+    if (expectedGeneration !== cacheGeneration) return null;
     await prunePersistentCache(cache);
     const response = await cache.match(url);
     if (!response) return null;
 
     const value: unknown = await response.json();
+    if (expectedGeneration !== cacheGeneration) return null;
     if (!Array.isArray(value) || value.length === 0) {
       await cache.delete(url);
       return null;
@@ -107,7 +115,8 @@ export async function writePhotoListCache<T>(
   try {
     await cleanupChain;
     if (expectedGeneration !== cacheGeneration) return;
-    const operation = (async () => {
+    const previousWrite = persistentWriteChains.get(key) ?? Promise.resolve();
+    const operation = previousWrite.catch(() => undefined).then(async () => {
       if (expectedGeneration !== cacheGeneration) return;
       const cache = await window.caches.open(PHOTO_LIST_CACHE_NAME);
       if (expectedGeneration !== cacheGeneration) return;
@@ -125,12 +134,14 @@ export async function writePhotoListCache<T>(
         }),
       );
       await prunePersistentCache(cache);
-    })();
+    });
+    persistentWriteChains.set(key, operation);
     activePersistentWrites.add(operation);
     try {
       await operation;
     } finally {
       activePersistentWrites.delete(operation);
+      if (persistentWriteChains.get(key) === operation) persistentWriteChains.delete(key);
     }
   } catch (error) {
     console.warn("写入照片列表缓存失败:", error);
@@ -141,10 +152,10 @@ export async function writePhotoListCache<T>(
  * Clears only authenticated photo data. App-shell and Workbox precache entries
  * remain intact, so logout does not force a full application redownload.
  */
-export function clearPrivatePhotoCaches(): Promise<void> {
+function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean): Promise<void> {
   cacheGeneration += 1;
   memoryPhotoLists.clear();
-  if (typeof window !== "undefined") {
+  if (clearOwner && typeof window !== "undefined") {
     try {
       localStorage.removeItem(CACHE_OWNER_KEY);
     } catch {
@@ -155,13 +166,21 @@ export function clearPrivatePhotoCaches(): Promise<void> {
   const deletePrivateCaches = async () => {
     await Promise.allSettled([...activePersistentWrites]);
     if (typeof window === "undefined" || !("caches" in window)) return;
-    await Promise.all([
-      PHOTO_LIST_CACHE_NAME,
-      ...PRIVATE_MEDIA_CACHE_NAMES,
-    ].map((name) => window.caches.delete(name)));
+    await Promise.all(cacheNames.map((name) => window.caches.delete(name)));
   };
   cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
   return cleanupChain;
+}
+
+export function invalidatePhotoListCaches(): Promise<void> {
+  return queueCacheDeletion([PHOTO_LIST_CACHE_NAME], false);
+}
+
+export function clearPrivatePhotoCaches(): Promise<void> {
+  return queueCacheDeletion(
+    [PHOTO_LIST_CACHE_NAME, ...PRIVATE_MEDIA_CACHE_NAMES],
+    true,
+  );
 }
 
 /**

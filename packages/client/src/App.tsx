@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
+import { invalidatePhotoListCaches } from "./services/photoListCache";
+import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
@@ -208,6 +210,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 function AppContent() {
   const { user, logout } = useAuth();
+  const photoCacheScope = user ? authCacheOwner(user.id, user.role) : "";
   const { currentGroupId, groups, groupsLoaded } = useGroup();
   const currentGroupIdRef = useRef(currentGroupId);
   currentGroupIdRef.current = currentGroupId;
@@ -636,17 +639,35 @@ function AppContent() {
   }, [importantPhotos, filteredPhotos.length]);
 
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const photoStateRevisionRef = useRef(0);
+  const mutatePhotos = useCallback((updater: (previous: Photo[]) => Photo[]) => {
+    photoStateRevisionRef.current += 1;
+    fetchAbortRef.current?.abort();
+    void invalidatePhotoListCaches();
+    setPhotos(updater);
+  }, []);
+
+  useEffect(() => {
+    photoStateRevisionRef.current += 1;
+    fetchAbortRef.current?.abort();
+    setPhotos([]);
+  }, [photoCacheScope]);
+
   const fetchPhotos = useCallback(async () => {
     // Cancel any in-flight previous request before starting another full Blob listing.
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
+    const stateRevision = photoStateRevisionRef.current;
+    const isCurrent = () => (
+      !controller.signal.aborted
+      && photoStateRevisionRef.current === stateRevision
+    );
     lastPhotoRefreshRef.current = Date.now();
 
-    const cacheScope = user ? `${user.id}:${user.role}` : "";
-    let stale = getCachedPhotos(currentGroupId, cacheScope);
+    let stale = getCachedPhotos(currentGroupId, photoCacheScope);
     let hasStale = stale !== null && stale.length > 0;
-    if (hasStale) {
+    if (hasStale && isCurrent()) {
       setPhotos(stale!);
       setLoading(false);
     } else {
@@ -658,8 +679,8 @@ function AppContent() {
       // The memory cache disappears on reload. Restore the recent user-scoped
       // Cache Storage entry first so the gallery can paint while Azure refreshes.
       if (!hasStale) {
-        stale = await getPersistedPhotos(currentGroupId, cacheScope);
-        if (controller.signal.aborted) return;
+        stale = await getPersistedPhotos(currentGroupId, photoCacheScope, isCurrent);
+        if (!isCurrent()) return;
         hasStale = stale !== null && stale.length > 0;
         if (hasStale) {
           setPhotos(stale!);
@@ -668,15 +689,20 @@ function AppContent() {
       }
 
       const data = await listPhotos(currentGroupId, {
-        cacheScope,
+        cacheScope: photoCacheScope,
         signal: controller.signal,
+        isCurrent,
       });
-      if (controller.signal.aborted) return;
+      if (!isCurrent()) return;
       setPhotos(data);
-    } catch {
+    } catch (error) {
       // Superseded group/focus loads are intentionally aborted and must not
       // surface a false network error regardless of the transport's error type.
       if (controller.signal.aborted) return;
+      if (isAuthorizationDriftError(error)) {
+        setPhotos([]);
+        return;
+      }
       // Always show the error — even when stale data is shown the user needs to
       // know the refresh failed (otherwise they'd silently see outdated photos).
       showToast("加载照片失败，请检查网络或服务器状态", "error");
@@ -687,7 +713,7 @@ function AppContent() {
         setLoading(false);
       }
     }
-  }, [currentGroupId, showToast, user?.id, user?.role]);
+  }, [currentGroupId, photoCacheScope, showToast]);
 
   useEffect(() => {
     void fetchPhotos();
@@ -700,7 +726,7 @@ function AppContent() {
   useEffect(() => {
     let wasHidden = false;
     const refreshIfStale = () => {
-      if (Date.now() - lastPhotoRefreshRef.current >= 60_000) {
+      if (shouldRefreshPhotoList(lastPhotoRefreshRef.current)) {
         void fetchPhotos();
       }
     };
@@ -1198,7 +1224,7 @@ function AppContent() {
               !batchController.signal.aborted
               && currentGroupIdRef.current === uploadWorkspaceId
             ) {
-              setPhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
+              mutatePhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
             }
 
             // For videos: extract a thumbnail frame client-side and persist it.
@@ -1216,7 +1242,7 @@ function AppContent() {
                   && uploadAuthGeneration === getAuthGeneration()
                   && currentGroupIdRef.current === uploadWorkspaceId
                 ) {
-                  setPhotos(prev => prev.map(p =>
+                  mutatePhotos(prev => prev.map(p =>
                     p.name === uploadedPhoto.name
                       ? {
                           ...p,
@@ -1317,7 +1343,7 @@ function AppContent() {
   const handleDelete = async (name: string) => {
     try {
       await deletePhoto(name);
-      setPhotos((prev) => prev.filter((p) => p.name !== name));
+      mutatePhotos((prev) => prev.filter((p) => p.name !== name));
       showToast("照片已删除", "success");
     } catch {
       showToast("删除失败，请重试", "error");
@@ -1331,7 +1357,7 @@ function AppContent() {
     for (let i = 0; i < names.length; i++) {
       try {
         await deletePhoto(names[i]);
-        setPhotos((prev) => prev.filter((p) => p.name !== names[i]));
+        mutatePhotos((prev) => prev.filter((p) => p.name !== names[i]));
       } catch { failed++; }
       setDeleteProgress({ done: i + 1, total: names.length, label: "删除中" });
     }
@@ -1341,25 +1367,25 @@ function AppContent() {
   };
 
   const handleSubjectUpdate = (name: string, subject: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, subject } : p))
     );
   };
 
   const handleTakenAtUpdate = (name: string, takenAt: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, takenAt } : p))
     );
   };
 
   const handleGpsUpdate = (name: string, gpsLat: string, gpsLon: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, gpsLat, gpsLon } : p))
     );
   };
 
   const handleRenamePhoto = (name: string, newOriginalName: string) => {
-    setPhotos((prev) =>
+    mutatePhotos((prev) =>
       prev.map((p) => (p.name === name ? { ...p, originalName: newOriginalName } : p))
     );
   };
@@ -1372,7 +1398,7 @@ function AppContent() {
   };
 
   const handleToggleFavorite = async (name: string, favorite: boolean): Promise<boolean> => {
-    setPhotos((prev) => prev.map((p) => (p.name === name ? { ...p, favorite } : p)));
+    mutatePhotos((prev) => prev.map((p) => (p.name === name ? { ...p, favorite } : p)));
     try {
       await setPhotoFavorite(name, favorite, user?.displayName || undefined);
       return true;
@@ -1385,10 +1411,10 @@ function AppContent() {
 
   const handleMovePhoto = async (name: string, toFolder: string): Promise<boolean> => {
     // Optimistic update (folder display only; name updated after server confirms)
-    setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
+    mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, folder: toFolder } : p));
     try {
       const { newName } = await movePhotoToFolder(name, toFolder, user?.displayName || undefined);
-      setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, name: newName, folder: toFolder } : p));
+      mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, name: newName, folder: toFolder } : p));
       return true;
     } catch {
       showToast("移动照片失败", "error");
@@ -2083,7 +2109,7 @@ function AppContent() {
                   groupId={currentGroupId || ""}
                   onViewPhoto={jumpToTimelinePhoto}
                   onGpsUpdate={(name, lat, lon) =>
-                    setPhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
+                    mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
                   }
                 />
               </Suspense>

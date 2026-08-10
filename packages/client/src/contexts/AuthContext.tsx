@@ -60,8 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Restore session on mount
   useEffect(() => {
-    const token = localStorage.getItem("cloudphoto_token");
-    if (!token) {
+    if (!getToken()) {
       setLoading(false);
       return;
     }
@@ -138,7 +137,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Auto-logout when any API call receives 401 (token expired)
   useEffect(() => {
-    setUnauthorizedHandler(logout);
+    setUnauthorizedHandler((failedToken) => {
+      if (!failedToken || getToken() === failedToken) logout();
+    });
   }, [logout]);
 
   // localStorage events notify other tabs. Clear their private data immediately

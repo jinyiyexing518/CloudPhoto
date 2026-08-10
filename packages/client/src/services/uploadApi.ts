@@ -14,6 +14,7 @@ import {
   fetchWithTimeout,
   getAuthGeneration,
   invalidateApiProxyProbe,
+  recoverFromUnauthorized,
   resolveApiUrl,
   subscribeToAuthChanges,
   toDirectApiUrl,
@@ -103,6 +104,10 @@ export async function uploadPhotoWithProgress(
   if (uploadId) params.set("uploadId", uploadId);
   const authGeneration = getAuthGeneration();
   const headers = authHeaders({ "Content-Type": file.type || "application/octet-stream" });
+  const authorization = headers.Authorization;
+  const requestToken = authorization?.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : null;
   const requestUrl = `${API_BASE}/photos/upload?${params.toString()}`;
   const uploadUrl = await resolveApiUrl(requestUrl, signal);
   const directUploadUrl = toDirectApiUrl(requestUrl);
@@ -156,7 +161,7 @@ export async function uploadPhotoWithProgress(
       };
       unsubscribeAuth = subscribeToAuthChanges(abortForAuthChange);
 
-      xhr.addEventListener("load", () => {
+      xhr.addEventListener("load", async () => {
         const contentType = xhr.getResponseHeader("content-type") ?? "";
         const routeMissing = recoverMisroutedProxy && (
           xhr.status === 404
@@ -165,12 +170,20 @@ export async function uploadPhotoWithProgress(
         );
         const gatewayFailure = [502, 503, 504, 521, 522, 523, 524].includes(xhr.status);
         if ((routeMissing || gatewayFailure) && fallbackToDirect()) return;
-        cleanup();
-
         if (xhr.status >= 200 && xhr.status < 300) {
+          cleanup();
           try { resolve(proxyPhoto(JSON.parse(xhr.responseText) as Photo)); }
           catch { reject(new Error(`上传失败: ${file.name}`)); }
+        } else if (xhr.status === 401) {
+          cleanup();
+          try {
+            await recoverFromUnauthorized(requestToken, signal);
+            reject(new Error("登录状态已更新，请手动重试上传"));
+          } catch (error) {
+            reject(error);
+          }
         } else {
+          cleanup();
           try {
             const msg = JSON.parse(xhr.responseText) as { error?: string };
             reject(new Error(msg.error ?? `上传失败: ${file.name}`));

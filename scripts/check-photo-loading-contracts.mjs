@@ -36,10 +36,10 @@ const trash = read("packages/server/src/functions/trash/listTrash.ts");
 // Cold list + persisted paint + one shared focus/visibility throttle.
 assert.equal((app.match(/\blistPhotos\(currentGroupId,/g) ?? []).length, 1);
 assert(app.indexOf("await getPersistedPhotos") < app.indexOf("await listPhotos"));
-requireText(app, "Date.now() - lastPhotoRefreshRef.current >= 60_000", "refresh gate");
+requireText(app, "shouldRefreshPhotoList(lastPhotoRefreshRef.current)", "refresh gate");
 requireText(app, 'window.addEventListener("focus", refreshIfStale)', "focus gate");
 requireText(app, "refreshIfStale();", "visibility gate");
-requireText(app, "if (controller.signal.aborted) return;", "superseded abort");
+requireText(app, "if (!isCurrent()) return;", "superseded revision guard");
 requireText(app, 'showToast("加载照片失败，请检查网络或服务器状态", "error")', "stale refresh error");
 requireText(app, '(momentsMounted || activeTab === "moments")', "deferred Moments mount");
 
@@ -71,7 +71,7 @@ requireText(auth, "getToken() === resp.token", "delayed login token guard");
 requireText(auth, "authGeneration !== getAuthGeneration()", "stale profile auth guard");
 requireText(http, "previousScope !== nextScope", "automatic role-change invalidation");
 requireText(http, "cancelTokenRefresh();", "same-scope refresh mutex cancellation");
-requireText(app, '`${user.id}:${user.role}`', "role-scoped photo list cache");
+requireText(app, "authCacheOwner(user.id, user.role)", "role-scoped photo list cache");
 requireText(http, "generation !== _authGeneration", "stale refresh generation guard");
 requireText(http, "localStorage.getItem(REFRESH_TOKEN_KEY) !== refreshToken", "stale refresh token guard");
 requireText(http, "requestAuthGeneration === _authGeneration", "stale 401 logout guard");
@@ -85,12 +85,11 @@ requireText(groupContext, "listGroupsApi(controller.signal)", "group refresh can
 requireText(groupContext, "generation !== refreshGenerationRef.current", "stale group result guard");
 requireText(groupContext, "groupsOwnerIdRef.current === user.id", "first-render group ownership guard");
 requireText(groupContext, "userId !== currentUserIdRef.current", "stale group callback guard");
-for (const path of ["/photos", "/photos/motion-video", "/photos/trash", "/geocode/search"]) {
-  requireText(http, `"${path}"`, `expensive GET replay exclusion ${path}`);
-}
-requireText(http, "canUseTimedRouteFallback(input, init)", "route replay cost guard");
-requireText(http, "SAME_ORIGIN_PROXY_PROBE_TTL_MS", "expiring same-origin proxy probe");
-requireText(http, "sameOriginRouteMissing", "misrouted SPA response detection");
+requireText(http, "canHedgeOnAlternateRoute", "safe route hedge guard");
+requireText(http, "isSafeReplayMethod(method)", "unsafe route replay exclusion");
+requireText(http, "raceHedgedAttempts", "non-destructive route hedge");
+requireText(http, "proxyProbeTtlMs(result)", "classified proxy probe expiry");
+requireText(http, "handleMissingSameOriginRoute", "misrouted SPA response detection");
 requireText(http, "invalidateApiProxyProbe();", "misrouted proxy cache invalidation");
 requireText(http, "buildApiUrl(DIRECT_API_BASE, primaryRequest)", "misrouted direct API recovery");
 requireText(uploadApi, "recoverMisroutedProxy", "XHR upload proxy route recovery");
@@ -107,7 +106,7 @@ requireText(app, "const ownsUploadBatch", "upload batch state ownership");
 requireText(app, "selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl)", "non-regressing video thumbnail SAS");
 requireText(app, "const uploadId = crypto.randomUUID()", "stable per-file upload idempotency key");
 requireText(app, "if (isBatchCancellation(e)) break;", "non-retryable auth cancellation");
-requireText(photoApi, "cacheGeneration === getPrivatePhotoCacheGeneration()", "stale list write guard");
+requireText(photoApi, "canPublishPhotoList({", "stale list write guard");
 requireText(photoApi, "MEDIA_URL_REUSE_MIN_MS", "fresh SAS reuse threshold");
 requireText(photoApi, "previousExpiry >= nextExpiry", "non-regressing SAS reuse");
 requireText(photoApi, "export function selectFresherMediaUrl", "shared media freshness merge");

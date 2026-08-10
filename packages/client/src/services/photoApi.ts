@@ -16,9 +16,12 @@
 import { API_BASE } from "../utils/apiBase";
 import {
   authHeaders,
+  authHeadersForSnapshot,
   fetchWithTimeout,
   getAuthGeneration,
+  getAuthorizationSnapshot,
   parseApiError,
+  signalAuthIdentityChange,
 } from "./http";
 import {
   getPrivatePhotoCacheGeneration,
@@ -27,6 +30,10 @@ import {
   writeMemoryPhotoListCache,
   writePhotoListCache,
 } from "./photoListCache";
+import {
+  canPublishPhotoList,
+  privatePhotoListCacheKey,
+} from "./photoLoadingPolicy";
 import {
   getPreferredMediaUrl,
   resolveMediaUrlWithFallback,
@@ -48,6 +55,7 @@ export {
   setUnauthorizedHandler, subscribeToAuthChanges, invalidateAuthRefresh,
   fetchWithTimeout, authHeaders,
 } from "./http";
+export { authCacheOwner } from "./photoLoadingPolicy";
 export type { AuthUser, AuthResponse } from "./authApi";
 export { loginApi, registerApi, getMeApi, addAdminApi, updateProfileApi, changePasswordApi } from "./authApi";
 export {
@@ -144,11 +152,24 @@ export async function fetchMotionVideoBlob(photoName: string): Promise<MotionVid
 }
 
 // ── Photo list SWR cache ──────────────────────────────────────────────────
-// A cache key is never created without a user+role authorization scope. This
-// prevents anonymous, replacement-account, and stale-admin entries from reuse.
-function photoListCacheKey(groupId: string, cacheScope: string): string | null {
-  if (!cacheScope) return null;
-  return `user:${cacheScope}:group:${groupId || "personal"}`;
+export class AuthorizationDriftError extends Error {
+  constructor() {
+    super("Authorization identity changed");
+    this.name = "AuthorizationDriftError";
+  }
+}
+
+export function isAuthorizationDriftError(error: unknown): boolean {
+  return error instanceof AuthorizationDriftError;
+}
+
+function assertAuthorizationOwner(expectedOwner: string) {
+  const snapshot = getAuthorizationSnapshot();
+  if (!snapshot || snapshot.cacheOwner !== expectedOwner) {
+    signalAuthIdentityChange();
+    throw new AuthorizationDriftError();
+  }
+  return snapshot;
 }
 
 const MEDIA_URL_REUSE_MIN_MS = 10 * 60 * 1000;
@@ -218,20 +239,40 @@ function reuseFreshMediaUrls(next: Photo, previous: Photo | undefined): Photo {
 
 /** Returns the in-memory photo list for a user/group (may be stale). */
 export function getCachedPhotos(groupId = "", cacheScope = ""): Photo[] | null {
-  const key = photoListCacheKey(groupId, cacheScope);
-  return key ? readMemoryPhotoListCache<Photo>(key) : null;
+  const key = privatePhotoListCacheKey(groupId, cacheScope);
+  if (!key || getAuthorizationSnapshot()?.cacheOwner !== cacheScope) {
+    if (cacheScope) signalAuthIdentityChange();
+    return null;
+  }
+  return readMemoryPhotoListCache<Photo>(key);
 }
 
 /** Restores a recent photo list from Cache Storage after a page reload. */
-export async function getPersistedPhotos(groupId = "", cacheScope = ""): Promise<Photo[] | null> {
-  const key = photoListCacheKey(groupId, cacheScope);
+export async function getPersistedPhotos(
+  groupId = "",
+  cacheScope = "",
+  isCurrent?: () => boolean,
+): Promise<Photo[] | null> {
+  const key = privatePhotoListCacheKey(groupId, cacheScope);
   if (!key) return null;
+  assertAuthorizationOwner(cacheScope);
+  const cacheGeneration = getPrivatePhotoCacheGeneration();
   const memory = readMemoryPhotoListCache<Photo>(key);
-  if (memory) return memory;
+  if (memory) {
+    assertAuthorizationOwner(cacheScope);
+    return isCurrent?.() === false ? null : memory;
+  }
 
-  const cached = await readPhotoListCache<unknown>(key);
+  const cached = await readPhotoListCache<unknown>(key, cacheGeneration);
+  assertAuthorizationOwner(cacheScope);
+  if (
+    isCurrent?.() === false
+    || cacheGeneration !== getPrivatePhotoCacheGeneration()
+  ) {
+    return null;
+  }
   if (cached && !cached.every(isPhotoPayload)) {
-    await writePhotoListCache(key, []);
+    await writePhotoListCache(key, [], cacheGeneration);
     return null;
   }
   const photos = cached?.map(proxyPhoto) ?? null;
@@ -243,26 +284,41 @@ export async function getPersistedPhotos(groupId = "", cacheScope = ""): Promise
 interface ListPhotosOptions {
   cacheScope?: string;
   signal?: AbortSignal;
+  isCurrent?: () => boolean;
 }
 
 export async function listPhotos(groupId = "", options: ListPhotosOptions = {}): Promise<Photo[]> {
+  const expectedOwner = options.cacheScope ?? "";
+  const authorization = assertAuthorizationOwner(expectedOwner);
   const cacheGeneration = getPrivatePhotoCacheGeneration();
   const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
   const response = await fetchWithTimeout(
     url,
-    { headers: authHeaders(), signal: options.signal },
+    { headers: authHeadersForSnapshot(authorization), signal: options.signal },
     45_000,
   );
   if (!response.ok) throw new Error("Failed to fetch photos");
   const rawPhotos = parsePhotoListPayload(await response.json() as unknown);
+  assertAuthorizationOwner(expectedOwner);
+  if (options.isCurrent?.() === false) throw new AuthorizationDriftError();
   await selectFastestMediaRoute(rawPhotos[0]?.url);
-  const key = photoListCacheKey(groupId, options.cacheScope ?? "");
+  const currentOwner = getAuthorizationSnapshot()?.cacheOwner ?? null;
+  if (!canPublishPhotoList({
+    expectedOwner,
+    currentOwner,
+    expectedCacheGeneration: cacheGeneration,
+    currentCacheGeneration: getPrivatePhotoCacheGeneration(),
+  }) || options.isCurrent?.() === false) {
+    if (currentOwner !== expectedOwner) signalAuthIdentityChange();
+    throw new AuthorizationDriftError();
+  }
+  const key = privatePhotoListCacheKey(groupId, expectedOwner);
   const previousPhotos = key ? readMemoryPhotoListCache<Photo>(key) : null;
   const previousByName = new Map(previousPhotos?.map((photo) => [photo.name, photo]));
   const photos = rawPhotos
     .map(proxyPhoto)
     .map((photo) => reuseFreshMediaUrls(photo, previousByName.get(photo.name)));
-  if (key && cacheGeneration === getPrivatePhotoCacheGeneration()) {
+  if (key) {
     writeMemoryPhotoListCache(key, photos);
     void writePhotoListCache(key, photos, cacheGeneration);
   }
