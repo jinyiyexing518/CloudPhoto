@@ -6544,12 +6544,14 @@ body {
 
 .auth-tab {
   flex: 1;
+  min-width: 44px;
   min-height: 44px;
   background: transparent;
   border: none;
   border-radius: 8px;
   padding: 8px 16px;
   color: #64748b;
+  font-family: inherit;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -6613,6 +6615,7 @@ body {
 .auth-page .auth-field > input,
 .auth-page .auth-password input {
   width: 100%;
+  min-width: 44px;
   min-height: 44px;
   border-color: #cbd5e1;
   border-radius: 10px;
@@ -6656,6 +6659,7 @@ body {
   border-radius: 7px;
   color: #475569;
   background: transparent;
+  font-family: inherit;
   font-size: 0.75rem;
   font-weight: 650;
   cursor: pointer;
@@ -6686,6 +6690,7 @@ body {
 }
 
 .auth-submit {
+  min-width: 44px;
   min-height: 44px;
   margin-top: 3px;
   border: none;
@@ -6693,6 +6698,7 @@ body {
   color: #fff;
   background: linear-gradient(135deg, #0078d4, #0067b8);
   box-shadow: 0 7px 18px rgba(0, 103, 184, 0.2);
+  font-family: inherit;
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
@@ -6722,11 +6728,13 @@ body {
 
 .auth-install-button {
   width: 100%;
+  min-width: 44px;
   min-height: 44px;
   border: 1px solid #bfdbfe;
   border-radius: 10px;
   background: #eff6ff;
   color: #1d4ed8;
+  font-family: inherit;
   font-size: 0.86rem;
   font-weight: 700;
   cursor: pointer;
@@ -6789,7 +6797,7 @@ body {
 @media (max-width: 720px) {
   .auth-page {
     display: block;
-    overflow: auto;
+    overflow: visible;
     padding: max(14px, env(safe-area-inset-top, 0px))
       max(14px, env(safe-area-inset-right, 0px))
       max(14px, env(safe-area-inset-bottom, 0px))
