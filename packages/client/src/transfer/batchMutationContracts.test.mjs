@@ -84,7 +84,7 @@ test("batch operations expose semantic busy and disabled state for conflicting c
   assert.match(folder, /确认移动[\s\S]*disabled=\{batchMutationBusy\}/);
   assert.match(folder, /title="上传原图到当前文件夹"[\s\S]*disabled=\{anyUploading \|\| batchMutationBusy\}/);
   assert.match(gallery, /<BatchOperationsBar[\s\S]*busy=\{batchMutationBusy\}/);
-  assert.match(gallery, /className="moments-card"[\s\S]*aria-disabled=\{batchMutationBusy \|\| undefined\}[\s\S]*if \(!batchMutationBusy\) openModal/);
+  assert.match(gallery, /className="moments-card"[\s\S]*tabIndex=\{batchMutationBusy \? -1 : 0\}[\s\S]*aria-disabled=\{batchMutationBusy \|\| undefined\}[\s\S]*if \(batchMutationBusy\) return;/);
   assert.match(gallery, /className="date-group-select-all"[\s\S]*disabled=\{batchMutationBusy\}/);
   assert.match(gallery, /if \(!selectMode \|\| selectedIdx !== null \|\| batchMutationBusy\) return;/);
   assert.match(gallery, /interactionDisabled=\{batchMutationBusy\}/);

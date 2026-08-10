@@ -1477,9 +1477,18 @@ function PhotoGallery({
                 <article
                   key={photo.name}
                   className="moments-card"
+                  role="button"
+                  tabIndex={batchMutationBusy ? -1 : 0}
                   aria-disabled={batchMutationBusy || undefined}
-                  onClick={() => {
-                    if (!batchMutationBusy) openModal(photo);
+                  onClick={(event) => {
+                    if (batchMutationBusy) return;
+                    event.currentTarget.focus({ preventScroll: true });
+                    openModal(photo);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.currentTarget.click();
                   }}
                 >
                   <div className="moments-rank">{rankBadge} #{rank}</div>
