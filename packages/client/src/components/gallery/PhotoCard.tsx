@@ -575,7 +575,7 @@ function PhotoCard({
                   setShowConfirm(true);
                 }}
               >
-                🗑
+                <span aria-hidden="true">🗑︎</span>
               </button>
             </>
           )}

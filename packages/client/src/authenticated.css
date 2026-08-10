@@ -2592,7 +2592,7 @@ body {
 .folder-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-  border-color: #93c5fd;
+  border-color: #2563eb;
 }
 .folder-card--disabled:hover {
   transform: none;
@@ -2638,7 +2638,7 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-.folder-card-count { font-size: 0.75rem; color: #888; }
+.folder-card-count { font-size: 0.75rem; color: #5f6368; }
 
 .folder-card { position: relative; }
 .folder-card-rename-btn,
@@ -2656,18 +2656,22 @@ body {
   cursor: pointer;
   touch-action: manipulation;
   font-size: 0.85rem;
-  opacity: 0;
+  opacity: 1;
   padding: 0;
   border-radius: 8px;
   transition: opacity 0.15s, background 0.15s;
 }
-.folder-card-rename-btn { right: 6px; }
+.folder-card-rename-btn {
+  right: 6px;
+  color: #334155;
+}
 .folder-card:hover .folder-card-rename-btn { opacity: 1; }
 .folder-card-rename-btn:hover { background: #e5e7eb; }
 
 /* Folder delete button */
 .folder-card-delete-btn {
   right: 54px;
+  color: #b42318;
   line-height: 1;
 }
 .folder-card:hover .folder-card-delete-btn { opacity: 1; }
@@ -2677,7 +2681,7 @@ body {
   outline: 3px solid #005a9e;
   outline-offset: 2px;
 }
-.folder-card-delete-btn:hover { background: rgba(220, 38, 38, 0.12); }
+.folder-card-delete-btn:hover { background: #fef2f2; }
 @media (hover: none), (pointer: coarse) {
   .folder-card-rename-btn,
   .folder-card-delete-btn {
@@ -2706,7 +2710,7 @@ body {
   flex: 0 0 auto;
   background: #f0f7ff;
   border: 1px dashed #93c5fd;
-  color: #0078d4;
+  color: #005ea6;
   border-radius: 8px;
   padding: 7px 14px;
   font-size: 0.88rem;
@@ -2746,6 +2750,13 @@ body {
 
 
 .folder-new-btn:hover { background: #dbeafe; }
+
+.folder-new-btn:focus-visible,
+.folder-create-confirm:focus-visible,
+.folder-create-cancel:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: 2px;
+}
 
 .folder-create-row {
   display: flex;
@@ -3799,13 +3810,13 @@ body {
 
 .photo-meta-date {
   font-size: 0.70rem;
-  color: #9ca3af;
+  color: #5f6368;
   white-space: nowrap;
   flex-shrink: 0;
 }
 .photo-meta-taken {
   font-size: 0.70rem;
-  color: #6366f1;
+  color: #4f46e5;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -4525,10 +4536,11 @@ body {
 .delete-btn {
   background: none;
   border: none;
+  color: #b42318;
   cursor: pointer;
   font-size: 0.95rem;
-  opacity: 0.5;
-  transition: opacity 0.2s;
+  opacity: 1;
+  transition: background 0.2s, color 0.2s;
   flex-shrink: 0;
   min-width: 44px;
   min-height: 44px;
@@ -4540,7 +4552,7 @@ body {
 }
 
 .delete-btn:hover {
-  opacity: 1;
+  background: #fef2f2;
 }
 
 .move-btn {
@@ -4570,9 +4582,9 @@ body {
   border: none;
   cursor: pointer;
   font-size: 0.95rem;
-  opacity: 0.55;
-  color: #9ca3af;
-  transition: opacity 0.2s, color 0.2s;
+  opacity: 1;
+  color: #5f6368;
+  transition: background 0.2s, color 0.2s;
   flex-shrink: 0;
   min-width: 44px;
   min-height: 44px;
@@ -4604,13 +4616,13 @@ body {
 }
 
 .favorite-btn:hover {
-  opacity: 1;
-  color: #f59e0b;
+  background: #fffbeb;
+  color: #8a4b00;
 }
 
 .favorite-btn--on {
   opacity: 1;
-  color: #f59e0b;
+  color: #8a4b00;
 }
 
 /* Modal */
@@ -5002,8 +5014,8 @@ body {
   position: absolute;
   top: 5px;
   left: 5px;
-  background: rgba(251, 191, 36, 0.92);
-  color: #fff;
+  background: #fbbf24;
+  color: #78350f;
   font-size: 0.72rem;
   width: 20px;
   height: 20px;
@@ -5019,7 +5031,7 @@ body {
   position: absolute;
   bottom: 6px;
   left: 6px;
-  background: rgba(79, 70, 229, 0.85);
+  background: #3730a3;
   color: #fff;
   font-size: 0.60rem;
   font-weight: 700;
@@ -5125,9 +5137,11 @@ body {
   padding: 0;
 }
 
-.gif-pause-corner-btn:focus-visible {
+.photo-card-controls .gif-play-center-btn:focus-visible,
+.photo-card-controls .gif-pause-corner-btn:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.82);
 }
 
 .gif-pause-corner-btn:hover {
@@ -7596,8 +7610,8 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.85);
-  border: 2px solid #aaa;
+  background: #fff;
+  border: 2px solid #5f6368;
   display: flex;
   align-items: center;
   justify-content: center;

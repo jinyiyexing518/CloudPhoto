@@ -252,7 +252,7 @@ function FolderCard({
             setEditing(true);
           }}
         >
-          ✏️
+          <span aria-hidden="true">✎</span>
         </button>
       )}
       {onDelete && !editing && (
@@ -267,7 +267,7 @@ function FolderCard({
             if (!interactionDisabled) onDelete();
           }}
         >
-          🗑️
+          <span aria-hidden="true">🗑︎</span>
         </button>
       )}
     </div>
