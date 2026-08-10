@@ -46,6 +46,51 @@ test("does not fall back on authentication failures", async () => {
   assert.equal(calls, 1);
 });
 
+test("uses a distinct refresh-aware proxy transport before the direct fallback", async () => {
+  let proxyCalls = 0;
+  let directCalls = 0;
+  const reverse = createReverseGeocoder({
+    proxyFetch: async () => {
+      proxyCalls += 1;
+      return response(200, { address: "refreshed proxy" });
+    },
+    fetch: async () => {
+      directCalls += 1;
+      return response(200, { display_name: "direct" });
+    },
+    getAuthorization: () => ({ token: "expired", cacheOwner: "u:viewer", generation: 1 }),
+  });
+  assert.equal(await reverse(1, 2), "refreshed proxy");
+  assert.equal(proxyCalls, 1);
+  assert.equal(directCalls, 0);
+});
+
+test("deadline composition does not require AbortSignal static helpers", async () => {
+  const originalAny = AbortSignal.any;
+  const originalTimeout = AbortSignal.timeout;
+  Object.defineProperties(AbortSignal, {
+    any: { configurable: true, value: undefined },
+    timeout: { configurable: true, value: undefined },
+  });
+  try {
+    let calls = 0;
+    const reverse = createReverseGeocoder({
+      fetch: async () => {
+        calls += 1;
+        return response(200, { display_name: "compatible" });
+      },
+      getAuthorization: () => null,
+    });
+    assert.equal(await reverse(1, 2), "compatible");
+    assert.equal(calls, 1);
+  } finally {
+    Object.defineProperties(AbortSignal, {
+      any: { configurable: true, value: originalAny },
+      timeout: { configurable: true, value: originalTimeout },
+    });
+  }
+});
+
 test("negative cache expires, successful calls dedupe, and auth/workspace keys isolate values", async () => {
   let now = 0;
   let calls = 0;

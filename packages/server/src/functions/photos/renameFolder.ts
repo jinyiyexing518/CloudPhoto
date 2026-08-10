@@ -17,6 +17,42 @@ import {
   planFolderRename,
   renameFolderBlobs,
 } from "./renameFolderSafety";
+import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
+
+async function reconcileRenamedPhotoLocations(
+  container: ReturnType<ReturnType<typeof getBlobServiceClient>["getContainerClient"]>,
+  oldPrefix: string,
+  newPrefix: string,
+  scope: string,
+  context: InvocationContext,
+): Promise<number> {
+  let pending = 0;
+  for await (const blob of container.listBlobsFlat({ prefix: newPrefix })) {
+    const relativeName = blob.name.slice(newPrefix.length);
+    const filename = relativeName.split("/").pop() ?? "";
+    if (filename.startsWith("_th_") || relativeName.startsWith("_voice/")) continue;
+    const oldName = `${oldPrefix}${relativeName}`;
+    let reconciled = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await syncPhotoLocationFromBlob(container.getBlockBlobClient(blob.name), blob.name, scope);
+        await syncPhotoLocationFromBlob(container.getBlockBlobClient(oldName), oldName, scope);
+        reconciled = true;
+        break;
+      } catch (error) {
+        if (attempt === 3) {
+          context.warn("Folder rename location reconciliation pending", {
+            oldName,
+            newName: blob.name,
+            error,
+          });
+        }
+      }
+    }
+    if (!reconciled) pending++;
+  }
+  return pending;
+}
 
 app.http("renameFolder", {
   methods: ["PATCH"],
@@ -72,14 +108,28 @@ app.http("renameFolder", {
         },
         context,
       });
+      const pendingLocationIndexes = await reconcileRenamedPhotoLocations(
+        containerClient,
+        oldPrefix,
+        newPrefix,
+        scope,
+        context,
+      );
 
       return {
-        status: 200,
+        status: pendingLocationIndexes > 0 ? 500 : 200,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           renamed: result.renamed,
           oldFolder: plan.oldFolder,
           newFolder: plan.newFolder,
+          ...(pendingLocationIndexes > 0 && {
+            error: "文件夹已重命名，但部分照片位置索引对账未完成，请联系管理员",
+            phase: "location-index",
+            recoveryNeeded: true,
+            locationIndexPending: true,
+            pendingLocationIndexes,
+          }),
         }),
       };
     } catch (error) {

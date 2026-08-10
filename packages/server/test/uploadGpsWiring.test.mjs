@@ -82,3 +82,10 @@ test("the GPS-pending upload warning is only returned when valid GPS exists", as
   const pending = upload.indexOf("locationIndexPending = Boolean(gps)", sync);
   assert.ok(gpsRead >= 0 && sync > gpsRead && pending > sync);
 });
+
+test("transactional folder rename republishes new location ids and removes old Cosmos ids", async () => {
+  const rename = await source("packages/server/src/functions/photos/renameFolder.ts");
+  assert.match(rename, /syncPhotoLocationFromBlob\(container\.getBlockBlobClient\(blob\.name\), blob\.name, scope\)/);
+  assert.match(rename, /syncPhotoLocationFromBlob\(container\.getBlockBlobClient\(oldName\), oldName, scope\)/);
+  assert.match(rename, /pendingLocationIndexes > 0/);
+});

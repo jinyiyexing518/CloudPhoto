@@ -25,6 +25,7 @@ interface ReverseOptions {
 
 interface ReverseGeocoderDependencies {
   fetch?: typeof fetch;
+  proxyFetch?: typeof fetch;
   getAuthorization: () => AuthorizationState | null;
   proxyBase?: string;
   now?: () => number;
@@ -72,21 +73,31 @@ function shouldFallback(status: number): boolean {
     || status === 504;
 }
 
-async function fetchWithDeadline(
+export async function fetchWithDeadline(
   request: typeof fetch,
   input: string,
   init: RequestInit,
-  parentSignal: AbortSignal,
+  parentSignal?: AbortSignal,
 ): Promise<Response> {
-  const timeout = AbortSignal.timeout(8_000);
-  return request(input, {
-    ...init,
-    signal: AbortSignal.any([parentSignal, timeout]),
-  });
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) abortFromParent();
+  else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("Geocode request timed out", "TimeoutError")),
+    8_000,
+  );
+  try {
+    return await request(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+    parentSignal?.removeEventListener("abort", abortFromParent);
+  }
 }
 
 export function createReverseGeocoder(dependencies: ReverseGeocoderDependencies) {
   const request = dependencies.fetch ?? fetch;
+  const proxyRequest = dependencies.proxyFetch ?? request;
   const now = dependencies.now ?? Date.now;
   const successTtlMs = dependencies.successTtlMs ?? 6 * 60 * 60 * 1_000;
   const negativeTtlMs = dependencies.negativeTtlMs ?? 3_000;
@@ -131,7 +142,7 @@ export function createReverseGeocoder(dependencies: ReverseGeocoderDependencies)
     if (authorization) {
       try {
         const response = await fetchWithDeadline(
-          request,
+          proxyRequest,
           `${dependencies.proxyBase ?? "/api"}/geocode/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
           {
             headers: { Authorization: `Bearer ${authorization.token}` },

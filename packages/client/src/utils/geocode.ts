@@ -5,7 +5,7 @@ import {
   getAuthorizationSnapshot,
 } from "../services/http";
 import { API_BASE } from "./apiBase";
-import { createReverseGeocoder } from "./geocodeCore";
+import { createReverseGeocoder, fetchWithDeadline } from "./geocodeCore";
 
 export interface LocationSearchResult {
   displayName: string;
@@ -58,11 +58,11 @@ export async function searchLocation(query: string): Promise<LocationSearchResul
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchWithDeadline(
+      fetch,
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(normalized)}&format=json&limit=6`,
       {
         headers: { "Accept-Language": "zh-CN,zh;q=0.9" },
-        signal: AbortSignal.timeout(8_000),
       },
     );
     if (!response.ok) return [];
@@ -91,6 +91,11 @@ export async function searchLocation(query: string): Promise<LocationSearchResul
 
 const reverseGeocoder = createReverseGeocoder({
   proxyBase: API_BASE,
+  proxyFetch: (input, init) => fetchWithTimeout(
+    input instanceof URL ? input.toString() : input,
+    init,
+    8_000,
+  ),
   getAuthorization: () => {
     const snapshot = getAuthorizationSnapshot();
     return snapshot
