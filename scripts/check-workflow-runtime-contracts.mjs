@@ -15,6 +15,15 @@ const requiredContractWorkflows = [
 const productionHealthWorkflow = ".github/workflows/production-health.yml";
 const productionHealthConcurrencyGroup =
   "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}";
+const deployWorkflows = [
+  ".github/workflows/deploy-backend.yml",
+  ".github/workflows/deploy-frontend.yml",
+];
+const runtimeAlgorithmPaths = [
+  "packages/algorithm/src/**",
+  "packages/algorithm/package.json",
+  "packages/algorithm/tsconfig.json",
+];
 
 function indentation(line) {
   return line.match(/^\s*/)[0].length;
@@ -43,6 +52,55 @@ function rootChildField(text, parent, field) {
     if (match) return scalarValue(match[1]);
   }
   return null;
+}
+
+function nestedListItems(text, keys) {
+  const lines = text.split(/\r?\n/);
+  let parentIndex = -1;
+  let parentIndent = -1;
+
+  for (const [depth, key] of keys.entries()) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (depth === 0) {
+      const pattern = new RegExp(`^${escaped}:\\s*(?:#.*)?$`);
+      parentIndex = lines.findIndex((line) => pattern.test(line));
+      if (parentIndex < 0) return [];
+      parentIndent = 0;
+      continue;
+    }
+
+    const pattern = new RegExp(`^\\s+${escaped}:\\s*(?:#.*)?$`);
+    let childIndent;
+    let childIndex = -1;
+    for (let index = parentIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/^\s*(?:#.*)?$/.test(line)) continue;
+      const lineIndent = indentation(line);
+      if (lineIndent <= parentIndent) break;
+      if (childIndent === undefined) childIndent = lineIndent;
+      if (lineIndent === childIndent && pattern.test(line)) {
+        childIndex = index;
+        break;
+      }
+    }
+    if (childIndex < 0) return [];
+    parentIndex = childIndex;
+    parentIndent = childIndent;
+  }
+
+  const items = [];
+  let itemIndent;
+  for (let index = parentIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+    const lineIndent = indentation(line);
+    if (lineIndent <= parentIndent) break;
+    if (itemIndent === undefined) itemIndent = lineIndent;
+    if (lineIndent !== itemIndent) continue;
+    const match = line.match(/^\s*-\s+(.+)$/);
+    if (match) items.push(scalarValue(match[1]));
+  }
+  return items;
 }
 
 function activeStepBlocks(text) {
@@ -119,6 +177,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const azureLoginRefs = [];
   const setupNodeVersions = [];
   const contractInvocations = [];
+  const pushPaths = nestedListItems(text, ["on", "push", "paths"]);
   const concurrency = {
     group: rootChildField(text, "concurrency", "group"),
     cancelInProgress: rootChildField(text, "concurrency", "cancel-in-progress"),
@@ -145,7 +204,13 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     }
   }
 
-  return { azureLoginRefs, setupNodeVersions, contractInvocations, concurrency };
+  return {
+    azureLoginRefs,
+    setupNodeVersions,
+    contractInvocations,
+    concurrency,
+    pushPaths,
+  };
 }
 
 export function checkWorkflowRuntimeContracts(workflows) {
@@ -156,6 +221,12 @@ export function checkWorkflowRuntimeContracts(workflows) {
   const healthConcurrency = healthWorkflow
     ? inspectWorkflow(healthWorkflow.text, healthWorkflow.path).concurrency
     : null;
+  const deployPushPaths = Object.fromEntries(
+    deployWorkflows.map((path) => {
+      const workflow = workflows.find((candidate) => candidate.path === path);
+      return [path, workflow ? inspectWorkflow(workflow.text, path).pushPaths : null];
+    })
+  );
   const aggregate = workflows.reduce(
     (result, workflow) => {
       const inspected = inspectWorkflow(workflow.text, workflow.path);
@@ -218,8 +289,29 @@ export function checkWorkflowRuntimeContracts(workflows) {
       );
     }
   }
+  for (const [path, pushPaths] of Object.entries(deployPushPaths)) {
+    if (!pushPaths) {
+      issues.push(`${path} is missing`);
+      continue;
+    }
+    for (const requiredPath of runtimeAlgorithmPaths) {
+      if (!pushPaths.includes(requiredPath)) {
+        issues.push(`${path} must include runtime algorithm path ${requiredPath}`);
+      }
+    }
+    for (const configuredPath of pushPaths) {
+      if (
+        configuredPath.startsWith("packages/algorithm/")
+        && !runtimeAlgorithmPaths.includes(configuredPath)
+      ) {
+        issues.push(
+          `${path} must use only runtime algorithm paths, found ${configuredPath}`
+        );
+      }
+    }
+  }
 
-  return { ...aggregate, healthConcurrency, issues };
+  return { ...aggregate, healthConcurrency, deployPushPaths, issues };
 }
 
 function main() {
@@ -239,7 +331,7 @@ function main() {
   }
 
   console.log(
-    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress}`
+    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress} algorithm-runtime-paths=${runtimeAlgorithmPaths.length}x${deployWorkflows.length}`
   );
 }
 

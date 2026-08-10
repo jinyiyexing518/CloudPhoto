@@ -105,3 +105,50 @@ jobs:
     )
   );
 });
+
+test("reads active push paths and ignores comments and run script text", () => {
+  const inspected = inspectWorkflow(`
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/algorithm/src/**"
+      - "packages/server/**"
+      # - "packages/algorithm/**"
+jobs:
+  deploy:
+    steps:
+      - run: |
+          echo "paths:"
+          echo "- packages/algorithm/**"
+`, ".github/workflows/deploy-backend.yml");
+
+  assert.deepEqual(inspected.pushPaths, [
+    "packages/algorithm/src/**",
+    "packages/server/**",
+  ]);
+});
+
+test("rejects broad algorithm paths that deploy documentation changes", () => {
+  const result = checkWorkflowRuntimeContracts([
+    {
+      path: ".github/workflows/deploy-backend.yml",
+      text: `
+on:
+  push:
+    paths:
+      - "packages/algorithm/**"
+      - "packages/server/**"
+jobs:
+  deploy:
+    steps: []
+`,
+    },
+  ]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("runtime algorithm paths")
+    )
+  );
+});
