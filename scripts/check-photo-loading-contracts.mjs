@@ -216,7 +216,10 @@ requireText(photoCard, ".filter((source): source is string => Boolean(source))",
 for (const [name, source] of [["timeline playback", gallery], ["folder playback", folder]]) {
  requireText(source, 'preload="none"', `${name} remains on demand`);
  requireText(source, "persistVideoPlaybackThumbnail", `${name} thumbnail persistence`);
- requireText(source, 'poster={selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl}', `${name} static poster`);
+ requireText(source, "getPreferredMediaUrl(selectedPhoto.url)", `${name} refreshes a stale routed video URL`);
+ requireText(source, "getPreferredMediaUrl(selectedVideoPoster)", `${name} refreshes a stale routed poster URL`);
+ requireText(source, "subscribeToPreferredMediaRoute(refreshRoute)", `${name} reacts to a late route probe`);
+ requireText(source, "onPlay={() => {\n                      videoRouteLockedRef.current = true;", `${name} locks the route before playback startup`);
  assert(!source.includes("if (selectedPhoto.thumbnailUrl) return;"), `${name} must repair stale thumbnail metadata`);
 }
 requireText(uploadApi, "video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA", "already-loaded playback frame guard");

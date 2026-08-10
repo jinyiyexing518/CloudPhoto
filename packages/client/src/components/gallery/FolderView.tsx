@@ -20,7 +20,9 @@ import { addRecentShareLink } from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
 import {
   fallbackMediaSource,
+  getPreferredMediaUrl,
   preloadImageWithFallback,
+  subscribeToPreferredMediaRoute,
 } from "../../services/mediaRoute";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
@@ -504,7 +506,6 @@ export default function FolderView({
       setSharingFolder(false);
     }
   };
-
   return (
     <div className="folder-view">
       {/* Breadcrumb */}
@@ -757,7 +758,27 @@ function FolderContent({
   // Modal state
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [selectedVideoRoute, setSelectedVideoRoute] = useState<{ name: string; url: string } | null>(null);
+  const videoRouteLockedRef = useRef(false);
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
+
+  useEffect(() => {
+    const photo = selectedPhoto;
+    videoRouteLockedRef.current = false;
+    if (!photo?.contentType?.startsWith("video/")) {
+      setSelectedVideoRoute(null);
+      return;
+    }
+    const refreshRoute = () => {
+      if (videoRouteLockedRef.current) return;
+      setSelectedVideoRoute({
+        name: photo.name,
+        url: getPreferredMediaUrl(photo.url),
+      });
+    };
+    refreshRoute();
+    return subscribeToPreferredMediaRoute(refreshRoute);
+  }, [selectedPhoto?.contentType, selectedPhoto?.name, selectedPhoto?.url]);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
   const [savingSubject, setSavingSubject] = useState(false);
@@ -1261,6 +1282,12 @@ function FolderContent({
     const basename = p.name.split("/").pop() ?? p.name;
     return basename.replace(/^\d+-/, "");
   };
+  const selectedVideoUrl = selectedPhoto
+    ? selectedVideoRoute?.name === selectedPhoto.name
+      ? selectedVideoRoute.url
+      : getPreferredMediaUrl(selectedPhoto.url)
+    : "";
+  const selectedVideoPoster = selectedPhoto?.thumbnailUrl ?? selectedPhoto?.previewUrl;
 
   const moveByDragWithToast = async (photoName: string, fromFolder: string, toFolder: string) => {
     if (fromFolder === toFolder) return;
@@ -1475,15 +1502,19 @@ function FolderContent({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
                   <video
-                    key={`${selectedPhoto.url}:${videoRetryKey}`}
+                    key={`${selectedVideoUrl}:${videoRetryKey}`}
                     crossOrigin="anonymous"
-                    src={selectedPhoto.url}
-                    poster={selectedPhoto.thumbnailUrl ?? selectedPhoto.previewUrl}
+                    src={selectedVideoUrl}
+                    poster={selectedVideoPoster ? getPreferredMediaUrl(selectedVideoPoster) : undefined}
                     className="modal-image modal-video"
                     controls
                     playsInline
                     preload="none"
-                    onPlay={() => { setVideoError(false); setVideoBuffering(true); }}
+                    onPlay={() => {
+                      videoRouteLockedRef.current = true;
+                      setVideoError(false);
+                      setVideoBuffering(true);
+                    }}
                     onPlaying={(event) => {
                       setVideoBuffering(false);
                       const photoName = selectedPhoto.name;
