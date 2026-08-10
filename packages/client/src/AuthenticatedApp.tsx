@@ -5,6 +5,7 @@ import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
 import { isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
+import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
@@ -487,6 +488,12 @@ function AppContent() {
         : activeBatchMutation
         ? `${getBatchMutationLabel(activeBatchMutation.kind)}进行中（${activeBatchMutation.done}/${activeBatchMutation.total}），请勿离开当前页面`
         : "传输进行中，请稍候";
+  const transferringRef = useRef(false);
+  const transferGuardMessageRef = useRef(transferGuardMessage);
+  const activeTabRef = useRef(activeTab);
+  transferringRef.current = transferring;
+  transferGuardMessageRef.current = transferGuardMessage;
+  activeTabRef.current = activeTab;
   const blockIfTransferring = useCallback(() => {
     if (!transferring) return false;
     showToast(transferGuardMessage, "info");
@@ -1119,6 +1126,20 @@ function AppContent() {
     let enterCount = 0;
     const onDragEnter = (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes("Files")) return;
+      const dragDecision = classifyGlobalFileIntent({
+        hasFileIntent: true,
+        target: e.target,
+        modalRoot: document,
+        transferring: transferringRef.current,
+        ignoreInteractiveTarget: false,
+      });
+      if (dragDecision !== "accept") {
+        e.stopPropagation();
+        enterCount = 0;
+        setIsDragOver(false);
+        setDragFileCount(0);
+        return;
+      }
       enterCount++;
       setIsDragOver(true);
       setDragFileCount(e.dataTransfer.items ? Array.from(e.dataTransfer.items).filter((i) => i.kind === "file").length : 0);
@@ -1128,61 +1149,98 @@ function AppContent() {
       if (enterCount === 0) setIsDragOver(false);
     };
     const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
-    };
-    const onDrop = (e: DragEvent) => {
-      enterCount = 0;
-      setIsDragOver(false);
-      if (e.dataTransfer?.files.length) {
-        e.preventDefault();
-        if (activeTab !== "folder") {
-          if (blockIfTransferring()) return;
-          setActiveTab("folder");
-          localStorage.setItem(tabKey, "folder");
-          showToast("已切换到文件夹视图，选择文件夹后上传", "success");
-        }
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      const dragDecision = classifyGlobalFileIntent({
+        hasFileIntent: true,
+        target: e.target,
+        modalRoot: document,
+        transferring: transferringRef.current,
+        ignoreInteractiveTarget: false,
+      });
+      if (dragDecision !== "accept") {
+        e.stopPropagation();
+        enterCount = 0;
+        setIsDragOver(false);
+        setDragFileCount(0);
       }
     };
-    window.addEventListener("dragenter", onDragEnter);
-    window.addEventListener("dragleave", onDragLeave);
-    window.addEventListener("dragover", onDragOver);
-    window.addEventListener("drop", onDrop);
-    return () => {
-      window.removeEventListener("dragenter", onDragEnter);
-      window.removeEventListener("dragleave", onDragLeave);
-      window.removeEventListener("dragover", onDragOver);
-      window.removeEventListener("drop", onDrop);
+    const onDrop = (e: DragEvent) => {
+      const hasFiles = Boolean(e.dataTransfer?.types.includes("Files") || e.dataTransfer?.files.length);
+      if (!hasFiles) return;
+      e.preventDefault();
+      enterCount = 0;
+      setIsDragOver(false);
+      setDragFileCount(0);
+      const dropDecision = classifyGlobalFileIntent({
+        hasFileIntent: true,
+        target: e.target,
+        modalRoot: document,
+        transferring: transferringRef.current,
+        ignoreInteractiveTarget: false,
+      });
+      if (dropDecision === "ignore-editor-or-modal") {
+        showToast("请先关闭弹窗，再拖入文件", "info");
+      } else if (dropDecision === "block-transfer") {
+        showToast(transferGuardMessageRef.current, "info");
+      }
+      if (dropDecision !== "accept") {
+        e.stopPropagation();
+        return;
+      }
+      if (!e.dataTransfer?.files.length) return;
+      if (activeTabRef.current !== "folder") {
+        setActiveTab("folder");
+        localStorage.setItem(tabKey, "folder");
+        showToast("已切换到文件夹视图，选择文件夹后上传", "success");
+      }
     };
-  }, [activeTab, blockIfTransferring, showToast, tabKey]);
+    window.addEventListener("dragenter", onDragEnter, true);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("dragover", onDragOver, true);
+    window.addEventListener("drop", onDrop, true);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter, true);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("dragover", onDragOver, true);
+      window.removeEventListener("drop", onDrop, true);
+    };
+  }, [showToast, tabKey]);
 
   // Global paste: Ctrl+V image upload (screenshots, etc.)
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      // Skip if user is typing in an input/textarea
-      const active = document.activeElement;
-      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable)) return;
       if (!e.clipboardData) return;
       const items = Array.from(e.clipboardData.items);
       const imageItem = items.find((item) => item.type.startsWith("image/"));
       if (!imageItem) return;
-      e.preventDefault();
       const blob = imageItem.getAsFile();
       if (!blob) return;
-      if (batchMutationActiveRef.current) {
-        showToast(transferGuardMessage, "info");
+      const pasteDecision = classifyGlobalFileIntent({
+        hasFileIntent: true,
+        target: document.activeElement,
+        modalRoot: document,
+        transferring: transferringRef.current,
+        ignoreInteractiveTarget: true,
+      });
+      if (pasteDecision === "ignore-editor-or-modal") return;
+      if (pasteDecision === "block-transfer") {
+        e.preventDefault();
+        showToast(transferGuardMessageRef.current, "info");
         return;
       }
+      if (pasteDecision !== "accept") return;
+      e.preventDefault();
       const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const ext = imageItem.type.split("/")[1] ?? "png";
       const file = new File([blob], `paste-${ts}.${ext}`, { type: imageItem.type });
       const dt = new DataTransfer();
       dt.items.add(file);
       void uploadToFolderRef.current?.(dt.files, "");
-      showToast(`📋 粘贴上传: ${file.name}`, "success");
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [showToast, transferGuardMessage]);
+  }, [showToast]);
 
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
     if (batchMutationActiveRef.current) {
