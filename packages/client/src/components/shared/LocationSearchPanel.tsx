@@ -41,6 +41,13 @@ export default function LocationSearchPanel({ saving, onSelect, onClose, returnF
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqIdRef = useRef(0);
 
+  const restoreTriggerFocus = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const target = returnFocusRef?.current;
+      if (target?.isConnected) target.focus({ preventScroll: true });
+    });
+  }, [returnFocusRef]);
+
   const doSearch = useCallback((q: string) => {
     const trimmed = q.trim();
     if (trimmed.length < 2) {
@@ -85,7 +92,7 @@ export default function LocationSearchPanel({ saving, onSelect, onClose, returnF
     };
   }, [query, doSearch]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -94,18 +101,20 @@ export default function LocationSearchPanel({ saving, onSelect, onClose, returnF
         return;
       }
       doSearch(query);
-    } else if (e.key === "Escape") {
+    }
+  };
+
+  const handlePanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
       e.stopPropagation();
+      if (saving) return;
       onClose();
-      window.requestAnimationFrame(() => {
-        const target = returnFocusRef?.current;
-        if (target?.isConnected) target.focus({ preventScroll: true });
-      });
+      restoreTriggerFocus();
     }
   };
 
   return (
-    <div className="location-search-panel">
+    <div className="location-search-panel" onKeyDown={handlePanelKeyDown}>
       <div className="location-search-top">
         <input
           autoFocus
@@ -114,7 +123,7 @@ export default function LocationSearchPanel({ saving, onSelect, onClose, returnF
           placeholder="地点名称，或直接输入坐标：39.90, 116.39"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={handleInputKeyDown}
           disabled={saving}
         />
       </div>

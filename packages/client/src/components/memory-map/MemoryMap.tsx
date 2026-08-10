@@ -259,7 +259,12 @@ export default function MemoryMap({
           iconAnchor: [22, 22],
           tooltipAnchor: [0, -22],
         });
-        const marker = L.marker([p.lat, p.lon], { icon, keyboard: false, title: label })
+        const marker = L.marker([p.lat, p.lon], {
+          icon,
+          keyboard: false,
+          autoPanOnFocus: true,
+          title: label,
+        })
           .bindTooltip(createMapTooltipContent(p), { direction: "top" })
           .addTo(map);
         const element = marker.getElement();

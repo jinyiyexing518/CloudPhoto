@@ -303,6 +303,7 @@ function PhotoGallery({
   const viewerDialogRef = useRef<HTMLDivElement | null>(null);
   const viewerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const gpsEditButtonRef = useRef<HTMLButtonElement | null>(null);
+  const gpsSaveSessionRef = useRef(0);
   const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -352,6 +353,10 @@ function PhotoGallery({
   const [savingTakenAt, setSavingTakenAt] = useState(false);
   const [editingGps, setEditingGps] = useState(false);
   const [savingGps, setSavingGps] = useState(false);
+  const invalidateGpsSave = useCallback(() => {
+    gpsSaveSessionRef.current += 1;
+    setSavingGps(false);
+  }, []);
   const { address: geoAddress, loading: geoLoading } = usePhotoLocationAddress(selectedPhoto);
   const selectedGps = readGpsCoordinates(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
   const [downloading, setDownloading] = useState(false);
@@ -842,6 +847,7 @@ function PhotoGallery({
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = modalPhotos[idx];
     if (!photo) return;
+    invalidateGpsSave();
     trackMomentView(photo.name);
     setSelectedIdx(idx);
     setSelectedPhoto(photo);
@@ -860,7 +866,7 @@ function PhotoGallery({
     setImageDimensions(null);
     setModalImageLoaded(false);
     setGifViewerSrc("");
-  }, [modalPhotos, openVideoPlaybackSession, trackMomentView]);
+  }, [invalidateGpsSave, modalPhotos, openVideoPlaybackSession, trackMomentView]);
 
   // Show a persisted derivative immediately, then swap to the animated source.
   // Without it, large animations resemble a broken blank viewer while loading.
@@ -897,12 +903,13 @@ function PhotoGallery({
   }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
   const closeViewer = useCallback(() => {
+    invalidateGpsSave();
     setSelectedIdx(null);
     setSelectedPhoto(null);
     setShowOriginalPreview(false);
     setShowShortcutHelp(false);
     setIsFullscreen(false);
-  }, []);
+  }, [invalidateGpsSave]);
 
   const onModalKeyDown = useCallback((event: KeyboardEvent) => {
       if (isModalShortcutTarget(event.target)) return;
@@ -1020,6 +1027,7 @@ function PhotoGallery({
   }, [selectedIdx, modalPhotos]);
 
   const openModal = (photo: Photo) => {
+    invalidateGpsSave();
     const idx = modalPhotos.findIndex((p) => p.name === photo.name);
     trackMomentView(photo.name);
     setSelectedIdx(idx >= 0 ? idx : null);
@@ -1093,16 +1101,27 @@ function PhotoGallery({
 
   const saveGps = async (lat: string, lon: string) => {
     if (!selectedPhoto) return;
+    const session = ++gpsSaveSessionRef.current;
+    const targetPhoto = selectedPhoto;
     setSavingGps(true);
     try {
-      await updatePhotoGps(selectedPhoto.name, lat, lon);
-      onGpsUpdate?.(selectedPhoto.name, lat, lon);
-      setSelectedPhoto({ ...selectedPhoto, gpsLat: lat, gpsLon: lon });
+      await updatePhotoGps(targetPhoto.name, lat, lon);
+      if (!mountedRef.current || session !== gpsSaveSessionRef.current) return;
+      onGpsUpdate?.(targetPhoto.name, lat, lon);
+      setSelectedPhoto({ ...targetPhoto, gpsLat: lat, gpsLon: lon });
       setEditingGps(false);
+      window.requestAnimationFrame(() => {
+        const target = gpsEditButtonRef.current;
+        if (target?.isConnected) target.focus({ preventScroll: true });
+      });
     } catch {
-      showToast("更新位置失败", "error");
+      if (mountedRef.current && session === gpsSaveSessionRef.current) {
+        showToast("更新位置失败", "error");
+      }
     } finally {
-      setSavingGps(false);
+      if (mountedRef.current && session === gpsSaveSessionRef.current) {
+        setSavingGps(false);
+      }
     }
   };
 
@@ -1127,22 +1146,23 @@ function PhotoGallery({
   const handleBatchSetGps = async (overrideLat?: string, overrideLon?: string) => {
     const effectiveLat = overrideLat ?? batchGpsLat;
     const effectiveLon = overrideLon ?? batchGpsLon;
-    if (!effectiveLat || !effectiveLon || selected.size === 0) return;
+    if (!effectiveLat || !effectiveLon || selected.size === 0) return false;
     if (!readGpsCoordinates(effectiveLat, effectiveLon)) {
       showToast("坐标无效：纬度 ±90°，经度 ±180°", "error");
-      return;
+      return false;
     }
     const selectedList = flatPhotos.filter((p) => selected.has(p.name));
     const result = await executeBatchMutation("location", selectedList, async (p) => {
       await updatePhotoGps(p.name, effectiveLat, effectiveLon);
       onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
     });
-    if (!result || !mountedRef.current) return;
+    if (!result || !mountedRef.current) return false;
     setShowBatchGpsEdit(false);
     setBatchGpsLat("");
     setBatchGpsLon("");
     if (result.failed > 0) showToast(`批量修改位置完成，失败 ${result.failed} 张`, "error");
     else showToast(`已修改 ${selectedList.length} 张照片的位置`, "success");
+    return true;
   };
 
   const handleDownload = async () => {
@@ -1218,6 +1238,7 @@ function PhotoGallery({
       const ok = await onMovePhoto(selectedPhoto.name, target);
       if (ok) {
         showToast(target ? `已移动到文件夹：${target}` : "已移动到根目录", "success");
+        invalidateGpsSave();
         setSelectedIdx(null);
         setSelectedPhoto(null);
       }
@@ -1282,6 +1303,7 @@ function PhotoGallery({
     const displayName = selectedPhoto.originalName || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
     if (!window.confirm(`确认删除照片：${displayName}？`)) return;
     onDelete(selectedPhoto.name);
+    invalidateGpsSave();
     setSelectedIdx(null);
     setSelectedPhoto(null);
   };
@@ -1333,7 +1355,7 @@ function PhotoGallery({
         onCancelBatchTime={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}
         showBatchGpsEdit={showBatchGpsEdit}
         onToggleBatchGpsEdit={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
-        onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
+        onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); return handleBatchSetGps(lat, lon); }}
         onCancelBatchGpsEdit={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
         showBatchConfirm={showBatchConfirm}
         onRequestDelete={() => setShowBatchConfirm(true)}

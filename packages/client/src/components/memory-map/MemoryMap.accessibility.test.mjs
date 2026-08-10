@@ -17,6 +17,7 @@ test("memory map markers are named 44px buttons with one keyboard activation pat
   assert.match(memoryMap, /iconAnchor:\s*\[22,\s*22\]/);
   assert.match(memoryMap, /tooltipAnchor:\s*\[0,\s*-22\]/);
   assert.match(memoryMap, /keyboard:\s*false/);
+  assert.match(memoryMap, /autoPanOnFocus:\s*true/);
   assert.match(memoryMap, /setAttribute\("role",\s*"button"\)/);
   assert.match(memoryMap, /setAttribute\("aria-label",\s*getMapMarkerLabel\(p\)\)/);
   assert.match(memoryMap, /event\.key !== "Enter" && event\.key !== " "/);
@@ -45,7 +46,9 @@ test("map detail and GPS edit overlays use the shared modal boundary", async () 
   assert.match(locationSearch, /<button[\s\S]*className="location-search-coord-preview"/);
   assert.match(locationSearch, /<li[\s\S]*<button[\s\S]*className="location-search-result"/);
   assert.doesNotMatch(locationSearch, /<(?:div|li)[^>]*className="location-search-(?:coord-preview|result)"/);
-  assert.match(locationSearch, /e\.key === "Escape"[\s\S]*e\.stopPropagation\(\);[\s\S]*onClose\(\)[\s\S]*returnFocusRef\?\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(locationSearch, /className="location-search-panel" onKeyDown=\{handlePanelKeyDown\}/);
+  assert.match(locationSearch, /e\.key === "Escape"[\s\S]*e\.stopPropagation\(\);[\s\S]*if \(saving\) return;[\s\S]*onClose\(\)[\s\S]*restoreTriggerFocus\(\)/);
+  assert.match(locationSearch, /returnFocusRef\?\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
   assert.match(css, /\.location-search-result\s*\{[\s\S]*min-height:\s*44px/);
   assert.match(css, /\.location-search-coord-preview\s*\{[\s\S]*min-height:\s*44px/);
 });

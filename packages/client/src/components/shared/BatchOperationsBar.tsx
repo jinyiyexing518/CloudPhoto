@@ -33,7 +33,7 @@ export interface BatchOperationsBarProps {
   /** GPS-edit panel */
   showBatchGpsEdit: boolean;
   onToggleBatchGpsEdit: () => void;
-  onApplyBatchGps: (lat: string, lon: string) => void;
+  onApplyBatchGps: (lat: string, lon: string) => Promise<boolean>;
   onCancelBatchGpsEdit: () => void;
 
   /** Delete */
@@ -196,7 +196,15 @@ export default function BatchOperationsBar({
           <span className="batch-edit-label">统一位置（搜索地名）</span>
           <LocationSearchPanel
             saving={busy}
-            onSelect={(lat, lon) => onApplyBatchGps(lat, lon)}
+            onSelect={(lat, lon) => {
+              void onApplyBatchGps(lat, lon).then((applied) => {
+                if (!applied) return;
+                window.requestAnimationFrame(() => {
+                  const target = batchGpsButtonRef.current;
+                  if (target?.isConnected) target.focus({ preventScroll: true });
+                });
+              });
+            }}
             onClose={onCancelBatchGpsEdit}
             returnFocusRef={batchGpsButtonRef}
           />

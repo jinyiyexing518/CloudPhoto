@@ -23,17 +23,23 @@ test("both gallery surfaces share the abortable photo identity hook", async () =
   assert.match(hook, /result\.identity === identity/);
 });
 
-test("an unavailable address still renders the current photo coordinates", async () => {
-  const [timeline, folders] = await Promise.all([
+test("an unavailable address still renders coordinates and location panels restore focus", async () => {
+  const [timeline, folders, batchOperations] = await Promise.all([
     source("PhotoGallery.tsx"),
     source("FolderView.tsx"),
+    source("../shared/BatchOperationsBar.tsx"),
   ]);
   for (const surface of [timeline, folders]) {
     assert.match(surface, /const selectedGps = readGpsCoordinates\(selectedPhoto\?\.gpsLat, selectedPhoto\?\.gpsLon\)/);
     assert.match(surface, /geoAddress \?\? `\$\{selectedGps\.lat\.toFixed\(4\)\}°/);
     assert.match(surface, /\{selectedGps && \(/);
     assert.match(surface, /\{!selectedGps && \(/);
+    assert.match(surface, /const session = \+\+gpsSaveSessionRef\.current;[\s\S]*await updatePhotoGps\(targetPhoto\.name, lat, lon\);[\s\S]*!mountedRef\.current \|\| session !== gpsSaveSessionRef\.current/);
+    assert.match(surface, /const invalidateGpsSave = useCallback\(\(\) => \{[\s\S]*gpsSaveSessionRef\.current \+= 1;[\s\S]*setSavingGps\(false\)/);
+    assert.match(surface, /setEditingGps\(false\);[\s\S]*gpsEditButtonRef\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
   }
+  assert.match(batchOperations, /onApplyBatchGps\(lat, lon\)\.then\(\(applied\)[\s\S]*if \(!applied\) return;[\s\S]*batchGpsButtonRef\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
+  assert.doesNotMatch(batchOperations, /showBatchGpsEdit[\s\S]{0,160}batchGpsButtonRef\.current/);
 });
 
 test("memory map renders Cosmos locations only for the workspace that produced them", async () => {

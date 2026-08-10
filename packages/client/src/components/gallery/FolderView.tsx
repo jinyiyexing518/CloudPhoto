@@ -914,6 +914,7 @@ function FolderContent({
   const viewerDialogRef = useRef<HTMLDivElement | null>(null);
   const viewerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const gpsEditButtonRef = useRef<HTMLButtonElement | null>(null);
+  const gpsSaveSessionRef = useRef(0);
   const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -988,6 +989,10 @@ function FolderContent({
   const [savingTakenAt, setSavingTakenAt] = useState(false);
   const [editingGps, setEditingGps] = useState(false);
   const [savingGps, setSavingGps] = useState(false);
+  const invalidateGpsSave = useCallback(() => {
+    gpsSaveSessionRef.current += 1;
+    setSavingGps(false);
+  }, []);
   const [showBatchTimeEdit, setShowBatchTimeEdit] = useState(false);
   const [batchTimeInput, setBatchTimeInput] = useState("");
   const [showBatchGpsEdit, setShowBatchGpsEdit] = useState(false);
@@ -1111,6 +1116,7 @@ function FolderContent({
   const navigateToPhoto = useCallback((idx: number, photoList: Photo[]) => {
     const photo = photoList[idx];
     if (!photo) return;
+    invalidateGpsSave();
     trackPhotoView(photo.name);
     setSelectedIdx(idx);
     setSelectedPhoto(photo);
@@ -1133,7 +1139,7 @@ function FolderContent({
     setMotionVideoLoading(false);
     setModalImageLoaded(false);
     setGifViewerSrc("");
-  }, [openVideoPlaybackSession, trackPhotoView]);
+  }, [invalidateGpsSave, openVideoPlaybackSession, trackPhotoView]);
 
   // Show a persisted derivative immediately, then swap to the animated source.
   useEffect(() => {
@@ -1165,10 +1171,11 @@ function FolderContent({
   }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
   const closeViewer = useCallback(() => {
+    invalidateGpsSave();
     setSelectedIdx(null);
     setSelectedPhoto(null);
     setShowOriginalPreview(false);
-  }, []);
+  }, [invalidateGpsSave]);
   const closeQuickMoveDialog = useCallback(() => {
     if (quickMoveBusy) return false;
     setQuickMovePhoto(null);
@@ -1296,25 +1303,27 @@ function FolderContent({
   const handleBatchSetGps = async (overrideLat?: string, overrideLon?: string) => {
     const effectiveLat = overrideLat ?? batchGpsLat;
     const effectiveLon = overrideLon ?? batchGpsLon;
-    if (!effectiveLat || !effectiveLon || selected.size === 0) return;
+    if (!effectiveLat || !effectiveLon || selected.size === 0) return false;
     if (!readGpsCoordinates(effectiveLat, effectiveLon)) {
       showToast("坐标无效：纬度 ±90°，经度 ±180°", "error");
-      return;
+      return false;
     }
     const selectedList = directPhotos.filter((p) => selected.has(p.name));
     const result = await executeBatchMutation("location", selectedList, async (p) => {
       await updatePhotoGps(p.name, effectiveLat, effectiveLon);
       onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
     });
-    if (!result || !mountedRef.current) return;
+    if (!result || !mountedRef.current) return false;
     setShowBatchGpsEdit(false);
     setBatchGpsLat("");
     setBatchGpsLon("");
     if (result.failed > 0) showToast(`批量修改位置完成，失败 ${result.failed} 张`, "error");
     else showToast(`已修改 ${selectedList.length} 张照片的位置`, "success");
+    return true;
   };
 
   const openModal = (photo: Photo) => {
+    invalidateGpsSave();
     const idx = directPhotos.findIndex((p) => p.name === photo.name);
     trackPhotoView(photo.name);
     setSelectedIdx(idx >= 0 ? idx : null);
@@ -1383,16 +1392,27 @@ function FolderContent({
 
   const saveGps = async (lat: string, lon: string) => {
     if (!selectedPhoto) return;
+    const session = ++gpsSaveSessionRef.current;
+    const targetPhoto = selectedPhoto;
     setSavingGps(true);
     try {
-      await updatePhotoGps(selectedPhoto.name, lat, lon);
-      onGpsUpdate?.(selectedPhoto.name, lat, lon);
-      setSelectedPhoto({ ...selectedPhoto, gpsLat: lat, gpsLon: lon });
+      await updatePhotoGps(targetPhoto.name, lat, lon);
+      if (!mountedRef.current || session !== gpsSaveSessionRef.current) return;
+      onGpsUpdate?.(targetPhoto.name, lat, lon);
+      setSelectedPhoto({ ...targetPhoto, gpsLat: lat, gpsLon: lon });
       setEditingGps(false);
+      window.requestAnimationFrame(() => {
+        const target = gpsEditButtonRef.current;
+        if (target?.isConnected) target.focus({ preventScroll: true });
+      });
     } catch {
-      showToast("更新位置失败", "error");
+      if (mountedRef.current && session === gpsSaveSessionRef.current) {
+        showToast("更新位置失败", "error");
+      }
     } finally {
-      setSavingGps(false);
+      if (mountedRef.current && session === gpsSaveSessionRef.current) {
+        setSavingGps(false);
+      }
     }
   };
 
@@ -1498,6 +1518,7 @@ function FolderContent({
     if (!selectedPhoto) return;
     if (!window.confirm(`确认删除照片：${displayName(selectedPhoto)}？`)) return;
     onDelete(selectedPhoto.name);
+    invalidateGpsSave();
     setSelectedIdx(null);
     setSelectedPhoto(null);
   };
@@ -1508,6 +1529,7 @@ function FolderContent({
     if (!target) return;
     await onMovePhoto(selectedPhoto.name, target);
     showToast(`已移动到「${target || UNCATEGORIZED}」`, "success");
+    invalidateGpsSave();
     setSelectedIdx(null);
     setSelectedPhoto(null);
   };
@@ -1599,7 +1621,7 @@ function FolderContent({
           onCancelBatchTime={() => { setShowBatchTimeEdit(false); setBatchTimeInput(""); }}
           showBatchGpsEdit={showBatchGpsEdit}
           onToggleBatchGpsEdit={() => { setShowBatchGpsEdit((v) => !v); setShowBatchTimeEdit(false); }}
-          onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); void handleBatchSetGps(lat, lon); }}
+          onApplyBatchGps={(lat, lon) => { setBatchGpsLat(lat); setBatchGpsLon(lon); return handleBatchSetGps(lat, lon); }}
           onCancelBatchGpsEdit={() => { setShowBatchGpsEdit(false); setBatchGpsLat(""); setBatchGpsLon(""); }}
           showBatchConfirm={showBatchConfirm}
           onRequestDelete={() => setShowBatchConfirm(true)}
