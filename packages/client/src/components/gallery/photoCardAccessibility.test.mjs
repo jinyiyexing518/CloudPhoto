@@ -59,7 +59,8 @@ test("shared photo cards expose one native open or select target without nested 
   assert.match(primary, /aria-pressed=\{selectionMode \? !!selected : undefined\}/);
   assert.match(primary, /disabled=\{interactionDisabled\}/);
   assert.match(primary, /onClick=\{handlePrimaryAction\}/);
-  assert.doesNotMatch(primary, /onKeyDown|onKeyUp/);
+  assert.match(primary, /onKeyDown=\{\(event\) => \{[\s\S]*event\.key === "ContextMenu"[\s\S]*event\.shiftKey && event\.key === "F10"/);
+  assert.doesNotMatch(primary, /event\.key === "(?:Enter|Space| )"|onKeyUp/);
   assert.doesNotMatch(primary.slice(primary.indexOf(">") + 1), /<button/);
   assert.match(card, /className="photo-thumbnail"[\s\S]{0,180}data-media-policy=\{GRID_MEDIA_POLICY_MARKER\}/);
   assert.doesNotMatch(card, /className="photo-thumbnail"[\s\S]{0,180}onClick=/);

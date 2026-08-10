@@ -6089,19 +6089,34 @@ body {
   min-width: 150px;
 }
 .photo-ctx-item {
+  display: block;
+  width: 100%;
+  min-height: 44px;
   padding: 8px 16px;
+  border: 0;
+  background: transparent;
   font-size: 0.86rem;
+  font: inherit;
+  text-align: left;
   color: #374151;
   cursor: pointer;
   transition: background 0.12s;
 }
-.photo-ctx-item:hover {
+
+.photo-ctx-item:hover,
+.photo-ctx-item:focus-visible {
   background: #f3f4f6;
+}
+
+.photo-ctx-item:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: -3px;
 }
 .photo-ctx-item--danger {
   color: #ef4444;
 }
-.photo-ctx-item--danger:hover {
+.photo-ctx-item--danger:hover,
+.photo-ctx-item--danger:focus-visible {
   background: #fef2f2;
 }
 .date-group-select-all {

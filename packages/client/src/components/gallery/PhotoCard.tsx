@@ -15,6 +15,11 @@ import {
   getPhotoPrimaryActionLabel,
   type PhotoCardLabelInput,
 } from "./photoCardAccessibility";
+import {
+  getNextPhotoContextMenuIndex,
+  getPhotoContextMenuPosition,
+  type PhotoContextMenuNavigationKey,
+} from "./photoCardContextMenu";
 import { formatPhotoDate } from "../../utils/dateFormat";
 
 interface Props {
@@ -77,9 +82,11 @@ function PhotoCard({
   const [gifPaused, setGifPaused] = useState(isGif);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [activeContextMenuIndex, setActiveContextMenuIndex] = useState(0);
   const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
+  const menuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const publishedRepairUrlRef = useRef<string | null>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
   // Video cards render only server-persisted derivatives. Missing or broken
@@ -175,6 +182,113 @@ function PhotoCard({
     isVideo && !useVideoThumb ? `${descriptionId}-video-status` : null,
   ].filter(Boolean).join(" ");
 
+  const restorePrimaryFocus = () => {
+    if (primaryActionRef.current?.isConnected) {
+      primaryActionRef.current.focus({ preventScroll: true });
+    }
+  };
+
+  const closeContextMenu = () => {
+    restorePrimaryFocus();
+    setCtxMenu(null);
+  };
+
+  const contextMenuActions = [
+    {
+      key: "preview",
+      icon: "🔍",
+      label: "预览",
+      run: onClick,
+    },
+    ...(onToggleFavorite ? [{
+      key: "favorite",
+      icon: photo.favorite ? "☆" : "★",
+      label: photo.favorite ? "取消收藏" : "收藏",
+      run: () => onToggleFavorite(!photo.favorite),
+    }] : []),
+    {
+      key: "original",
+      icon: "⬇",
+      label: "打开原图",
+      run: () => window.open(photo.url, "_blank", "noopener,noreferrer"),
+    },
+    ...(onMoveRequest ? [{
+      key: "move",
+      icon: "→",
+      label: "移动到…",
+      run: onMoveRequest,
+    }] : []),
+    {
+      key: "delete",
+      icon: "🗑",
+      label: "删除",
+      danger: true,
+      run: () => setShowConfirm(true),
+    },
+  ];
+
+  const activateContextMenuAction = (run: () => void) => {
+    if (primaryActionRef.current?.isConnected) {
+      primaryActionRef.current.focus({ preventScroll: true });
+    }
+    setCtxMenu(null);
+    run();
+  };
+
+  const openContextMenu = (
+    clientX: number,
+    clientY: number,
+    anchor: HTMLElement,
+  ) => {
+    if (interactionDisabled || selectionMode) return;
+    menuItemRefs.current = [];
+    setActiveContextMenuIndex(0);
+    setCtxMenu(getPhotoContextMenuPosition({
+      clientX,
+      clientY,
+      anchorRect: anchor.getBoundingClientRect(),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      itemCount: contextMenuActions.length,
+    }));
+  };
+
+  const handleContextMenuKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeContextMenu();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextIndex = getNextPhotoContextMenuIndex(
+      currentIndex,
+      event.key as PhotoContextMenuNavigationKey,
+      contextMenuActions.length,
+    );
+    if (nextIndex === null) return;
+    setActiveContextMenuIndex(nextIndex);
+    menuItemRefs.current[nextIndex]?.focus({ preventScroll: true });
+  };
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const frame = window.requestAnimationFrame(() => {
+      menuItemRefs.current[0]?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [ctxMenu]);
+
+  useEffect(() => {
+    if (!ctxMenu || (!interactionDisabled && !selectionMode)) return;
+    closeContextMenu();
+  }, [ctxMenu, interactionDisabled, selectionMode]);
+
   const handlePrimaryAction = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (interactionDisabled) return;
     event.currentTarget.focus({ preventScroll: true });
@@ -198,8 +312,8 @@ function PhotoCard({
         title={displayName}
         onContextMenu={(e) => {
           e.preventDefault();
-          if (interactionDisabled) return;
-          setCtxMenu({ x: e.clientX, y: e.clientY });
+          if (interactionDisabled || selectionMode) return;
+          openContextMenu(e.clientX, e.clientY, e.currentTarget);
         }}
       >
         {onSelect !== undefined && (
@@ -219,6 +333,14 @@ function PhotoCard({
           aria-pressed={selectionMode ? !!selected : undefined}
           disabled={interactionDisabled}
           onClick={handlePrimaryAction}
+          onKeyDown={(event) => {
+            if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+              event.preventDefault();
+              event.stopPropagation();
+              const card = event.currentTarget.closest<HTMLElement>(".photo-card");
+              openContextMenu(0, 0, card ?? event.currentTarget);
+            }
+          }}
         >
           <div
             ref={videoRepairTargetRef}
@@ -439,29 +561,41 @@ function PhotoCard({
         document.body
       )}
 
-      {ctxMenu && !interactionDisabled && createPortal(
-        <div className="photo-ctx-backdrop" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }}>
-          <ul className="photo-ctx-menu" style={{ top: ctxMenu.y, left: ctxMenu.x }} onClick={(e) => e.stopPropagation()}>
-            <li
-              className="photo-ctx-item"
-              onClick={() => {
-                primaryActionRef.current?.focus({ preventScroll: true });
-                setCtxMenu(null);
-                onClick();
-              }}
-            >
-              🔍 预览
-            </li>
-            {onToggleFavorite && (
-              <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onToggleFavorite(!photo.favorite); }}>
-                {photo.favorite ? "☆ 取消收藏" : "★ 收藏"}
+      {ctxMenu && !interactionDisabled && !selectionMode && createPortal(
+        <div
+          className="photo-ctx-backdrop"
+          onClick={closeContextMenu}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            closeContextMenu();
+          }}
+        >
+          <ul
+            className="photo-ctx-menu"
+            role="menu"
+            aria-label={`照片 ${displayName} 操作菜单`}
+            style={{ top: ctxMenu.y, left: ctxMenu.x }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {contextMenuActions.map((action, index) => (
+              <li role="none" key={action.key}>
+                <button
+                  ref={(element) => { menuItemRefs.current[index] = element; }}
+                  type="button"
+                  role="menuitem"
+                  className={`photo-ctx-item${action.danger ? " photo-ctx-item--danger" : ""}`}
+                  tabIndex={index === activeContextMenuIndex ? 0 : -1}
+                  onFocus={() => setActiveContextMenuIndex(index)}
+                  onKeyDown={(event) => handleContextMenuKeyDown(event, index)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    activateContextMenuAction(action.run);
+                  }}
+                >
+                  <span aria-hidden="true">{action.icon}</span> {action.label}
+                </button>
               </li>
-            )}
-            <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); window.open(photo.url, "_blank"); }}>⬇ 打开原图</li>
-            {onMoveRequest && (
-              <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onMoveRequest(); }}>→ 移动到…</li>
-            )}
-            <li className="photo-ctx-item photo-ctx-item--danger" onClick={() => { setCtxMenu(null); setShowConfirm(true); }}>🗑 删除</li>
+            ))}
           </ul>
         </div>,
         document.body
