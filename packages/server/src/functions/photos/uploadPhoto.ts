@@ -13,6 +13,7 @@ import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
 import type { BlockBlobClient } from "@azure/storage-blob";
+import { expectedPhotoDerivativeNames } from "./photoDerivatives";
 import exifr from "exifr";
 // sharp is loaded lazily via require() so a missing/incompatible native binary
 // does not crash the entire function app on startup (would break login, etc.).
@@ -215,9 +216,10 @@ app.http("uploadPhoto", {
         !ALLOWED_AUDIO_MIME.has(mimeType) &&
         THUMBNAIL_MIME.has(mimeType);
       // isAnimated is computed later; re-check after buf is available
-      const thumbnailBlobName = `${scope}/${safeFolderPath}/_th_${objectId}-${safeName}.webp`;
-      // 2048 px preview — same conditions as thumbnail, stored with -prev suffix
-      const previewBlobName = `${scope}/${safeFolderPath}/_th_${objectId}-${safeName}-prev.webp`;
+      const {
+        thumbnailName: thumbnailBlobName,
+        previewName: previewBlobName,
+      } = expectedPhotoDerivativeNames(blobName);
 
       const blobServiceClient = getBlobServiceClient();
       const containerClient =

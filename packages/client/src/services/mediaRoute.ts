@@ -173,6 +173,11 @@ function mediaRouteForUrl(url: string): MediaRoute | null {
   return null;
 }
 
+export function promoteSuccessfulMediaUrl(url: string): void {
+  const route = mediaRouteForUrl(url);
+  if (route) rememberRoute(route);
+}
+
 function mediaUrlForRoute(url: string, route: MediaRoute): string {
   const directUrl = toDirectMediaUrl(url);
   try {
@@ -325,8 +330,7 @@ export function fallbackMediaSource(
   const successEvent = element.tagName === "IMG" ? "load" : "loadeddata";
   element.addEventListener(successEvent, () => {
     if (absoluteUrl(element.currentSrc || element.src) !== expectedSource) return;
-    const route = mediaRouteForUrl(next);
-    if (route) rememberRoute(route);
+    promoteSuccessfulMediaUrl(next);
   }, { once: true });
   element.src = next;
   return true;

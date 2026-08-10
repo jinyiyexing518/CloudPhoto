@@ -12,6 +12,7 @@ import {
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import { expectedPhotoDerivativeNames } from "./photoDerivatives";
 import type sharpT from "sharp";
 let _sharp: typeof sharpT | null = null;
 function getSharp(): typeof sharpT | null {
@@ -114,10 +115,7 @@ app.http("setVideoThumbnail", {
       }
 
       // Derive thumbnail blob name — same pattern used in uploadPhoto and backfillThumbnails
-      const lastSlash = blobName.lastIndexOf("/");
-      const dir = blobName.substring(0, lastSlash + 1);
-      const fname = blobName.substring(lastSlash + 1);
-      const thumbnailBlobName = `${dir}_th_${fname}.webp`;
+      const { thumbnailName: thumbnailBlobName } = expectedPhotoDerivativeNames(blobName);
 
       // Resize thumbnail to 400px wide before storing — client sends raw canvas
       // frames which can be 1920×1080 WebP (~500KB); we need ~50KB like image thumbs.

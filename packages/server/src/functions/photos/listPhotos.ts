@@ -12,6 +12,7 @@ import {
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import { resolveListedPhotoDerivatives } from "./photoDerivatives";
 
 // Azure Blob metadata is ASCII-only; free-text fields are stored as base64
 function decodeMeta(raw: string | undefined): string | undefined {
@@ -84,6 +85,7 @@ app.http("listPhotos", {
         takenAt: string | undefined;
         isAnimated: boolean;
       }> = [];
+      const listedDerivativeNames = new Set<string>();
 
       // Fetch one delegation key for the whole listing — avoids a round-trip per blob
       const delegationKey = await getUserDelegationKey();
@@ -102,7 +104,10 @@ app.http("listPhotos", {
         if (folderRaw === "_voice") continue;
         // Skip internal thumbnail blobs (filename starts with _th_)
         const blobFilename = segs[segs.length - 1];
-        if (blobFilename.startsWith("_th_")) continue;
+        if (blobFilename.startsWith("_th_")) {
+          listedDerivativeNames.add(blob.name);
+          continue;
+        }
         const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
         const folder = folderRaw === "_" ? "" : folderRaw;
         const voiceMemoName = getMeta(blob.metadata, "voiceMemoName");
@@ -114,12 +119,8 @@ app.http("listPhotos", {
           folder,
           groupId: blobGroupId,
           url: generateSasUrlWithKey(blob.name, delegationKey),
-          thumbnailUrl: decodeMeta(getMeta(blob.metadata, "thumbnailName"))
-            ? generateSasUrlWithKey(decodeMeta(getMeta(blob.metadata, "thumbnailName"))!, delegationKey)
-            : undefined,
-          previewUrl: decodeMeta(getMeta(blob.metadata, "previewName"))
-            ? generateSasUrlWithKey(decodeMeta(getMeta(blob.metadata, "previewName"))!, delegationKey)
-            : undefined,
+          thumbnailUrl: undefined,
+          previewUrl: undefined,
           size: blob.properties.contentLength,
           lastModified: blob.properties.lastModified,
           contentType: blob.properties.contentType,
@@ -135,6 +136,16 @@ app.http("listPhotos", {
           takenAt: getMeta(blob.metadata, "takenAt"),
           isAnimated: getMeta(blob.metadata, "isAnimated") === "1" || blob.properties.contentType === "image/gif",
         });
+      }
+
+      for (const photo of photos) {
+        const listed = resolveListedPhotoDerivatives(photo.name, listedDerivativeNames);
+        photo.thumbnailUrl = listed.thumbnailName
+          ? generateSasUrlWithKey(listed.thumbnailName, delegationKey)
+          : undefined;
+        photo.previewUrl = listed.previewName
+          ? generateSasUrlWithKey(listed.previewName, delegationKey)
+          : undefined;
       }
 
       photos.sort((a, b) => {

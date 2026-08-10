@@ -2,6 +2,9 @@
 
 ### v1.9.0 — Algorithm Package · 流量优化深化 · 下载体验重构
 
+**Bug 修复**
+- **🎬 视频封面缺失与播放中途重载** — 普通列表会直接识别同一次 Blob listing 中实际存在的 `_th_{original}.webp` / `_th_{original}-prev.webp`，不再依赖 original metadata；视频详情按每次 View 冻结 source 与稳定 key，线路探测、封面回写和列表刷新只更新 poster/grid，不重建播放器。仅当前 source 明确失败且尚未加载可播放帧时允许一次原元素 fallback，缺少 derivative 的网格仍保持 0 个原视频请求
+
 **新功能**
 - **🧮 `packages/algorithm` 算法包** — 新增 monorepo 内部包 `@cloudphoto/algorithm`，集中沉淀所有优化算法与魔法常量：`bandwidth.ts`（Range Request 策略）、`priority.ts`（照片重要性评分）、`pagination.ts`（分页配置）、`render.ts`（查看器分级阈值）、`media.ts`（THUMBNAIL_MIME、BLANK_GIF、WebP 质量）；前端通过 Vite alias + TypeScript paths 直接引用源码，Vite tree-shake 后 bundle 不增大
 

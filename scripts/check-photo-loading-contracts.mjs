@@ -42,6 +42,7 @@ const backfill = read("packages/server/src/functions/photos/backfillThumbnails.t
 const backfillCursor = read("packages/server/src/functions/photos/backfillCursor.ts");
 const photoLocationSync = read("packages/server/src/utils/cosmos/photoLocationSync.ts");
 const setVideoThumb = read("packages/server/src/functions/photos/setVideoThumbnail.ts");
+const listPhotos = read("packages/server/src/functions/photos/listPhotos.ts");
 const download = read("packages/server/src/functions/photos/downloadPhoto.ts");
 const trash = read("packages/server/src/functions/trash/listTrash.ts");
 const restore = read("packages/server/src/functions/trash/restorePhoto.ts");
@@ -263,6 +264,23 @@ requireText(listPhotosSource, "photo.thumbnailUrl || photo.previewUrl", "derivat
 requireText(listPhotosSource, "void selectFastestMediaRoute", "background media route probe");
 requireText(app, "subscribeToPreferredMediaRoute", "live gallery route promotion subscription");
 requireText(app, "current.map(proxyPhoto)", "live gallery route promotion");
+for (const [name, source] of [["timeline playback", gallery], ["folder playback", folder]]) {
+  assert(
+    !source.includes("subscribeToPreferredMediaRoute"),
+    `${name} must freeze its media route when the View session opens`,
+  );
+  requireText(source, "createVideoPlaybackSession", `${name} frozen playback session`);
+  requireText(source, "fallbackVideoPlaybackSession", `${name} one-shot source fallback`);
+  requireText(source, "markVideoPlaybackPlayable", `${name} playable-content fallback guard`);
+  requireText(source, "claimVideoThumbnailCapture", `${name} one-shot view-frame capture`);
+  requireText(source, "if (selectedVideoRender.session.fallbackAttempted)", `${name} fallback-only route promotion`);
+  requireText(source, "promoteSuccessfulMediaUrl(selectedVideoRender.source)", `${name} successful fallback route promotion`);
+  requireText(source, "key={selectedVideoRender.key}", `${name} stable video element key`);
+  assert(
+    !source.includes('key={`${selectedVideoUrl}:${videoRetryKey}`}'),
+    `${name} key must not contain a mutable source or retry counter`,
+  );
+}
 requireText(photoCard, "getPreferredMediaUrl", "current card media route");
 requireText(mediaThumb, "getPreferredMediaUrl", "current shared-thumbnail media route");
 requireText(photoCard, 'fetchPriority={priority ? "high" : "auto"}', "above-fold card priority");
@@ -314,11 +332,9 @@ requireText(photoCard, ".filter((source): source is string => Boolean(source))",
 for (const [name, source] of [["timeline playback", gallery], ["folder playback", folder]]) {
  requireText(source, 'preload="metadata"', `${name} preloads only metadata after explicit open`);
  requireText(source, "persistVideoPlaybackThumbnail", `${name} thumbnail persistence`);
- requireText(source, "getPreferredMediaUrl(selectedPhoto.url)", `${name} refreshes a stale routed video URL`);
- requireText(source, "getPreferredMediaUrl(selectedVideoPoster)", `${name} refreshes a stale routed poster URL`);
- requireText(source, "subscribeToPreferredMediaRoute(refreshRoute)", `${name} reacts to a late route probe`);
- requireText(source, "onPlay={() => {\n                      videoRouteLockedRef.current = true;", `${name} locks the route before playback startup`);
- assert(!source.includes("if (selectedPhoto.thumbnailUrl) return;"), `${name} must repair stale thumbnail metadata`);
+ requireText(source, "getVideoPlaybackRenderState", `${name} separates mutable poster from frozen source`);
+ requireText(source, "videoCaptureSessionRef.current !== activeSession.key", `${name} captures at most once per View session`);
+ requireText(source, "!selectedPhoto.thumbnailUrl", `${name} captures only when the derivative is missing`);
 }
 requireText(uploadApi, "video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA", "already-loaded playback frame guard");
 requireText(uploadApi, "const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail)", "playback thumbnail endpoint reuse");
@@ -343,6 +359,7 @@ requireText(
 );
 requireText(media, "attempted: Set<string>", "finite element fallback");
 requireText(media, "if (route) rememberRoute(route)", "successful alternate route promotion");
+requireText(media, "export function promoteSuccessfulMediaUrl", "native playback route promotion");
 requireText(media, 'element.tagName === "IMG" ? "load" : "loadeddata"', "image/media success events");
 requireText(media, "preloadImageWithFallback", "programmatic image fallback");
 requireText(gallery, "fetchMediaWithFallback(selectedPhoto.url)", "clipboard fallback");
@@ -445,6 +462,20 @@ assert(
   "video backfill must skip before any original body download",
 );
 requireText(setVideoThumb, "MAX_THUMBNAIL_BYTES", "bounded thumbnail upload");
+assert.equal(
+  (listPhotos.match(/listBlobsFlat\(/g) ?? []).length,
+  1,
+  "ordinary photo listing must discover originals and derivatives in one flat listing",
+);
+requireText(listPhotos, "resolveListedPhotoDerivatives", "same-list derivative recovery");
+assert(
+  !listPhotos.includes('getMeta(blob.metadata, "thumbnailName")')
+    && !listPhotos.includes('getMeta(blob.metadata, "previewName")'),
+  "ordinary photo listing must recover derivatives without original metadata",
+);
+assert(!listPhotos.includes(".exists("), "ordinary photo listing must not issue per-item derivative HEAD calls");
+assert(!listPhotos.includes("getProperties("), "ordinary photo listing must not issue per-item metadata reads");
+assert(!listPhotos.includes("downloadToBuffer("), "ordinary photo listing must never download original video bodies");
 requireText(upload, "await isGroupMember(groupId, payload.userId)", "group upload authorization");
 requireText(upload, 'request.query.get("uploadId")', "upload idempotency key");
 requireText(upload, 'conditions: { ifNoneMatch: "*" }', "idempotent original create");
@@ -493,6 +524,7 @@ console.log("photo-loading contracts: PASS");
 console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=60000");
 console.log("evidence video-grid-original-requests=0 video-grid-original-bytes=0 cold-list-route-wait-ms=0 selected-video-preload=metadata");
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
+console.log("evidence view-normal-video-requests=1 explicit-error-max-requests=2 route-update-remounts=0 derivative-list-heads=0 derivative-list-extra-waits=0");
 console.log("evidence above-fold-priority=6 viewer-tier=derivative download-click-head=false video-cover-overlap=true");
 console.log("evidence range-sw-cache=false range-body-requires-206=true cache-statuses=200 private-list-max=24 private-max-age-s=3600");
 console.log("evidence cors trusted=2/2 malicious=0/3 trash-derivatives=2 logout-private-caches=3 logout-write-drain=true");

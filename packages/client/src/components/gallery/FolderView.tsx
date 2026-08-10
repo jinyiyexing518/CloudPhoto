@@ -24,8 +24,17 @@ import {
   fallbackMediaSource,
   getPreferredMediaUrl,
   preloadImageWithFallback,
-  subscribeToPreferredMediaRoute,
+  promoteSuccessfulMediaUrl,
 } from "../../services/mediaRoute";
+import {
+  VideoPlaybackSession,
+  claimVideoThumbnailCapture,
+  createVideoPlaybackSession,
+  fallbackVideoPlaybackSession,
+  getVideoPlaybackRenderState,
+  markVideoPlaybackPlayable,
+  restartVideoPlaybackSession,
+} from "../../services/videoPlaybackSession";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import { reverseGeocode } from "../../utils/geocode";
@@ -766,27 +775,29 @@ function FolderContent({
   // Modal state
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
-  const [selectedVideoRoute, setSelectedVideoRoute] = useState<{ name: string; url: string } | null>(null);
-  const videoRouteLockedRef = useRef(false);
+  const [videoSession, setVideoSession] = useState<VideoPlaybackSession | null>(null);
+  const videoSessionIdRef = useRef(0);
+  const videoElementRef = useRef<HTMLVideoElement>(null);
+  const videoPlayableSessionRef = useRef<string | null>(null);
+  const videoFallbackSessionRef = useRef<string | null>(null);
+  const videoCaptureSessionRef = useRef<string | null>(null);
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
 
-  useEffect(() => {
-    const photo = selectedPhoto;
-    videoRouteLockedRef.current = false;
-    if (!photo?.contentType?.startsWith("video/")) {
-      setSelectedVideoRoute(null);
+  const openVideoPlaybackSession = useCallback((photo: Photo) => {
+    if (!photo.contentType?.startsWith("video/")) {
+      setVideoSession(null);
       return;
     }
-    const refreshRoute = () => {
-      if (videoRouteLockedRef.current) return;
-      setSelectedVideoRoute({
-        name: photo.name,
-        url: getPreferredMediaUrl(photo.url),
-      });
-    };
-    refreshRoute();
-    return subscribeToPreferredMediaRoute(refreshRoute);
-  }, [selectedPhoto?.contentType, selectedPhoto?.name, selectedPhoto?.url]);
+    const session = createVideoPlaybackSession({
+      photoName: photo.name,
+      originalUrl: photo.url,
+      sessionId: ++videoSessionIdRef.current,
+      needsThumbnailCapture: !photo.thumbnailUrl,
+    });
+    videoPlayableSessionRef.current = null;
+    videoFallbackSessionRef.current = null;
+    setVideoSession(session);
+  }, []);
 
   useEffect(() => {
     if (!selectedPhoto) return;
@@ -820,7 +831,6 @@ function FolderContent({
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const [videoRetryKey, setVideoRetryKey] = useState(0);
   const [sharing, setSharing] = useState(false);
   // Progressive GIF loading in viewer: show thumbnail immediately, upgrade to full GIF silently
   const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
@@ -909,6 +919,7 @@ function FolderContent({
     trackPhotoView(photo.name);
     setSelectedIdx(idx);
     setSelectedPhoto(photo);
+    openVideoPlaybackSession(photo);
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
@@ -927,10 +938,9 @@ function FolderContent({
     setMotionVideoLoading(false);
     setVideoBuffering(false);
     setVideoError(false);
-    setVideoRetryKey(0);
     setModalImageLoaded(false);
     setGifViewerSrc("");
-  }, [trackPhotoView]);
+  }, [openVideoPlaybackSession, trackPhotoView]);
 
   // Show a persisted derivative immediately, then swap to the animated source.
   useEffect(() => {
@@ -1086,6 +1096,7 @@ function FolderContent({
     trackPhotoView(photo.name);
     setSelectedIdx(idx >= 0 ? idx : null);
     setSelectedPhoto(photo);
+    openVideoPlaybackSession(photo);
     setEditingSubject(false);
     setSubjectInput(photo.subject ?? "");
     setEditingName(false);
@@ -1101,7 +1112,6 @@ function FolderContent({
     setMotionVideoLoading(false);
     setVideoBuffering(false);
     setVideoError(false);
-    setVideoRetryKey(0);
     setGifViewerSrc("");
   };
 
@@ -1305,12 +1315,14 @@ function FolderContent({
     const basename = p.name.split("/").pop() ?? p.name;
     return basename.replace(/^\d+-/, "");
   };
-  const selectedVideoUrl = selectedPhoto
-    ? selectedVideoRoute?.name === selectedPhoto.name
-      ? selectedVideoRoute.url
-      : getPreferredMediaUrl(selectedPhoto.url)
-    : "";
   const selectedVideoPoster = selectedPhoto?.thumbnailUrl ?? selectedPhoto?.previewUrl;
+  const selectedVideoRender = selectedPhoto
+    && videoSession?.photoName === selectedPhoto.name
+    ? {
+        session: videoSession,
+        ...getVideoPlaybackRenderState(videoSession, selectedVideoPoster),
+      }
+    : null;
 
   const moveByDragWithToast = async (photoName: string, fromFolder: string, toFolder: string) => {
     if (fromFolder === toFolder) return;
@@ -1525,44 +1537,78 @@ function FolderContent({
               )}
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
-                  <video
-                    key={`${selectedVideoUrl}:${videoRetryKey}`}
+                  {selectedVideoRender && <video
+                    ref={videoElementRef}
+                    key={selectedVideoRender.key}
                     crossOrigin="anonymous"
-                    src={selectedVideoUrl}
-                    poster={selectedVideoPoster ? getPreferredMediaUrl(selectedVideoPoster) : undefined}
+                    src={selectedVideoRender.source}
+                    poster={selectedVideoRender.poster}
                     className="modal-image modal-video"
                     controls
                     playsInline
                     preload="metadata"
                     onPlay={() => {
-                      videoRouteLockedRef.current = true;
                       setVideoError(false);
                       setVideoBuffering(true);
                     }}
+                    onLoadedData={() => {
+                      if (selectedVideoRender.session.fallbackAttempted) {
+                        promoteSuccessfulMediaUrl(selectedVideoRender.source);
+                      }
+                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
+                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
+                        ? markVideoPlaybackPlayable(current)
+                        : current);
+                    }}
                     onPlaying={(event) => {
                       setVideoBuffering(false);
+                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
+                      const activeSession = markVideoPlaybackPlayable(selectedVideoRender.session);
+                      const capture = claimVideoThumbnailCapture(activeSession);
+                      setVideoSession((current) => current?.key === activeSession.key
+                        ? capture.session
+                        : current);
                       const photoName = selectedPhoto.name;
-                      void persistVideoPlaybackThumbnail(photoName, event.currentTarget)
-                        .then((thumbnailUrl) => {
-                          if (!thumbnailUrl) return;
-                          onThumbnailUpdate?.(photoName, thumbnailUrl);
-                          setSelectedPhoto((current) => current?.name === photoName
-                            ? { ...current, thumbnailUrl }
-                            : current);
-                        });
+                      if (
+                        capture.shouldCapture
+                        && !selectedPhoto.thumbnailUrl
+                        && videoCaptureSessionRef.current !== activeSession.key
+                      ) {
+                        videoCaptureSessionRef.current = activeSession.key;
+                        void persistVideoPlaybackThumbnail(photoName, event.currentTarget)
+                          .then((thumbnailUrl) => {
+                            if (!thumbnailUrl) return;
+                            onThumbnailUpdate?.(photoName, thumbnailUrl);
+                            setSelectedPhoto((current) => current?.name === photoName
+                              ? { ...current, thumbnailUrl }
+                              : current);
+                          });
+                      }
                     }}
                     onWaiting={() => setVideoBuffering(true)}
                     onError={(event) => {
-                      if (fallbackMediaSource(event.currentTarget, [selectedPhoto.url])) {
+                      const activeSession = videoPlayableSessionRef.current === selectedVideoRender.session.key
+                        ? markVideoPlaybackPlayable(selectedVideoRender.session)
+                        : selectedVideoRender.session;
+                      const fallback = videoFallbackSessionRef.current === selectedVideoRender.session.key
+                        ? null
+                        : fallbackVideoPlaybackSession(
+                            activeSession,
+                            event.currentTarget.currentSrc || event.currentTarget.src,
+                          );
+                      if (fallback) {
+                        videoFallbackSessionRef.current = selectedVideoRender.session.key;
+                        setVideoSession(fallback);
                         setVideoError(false);
                         setVideoBuffering(true);
+                        event.currentTarget.src = fallback.source;
                         event.currentTarget.load();
                       } else {
                         setVideoBuffering(false);
                         setVideoError(true);
                       }
                     }}
-                  />
+                  />}
                   {videoBuffering && !videoError && (
                     <div className="modal-video-spinner">
                       <div className="modal-video-spinner-ring" />
@@ -1576,9 +1622,17 @@ function FolderContent({
                       <button
                         style={{ marginTop: 4, padding: "4px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13 }}
                         onClick={() => {
+                          if (!videoSession) return;
+                          const restarted = restartVideoPlaybackSession(videoSession);
+                          videoPlayableSessionRef.current = null;
+                          videoFallbackSessionRef.current = null;
+                          setVideoSession(restarted);
                           setVideoError(false);
-                          setVideoBuffering(false);
-                          setVideoRetryKey((key) => key + 1);
+                          setVideoBuffering(true);
+                          if (videoElementRef.current) {
+                            videoElementRef.current.src = restarted.source;
+                            videoElementRef.current.load();
+                          }
                         }}
                       >重试</button>
                     </div>

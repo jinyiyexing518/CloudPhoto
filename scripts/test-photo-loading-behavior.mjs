@@ -683,15 +683,28 @@ const http = await import(httpUrl);
 
 {
   localStorage.removeItem("cloudphoto_media_route_v1");
-  const mediaRoute = await importTypeScript(
+  const mediaRouteUrl = await compileTypeScript(
     "packages/client/src/services/mediaRoute.ts",
     (source) => source.replaceAll("import.meta.env", "({})"),
+  );
+  const mediaRoute = await import(mediaRouteUrl);
+  const videoPlayback = await importTypeScript(
+    "packages/client/src/services/videoPlaybackSession.ts",
+    (source) => source.replace('"./mediaRoute"', JSON.stringify(mediaRouteUrl)),
   );
   let preferredRouteChanges = 0;
   const unsubscribeRoute = mediaRoute.subscribeToPreferredMediaRoute(() => {
     preferredRouteChanges += 1;
   });
   const calls = [];
+  const originalVideoUrl = "https://photostorage.blob.core.windows.net/photos/stale-video.mp4?sig=old";
+  const openedSession = videoPlayback.createVideoPlaybackSession({
+    photoName: "personal/viewer/_/stale-video.mp4",
+    originalUrl: originalVideoUrl,
+    sessionId: 1,
+    needsThumbnailCapture: true,
+  });
+  const openedRender = videoPlayback.getVideoPlaybackRenderState(openedSession);
   globalThis.fetch = async (input) => {
     const url = String(input);
     calls.push(url);
@@ -705,12 +718,79 @@ const http = await import(httpUrl);
   assert.equal(calls.length, 2);
   assert(calls[0].includes("blob.core.windows.net"));
   assert(calls[1].includes("cloudphotos.top/media/"));
-  const staleDirectUrl = "https://photostorage.blob.core.windows.net/photos/stale-video.mp4?sig=old";
   assert(
-    mediaRoute.getPreferredMediaUrl(staleDirectUrl).includes("cloudphotos.top/media/"),
-    "playback must re-route a URL frozen before the preferred route changed",
+    mediaRoute.getPreferredMediaUrl(originalVideoUrl).includes("cloudphotos.top/media/"),
+    "new playback sessions must adopt the newly preferred route",
   );
-  assert.equal(preferredRouteChanges, 1, "a late route probe must notify an open playback surface");
+  assert.equal(preferredRouteChanges, 1, "a late route probe must notify canonical gallery state");
+  assert.equal(
+    videoPlayback.getVideoPlaybackRenderState(openedSession).source,
+    openedRender.source,
+    "a route update after View opens must not change the session source",
+  );
+  const posterRender = videoPlayback.getVideoPlaybackRenderState(
+    openedSession,
+    "https://photostorage.blob.core.windows.net/photos/_th_stale-video.mp4.webp?sig=new",
+  );
+  assert.equal(posterRender.key, openedRender.key, "poster updates must not remount the video element");
+  assert.equal(posterRender.source, openedRender.source, "poster updates must not change video source bytes");
+  assert.notEqual(posterRender.poster, openedRender.poster, "a persisted thumbnail may update the poster independently");
+
+  const fallbackSession = videoPlayback.fallbackVideoPlaybackSession(
+    openedSession,
+    openedRender.source,
+  );
+  assert(fallbackSession, "an explicit current-source error before playable content may fall back once");
+  assert.equal(fallbackSession.key, openedSession.key, "fallback must preserve the mounted video element");
+  assert.notEqual(fallbackSession.source, openedSession.source, "fallback must use the alternate route");
+  assert.equal(
+    videoPlayback.fallbackVideoPlaybackSession(fallbackSession, fallbackSession.source),
+    null,
+    "fallback must terminate after one alternate attempt",
+  );
+  const restartedFallbackSession = videoPlayback.restartVideoPlaybackSession(fallbackSession);
+  assert.equal(
+    videoPlayback.fallbackVideoPlaybackSession(
+      restartedFallbackSession,
+      restartedFallbackSession.source,
+    ),
+    null,
+    "manual retry must not re-arm automatic fallback in the same View session",
+  );
+  const playableSession = videoPlayback.markVideoPlaybackPlayable(openedSession);
+  assert.equal(
+    videoPlayback.fallbackVideoPlaybackSession(playableSession, playableSession.source),
+    null,
+    "an error after playable content must not switch a slow or interrupted route",
+  );
+
+  const capture = videoPlayback.claimVideoThumbnailCapture(playableSession);
+  assert.equal(capture.shouldCapture, true, "the first loaded View frame must be captured when the derivative is missing");
+  assert.equal(capture.session.key, openedSession.key);
+  assert.equal(capture.session.source, openedSession.source);
+  assert.equal(
+    videoPlayback.claimVideoThumbnailCapture(capture.session).shouldCapture,
+    false,
+    "one View session must not loop thumbnail capture or POST attempts",
+  );
+  const refreshedRender = videoPlayback.getVideoPlaybackRenderState(
+    capture.session,
+    "https://photostorage.blob.core.windows.net/photos/_th_stale-video.mp4.webp?sig=refreshed",
+  );
+  assert.equal(refreshedRender.key, openedRender.key, "photo-object refresh must keep the session key");
+  assert.equal(refreshedRender.source, openedRender.source, "photo-object refresh must keep the frozen source");
+
+  const reopenedSession = videoPlayback.createVideoPlaybackSession({
+    photoName: openedSession.photoName,
+    originalUrl: originalVideoUrl,
+    sessionId: 2,
+    needsThumbnailCapture: false,
+  });
+  assert.notEqual(reopenedSession.key, openedSession.key, "closing and reopening creates a new View session");
+  assert(
+    reopenedSession.source.includes("cloudphotos.top/media/"),
+    "only a newly opened View session may adopt the latest preferred route",
+  );
 
   const timeoutCalls = [];
   globalThis.fetch = (input, init) => {
@@ -729,7 +809,7 @@ const http = await import(httpUrl);
   );
   assert.equal(await timeoutResponse.text(), "timeout-alternate");
   assert.equal(timeoutCalls.length, 2, "a stalled media route must advance after its own timeout");
-  const staleProxyUrl = mediaRoute.toProxyMediaUrl(staleDirectUrl);
+  const staleProxyUrl = mediaRoute.toProxyMediaUrl(originalVideoUrl);
   assert(
     mediaRoute.getPreferredMediaUrl(staleProxyUrl).includes("blob.core.windows.net"),
     "playback must recover a direct URL from stale proxy-routed photo state",
@@ -761,6 +841,16 @@ const http = await import(httpUrl);
   );
   assert.equal(await bodyTimeoutResponse.text(), "body-timeout-alternate");
   assert.equal(bodyTimeoutCalls.length, 2, "a stalled media body must advance to the alternate");
+  mediaRoute.promoteSuccessfulMediaUrl(originalVideoUrl);
+  assert(
+    mediaRoute.getPreferredMediaUrl(originalVideoUrl).includes("blob.core.windows.net"),
+    "a successfully loaded native video source must be preferred by the next View session",
+  );
+  mediaRoute.promoteSuccessfulMediaUrl(staleProxyUrl);
+  assert(
+    mediaRoute.getPreferredMediaUrl(originalVideoUrl).includes("cloudphotos.top/media/"),
+    "a successful native fallback must promote its alternate without changing the open session",
+  );
 }
 
 const cacheLifecycleUrl = await compileTypeScript(
@@ -913,5 +1003,6 @@ console.log("evidence health-explicit-ttl-ms=300000 health-transient-ttl-ms=5000
 console.log("evidence cold-list-miss=true persisted-first-paint=true focus-visibility-requests=1");
 console.log("evidence media-primary-fail-alternate-pass=true media-route-timeout=true range-sw-cache=false opaque-cache=false");
 console.log("evidence viewer-high-dpr-tier=preview missing-preview-tier=thumbnail eager-media-bounded=true");
+console.log("evidence view-source-frozen=true poster-source-stable=true fallback-attempts=1 capture-attempts-per-view=1 reopen-adopts-route=true");
 console.log("evidence private-cache-max-age-s=3600 public=false stale=false range-forwarded=true");
 console.log("evidence role-account-logout-private-cache-miss=true app-shell-preserved=true");

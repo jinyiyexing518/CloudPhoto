@@ -12,6 +12,7 @@ import {
   decodeBackfillCursor,
   encodeBackfillCursor,
 } from "./backfillCursor";
+import { expectedPhotoDerivativeNames } from "./photoDerivatives";
 import type sharpT from "sharp";
 
 // Lazy-load sharp so a missing native binary doesn't crash the function app
@@ -134,10 +135,10 @@ app.http("backfillThumbnails", {
         // - GIFs: sharp extracts frame 0 → fast gallery placeholder while full GIF loads.
         // - Animated WebPs: same first-frame extraction.
 
-        const lastSlash = blob.name.lastIndexOf("/");
-        const dir = blob.name.substring(0, lastSlash + 1);
-        const thumbName = `${dir}_th_${filename}.webp`;
-        const previewName = `${dir}_th_${filename}-prev.webp`;
+        const {
+          thumbnailName: thumbName,
+          previewName,
+        } = expectedPhotoDerivativeNames(blob.name);
         const storedThumbName = decodeMeta(getMeta(blob.metadata, "thumbnailName"));
         const storedPreviewName = decodeMeta(getMeta(blob.metadata, "previewName"));
 
