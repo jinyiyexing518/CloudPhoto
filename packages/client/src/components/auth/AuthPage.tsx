@@ -170,6 +170,9 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
               <form
                 className="auth-form"
                 onSubmit={handleLogin}
+                onInput={(event) =>
+                  (event.target as HTMLInputElement).setCustomValidity("")
+                }
                 onInvalid={(event) =>
                   (event.target as HTMLInputElement).setCustomValidity(
                     `请输入${
@@ -186,10 +189,7 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
                     id="login-username"
                     type="text"
                     value={loginUsername}
-                    onChange={(event) => {
-                      event.currentTarget.setCustomValidity("");
-                      setLoginUsername(event.target.value);
-                    }}
+                    onChange={(event) => setLoginUsername(event.target.value)}
                     placeholder="请输入用户名"
                     required
                     autoComplete="username"

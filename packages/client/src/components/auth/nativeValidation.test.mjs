@@ -77,11 +77,9 @@ test("auth forms preserve native validation and wire localization before submit"
 
   for (const source of [authPage, registerForm]) {
     assert.match(source, /onInvalid=/);
-  }
-  for (const source of [authPage, registerForm, passwordField]) {
     assert.match(
       source,
-      /onChange=\{\(event\) => \{[\s\S]*?(?:clearNativeValidation|setCustomValidity)/,
+      /onInput=\{\(event\) =>[\s\S]*?(?:clearNativeValidation|setCustomValidity)/,
     );
   }
 

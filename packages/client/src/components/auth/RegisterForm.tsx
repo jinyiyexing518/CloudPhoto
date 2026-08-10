@@ -75,6 +75,9 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
         <form
           className="auth-form"
           onSubmit={handleRegister}
+          onInput={(event) =>
+            clearNativeValidation(event.target as HTMLInputElement)
+          }
           onInvalid={(event) =>
             setChineseNativeValidation(event.target as HTMLInputElement)
           }
@@ -87,10 +90,7 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               id="register-username"
               type="text"
               value={username}
-              onChange={(event) => {
-                clearNativeValidation(event.currentTarget);
-                setUsername(event.target.value);
-              }}
+              onChange={(event) => setUsername(event.target.value)}
               placeholder="请输入用户名"
               required
               autoComplete="username"
@@ -105,10 +105,7 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               id="register-display-name"
               type="text"
               value={displayName}
-              onChange={(event) => {
-                clearNativeValidation(event.currentTarget);
-                setDisplayName(event.target.value);
-              }}
+              onChange={(event) => setDisplayName(event.target.value)}
               placeholder="输入希望显示的名称"
               required
               autoComplete="nickname"
@@ -120,10 +117,7 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               id="register-email"
               type="email"
               value={email}
-              onChange={(event) => {
-                clearNativeValidation(event.currentTarget);
-                setEmail(event.target.value);
-              }}
+              onChange={(event) => setEmail(event.target.value)}
               placeholder="name@example.com"
               required
               autoComplete="email"

@@ -34,10 +34,7 @@ export default function PasswordField({
           id={id}
           type={visible ? "text" : "password"}
           value={value}
-          onChange={(event) => {
-            event.currentTarget.setCustomValidity("");
-            onChange(event.target.value);
-          }}
+          onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           required
           autoComplete={autoComplete}
