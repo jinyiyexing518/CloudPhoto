@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { meetsMinimumTarget } from "./auth-layout-geometry.mjs";
 
 const cdpPort = process.env.CDP_PORT ?? "9333";
 const pageUrl = process.env.AUTH_PREVIEW_URL ?? "http://127.0.0.1:4173/";
@@ -195,13 +196,12 @@ const scrollSnapshotExpression = `(() => {
 })()`;
 
 function assertGeometry(snapshot, width, label) {
-  const subpixelTolerance = 0.01;
   assert.equal(snapshot.document.scrollWidth, snapshot.document.clientWidth, `${label} document overflow`);
   assert.equal(snapshot.authPage.scrollWidth, snapshot.authPage.clientWidth, `${label} auth-page overflow`);
   for (const [name, rect] of Object.entries(snapshot.controls)) {
     assert(rect, `${label} missing ${name}`);
-    assert(rect.width + subpixelTolerance >= 44, `${label} ${name} width ${rect.width}`);
-    assert(rect.height + subpixelTolerance >= 44, `${label} ${name} height ${rect.height}`);
+    assert(meetsMinimumTarget(rect.width), `${label} ${name} width ${rect.width}`);
+    assert(meetsMinimumTarget(rect.height), `${label} ${name} height ${rect.height}`);
     assert(rect.x >= 0 && rect.x + rect.width <= width, `${label} ${name} outside viewport`);
   }
   for (const [name, font] of Object.entries(snapshot.fonts)) {
