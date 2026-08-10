@@ -62,6 +62,7 @@
 - **照片策略边界分层** — 账号 JWT 解析、通用 API 路由/hedge 与照片列表刷新、媒体缓存规则拆为独立模块；`http` 不再把 `:group:` 列表键等照片专用策略提升到登录入口，入口由 28.84 kB 降至 28.48 kB（gzip 10.44 kB → 10.31 kB）
 - **注册表单按意图加载** — 默认登录页不再携带注册字段、校验和提交逻辑；注册 Tab hover/focus 预载同一个 lazy Promise，打开后保持表单状态并继续在提交前预载工作区。入口由 28.48 kB 降至 26.58 kB（gzip 10.31 kB → 9.91 kB），注册逻辑成为独立 2.79 kB chunk
 - **更新弹窗 Idle 延后加载** — `WhatsNewPopup` 从 `AuthenticatedApp` 拆为独立 lazy chunk，照片列表 `loading=true` 时不挂载也不请求 changelog；`loading` 结束后仅在 `requestIdleCallback({ timeout: 2000 })`（含 `setTimeout` 兼容 fallback）空闲窗口挂载，且切回 loading/卸载会取消旧任务，避免迟到弹窗覆盖加载态。`AuthenticatedApp` 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB），并新增 `WhatsNewPopup-*.js` 3.81 kB chunk
+- **最近更新完整模态键盘路径** — 打开后显式聚焦关闭按钮，Escape 关闭，Tab/Shift+Tab 基于每次按键时的可见控件动态循环；键盘聚焦/交互会 pin 弹窗并清空自动淡出计时器，关闭动画完成或组件卸载后仅向仍连接的原控件恢复焦点。更新摘要使用原生 `button` 与稳定 `aria-expanded`/`aria-controls` 关联
 - **PWA 最小首装缓存** — Workbox 从预缓存全部 894.44 KiB 资源改为只安装 180.90 KiB 应用壳（约 -80%）；动态工作区 JS/CSS、注册表单与图库首次访问后进入 `app-code-v1` CacheFirst 缓存，兼顾首屏带宽与后续离线复用
 - **PWA 安全更新闸门** — `onNeedRefresh` 仅设置全局 `update-ready` 状态并发事件，不自动 `updateSW(true)`/刷新页面；登录页期间收到更新事件也会在进入工作区后恢复更新提示
 - **Service Worker 私有媒体缓存**

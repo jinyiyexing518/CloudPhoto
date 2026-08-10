@@ -1737,7 +1737,13 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  width: 100%;
   padding: 10px 20px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background 0.12s;
   user-select: none;

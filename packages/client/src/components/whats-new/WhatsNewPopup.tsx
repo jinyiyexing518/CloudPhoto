@@ -1,6 +1,13 @@
-﻿import { useState, useEffect, useRef } from "react";
+﻿import { useCallback, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { fetchChangelogs, type ChangelogEntry } from "../../services/photoApi";
+import {
+  clearModalTimers,
+  focusElement,
+  handleModalKeyDown,
+  restoreFocus,
+  type ModalTimerHandles,
+} from "./modalFocus";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
@@ -39,28 +46,39 @@ function EntryItem({ entry, expandedId, setExpandedId }: {
   setExpandedId: (id: string | null) => void;
 }) {
   const open = expandedId === entry.id;
+  const detailsId = `whats-new-details-${entry.id}`;
+  const summary = (
+    <>
+      <span className="whats-new-icon">{entry.icon}</span>
+      <span className="whats-new-body">
+        <span className="whats-new-item-top">
+          <span className="whats-new-item-title">{entry.title}</span>
+          <span className="whats-new-item-date">{formatDate(entry.date)}</span>
+        </span>
+        <span className="whats-new-item-desc">{entry.desc}</span>
+      </span>
+      {entry.details && (
+        <span className={`whats-new-expand-icon${open ? " whats-new-expand-icon--open" : ""}`}>▼</span>
+      )}
+    </>
+  );
   return (
     <li key={entry.id} className={`whats-new-item whats-new-item--${entryType(entry)}`}>
-      <div
-        className="whats-new-item-summary"
-        onClick={() => setExpandedId(open ? null : entry.id)}
-        role="button"
-        aria-expanded={open}
-      >
-        <span className="whats-new-icon">{entry.icon}</span>
-        <div className="whats-new-body">
-          <div className="whats-new-item-top">
-            <span className="whats-new-item-title">{entry.title}</span>
-            <span className="whats-new-item-date">{formatDate(entry.date)}</span>
-          </div>
-          <span className="whats-new-item-desc">{entry.desc}</span>
-        </div>
-        {entry.details && (
-          <span className={`whats-new-expand-icon${open ? " whats-new-expand-icon--open" : ""}`}>▼</span>
-        )}
-      </div>
+      {entry.details ? (
+        <button
+          type="button"
+          className="whats-new-item-summary"
+          onClick={() => setExpandedId(open ? null : entry.id)}
+          aria-expanded={open}
+          aria-controls={detailsId}
+        >
+          {summary}
+        </button>
+      ) : (
+        <div className="whats-new-item-summary">{summary}</div>
+      )}
       {open && entry.details && (
-        <div className="whats-new-item-details">{entry.details}</div>
+        <div id={detailsId} className="whats-new-item-details">{entry.details}</div>
       )}
     </li>
   );
@@ -74,12 +92,26 @@ export default function WhatsNewPopup() {
   const [pinned, setPinned] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [fixesOpen, setFixesOpen] = useState(false);
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const closingRef = useRef(false);
+  const changelogRequestIdRef = useRef(0);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const suppressFocusPinRef = useRef(false);
+  const timerHandles = useRef<ModalTimerHandles>({
+    idle: null,
+    fade: null,
+    close: null,
+    initialFocus: null,
+  });
 
   // Fetch changelog entries from Cosmos DB via the API
   useEffect(() => {
+    mountedRef.current = true;
+    const requestId = ++changelogRequestIdRef.current;
     fetchChangelogs(7).then((data) => {
+      if (!mountedRef.current || requestId !== changelogRequestIdRef.current) return;
       // Normalize: map 'description'/'summary' → 'desc', infer type from title
       const normalized = data.map(normalize);
       // Sort: features/improvements first, then fixes; newest-first within each group
@@ -92,6 +124,11 @@ export default function WhatsNewPopup() {
       setEntries(normalized);
       if (normalized.length > 0) setVisible(true);
     });
+    return () => {
+      mountedRef.current = false;
+      changelogRequestIdRef.current += 1;
+      clearModalTimers(timerHandles.current);
+    };
   }, []);
 
   // WhatsNew 是自动淡出的轻量提示层，不需要锁定 body 滚动。
@@ -99,31 +136,82 @@ export default function WhatsNewPopup() {
   // 启动自动淡出倒计时；pinned 后取消
   useEffect(() => {
     if (!visible || pinned) return;
-    idleTimer.current = setTimeout(() => {
+    timerHandles.current.idle = setTimeout(() => {
+      if (!mountedRef.current) return;
       setFading(true);
-      fadeTimer.current = setTimeout(() => setVisible(false), FADE_DURATION_MS);
+      timerHandles.current.fade = setTimeout(() => {
+        if (mountedRef.current) setVisible(false);
+      }, FADE_DURATION_MS);
     }, IDLE_DELAY_MS);
     return () => {
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-      if (fadeTimer.current) clearTimeout(fadeTimer.current);
+      if (timerHandles.current.idle !== null) {
+        clearTimeout(timerHandles.current.idle);
+        timerHandles.current.idle = null;
+      }
+      if (timerHandles.current.fade !== null) {
+        clearTimeout(timerHandles.current.fade);
+        timerHandles.current.fade = null;
+      }
     };
   }, [visible, pinned]);
 
-  const dismiss = () => {
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    if (fadeTimer.current) clearTimeout(fadeTimer.current);
-    setClosing(true);
-    setTimeout(() => setVisible(false), 300);
-  };
-
-  // 用户点击弹窗内容 → 立刻恢复、等待手动关闭
-  const handlePopupClick = () => {
-    if (pinned) return;
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+  const pinPopup = useCallback(() => {
+    if (closingRef.current) return;
+    clearModalTimers(timerHandles.current);
+    if (!mountedRef.current) return;
     setFading(false);
     setPinned(true);
-  };
+  }, []);
+
+  const dismiss = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    clearModalTimers(timerHandles.current);
+    setClosing(true);
+    timerHandles.current.close = setTimeout(() => {
+      if (mountedRef.current) setVisible(false);
+    }, 300);
+  }, []);
+
+  // 用户点击弹窗内容 → 立刻恢复、等待手动关闭
+  const handlePopupClick = () => pinPopup();
+  const handlePopupFocus = useCallback(() => {
+    if (!suppressFocusPinRef.current) pinPopup();
+  }, [pinPopup]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    timerHandles.current.initialFocus = setTimeout(() => {
+      timerHandles.current.initialFocus = null;
+      if (!mountedRef.current) return;
+      suppressFocusPinRef.current = true;
+      focusElement(closeButtonRef.current);
+      suppressFocusPinRef.current = false;
+    }, 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const popup = popupRef.current;
+      if (!popup) return;
+      if (
+        event.key !== "Escape"
+        && event.key !== "Tab"
+        && !popup.contains(document.activeElement)
+      ) return;
+      handleModalKeyDown(event, popup, document.activeElement, dismiss, pinPopup);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      clearModalTimers(timerHandles.current);
+      restoreFocus(previousFocusRef.current);
+      previousFocusRef.current = null;
+    };
+  }, [dismiss, pinPopup, visible]);
 
   if (!visible || !entries) return null;
 
@@ -136,15 +224,21 @@ export default function WhatsNewPopup() {
       onClick={(e) => { if (e.target === e.currentTarget) dismiss(); }}
       role="dialog"
       aria-modal="true"
-      aria-label="最近更新"
+      aria-labelledby="whats-new-title"
     >
-      <div className="whats-new-popup" onClick={handlePopupClick}>
+      <div
+        ref={popupRef}
+        className="whats-new-popup"
+        onClick={handlePopupClick}
+        onFocusCapture={handlePopupFocus}
+        tabIndex={-1}
+      >
         <div className="whats-new-header">
           <div className="whats-new-header-text">
-            <span className="whats-new-title">🎉 最近更新</span>
+            <span id="whats-new-title" className="whats-new-title">🎉 最近更新</span>
             <span className="whats-new-subtitle">过去 7 天新上线的功能，点击条目查看详情</span>
           </div>
-          <button className="whats-new-close" onClick={dismiss} aria-label="关闭">✕</button>
+          <button ref={closeButtonRef} type="button" className="whats-new-close" onClick={dismiss} aria-label="关闭">✕</button>
         </div>
 
         {/* ── Scrollable content area ────────────────────────────────── */}
@@ -162,15 +256,17 @@ export default function WhatsNewPopup() {
           {fixEntries.length > 0 && (
             <div className="whats-new-fixes">
               <button
+                type="button"
                 className="whats-new-fixes-toggle"
                 onClick={() => setFixesOpen((v) => !v)}
                 aria-expanded={fixesOpen}
+                aria-controls="whats-new-fixes-list"
               >
                 <span className="whats-new-fixes-label">🔧 另有 {fixEntries.length} 项修复</span>
                 <span className={`whats-new-expand-icon${fixesOpen ? " whats-new-expand-icon--open" : ""}`}>▼</span>
               </button>
               {fixesOpen && (
-                <ul className="whats-new-list whats-new-list--fixes">
+                <ul id="whats-new-fixes-list" className="whats-new-list whats-new-list--fixes">
                   {fixEntries.map((entry) => (
                     <EntryItem key={entry.id} entry={entry} expandedId={expandedId} setExpandedId={setExpandedId} />
                   ))}
