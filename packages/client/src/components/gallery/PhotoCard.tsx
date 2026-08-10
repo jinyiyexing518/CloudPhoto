@@ -15,6 +15,7 @@ import {
   getPhotoPrimaryActionLabel,
   type PhotoCardLabelInput,
 } from "./photoCardAccessibility";
+import { formatPhotoDate } from "../../utils/dateFormat";
 
 interface Props {
   photo: Photo;
@@ -144,10 +145,10 @@ function PhotoCard({
   };
   const displayName = getPhotoDisplayName(photo.name, photo.originalName);
   const uploadTime = photo.createdAt
-    ? new Date(photo.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    ? formatPhotoDate(photo.createdAt)
     : null;
   const takenTime = photo.takenAt
-    ? new Date(photo.takenAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    ? formatPhotoDate(photo.takenAt)
     : null;
   // Show taken date if it's different from upload date (or if upload date unknown)
   const showTakenDate = takenTime && takenTime !== uploadTime;

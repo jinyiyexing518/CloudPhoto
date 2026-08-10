@@ -8,12 +8,19 @@ import GroupSettings from "./GroupSettings";
 interface GroupSwitcherProps {
   disabled?: boolean;
   onBeforeSelect?: (nextGroupId: string) => boolean;
+  onMenuOpenChange?: (open: boolean) => void;
+  onDialogOpenChange?: (open: boolean) => void;
 }
 
 const GROUP_SWITCHER_TRIGGER_ID = "group-switcher-trigger";
 const GROUP_SWITCHER_MENU_ID = "group-switcher-menu";
 
-export default function GroupSwitcher({ disabled = false, onBeforeSelect }: GroupSwitcherProps) {
+export default function GroupSwitcher({
+  disabled = false,
+  onBeforeSelect,
+  onMenuOpenChange,
+  onDialogOpenChange,
+}: GroupSwitcherProps) {
   const {
     groups,
     currentGroupId,
@@ -29,6 +36,19 @@ export default function GroupSwitcher({ disabled = false, onBeforeSelect }: Grou
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onMenuOpenChange?.(open);
+  }, [onMenuOpenChange, open]);
+
+  useEffect(() => {
+    onDialogOpenChange?.(showCreate || settingsGroupId !== null);
+  }, [onDialogOpenChange, settingsGroupId, showCreate]);
+
+  useEffect(() => () => {
+    onMenuOpenChange?.(false);
+    onDialogOpenChange?.(false);
+  }, [onDialogOpenChange, onMenuOpenChange]);
 
   const closeMenu = (restoreFocus: boolean) => {
     setOpen(false);

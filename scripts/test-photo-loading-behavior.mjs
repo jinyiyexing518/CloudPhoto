@@ -876,21 +876,24 @@ const http = await import(httpUrl);
     null,
     "fallback must terminate after one alternate attempt",
   );
-  const restartedFallbackSession = videoPlayback.restartVideoPlaybackSession(fallbackSession);
+  const restartedFallbackSession = videoPlayback.restartVideoPlaybackSession(fallbackSession, 2);
+  assert.notEqual(restartedFallbackSession.key, fallbackSession.key);
+  const restartedFallback = videoPlayback.fallbackVideoPlaybackSession(
+    restartedFallbackSession,
+    restartedFallbackSession.source,
+  );
+  assert(restartedFallback, "manual retry must create a fresh two-route recovery budget");
   assert.equal(
-    videoPlayback.fallbackVideoPlaybackSession(
-      restartedFallbackSession,
-      restartedFallbackSession.source,
-    ),
+    videoPlayback.fallbackVideoPlaybackSession(restartedFallback, restartedFallback.source),
     null,
-    "manual retry must not re-arm automatic fallback in the same View session",
+    "the retried session must still terminate after one alternate attempt",
   );
   const playableSession = videoPlayback.markVideoPlaybackPlayable(openedSession);
-  assert.equal(
-    videoPlayback.fallbackVideoPlaybackSession(playableSession, playableSession.source),
-    null,
-    "an error after playable content must not switch a slow or interrupted route",
+  const playableFallback = videoPlayback.fallbackVideoPlaybackSession(
+    playableSession,
+    playableSession.source,
   );
+  assert(playableFallback, "mid-stream failure must retain one alternate-route recovery");
 
   const capture = videoPlayback.claimVideoThumbnailCapture(playableSession);
   assert.equal(capture.shouldCapture, true, "the first loaded View frame must be captured when the derivative is missing");

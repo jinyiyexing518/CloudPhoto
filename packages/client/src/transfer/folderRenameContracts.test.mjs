@@ -92,5 +92,5 @@ test("rename banner names both folders without inventing progress", () => {
 test("authenticated Header install marker, CSS, and component placement remain unchanged", () => {
   assert.doesNotMatch(app, /header-install-button|顶部安装/);
   assert.doesNotMatch(headerCss, /\.header-install-button/);
-  assert.match(app, /<header className="app-header">[\s\S]*<GroupSwitcher/);
+  assert.match(app, /<header[^>]*className="app-header"[^>]*>[\s\S]*<GroupSwitcher/);
 });

@@ -33,6 +33,7 @@ import {
 import { useResilientVideoPlayback } from "../../services/useResilientVideoPlayback";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
+import { formatPhotoDateTime } from "../../utils/dateFormat";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
@@ -2317,8 +2318,5 @@ function formatSize(bytes: number | undefined): string {
 }
 
 function formatDate(value: string | Date): string {
-  return new Date(value).toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
+  return formatPhotoDateTime(value);
 }

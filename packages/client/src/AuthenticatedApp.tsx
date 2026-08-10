@@ -26,6 +26,7 @@ import {
   workspaceTabPanelId,
   type ViewTab,
 } from "./keyboard/workspaceTabs";
+import { getHeaderVisibilityAction } from "./headerAutoHide";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
@@ -392,7 +393,13 @@ function AppContent() {
   const [viewTabsShowLeft, setViewTabsShowLeft] = useState(false);
   const [viewTabsShowRight, setViewTabsShowRight] = useState(false);
   const [headerHidden, setHeaderHidden] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
   const scrollHideRef = useRef(0);
+  const revealHeader = useCallback(() => setHeaderHidden(false), []);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [userMenuDialogActive, setUserMenuDialogActive] = useState(false);
+  const userMenuDialogReleaseFrameRef = useRef<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const userAvatarButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -401,14 +408,69 @@ function AppContent() {
     setUserMenuOpen(false);
     if (restoreFocus) userAvatarButtonRef.current?.focus();
   }, []);
+  const lockHeaderForUserMenuDialog = useCallback(() => {
+    if (userMenuDialogReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(userMenuDialogReleaseFrameRef.current);
+      userMenuDialogReleaseFrameRef.current = null;
+    }
+    revealHeader();
+    setUserMenuDialogActive(true);
+  }, [revealHeader]);
+  const releaseUserMenuDialogLock = useCallback(() => {
+    if (userMenuDialogReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(userMenuDialogReleaseFrameRef.current);
+    }
+    userMenuDialogReleaseFrameRef.current = window.requestAnimationFrame(() => {
+      revealHeader();
+      setUserMenuDialogActive(false);
+      userMenuDialogReleaseFrameRef.current = null;
+    });
+  }, [revealHeader]);
   const openShortcutsFromUserMenu = () => {
     closeUserMenu(true);
+    lockHeaderForUserMenuDialog();
     setShowShortcutsHelp(true);
   };
   const openAddAdminFromUserMenu = () => {
     closeUserMenu(true);
+    lockHeaderForUserMenuDialog();
     setShowAddAdmin(true);
   };
+  useEffect(() => {
+    if (
+      !userMenuDialogActive
+      || showAddAdmin
+      || showShortcutsHelp
+      || showInstallGuide
+      || showSettings
+    ) {
+      return;
+    }
+    releaseUserMenuDialogLock();
+  }, [
+    releaseUserMenuDialogLock,
+    showAddAdmin,
+    showInstallGuide,
+    showSettings,
+    showShortcutsHelp,
+    userMenuDialogActive,
+  ]);
+
+  useEffect(() => () => {
+    if (userMenuDialogReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(userMenuDialogReleaseFrameRef.current);
+    }
+  }, []);
+
+  const headerInteractionActive = userMenuOpen
+    || groupMenuOpen
+    || userMenuDialogActive
+    || groupDialogOpen;
+
+  useEffect(() => {
+    if (headerInteractionActive) revealHeader();
+  }, [headerInteractionActive, revealHeader]);
+
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -705,21 +767,35 @@ function AppContent() {
   // Auto-hide header + tab bar: hide on scroll-down, reveal on scroll-up
   useEffect(() => {
     function handleScrollHide() {
-      if (sidebarOpen) return;
       const y = window.scrollY;
       const delta = y - scrollHideRef.current;
       scrollHideRef.current = y;
-      // Always show near top of page
-      if (y < 60) { setHeaderHidden(false); return; }
-      if (delta > 4) {
+      const action = getHeaderVisibilityAction({
+        scrollY: y,
+        delta,
+        sidebarOpen,
+        headerFocusWithin: Boolean(
+          headerRef.current?.contains(document.activeElement),
+        ),
+        headerMenuOpen: userMenuOpen || groupMenuOpen,
+        headerDialogActive: userMenuDialogActive || groupDialogOpen,
+      });
+      if (action === "hide") {
         setHeaderHidden(true);
-      } else if (delta < -4) {
-        setHeaderHidden(false);
+      } else if (action === "reveal") {
+        revealHeader();
       }
     }
     window.addEventListener("scroll", handleScrollHide, { passive: true });
     return () => window.removeEventListener("scroll", handleScrollHide);
-  }, [sidebarOpen]);
+  }, [
+    groupDialogOpen,
+    groupMenuOpen,
+    revealHeader,
+    sidebarOpen,
+    userMenuDialogActive,
+    userMenuOpen,
+  ]);
 
   useEffect(() => {
     whatsNewMountRequest.current += 1;
@@ -740,7 +816,7 @@ function AppContent() {
     };
   }, [loading, showSettings]);
   // Always show header when sidebar opens
-  useEffect(() => { if (sidebarOpen) setHeaderHidden(false); }, [sidebarOpen]);
+  useEffect(() => { if (sidebarOpen) revealHeader(); }, [revealHeader, sidebarOpen]);
   useEffect(() => {
     function handleOutsideClick(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
@@ -1984,6 +2060,9 @@ function AppContent() {
       ? settingsRestoreFocusRef.current ?? promptRestoreTarget
       : promptRestoreTarget;
     const showInstallGuidance = () => {
+      if (restoreFocusTo === userAvatarButtonRef.current) {
+        lockHeaderForUserMenuDialog();
+      }
       if (closeSettingsForGuidance) setShowSettings(false);
       setShowInstallGuide(true);
     };
@@ -2046,6 +2125,7 @@ function AppContent() {
       return;
     }
     settingsRestoreFocusRef.current = userAvatarButtonRef.current;
+    lockHeaderForUserMenuDialog();
     setShowSettings(true);
     setUserMenuOpen(false);
   };
@@ -2154,7 +2234,7 @@ function AppContent() {
   };
 
   return (
-    <div className={`app${headerHidden ? " header-hidden" : ""}`}>
+    <div className={`app${headerHidden ? " header-hidden" : ""}${headerInteractionActive ? " header-pinned" : ""}`}>
       {/* Reading progress bar – width/opacity driven by direct DOM ref, no setState */}
       <div ref={progressBarRef} className="scroll-progress-bar" style={{ width: "0%", opacity: 0 }} />
 
@@ -2178,7 +2258,7 @@ function AppContent() {
           {locationBanner}
         </div>
       )}
-      <header className="app-header">
+      <header className="app-header" ref={headerRef} onFocusCapture={revealHeader}>
         <svg className="app-logo-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M12 15.2c1.77 0 3.2-1.43 3.2-3.2s-1.43-3.2-3.2-3.2S8.8 10.23 8.8 12s1.43 3.2 3.2 3.2zM9 3L7.17 5H4C2.9 5 2 5.9 2 7v13c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 8.5 12 8.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5z"/>
         </svg>
@@ -2186,7 +2266,12 @@ function AppContent() {
           Cloud Photo
           <span className="header-greeting">{greetingText} 👋</span>
         </h1>
-        <GroupSwitcher onBeforeSelect={handleGroupSwitch} disabled={transferring} />
+        <GroupSwitcher
+          onBeforeSelect={handleGroupSwitch}
+          onMenuOpenChange={setGroupMenuOpen}
+          onDialogOpenChange={setGroupDialogOpen}
+          disabled={transferring}
+        />
         <span className="photo-count">
           {photos.length.toLocaleString()} 张
           {recentUploads.length > 0 && (

@@ -72,6 +72,43 @@ test("group menu owns open focus, roving keys, dismissal, and guarded rejection"
   assert.match(groupSwitcher, /if \(!select\(g\.id\)\) event\.currentTarget\.focus\(\)/);
 });
 
+test("header auto-hide reveals focused triggers and respects menu and dialog locks", () => {
+  assert.match(authenticatedApp, /const revealHeader = useCallback\(\(\) => setHeaderHidden\(false\), \[\]\)/);
+  assert.match(
+    authenticatedApp,
+    /<header className="app-header" ref=\{headerRef\} onFocusCapture=\{revealHeader\}>/,
+  );
+  assert.match(authenticatedApp, /headerRef\.current\?\.contains\(document\.activeElement\)/);
+  assert.match(authenticatedApp, /headerMenuOpen:\s*userMenuOpen \|\| groupMenuOpen/);
+  assert.match(authenticatedApp, /headerDialogActive:\s*userMenuDialogActive \|\| groupDialogOpen/);
+  assert.match(authenticatedApp, /onMenuOpenChange=\{setGroupMenuOpen\}/);
+  assert.match(authenticatedApp, /onDialogOpenChange=\{setGroupDialogOpen\}/);
+  assert.match(groupSwitcher, /onMenuOpenChange\?\.\(open\)/);
+  assert.match(groupSwitcher, /onDialogOpenChange\?\.\(showCreate \|\| settingsGroupId !== null\)/);
+  assert.match(styles, /\.header-pinned \.app-header[\s\S]*transition-duration:\s*0s/);
+  assert.match(styles, /\.app-header:focus-within[\s\S]*transition-duration:\s*0s/);
+});
+
+test("user-menu dialogs remain pinned through shared focus restoration", () => {
+  assert.match(
+    authenticatedApp,
+    /closeUserMenu\(true\);\s*lockHeaderForUserMenuDialog\(\);\s*setShowShortcutsHelp\(true\)/,
+  );
+  assert.match(
+    authenticatedApp,
+    /closeUserMenu\(true\);\s*lockHeaderForUserMenuDialog\(\);\s*setShowAddAdmin\(true\)/,
+  );
+  assert.match(
+    authenticatedApp,
+    /settingsRestoreFocusRef\.current = userAvatarButtonRef\.current;[\s\S]*lockHeaderForUserMenuDialog\(\)/,
+  );
+  assert.match(
+    authenticatedApp,
+    /restoreFocusTo === userAvatarButtonRef\.current[\s\S]*lockHeaderForUserMenuDialog\(\)/,
+  );
+  assert.match(authenticatedApp, /releaseUserMenuDialogLock/);
+});
+
 test("user menu has a controlled menu role and skips disabled items", () => {
   assert.match(authenticatedApp, /const USER_MENU_TRIGGER_ID = "user-menu-trigger"/);
   assert.match(authenticatedApp, /const USER_MENU_ID = "user-menu"/);

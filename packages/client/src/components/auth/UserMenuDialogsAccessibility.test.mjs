@@ -15,11 +15,11 @@ test("user-menu dialogs restore through the connected avatar trigger", () => {
   assert.match(authenticatedApp, /import InstallGuideDialog from "\.\/components\/auth\/InstallGuideDialog"/);
   assert.match(
     authenticatedApp,
-    /closeUserMenu\(true\);\s*setShowShortcutsHelp\(true\)/,
+    /closeUserMenu\(true\);[\s\S]*?setShowShortcutsHelp\(true\)/,
   );
   assert.match(
     authenticatedApp,
-    /closeUserMenu\(true\);\s*setShowAddAdmin\(true\)/,
+    /closeUserMenu\(true\);[\s\S]*?setShowAddAdmin\(true\)/,
   );
   assert.match(authenticatedApp, /<ShortcutsHelpDialog[\s\S]*onClose=/);
   assert.match(authenticatedApp, /<InstallGuideDialog[\s\S]*onClose=/);
