@@ -9,6 +9,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const defaultConfig = join(root, "packages", "client", "public", "staticwebapp.config.json");
 const viteConfig = join(root, "packages", "client", "vite.config.mts");
 const legacyViteConfig = join(root, "packages", "client", "vite.config.ts");
+const entryCssPath = join(root, "packages", "client", "src", "index.css");
+const authenticatedCssPath = join(root, "packages", "client", "src", "authenticated.css");
+const authenticatedAppPath = join(root, "packages", "client", "src", "AuthenticatedApp.tsx");
 const configPaths = process.argv.slice(2).map((configPath) => resolve(configPath));
 if (configPaths.length === 0) configPaths.push(defaultConfig);
 
@@ -61,6 +64,49 @@ function checkViteConfigModule() {
   const source = readFileSync(viteConfig, "utf8");
   if (!source.includes("import.meta.url") || /\b__dirname\b/.test(source)) {
     fail(viteConfig, "ESM config must resolve paths from import.meta.url");
+  }
+}
+
+function checkAuthenticatedStyleBoundary() {
+  if (!existsSync(authenticatedCssPath)) {
+    fail(authenticatedCssPath, "missing deferred authenticated workspace stylesheet");
+  }
+
+  const entryCss = readFileSync(entryCssPath, "utf8");
+  const authenticatedCss = readFileSync(authenticatedCssPath, "utf8");
+  const authenticatedApp = readFileSync(authenticatedAppPath, "utf8");
+  const authStart = "/* ===== Auth Page ===== */";
+  const entryAuthEnd = "/* ===== End Auth Page ===== */";
+  const workspaceAuthEnd = "/* ============================================================";
+  const extractAuthStyles = (source, endMarker, path) => {
+    const start = source.indexOf(authStart);
+    const end = source.indexOf(endMarker, start + authStart.length);
+    if (start < 0 || end < 0) fail(path, "cannot locate the complete auth style section");
+    return source.slice(start, end).replace(/\s+/g, " ").trim();
+  };
+  if (!authenticatedApp.includes('import "./authenticated.css";')) {
+    fail(authenticatedAppPath, "authenticated workspace must import its deferred stylesheet");
+  }
+  if (entryCss.includes("authenticated.css")) {
+    fail(entryCssPath, "login entry must not import authenticated workspace styles");
+  }
+  if (Buffer.byteLength(entryCss) > 20_000) {
+    fail(entryCssPath, "login entry stylesheet must stay below 20 kB before minification");
+  }
+  for (const selector of [".auth-page", ".app-splash", ".error-boundary-card"]) {
+    if (!entryCss.includes(selector)) fail(entryCssPath, `missing login-shell selector ${selector}`);
+  }
+  if (
+    extractAuthStyles(entryCss, entryAuthEnd, entryCssPath)
+    !== extractAuthStyles(authenticatedCss, workspaceAuthEnd, authenticatedCssPath)
+  ) {
+    fail(entryCssPath, "auth styles must remain identical before and after workspace CSS loads");
+  }
+  for (const selector of [".app-header", ".photo-grid", ".workspace-sidebar"]) {
+    if (entryCss.includes(selector)) fail(entryCssPath, `workspace selector ${selector} leaked into login CSS`);
+    if (!authenticatedCss.includes(selector)) {
+      fail(authenticatedCssPath, `missing preserved workspace selector ${selector}`);
+    }
   }
 }
 
@@ -177,6 +223,32 @@ function checkHashedAssets(configPath) {
   if (authenticatedAppChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred AuthenticatedApp chunk");
   }
+  const entryStylesheets = assets.filter((asset) =>
+    /^index-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
+  );
+  if (entryStylesheets.length !== 1) {
+    fail(configPath, "built assets must contain one login entry stylesheet");
+  }
+  const authenticatedStylesheets = assets.filter((asset) =>
+    /^AuthenticatedApp-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
+  );
+  if (authenticatedStylesheets.length !== 1) {
+    fail(configPath, "built assets must contain one deferred AuthenticatedApp stylesheet");
+  }
+  const entryStyles = readFileSync(entryStylesheets[0], "utf8");
+  const authenticatedStyles = readFileSync(authenticatedStylesheets[0], "utf8");
+  if (statSync(entryStylesheets[0]).size > 12_000) {
+    fail(configPath, "built login entry stylesheet must stay below 12 kB");
+  }
+  for (const selector of [".auth-page", ".app-splash", ".error-boundary-card"]) {
+    if (!entryStyles.includes(selector)) fail(configPath, `built login CSS is missing ${selector}`);
+  }
+  for (const selector of [".app-header", ".photo-grid", ".workspace-sidebar"]) {
+    if (entryStyles.includes(selector)) fail(configPath, `built login CSS contains ${selector}`);
+    if (!authenticatedStyles.includes(selector)) {
+      fail(configPath, `built authenticated CSS is missing ${selector}`);
+    }
+  }
   const serviceWorkerPath = join(dirname(configPath), "sw.js");
   let serviceWorker;
   try {
@@ -190,12 +262,16 @@ function checkHashedAssets(configPath) {
   if (serviceWorker.includes(`assets/${basename(authenticatedAppChunks[0])}`)) {
     fail(configPath, "deferred AuthenticatedApp chunk must not be downloaded by the precache");
   }
+  if (serviceWorker.includes(`assets/${basename(authenticatedStylesheets[0])}`)) {
+    fail(configPath, "deferred AuthenticatedApp styles must not be downloaded by the precache");
+  }
   if (!serviceWorker.includes("app-code-v1")) {
     fail(configPath, "service worker must cache deferred app chunks after first use");
   }
 }
 
 checkViteConfigModule();
+checkAuthenticatedStyleBoundary();
 
 for (const configPath of configPaths) {
   let config;

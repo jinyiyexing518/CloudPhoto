@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-authenticated-css-split",
+  "date": "2026-08-10",
+  "icon": "⚡",
+  "title": "登录页只加载必要样式",
+  "type": "improvement",
+  "desc": "未登录用户不再下载完整照片工作区样式，登录首屏 CSS 体积降低约 93%。",
+  "details": "完整 128.56 kB 工作区样式改由 AuthenticatedApp 动态加载，入口仅保留 9.38 kB 鉴权、会话恢复和 chunk 错误样式，gzip 从 23.58 kB 降至 2.77 kB。PWA 首装预缓存由 306.94 KiB 进一步降至 190.59 KiB，相比原始 894.44 KiB 约减少 79%；源码、构建产物和 Service Worker 契约防止工作区样式重新进入登录首屏或预缓存。",
+  "seq": 1786342318070
+}

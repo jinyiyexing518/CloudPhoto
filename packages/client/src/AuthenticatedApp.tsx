@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import "./authenticated.css";
 import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
