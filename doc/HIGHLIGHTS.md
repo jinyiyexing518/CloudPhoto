@@ -64,6 +64,7 @@
 - **更新弹窗 Idle 延后加载** — `WhatsNewPopup` 从 `AuthenticatedApp` 拆为独立 lazy chunk，照片列表 `loading=true` 时不挂载也不请求 changelog；`loading` 结束后仅在 `requestIdleCallback({ timeout: 2000 })`（含 `setTimeout` 兼容 fallback）空闲窗口挂载，且切回 loading/卸载会取消旧任务，避免迟到弹窗覆盖加载态。`AuthenticatedApp` 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB），并新增 `WhatsNewPopup-*.js` 3.81 kB chunk
 - **最近更新完整模态键盘路径** — 打开后显式聚焦关闭按钮，Escape 关闭，Tab/Shift+Tab 基于每次按键时的可见控件动态循环；键盘聚焦/交互会 pin 弹窗并清空自动淡出计时器，关闭动画完成或组件卸载后仅向仍连接的原控件恢复焦点。更新摘要使用原生 `button` 与稳定 `aria-expanded`/`aria-controls` 关联
 - **PWA 最小首装缓存** — Workbox 从预缓存全部 894.44 KiB 资源改为只安装 180.90 KiB 应用壳（约 -80%）；动态工作区 JS/CSS、注册表单与图库首次访问后进入 `app-code-v1` CacheFirst 缓存，兼顾首屏带宽与后续离线复用
+- **Header 空间回收** — 已登录 Header 不再常驻 PWA 安装按钮，避免挤压群组切换、照片数量与用户菜单；安装能力继续保留在登录页、用户菜单和「设置 → 应用」
 - **PWA 安全更新闸门** — `onNeedRefresh` 仅设置全局 `update-ready` 状态并发事件，不自动 `updateSW(true)`/刷新页面；登录页期间收到更新事件也会在进入工作区后恢复更新提示
 - **Service Worker 私有媒体缓存**
   - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），媒体缓存既要减少同一会话重复下载，也不能跨越账号授权边界

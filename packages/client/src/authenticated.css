@@ -75,32 +75,6 @@ body {
   color: #666;
 }
 
-.header-install-button {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid #93c5fd;
-  border-radius: 9px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  padding: 7px 11px;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
-}
-
-.header-install-button:hover {
-  background: #dbeafe;
-  border-color: #60a5fa;
-}
-
-.header-install-button:active {
-  transform: scale(0.97);
-}
-
 /* User avatar button + dropdown menu */
 .user-avatar-wrap {
   position: relative;
@@ -6378,12 +6352,6 @@ body {
     padding: 5px 10px;
     width: 100%;
     justify-content: space-between;
-  }
-
-  .header-install-button {
-    gap: 3px;
-    padding: 6px 8px;
-    font-size: 0.78rem;
   }
 
   /* Dropdown must not overflow screen */

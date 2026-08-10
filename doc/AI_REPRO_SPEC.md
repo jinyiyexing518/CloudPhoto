@@ -49,6 +49,7 @@
 2.56 PWA 更新激活路径与传输守卫：`main.tsx` 的 `registerSW().onNeedRefresh` 禁止调用 `updateSW(true)` 或 `location.reload`，只能持久化全局 `__CF_PWA_UPDATE_READY__` 并派发 `cloudphoto-pwa-update-ready`。AuthenticatedApp 初始 `updateReady` 必须读取该 flag，后续通过事件同步，保证事件早于登录/工作区挂载时仍可恢复提示。用户显式点击是唯一激活路径；`uploadProgress !== null || downloading || deleteProgress !== null` 任一成立时，更新按钮 disabled 且文案明确「传输完成后更新」，并阻止激活 waiting worker / 刷新页面。
 2.57 语音备注全局传输守卫：时间线、重要片段、文件夹三个长期挂载视图需按 source key（timeline/moments/folder）独立上报 `voiceState`（idle/recording/uploading）；顶层必须聚合并派生统一 `transferring`，其中 recording 与 uploading 都算 active。任一 source 卸载时必须清理为 idle，且一个 source 清理不得覆盖另一个仍 active 的 source。统一守卫用于 beforeunload、切 Tab、切群组和 PWA 更新按钮；transfer banner 必须新增语音分支，区分「录音中，请先结束录音」与「语音备注上传中，请勿关闭页面」，不得误报为下载中。
 2.58 最近更新模态键盘契约：WhatsNewPopup 可见时保存当前焦点并在挂载后聚焦关闭按钮；Escape 触发既有关闭动画，Tab/Shift+Tab 必须按当前可见控件重新计算并首尾循环，展开/折叠后仍成立。用户键盘聚焦或交互必须取消 idle/fade 计时器并 pin 弹窗；关闭动画完成或卸载时仅当原元素仍 `isConnected` 才恢复焦点。所有 idle/fade/close/initial-focus timer 在卸载时清理且异步回调必须有 mounted guard。条目摘要必须为 `button type="button"`，详情与修复折叠区使用稳定 `aria-expanded`/`aria-controls`/`id` 关联，弹窗通过 `aria-labelledby` 引用可见标题。不得改变 2.55 的 lazy chunk、照片 loading 后 idle 挂载、迟到任务 guard 与 SW precache 排除契约。
+2.59 已登录 Header 安装入口约束：AuthenticatedApp 的 `.app-header` 禁止渲染 PWA 安装按钮或保留 `.header-install-button` 样式，避免挤压群组切换、照片数量和用户菜单。PWA 安装仍需在登录页、用户菜单与「设置 → 应用」中可发现，取消原生安装提示后的文案必须指向这些真实入口。
 
 ## 1. 目标
 

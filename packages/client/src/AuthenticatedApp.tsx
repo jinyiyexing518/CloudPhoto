@@ -1543,7 +1543,7 @@ function AppContent() {
       } else if (result.status === "prompted" && result.outcome === "accepted") {
         showToast("已确认安装，请按浏览器提示完成", "success");
       } else if (result.status === "prompted") {
-        showToast("已取消安装，仍可从顶部“安装应用”再次打开", "info");
+        showToast("已取消安装，仍可从用户菜单或“设置 → 应用”再次打开", "info");
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : "无法打开安装提示，请查看安装指引", "error");
@@ -1702,16 +1702,6 @@ function AppContent() {
           <span className="header-greeting">{greetingText} 👋</span>
         </h1>
         <GroupSwitcher onBeforeSelect={handleGroupSwitch} disabled={transferring} />
-        {!isStandalone && (
-          <button
-            type="button"
-            className="header-install-button"
-            onClick={() => void handleInstallApp()}
-          >
-            <span aria-hidden="true">📲</span>
-            安装应用
-          </button>
-        )}
         <span className="photo-count">
           {photos.length.toLocaleString()} 张
           {recentUploads.length > 0 && (

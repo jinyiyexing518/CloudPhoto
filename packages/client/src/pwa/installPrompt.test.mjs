@@ -208,12 +208,19 @@ test("supports legacy media-query listeners used by older Safari", () => {
   assert.equal(registeredListener, undefined);
 });
 
-test("keeps an authenticated install action directly discoverable", () => {
+test("keeps install actions discoverable without occupying the authenticated header", () => {
   const authenticatedAppSource = readFileSync(
     new URL("../AuthenticatedApp.tsx", import.meta.url),
     "utf8",
   );
+  const authenticatedStyles = readFileSync(
+    new URL("../authenticated.css", import.meta.url),
+    "utf8",
+  );
 
-  assert.match(authenticatedAppSource, /className="header-install-button"/);
+  assert.doesNotMatch(authenticatedAppSource, /header-install-button/);
+  assert.doesNotMatch(authenticatedStyles, /\.header-install-button/);
+  assert.match(authenticatedAppSource, /setUserMenuOpen\(false\); void handleInstallApp\(\)/);
+  assert.match(authenticatedAppSource, /<SettingsDialog[\s\S]*onInstallApp=\{\(\) => void handleInstallApp\(\)\}/);
   assert.doesNotMatch(authenticatedAppSource, /Auto-dismiss install banner|10_000/);
 });
