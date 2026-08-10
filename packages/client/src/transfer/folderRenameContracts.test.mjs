@@ -33,6 +33,17 @@ test("FolderView validates locally and keeps root and recursive controls truly d
   assert.match(folder, /onDelete=\{onDeleteSubFolder[\s\S]{0,180}interactionDisabled=\{batchMutationBusy\}/);
 });
 
+test("folder cards expose a native keyboard entry target without nesting action buttons", () => {
+  assert.match(folder, /<button[\s\S]{0,120}className="folder-card-open"/);
+  assert.match(
+    folder,
+    /className="folder-card-open"[\s\S]{0,260}aria-label=\{`打开文件夹\$\{name \|\| UNCATEGORIZED\}，\$\{count\} 张照片`\}[\s\S]{0,180}disabled=\{interactionDisabled\}[\s\S]{0,180}onClick=\{onClick\}/,
+  );
+  assert.match(folder, /className="folder-card-rename-btn"[\s\S]{0,320}e\.stopPropagation\(\)/);
+  assert.match(folder, /className="folder-card-delete-btn"[\s\S]{0,260}e\.stopPropagation\(\)/);
+  assert.match(headerCss, /\.folder-card-open:focus-visible[\s\S]{0,160}outline:/);
+});
+
 test("authenticated shell owns token-safe rename lifecycle, workspace abort, and all departure guards", () => {
   assert.match(app, /useState<FolderRenameOperation \| null>/);
   assert.match(app, /useRef<FolderRenameGate>/);

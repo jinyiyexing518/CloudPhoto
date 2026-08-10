@@ -115,7 +115,7 @@
 - **IP 滑动窗口限流** — 登录 10/分、注册 5/分、刷新 20/分；超限 `429 + Retry-After: 60`
 - **OIDC 无密码 CI/CD** — GitHub Actions 通过 Azure Federated Credential 认证，无长期密码
 - **用户委托 SAS** — Blob 访问凭证由 Managed Identity 签发（无账户密钥），2h 有效期，最小权限
-- **文件夹重命名无覆盖事务** — 路径策略只接受规范相对路径与同 parent 末段改名，同时保留历史 Unicode source key；完整源/目标预检后，Azure Copy Blob 使用 destination `ifNoneMatch=*` 与 source ETag 原子拒绝竞态覆盖/旧版本搬移。copy/delete 各 4 路有界并发，rollback 仅 2 路；首个 copy 失败停止派发，已启动任务 settle 后统一回滚。copy 后复核 inventory，删除每个源前短租约锁住并验证目标 copyId + final ETag，源删除也受预检 ETag 保护；失败只清理仍可证明归属本操作的目标，保证每个媒体至少一份
+- **文件夹重命名无覆盖事务** — 路径策略只接受规范相对路径与同 parent 末段改名，同时保留历史 Unicode source key；完整源/目标预检后，Azure Copy Blob 使用 destination `ifNoneMatch=*` 与 source ETag 原子拒绝竞态覆盖/旧版本搬移。copy/delete 各 4 路有界并发，rollback 仅 2 路；首个 copy 失败停止派发，已启动任务 settle 后统一回滚。copy 后复核 inventory，删除每个源前短租约锁住并验证目标 copyId + final ETag，源删除也受预检 ETag 保护；失败只清理仍可证明归属本操作的目标，保证每个媒体至少一份。根目录与递归文件夹卡片新增原生键盘进入按钮和稳定可访问名称，重命名/删除继续作为独立兄弟按钮
 - **重命名流量与 HTTP 边界** — 源/目标预检分别用最多 101/1 条的 Azure 分页，整批复用一次可取消的 delegation-key 请求；单次最多 100 个 Blob，超过时 mutation 前返回 413。copy phase 最长 120 秒并按 copyId 直接终止在途 Azure copy，rollback 最长 60 秒；60 秒目标租约内的源删除关键区限为 20 秒，服务端 210 秒总边界低于客户端 220 秒上限。限流错误完全交给 Azure SDK 的 Retry-After 与指数退避，应用层不再包一层重试，避免 429/503/ServerBusy 时形成重试风暴
 
 ---

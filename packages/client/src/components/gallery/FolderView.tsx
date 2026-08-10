@@ -167,7 +167,6 @@ function FolderCard({
     <div
       className={`folder-card${dragOver ? " folder-card--dragover" : ""}`}
       aria-disabled={interactionDisabled || undefined}
-      onClick={() => { if (!editing && !interactionDisabled) onClick(); }}
       onDragOver={(e) => {
         if (interactionDisabled) return;
         e.preventDefault();
@@ -191,26 +190,40 @@ function FolderCard({
         if (photoName && onDrop) onDrop(photoName, fromFolder);
       }}
     >
-      <div className="folder-card-icon">{hasSubFolders ? "📂" : "📁"}</div>
       {editing ? (
-        <input
-          autoFocus
-          className="folder-card-rename-input"
-          value={editVal}
-          onChange={(e) => setEditVal(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
-            if (e.key === "Escape") { setEditVal(name); setEditing(false); }
-          }}
-          onBlur={confirmRename}
-          onClick={(e) => e.stopPropagation()}
-          maxLength={60}
-          disabled={interactionDisabled}
-        />
+        <>
+          <div className="folder-card-icon">{hasSubFolders ? "📂" : "📁"}</div>
+          <input
+            autoFocus
+            className="folder-card-rename-input"
+            value={editVal}
+            onChange={(e) => setEditVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
+              if (e.key === "Escape") { setEditVal(name); setEditing(false); }
+            }}
+            onBlur={confirmRename}
+            onClick={(e) => e.stopPropagation()}
+            maxLength={60}
+            disabled={interactionDisabled}
+          />
+          <div className="folder-card-count">{count} 张</div>
+        </>
       ) : (
-        <div className="folder-card-name">{name || UNCATEGORIZED}</div>
+        <button
+          type="button"
+          className="folder-card-open"
+          aria-label={`打开文件夹${name || UNCATEGORIZED}，${count} 张照片`}
+          disabled={interactionDisabled}
+          onClick={onClick}
+        >
+          <span className="folder-card-icon" aria-hidden="true">
+            {hasSubFolders ? "📂" : "📁"}
+          </span>
+          <span className="folder-card-name">{name || UNCATEGORIZED}</span>
+          <span className="folder-card-count">{count} 张</span>
+        </button>
       )}
-      <div className="folder-card-count">{count} 张</div>
       {onRename && !editing && (
         <button
           type="button"
