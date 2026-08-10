@@ -15,6 +15,7 @@
 - **🔒 Canonical HSTS** — SWA 与 Nginx 模板统一为 `max-age=31536000; includeSubDomains; preload`；前端代理隐藏上游重复安全头，static/security 契约锁定模板，smoke 要求 SWA 唯一 canonical 且代理首值 canonical
 - **🌐 DNS 入口真实性** — 文档按权威 DNS 实测区分当前 apex/www 入口与尚未配置的 cn/global/智能 DNS，避免把 NXDOMAIN 主机声明为已上线
 - **🎯 Production Health 部署身份** — `workflow_run` checkout、分类、报告与线上 guard 统一绑定 triggering deployment `head_sha`；前端 artifact 发布 no-store SHA marker，主域和 SWA 必须精确匹配，避免 main 已前移时用未来 commit 脚本验证旧产物的假绿
+- **🩺 Production Health 工作流身份** — 前后端部署改用稳定 workflow 文件路径识别，不再依赖会被自定义运行标题覆盖的 `workflow_run.name`；手动 production、validation、并发分组和 SHA marker 检查保持一致
 - **🔒 重要片段本地数据授权隔离** — 离线浏览统计和诊断按账号、角色与个人/群组工作区隔离；注销、401、切号或角色变化会同步清理私有照片、媒体和 moments，旧版无归属全局键不迁移给当前用户，应用代码缓存保留
 - **🔒 近期分享链接账号隔离** — 浏览器保存的近期公开链接按账号与角色分区；注销、会话失效、切号或角色变化立即清理，迟到分享响应不能写回，旧全局键与损坏/超限 JSON 不迁移给当前用户
 

@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
-const frontendWorkflow = "Deploy Frontend (Azure Static Web Apps)";
-const backendWorkflow = "Deploy Backend (Azure Functions)";
+const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
+const backendWorkflow = ".github/workflows/deploy-backend.yml";
 const commitShaPattern = /^[0-9a-f]{40}$/i;
 
 export function classifyDeploymentStarted(workflowName, payload) {

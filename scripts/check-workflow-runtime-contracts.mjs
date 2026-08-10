@@ -16,7 +16,7 @@ const requiredContractWorkflows = [
 const productionHealthWorkingDirectory = ".deployment";
 const productionHealthWorkflow = ".github/workflows/production-health.yml";
 const productionHealthConcurrencyGroup =
-  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}";
+  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}";
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const frontendProductionConcurrencyGroup =
   "deploy-frontend-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && 'production' || github.event_name == 'pull_request' && format('validation-pr-{0}', github.event.pull_request.number) || format('validation-{0}', github.ref_name) }}";
@@ -47,11 +47,12 @@ const productionHealthClassifierEnv = {
   DEPLOYMENT_EVENT: "${{ github.event.workflow_run.event }}",
   DEPLOYMENT_HEAD_BRANCH: "${{ github.event.workflow_run.head_branch }}",
   DEPLOYMENT_SHA: "${{ github.event.workflow_run.head_sha }}",
+  DEPLOYMENT_WORKFLOW: "${{ github.event.workflow_run.path }}",
 };
 const productionHealthExpectedSha =
-  "${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.deployed_sha || '' }}";
+  "${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && steps.deployment_event.outputs.deployed_sha || '' }}";
 const productionHealthIdentityCondition =
-  "github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && steps.deployment_event.outputs.should_check == 'true'";
+  "github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && steps.deployment_event.outputs.should_check == 'true'";
 const productionHealthClassificationValidationCommand = [
   'for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do',
   '  case "$value" in',
@@ -404,6 +405,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         deploymentEvent: stepChildField(step, "env", "DEPLOYMENT_EVENT"),
         deploymentHeadBranch: stepChildField(step, "env", "DEPLOYMENT_HEAD_BRANCH"),
         deploymentSha: stepChildField(step, "env", "DEPLOYMENT_SHA"),
+        deploymentWorkflow: stepChildField(step, "env", "DEPLOYMENT_WORKFLOW"),
         command: stepField(step, "run"),
       };
     }
@@ -563,6 +565,8 @@ export function checkWorkflowRuntimeContracts(workflows) {
       !== productionHealthClassifierEnv.DEPLOYMENT_HEAD_BRANCH
     || healthPolicy.productionHealthClassification.deploymentSha
       !== productionHealthClassifierEnv.DEPLOYMENT_SHA
+    || healthPolicy.productionHealthClassification.deploymentWorkflow
+      !== productionHealthClassifierEnv.DEPLOYMENT_WORKFLOW
     || healthPolicy.productionHealthClassification.command !== productionHealthClassifierCommand
     || healthPolicy.stepConditions["Reject failed deployment"] !== productionHealthRejectCondition
     || productionHealthGuardedSteps.some(

@@ -117,7 +117,7 @@ test("rejects generic health runs that can cancel frontend SHA verification", ()
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}",
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
     "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}"
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
@@ -135,8 +135,8 @@ test("rejects frontend validation runs that can cancel deployment SHA verificati
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}",
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Frontend (Azure Static Web Apps)' && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Deploy Backend (Azure Functions)' && 'backend-deployment' || 'latest' }}"
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}"
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
@@ -392,8 +392,26 @@ test("rejects a health classifier command with success-only filtering", () => {
   );
 });
 
+test("rejects mutable run-name as the deployment workflow identity", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.path }}",
+    "DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.name }}"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("validation/coalesced frontend runs")
+    )
+  );
+});
+
 test("classifies only a started non-skipped frontend production job as deployment", () => {
-  const workflow = "Deploy Frontend (Azure Static Web Apps)";
+  const workflow = ".github/workflows/deploy-frontend.yml";
 
   assert.equal(
     classifyDeploymentStarted(workflow, {
@@ -436,7 +454,7 @@ test("classifies only a started non-skipped frontend production job as deploymen
 
 test("keeps backend workflow failures classified as deployment events", () => {
   assert.equal(
-    classifyDeploymentStarted("Deploy Backend (Azure Functions)", {
+    classifyDeploymentStarted(".github/workflows/deploy-backend.yml", {
       jobs: [{ name: "deploy", started_at: null, conclusion: "failure" }],
     }),
     true
@@ -444,7 +462,7 @@ test("keeps backend workflow failures classified as deployment events", () => {
 });
 
 test("binds each successful deployment health event to its triggering SHA", () => {
-  const workflowName = "Deploy Frontend (Azure Static Web Apps)";
+  const workflowName = ".github/workflows/deploy-frontend.yml";
   const jobs = [{
     name: "Deploy production",
     started_at: "2026-08-11T16:43:00Z",
@@ -483,7 +501,7 @@ test("binds each successful deployment health event to its triggering SHA", () =
 });
 
 test("fails closed for a non-main or malformed deployment identity", () => {
-  const workflowName = "Deploy Frontend (Azure Static Web Apps)";
+  const workflowName = ".github/workflows/deploy-frontend.yml";
   const jobs = [{
     name: "Deploy production",
     started_at: "2026-08-11T16:43:00Z",
