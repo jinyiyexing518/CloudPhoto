@@ -50,6 +50,7 @@
 2.57 语音备注全局传输守卫：时间线、重要片段、文件夹三个长期挂载视图需按 source key（timeline/moments/folder）独立上报 `voiceState`（idle/recording/uploading）；顶层必须聚合并派生统一 `transferring`，其中 recording 与 uploading 都算 active。任一 source 卸载时必须清理为 idle，且一个 source 清理不得覆盖另一个仍 active 的 source。统一守卫用于 beforeunload、切 Tab、切群组和 PWA 更新按钮；transfer banner 必须新增语音分支，区分「录音中，请先结束录音」与「语音备注上传中，请勿关闭页面」，不得误报为下载中。
 2.58 最近更新模态键盘契约：WhatsNewPopup 可见时保存当前焦点并在挂载后聚焦关闭按钮；Escape 触发既有关闭动画，Tab/Shift+Tab 必须按当前可见控件重新计算并首尾循环，展开/折叠后仍成立。用户键盘聚焦或交互必须取消 idle/fade 计时器并 pin 弹窗；关闭动画完成或卸载时仅当原元素仍 `isConnected` 才恢复焦点。所有 idle/fade/close/initial-focus timer 在卸载时清理且异步回调必须有 mounted guard。条目摘要必须为 `button type="button"`，详情与修复折叠区使用稳定 `aria-expanded`/`aria-controls`/`id` 关联，弹窗通过 `aria-labelledby` 引用可见标题。不得改变 2.55 的 lazy chunk、照片 loading 后 idle 挂载、迟到任务 guard 与 SW precache 排除契约。
 2.59 已登录 Header 安装入口约束：AuthenticatedApp 的 `.app-header` 禁止渲染 PWA 安装按钮或保留 `.header-install-button` 样式，避免挤压群组切换、照片数量和用户菜单。PWA 安装仍需在登录页、用户菜单与「设置 → 应用」中可发现，取消原生安装提示后的文案必须指向这些真实入口。
+2.60 批量照片 mutation 全局守卫：新增纯逻辑 `batchMutationState.ts`，source 固定为 timeline/moments/folder，operation 至少携带 id、kind(rename/time/location/move)、done、total、failed。start 可替换同 source 的旧 token；progress/finally 只有 token 匹配才可更新或清理，因此一个 source 完成不得影响其他 source，旧操作迟到事件不得清理新操作。PhotoGallery 覆盖 rename/time/location，FolderView root 必须向 FolderContent 透传并覆盖 move/rename/time/location；第一条请求前上报 start，所有 item settled 后的 finally 上报 finish，卸载 cleanup 不得提前报 idle，卸载后不得 setState。同步 ref gate 阻止双击重入；BatchOperationsBar 通过真实 disabled/aria-busy 禁用选择、全选、rename/time/location/delete/LocationSearchPanel，FolderView 同时禁用移动选择/确认和添加原图。移动最大并发为 4，reject 与 resolved false 均计失败且不提前中止；重命名、时间、位置保持串行。顶层把任一 active batch mutation 纳入既有 transferring，复用 Tab、群组、beforeunload 与 PWA 更新闸门；横幅与 guard 文案必须显示具体操作、done/total、failed 和百分比。
 
 ## 1. 目标
 
@@ -177,12 +178,12 @@
 4. 本地开发模式默认关闭 SW 注入，避免调试阶段出现循环刷新
 5. 普通网页版应优先即时更新，不应长期受 SW 缓存拖慢；已安装的 standalone App 才保留持久 SW 行为
 6. 设置内应提供独立“诊断”页签，用于显示前端版本、构建时间、SW 注册数、本地 moments 缓存条数、moments 持久化状态
-7. 当存在上传/下载/批量删除传输任务时，PWA 更新必须等待用户在传输完成后主动触发，不得后台自动刷新
+7. 当存在上传/下载/批量删除/语音备注/批量照片 mutation 任务时，PWA 更新必须等待用户在任务完成后主动触发，不得后台自动刷新
 
 ### 3.8 传输稳定性
 
-1. 上传/下载进行中阻止应用内页面切换
-2. 上传/下载进行中刷新或关闭页面触发浏览器离开确认
+1. 上传/下载、批量删除、语音备注或批量照片 mutation 进行中阻止应用内页面/个人与群组空间切换
+2. 上述任务进行中刷新或关闭页面触发浏览器离开确认
 3. 下载与上传默认保持原图，不做压缩
 
 ### 3.9 视频上传文件选择器

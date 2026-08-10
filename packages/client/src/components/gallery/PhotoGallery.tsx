@@ -45,6 +45,15 @@ import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
 import { type VoiceTransferState } from "../../transfer/voiceTransferState";
+import {
+  runBatchMutationBoundary,
+  type BatchMutationEvent,
+  type BatchMutationGate,
+  type BatchMutationKind,
+  type BatchMutationResult,
+} from "../../transfer/batchMutationState";
+
+let photoGalleryBatchMutationSequence = 0;
 
 interface Props {
   photos: Photo[];
@@ -58,6 +67,8 @@ interface Props {
   onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onVoiceStateChange?: (state: VoiceTransferState) => void;
+  onBatchMutationChange?: (event: BatchMutationEvent) => void;
+  batchMutationActive?: boolean;
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
@@ -308,6 +319,8 @@ function PhotoGallery({
   onBatchDelete,
   onDownloadStateChange,
   onVoiceStateChange,
+  onBatchMutationChange,
+  batchMutationActive = false,
   onMomentsCountChange,
   onShareCreated,
   onThumbnailUpdate,
@@ -410,6 +423,40 @@ function PhotoGallery({
   const [showBatchGpsEdit, setShowBatchGpsEdit] = useState(false);
   const [batchGpsLat, setBatchGpsLat] = useState("");
   const [batchGpsLon, setBatchGpsLon] = useState("");
+  const [localBatchMutationBusy, setLocalBatchMutationBusy] = useState(false);
+  const batchMutationBusy = localBatchMutationBusy || batchMutationActive;
+  const batchMutationGate = useRef<BatchMutationGate>({ current: null }).current;
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  async function executeBatchMutation<T>(
+    kind: BatchMutationKind,
+    items: readonly T[],
+    worker: (item: T, index: number) => Promise<boolean | void>,
+    concurrency = 1,
+  ): Promise<BatchMutationResult | null> {
+    if (batchMutationActive) return null;
+    const operationId = `photo-gallery-${++photoGalleryBatchMutationSequence}`;
+    return runBatchMutationBoundary({
+      gate: batchMutationGate,
+      operation: { id: operationId, kind, done: 0, total: items.length, failed: 0 },
+      items,
+      worker,
+      concurrency,
+      onEvent: (event) => {
+        onBatchMutationChange?.(event);
+        if (!mountedRef.current) return;
+        if (event.type === "start") setLocalBatchMutationBusy(true);
+        if (event.type === "finish") setLocalBatchMutationBusy(false);
+      },
+    });
+  }
 
   useEffect(() => {
     onDownloadStateChange?.(downloading);
@@ -477,18 +524,13 @@ function PhotoGallery({
     const start = Math.max(1, Number.parseInt(startRaw ?? "1", 10) || 1);
 
     const selectedList = flatPhotos.filter((p) => selected.has(p.name));
-    let failed = 0;
-    for (let i = 0; i < selectedList.length; i++) {
-      const p = selectedList[i];
+    const result = await executeBatchMutation("rename", selectedList, async (p, i) => {
       const nextName = buildRenamedPhotoName(p, `${safePrefix}-${String(start + i).padStart(3, "0")}`);
-      try {
-        await apiRenamePhoto(p.name, nextName, userName);
-        onRenamePhoto(p.name, nextName);
-      } catch {
-        failed++;
-      }
-    }
-    if (failed > 0) showToast(`批量重命名完成，失败 ${failed} 张`, "error");
+      await apiRenamePhoto(p.name, nextName, userName);
+      onRenamePhoto(p.name, nextName);
+    });
+    if (!result || !mountedRef.current) return;
+    if (result.failed > 0) showToast(`批量重命名完成，失败 ${result.failed} 张`, "error");
     else showToast(`已重命名 ${selectedList.length} 张照片`, "success");
   };
 
@@ -868,7 +910,7 @@ function PhotoGallery({
 
   // Ctrl+A to select all photos in batch mode (when modal is closed)
   useEffect(() => {
-    if (!selectMode || selectedIdx !== null) return;
+    if (!selectMode || selectedIdx !== null || batchMutationBusy) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
         if ((e.target as HTMLElement).matches("input,textarea")) return;
@@ -878,7 +920,7 @@ function PhotoGallery({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectMode, selectedIdx, toggleSelectAll]);
+  }, [batchMutationBusy, selectMode, selectedIdx, toggleSelectAll]);
 
   // Reverse geocode GPS coordinates to human-readable address
   useEffect(() => {
@@ -1013,16 +1055,14 @@ function PhotoGallery({
     const pad = (n: number) => String(n).padStart(2, "0");
     const naive = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     const selectedList = flatPhotos.filter((p) => selected.has(p.name));
-    let failed = 0;
-    for (const p of selectedList) {
-      try {
-        await updatePhotoTakenAt(p.name, naive, userName);
-        onTakenAtUpdate?.(p.name, naive);
-      } catch { failed++; }
-    }
+    const result = await executeBatchMutation("time", selectedList, async (p) => {
+      await updatePhotoTakenAt(p.name, naive, userName);
+      onTakenAtUpdate?.(p.name, naive);
+    });
+    if (!result || !mountedRef.current) return;
     setShowBatchTimeEdit(false);
     setBatchTimeInput("");
-    if (failed > 0) showToast(`批量修改时间完成，失败 ${failed} 张`, "error");
+    if (result.failed > 0) showToast(`批量修改时间完成，失败 ${result.failed} 张`, "error");
     else showToast(`已修改 ${selectedList.length} 张照片的拍摄时间`, "success");
   };
 
@@ -1037,17 +1077,15 @@ function PhotoGallery({
       return;
     }
     const selectedList = flatPhotos.filter((p) => selected.has(p.name));
-    let failed = 0;
-    for (const p of selectedList) {
-      try {
-        await updatePhotoGps(p.name, effectiveLat, effectiveLon);
-        onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
-      } catch { failed++; }
-    }
+    const result = await executeBatchMutation("location", selectedList, async (p) => {
+      await updatePhotoGps(p.name, effectiveLat, effectiveLon);
+      onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
+    });
+    if (!result || !mountedRef.current) return;
     setShowBatchGpsEdit(false);
     setBatchGpsLat("");
     setBatchGpsLon("");
-    if (failed > 0) showToast(`批量修改位置完成，失败 ${failed} 张`, "error");
+    if (result.failed > 0) showToast(`批量修改位置完成，失败 ${result.failed} 张`, "error");
     else showToast(`已修改 ${selectedList.length} 张照片的位置`, "success");
   };
 
@@ -1223,6 +1261,7 @@ function PhotoGallery({
     <>
       {/* Batch selection toolbar */}
       <BatchOperationsBar
+        busy={batchMutationBusy}
         selectMode={selectMode}
         onToggleSelectMode={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
         selectedCount={selected.size}
@@ -1374,7 +1413,14 @@ function PhotoGallery({
               const engagementPercent = Math.max(6, Math.min(100, Math.round(engagement / 4)));
               const rankBadge = rank <= 3 ? (rank === 1 ? "🏆" : rank === 2 ? "🥈" : "🥉") : "⭐";
               return (
-                <article key={photo.name} className="moments-card" onClick={() => openModal(photo)}>
+                <article
+                  key={photo.name}
+                  className="moments-card"
+                  aria-disabled={batchMutationBusy || undefined}
+                  onClick={() => {
+                    if (!batchMutationBusy) openModal(photo);
+                  }}
+                >
                   <div className="moments-rank">{rankBadge} #{rank}</div>
                   <div className="media-thumb-wrap">
                     <MediaThumb url={photo.url} thumbnailUrl={photo.thumbnailUrl} previewUrl={photo.previewUrl} alt={display} contentType={photo.contentType} className="moments-thumb" priority={index < GALLERY_EAGER_MEDIA_COUNT} />
@@ -1418,6 +1464,7 @@ function PhotoGallery({
               {selectMode && (
                 <button
                   className="date-group-select-all"
+                  disabled={batchMutationBusy}
                   onClick={() => {
                     const names = group.photos.map((p) => p.name);
                     const allIn = names.every((n) => selected.has(n));
@@ -1447,7 +1494,11 @@ function PhotoGallery({
                     onDelete={() => onDelete(photo.name)}
                     onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
                     selected={selectMode ? selected.has(photo.name) : undefined}
-                    onSelect={selectMode ? (e) => { e.stopPropagation(); togglePhoto(photo.name); } : undefined}
+                    onSelect={selectMode ? (e) => {
+                      e.stopPropagation();
+                      if (!batchMutationBusy) togglePhoto(photo.name);
+                    } : undefined}
+                    interactionDisabled={batchMutationBusy}
                   />
                 </div>
               ))}

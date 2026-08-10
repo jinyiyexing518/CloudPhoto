@@ -13,6 +13,7 @@ interface Props {
   /** When defined, card is in selection mode: clicking selects/deselects */
   selected?: boolean;
   onSelect?: (e: React.MouseEvent) => void;
+  interactionDisabled?: boolean;
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
@@ -27,6 +28,7 @@ function PhotoCard({
   onToggleFavorite,
   selected,
   onSelect,
+  interactionDisabled = false,
   draggable,
   onDragStart,
   onDragEnd,
@@ -119,12 +121,14 @@ function PhotoCard({
       <div
         className={`photo-card${selected ? " photo-card--selected" : ""}${draggable ? " photo-card--draggable" : ""}`}
         onClick={onSelect}
+        aria-disabled={interactionDisabled || undefined}
         draggable={draggable}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         title={displayName}
         onContextMenu={(e) => {
           e.preventDefault();
+          if (interactionDisabled) return;
           setCtxMenu({ x: e.clientX, y: e.clientY });
         }}
       >
@@ -133,7 +137,7 @@ function PhotoCard({
             {selected ? "✓" : ""}
           </div>
         )}
-        <div className="photo-thumbnail" onClick={onSelect ?? onClick}>
+        <div className="photo-thumbnail" onClick={interactionDisabled ? undefined : (onSelect ?? onClick)}>
           {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
           {useVideoThumb ? (
             <img
@@ -239,7 +243,7 @@ function PhotoCard({
           <span className="photo-name" title={displayName}>
             {displayName}
           </span>
-          {!onSelect && (
+          {!onSelect && !interactionDisabled && (
             <>
               {onMoveRequest && (
                 <button
@@ -319,7 +323,7 @@ function PhotoCard({
         document.body
       )}
 
-      {ctxMenu && createPortal(
+      {ctxMenu && !interactionDisabled && createPortal(
         <div className="photo-ctx-backdrop" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }}>
           <ul className="photo-ctx-menu" style={{ top: ctxMenu.y, left: ctxMenu.x }} onClick={(e) => e.stopPropagation()}>
             <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onClick(); }}>🔍 预览</li>

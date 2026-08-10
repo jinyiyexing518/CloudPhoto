@@ -127,9 +127,9 @@
 - **触摸手势** — 双指捏合缩放 + 双击缩放 + 水平滑动切换，CSS transform
 - **自动隐藏导航栏** — 下滚隐藏，上滚即恢复，300ms cubic-bezier
 - **字节级上传进度** — `XHR.upload.onprogress` 驱动，显示 X.X / Y.Y MB
-- **批量操作** — 多选批量删除/移动/改时间/改 GPS，`Promise.all` 并发
-- **传输守卫** — 上传/下载中阻止 Tab 关闭，`beforeunload` 拦截
-- **更新与传输互斥** — 上传/下载/批量删除/语音备注录制或上传期间，PWA「立即更新」按钮禁用并明确提示“传输完成后更新”；同一全局传输守卫同步阻止切 Tab 和切群组，只有用户显式点击才会激活 waiting worker
+- **批量 mutation 执行边界** — 时间线、重要片段和文件夹按 source key + operation token 独立聚合；迟到 progress/finally 不能清理新操作，rename/time/location 串行隔离失败，移动最多 4 并发并把 reject/`false` 都计入失败
+- **批量冲突入口互斥** — 同步 ref gate 阻止双击重入；mutation 期间原生 disabled 选择、全选、重命名、时间、位置、删除、移动确认和添加原图，位置搜索同步进入 saving 状态
+- **更新与传输互斥** — 上传/下载/批量删除/语音备注录制或上传/批量 mutation 期间，PWA「立即更新」按钮禁用；同一全局守卫同步阻止切 Tab、切群组、beforeunload，并在横幅显示准确类型、进度、失败数和百分比
 - **PWA** — Service Worker + Manifest，可安装到桌面/手机
 - **14 个键盘快捷键** + 快捷键速查表
 - **图标控件无障碍语义** — 关闭、清空、导航、播放、收藏与编辑按钮具备明确 ARIA 名称，状态型控件同步暴露 pressed 状态

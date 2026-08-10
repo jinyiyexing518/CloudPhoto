@@ -42,6 +42,15 @@ import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
 import { type VoiceTransferState } from "../../transfer/voiceTransferState";
+import {
+  runBatchMutationBoundary,
+  type BatchMutationEvent,
+  type BatchMutationGate,
+  type BatchMutationKind,
+  type BatchMutationResult,
+} from "../../transfer/batchMutationState";
+
+let folderBatchMutationSequence = 0;
 
 const UNCATEGORIZED = "(未分类)";
 const MOVE_UNSELECTED = "__UNSEL__";
@@ -229,6 +238,8 @@ interface Props {
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onVoiceStateChange?: (state: VoiceTransferState) => void;
+  onBatchMutationChange?: (event: BatchMutationEvent) => void;
+  batchMutationActive?: boolean;
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
@@ -254,6 +265,8 @@ export default function FolderView({
   onRenameFolder,
   onDownloadStateChange,
   onVoiceStateChange,
+  onBatchMutationChange,
+  batchMutationActive = false,
   onShareCreated,
   onThumbnailUpdate,
   userName,
@@ -289,6 +302,24 @@ export default function FolderView({
   const hydratedContextRef = useRef<string | null>(contextKey);
   const historyHydratedRef = useRef(false);
   const applyingPopstateRef = useRef(false);
+  const [localBatchMutationBusy, setLocalBatchMutationBusy] = useState(false);
+  const batchMutationBusy = localBatchMutationBusy || batchMutationActive;
+  const batchMutationGate = useRef<BatchMutationGate>({ current: null }).current;
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const handleBatchMutationEvent = useCallback((event: BatchMutationEvent) => {
+    onBatchMutationChange?.(event);
+    if (!mountedRef.current) return;
+    if (event.type === "start") setLocalBatchMutationBusy(true);
+    if (event.type === "finish") setLocalBatchMutationBusy(false);
+  }, [onBatchMutationChange]);
 
   // No-op on first mount (state is already hydrated), but handles any future contextKey change
   // (which in practice never happens because the parent renders FolderView with key={contextKey}).
@@ -637,7 +668,7 @@ export default function FolderView({
               name={UNCATEGORIZED}
               count={countPhotosUnder(photos, "")}
               onClick={() => setCurrentPath("")}
-              onDrop={(photoName, fromFolder) => {
+              onDrop={batchMutationBusy ? undefined : (photoName, fromFolder) => {
                 void moveByDragWithToast(photoName, fromFolder, "");
               }}
               hasSubFolders={false}
@@ -649,11 +680,11 @@ export default function FolderView({
               name={name}
               count={countPhotosUnder(photos, name)}
               onClick={() => navigateTo(name)}
-              onDrop={(photoName, fromFolder) => {
+              onDrop={batchMutationBusy ? undefined : (photoName, fromFolder) => {
                 void moveByDragWithToast(photoName, fromFolder, name);
               }}
-              onRename={onRenameFolder ? (newName) => void handleRenameFolder(name, newName) : undefined}
-              onDelete={() => void handleDeleteFolder(name)}
+              onRename={onRenameFolder && !batchMutationBusy ? (newName) => void handleRenameFolder(name, newName) : undefined}
+              onDelete={batchMutationBusy ? undefined : () => void handleDeleteFolder(name)}
               hasSubFolders={getImmediateSubFolders(photos, extraFolders, name).length > 0}
             />
           ))}
@@ -688,11 +719,14 @@ export default function FolderView({
           onUploadToFolder={onUploadToFolder}
           uploadProgress={uploadProgress}
           onMovePhoto={onMovePhoto}
-          onRenameSubFolder={onRenameFolder ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
-          onDeleteSubFolder={(sub) => handleDeleteFolder(sub)}
+          onRenameSubFolder={onRenameFolder && !batchMutationBusy ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
+          onDeleteSubFolder={batchMutationBusy ? undefined : (sub) => handleDeleteFolder(sub)}
           onBatchDelete={onBatchDelete}
           onDownloadStateChange={onDownloadStateChange}
           onVoiceStateChange={onVoiceStateChange}
+          onBatchMutationChange={handleBatchMutationEvent}
+          batchMutationBusy={batchMutationBusy}
+          batchMutationGate={batchMutationGate}
           onShareCreated={onShareCreated}
           onThumbnailUpdate={onThumbnailUpdate}
           userName={userName}
@@ -728,6 +762,9 @@ interface ContentProps {
   onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
   onVoiceStateChange?: (state: VoiceTransferState) => void;
+  onBatchMutationChange?: (event: BatchMutationEvent) => void;
+  batchMutationBusy: boolean;
+  batchMutationGate: BatchMutationGate;
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
@@ -757,6 +794,9 @@ function FolderContent({
   onBatchDelete,
   onDownloadStateChange,
   onVoiceStateChange,
+  onBatchMutationChange,
+  batchMutationBusy,
+  batchMutationGate,
   onShareCreated,
   onThumbnailUpdate,
   userName,
@@ -863,6 +903,32 @@ function FolderContent({
     if (allSelected) { setSelected(new Set()); } else { setSelected(new Set(directPhotos.map((p) => p.name))); }
   };
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  async function executeBatchMutation<T>(
+    kind: BatchMutationKind,
+    items: readonly T[],
+    worker: (item: T, index: number) => Promise<boolean | void>,
+    options?: { concurrency?: number },
+  ): Promise<BatchMutationResult | null> {
+    if (batchMutationBusy && batchMutationGate.current === null) return null;
+    const operationId = `folder-${++folderBatchMutationSequence}`;
+    return runBatchMutationBoundary({
+      gate: batchMutationGate,
+      operation: { id: operationId, kind, done: 0, total: items.length, failed: 0 },
+      items,
+      worker,
+      concurrency: options?.concurrency,
+      onEvent: onBatchMutationChange,
+    });
+  }
 
   const selectedTotalSize = useMemo(() => {
     const bytes = directPhotos.filter((p) => selected.has(p.name)).reduce((sum, p) => sum + (p.size ?? 0), 0);
@@ -1012,9 +1078,19 @@ function FolderContent({
   const handleBatchMove = async () => {
     const target = resolveMoveTarget(batchMoveTo);
     if (!target) return;
-    const count = selected.size;
-    await Promise.all([...selected].map((name) => onMovePhoto(name, target)));
-    showToast(`已移动 ${count} 张照片`, "success");
+    const names = [...selected];
+    const result = await executeBatchMutation(
+      "move",
+      names,
+      (name) => onMovePhoto(name, target),
+      { concurrency: 4 },
+    );
+    if (!result || !mountedRef.current) return;
+    if (result.failed > 0) {
+      showToast(`批量移动完成，成功 ${result.total - result.failed} 张，失败 ${result.failed} 张`, "error");
+    } else {
+      showToast(`已移动 ${result.total} 张照片`, "success");
+    }
     exitSelectMode();
   };
 
@@ -1031,18 +1107,13 @@ function FolderContent({
     const start = Math.max(1, Number.parseInt(startRaw ?? "1", 10) || 1);
 
     const selectedList = directPhotos.filter((p) => selected.has(p.name));
-    let failed = 0;
-    for (let i = 0; i < selectedList.length; i++) {
-      const p = selectedList[i];
+    const result = await executeBatchMutation("rename", selectedList, async (p, i) => {
       const nextName = buildRenamedPhotoName(p, `${safePrefix}-${String(start + i).padStart(3, "0")}`);
-      try {
-        await apiRenamePhoto(p.name, nextName, userName);
-        onRenamePhoto(p.name, nextName);
-      } catch {
-        failed++;
-      }
-    }
-    if (failed > 0) showToast(`批量重命名完成，失败 ${failed} 张`, "error");
+      await apiRenamePhoto(p.name, nextName, userName);
+      onRenamePhoto(p.name, nextName);
+    });
+    if (!result || !mountedRef.current) return;
+    if (result.failed > 0) showToast(`批量重命名完成，失败 ${result.failed} 张`, "error");
     else showToast(`已重命名 ${selectedList.length} 张照片`, "success");
   };
 
@@ -1053,16 +1124,14 @@ function FolderContent({
     const pad = (n: number) => String(n).padStart(2, "0");
     const naive = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     const selectedList = directPhotos.filter((p) => selected.has(p.name));
-    let failed = 0;
-    for (const p of selectedList) {
-      try {
-        await updatePhotoTakenAt(p.name, naive, userName);
-        onTakenAtUpdate?.(p.name, naive);
-      } catch { failed++; }
-    }
+    const result = await executeBatchMutation("time", selectedList, async (p) => {
+      await updatePhotoTakenAt(p.name, naive, userName);
+      onTakenAtUpdate?.(p.name, naive);
+    });
+    if (!result || !mountedRef.current) return;
     setShowBatchTimeEdit(false);
     setBatchTimeInput("");
-    if (failed > 0) showToast(`批量修改时间完成，失败 ${failed} 张`, "error");
+    if (result.failed > 0) showToast(`批量修改时间完成，失败 ${result.failed} 张`, "error");
     else showToast(`已修改 ${selectedList.length} 张照片的拍摄时间`, "success");
   };
 
@@ -1077,17 +1146,15 @@ function FolderContent({
       return;
     }
     const selectedList = directPhotos.filter((p) => selected.has(p.name));
-    let failed = 0;
-    for (const p of selectedList) {
-      try {
-        await updatePhotoGps(p.name, effectiveLat, effectiveLon);
-        onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
-      } catch { failed++; }
-    }
+    const result = await executeBatchMutation("location", selectedList, async (p) => {
+      await updatePhotoGps(p.name, effectiveLat, effectiveLon);
+      onGpsUpdate?.(p.name, effectiveLat, effectiveLon);
+    });
+    if (!result || !mountedRef.current) return;
     setShowBatchGpsEdit(false);
     setBatchGpsLat("");
     setBatchGpsLon("");
-    if (failed > 0) showToast(`批量修改位置完成，失败 ${failed} 张`, "error");
+    if (result.failed > 0) showToast(`批量修改位置完成，失败 ${result.failed} 张`, "error");
     else showToast(`已修改 ${selectedList.length} 张照片的位置`, "success");
   };
 
@@ -1343,6 +1410,7 @@ function FolderContent({
         e.preventDefault();
         dragCount.current = 0;
         setIsDragOver(false);
+        if (batchMutationBusy) return;
         const name = e.dataTransfer.getData("photoName");
         const from = e.dataTransfer.getData("fromFolder");
         if (name) void moveByDragWithToast(name, from, currentPath);
@@ -1350,6 +1418,7 @@ function FolderContent({
     >
       {directPhotos.length > 0 && (
         <BatchOperationsBar
+          busy={batchMutationBusy}
           className="gallery-batch-toolbar--folder"
           selectMode={selectMode}
           onToggleSelectMode={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
@@ -1380,6 +1449,7 @@ function FolderContent({
                     className="modal-move-select"
                     value={batchMoveTo}
                     onChange={(e) => setBatchMoveTo(e.target.value)}
+                    disabled={batchMutationBusy}
                   >
                     <option value={MOVE_UNSELECTED}>移动到…</option>
                     <option value={MOVE_CREATE}>+ 新建文件夹…</option>
@@ -1388,15 +1458,16 @@ function FolderContent({
                     ))}
                   </select>
                   {batchMoveTo !== MOVE_UNSELECTED && (
-                    <button className="batch-select-btn" onClick={() => void handleBatchMove()}>确认移动</button>
+                    <button className="batch-select-btn" onClick={() => void handleBatchMove()} disabled={batchMutationBusy}>确认移动</button>
                   )}
                 </>
               )}
               <button
                 className="batch-select-btn"
-                style={{ marginLeft: "auto", opacity: anyUploading ? 0.5 : 1 }}
-                onClick={() => !anyUploading && inputRef.current?.click()}
+                style={{ marginLeft: "auto", opacity: anyUploading || batchMutationBusy ? 0.5 : 1 }}
+                onClick={() => !anyUploading && !batchMutationBusy && inputRef.current?.click()}
                 title="上传原图到当前文件夹"
+                disabled={anyUploading || batchMutationBusy}
               >
                 {isMyUpload && uploadProgress
                   ? `⏳ ${uploadProgress.filesDone}/${uploadProgress.filesTotal}`
@@ -1417,9 +1488,9 @@ function FolderContent({
               name={sub}
               count={countPhotos(sub)}
               onClick={() => onNavigate(sub)}
-              onDrop={(photoName, fromFolder) => onDropToSubFolder(photoName, fromFolder, sub)}
-              onRename={onRenameSubFolder ? (newSub) => onRenameSubFolder(sub, newSub) : undefined}
-              onDelete={onDeleteSubFolder ? () => onDeleteSubFolder(sub) : undefined}
+              onDrop={batchMutationBusy ? undefined : (photoName, fromFolder) => onDropToSubFolder(photoName, fromFolder, sub)}
+              onRename={onRenameSubFolder && !batchMutationBusy ? (newSub) => onRenameSubFolder(sub, newSub) : undefined}
+              onDelete={onDeleteSubFolder && !batchMutationBusy ? () => onDeleteSubFolder(sub) : undefined}
               hasSubFolders={getImmediateSubFolders(allPhotos, allExtraFolders, subFullPath).length > 0}
             />
           );
@@ -1439,8 +1510,12 @@ function FolderContent({
               setQuickMoveTo(MOVE_UNSELECTED);
             } : undefined}
             selected={selectMode ? selected.has(photo.name) : undefined}
-            onSelect={selectMode ? (e) => { e.stopPropagation(); toggleSelect(photo.name); } : undefined}
-            draggable={!selectMode}
+            onSelect={selectMode ? (e) => {
+              e.stopPropagation();
+              if (!batchMutationBusy) toggleSelect(photo.name);
+            } : undefined}
+            interactionDisabled={batchMutationBusy}
+            draggable={!selectMode && !batchMutationBusy}
             onDragStart={(e) => {
               e.dataTransfer.setData("photoName", photo.name);
               e.dataTransfer.setData("fromFolder", currentPath);
@@ -1458,12 +1533,14 @@ function FolderContent({
             value={uploadSubject}
             onChange={(e) => setUploadSubject(e.target.value)}
             maxLength={80}
+            disabled={batchMutationBusy}
           />
           <div
             className={`folder-upload-card${anyUploading ? " folder-upload-card--loading" : ""}`}
-            onClick={() => !anyUploading && inputRef.current?.click()}
+            onClick={() => !anyUploading && !batchMutationBusy && inputRef.current?.click()}
             title="上传原图到当前文件夹"
             role="button"
+            aria-disabled={anyUploading || batchMutationBusy}
           >
             {isMyUpload && uploadProgress ? (
               <>
@@ -1476,7 +1553,7 @@ function FolderContent({
                 <span className="folder-upload-label">添加原图</span>
               </>
             )}
-            <input ref={inputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" }} onChange={handleFiles} />
+            <input ref={inputRef} type="file" accept="image/*,video/*" multiple style={{ display: "none" }} onChange={handleFiles} disabled={batchMutationBusy} />
           </div>
         </div>
 

@@ -36,6 +36,15 @@ import {
   type VoiceTransferSource,
   type VoiceTransferState,
 } from "./transfer/voiceTransferState";
+import {
+  createInitialBatchMutationStates,
+  getActiveBatchMutation,
+  getBatchMutationLabel,
+  getBatchMutationPercent,
+  reduceBatchMutationEvent,
+  type BatchMutationEvent,
+  type BatchMutationSource,
+} from "./transfer/batchMutationState";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -349,6 +358,7 @@ function AppContent() {
   const [downloading, setDownloading] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [voiceTransferStates, setVoiceTransferStates] = useState(createInitialVoiceTransferStates);
+  const [batchMutationStates, setBatchMutationStates] = useState(createInitialBatchMutationStates);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const [momentsDisplayCount, setMomentsDisplayCount] = useState<number | null>(null);
@@ -395,8 +405,16 @@ function AppContent() {
   const [gridSize, setGridSize] = useState<GridSize>(() => (localStorage.getItem("cf_grid_size") as GridSize | null) ?? "md");
   const handleGridSizeChange = (size: GridSize) => { setGridSize(size); localStorage.setItem("cf_grid_size", size); };
   const uploadToFolderRef = useRef<((files: FileList, folder: string, subject?: string) => Promise<void>) | null>(null);
+  const refreshAfterBatchMutationRef = useRef(false);
   const voiceTransferState = getActiveVoiceTransferState(voiceTransferStates);
-  const transferring = uploadProgress !== null || downloading || deleteProgress !== null || voiceTransferState !== "idle";
+  const activeBatchMutation = getActiveBatchMutation(batchMutationStates);
+  const batchMutationActiveRef = useRef(false);
+  batchMutationActiveRef.current = activeBatchMutation !== null;
+  const transferring = uploadProgress !== null
+    || downloading
+    || deleteProgress !== null
+    || voiceTransferState !== "idle"
+    || activeBatchMutation !== null;
 
   const handleVoiceStateChange = useCallback((source: VoiceTransferSource, state: VoiceTransferState) => {
     setVoiceTransferStates((current) => setVoiceTransferState(current, source, state));
@@ -413,11 +431,28 @@ function AppContent() {
     (state: VoiceTransferState) => handleVoiceStateChange("folder", state),
     [handleVoiceStateChange],
   );
+  const handleBatchMutationChange = useCallback((source: BatchMutationSource, event: BatchMutationEvent) => {
+    setBatchMutationStates((current) => reduceBatchMutationEvent(current, source, event));
+  }, []);
+  const handleTimelineBatchMutationChange = useCallback(
+    (event: BatchMutationEvent) => handleBatchMutationChange("timeline", event),
+    [handleBatchMutationChange],
+  );
+  const handleMomentsBatchMutationChange = useCallback(
+    (event: BatchMutationEvent) => handleBatchMutationChange("moments", event),
+    [handleBatchMutationChange],
+  );
+  const handleFolderBatchMutationChange = useCallback(
+    (event: BatchMutationEvent) => handleBatchMutationChange("folder", event),
+    [handleBatchMutationChange],
+  );
   const transferGuardMessage = voiceTransferState === "recording"
     ? "录音中，请先结束录音"
     : voiceTransferState === "uploading"
       ? "语音备注上传中，请勿离开当前页面"
-      : "传输进行中，请稍候";
+      : activeBatchMutation
+        ? `${getBatchMutationLabel(activeBatchMutation.kind)}进行中（${activeBatchMutation.done}/${activeBatchMutation.total}），请勿离开当前页面`
+        : "传输进行中，请稍候";
   const blockIfTransferring = useCallback(() => {
     if (!transferring) return false;
     showToast(transferGuardMessage, "info");
@@ -752,6 +787,7 @@ function AppContent() {
   }), []);
 
   const fetchPhotos = useCallback(async () => {
+    if (batchMutationActiveRef.current) return;
     // Cancel any in-flight previous request before starting another full Blob listing.
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
@@ -817,6 +853,12 @@ function AppContent() {
     void fetchPhotos();
     return () => fetchAbortRef.current?.abort();
   }, [fetchPhotos]);
+
+  useEffect(() => {
+    if (activeBatchMutation || !refreshAfterBatchMutationRef.current) return;
+    refreshAfterBatchMutationRef.current = false;
+    void fetchPhotos();
+  }, [activeBatchMutation, fetchPhotos]);
 
   // Browsers commonly emit both visibilitychange and focus when returning to
   // the app. Both events share one 60 s gate so they cannot launch duplicate
@@ -984,6 +1026,7 @@ function AppContent() {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
+        if (blockIfTransferring()) return;
         void fetchPhotos();
       }
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
@@ -1034,7 +1077,7 @@ function AppContent() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPhotos, activeFiltersCount, showToast, transferring]);
+  }, [activeFiltersCount, blockIfTransferring, fetchPhotos, showToast, transferring]);
 
   // Global drag-over: desktop-only (only attach on non-touch devices)
   useEffect(() => {
@@ -1092,6 +1135,10 @@ function AppContent() {
       e.preventDefault();
       const blob = imageItem.getAsFile();
       if (!blob) return;
+      if (batchMutationActiveRef.current) {
+        showToast(transferGuardMessage, "info");
+        return;
+      }
       const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const ext = imageItem.type.split("/")[1] ?? "png";
       const file = new File([blob], `paste-${ts}.${ext}`, { type: imageItem.type });
@@ -1102,9 +1149,13 @@ function AppContent() {
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [showToast]);
+  }, [showToast, transferGuardMessage]);
 
   const handleUploadToFolder = async (files: FileList, folder: string, subject?: string) => {
+    if (batchMutationActiveRef.current) {
+      showToast(transferGuardMessage, "info");
+      return;
+    }
     const IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff"]);
     const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/mpeg", "video/3gpp", "video/3gpp2"]);
     const ALLOWED_TYPES = new Set([...IMAGE_TYPES, ...VIDEO_TYPES]);
@@ -1519,7 +1570,11 @@ function AppContent() {
       return true;
     } catch {
       showToast("移动照片失败", "error");
-      await fetchPhotos();
+      if (batchMutationActiveRef.current) {
+        refreshAfterBatchMutationRef.current = true;
+      } else {
+        await fetchPhotos();
+      }
       return false;
     }
   };
@@ -1874,6 +1929,27 @@ function AppContent() {
                 <span className="transfer-banner-icon">🎤</span>
                 <span className="transfer-banner-text">语音备注上传中，请勿关闭页面</span>
               </div>
+            ) : activeBatchMutation ? (
+              <>
+                <div className="transfer-banner-row">
+                  <span className="transfer-banner-icon">🛠️</span>
+                  <div className="transfer-banner-body">
+                    <span className="transfer-banner-text">
+                      {getBatchMutationLabel(activeBatchMutation.kind)} {activeBatchMutation.done}/{activeBatchMutation.total}
+                    </span>
+                    {activeBatchMutation.failed > 0 && (
+                      <span className="transfer-banner-size">失败 {activeBatchMutation.failed} 张</span>
+                    )}
+                  </div>
+                  <span className="transfer-banner-pct">{getBatchMutationPercent(activeBatchMutation)}%</span>
+                </div>
+                <div className="transfer-banner-track">
+                  <div
+                    className="transfer-banner-fill"
+                    style={{ width: `${getBatchMutationPercent(activeBatchMutation)}%` }}
+                  />
+                </div>
+              </>
             ) : downloading ? (
               <div className="transfer-banner-row">
                 <span className="transfer-banner-icon">⬇️</span>
@@ -2152,6 +2228,8 @@ function AppContent() {
                       onMovePhoto={handleMovePhoto}
                       onDownloadStateChange={setDownloading}
                       onVoiceStateChange={handleTimelineVoiceStateChange}
+                      onBatchMutationChange={handleTimelineBatchMutationChange}
+                      batchMutationActive={batchMutationStates.timeline !== null}
                       onShareCreated={handleMomentShareCreated}
                       onThumbnailUpdate={handleThumbnailUpdate}
                       userName={user?.displayName}
@@ -2183,6 +2261,8 @@ function AppContent() {
                   onMovePhoto={handleMovePhoto}
                   onDownloadStateChange={setDownloading}
                   onVoiceStateChange={handleMomentsVoiceStateChange}
+                  onBatchMutationChange={handleMomentsBatchMutationChange}
+                  batchMutationActive={batchMutationStates.moments !== null}
                   onShareCreated={handleMomentShareCreated}
                   onThumbnailUpdate={handleThumbnailUpdate}
                   userName={user?.displayName}
@@ -2215,6 +2295,8 @@ function AppContent() {
                 onRenameFolder={handleRenameFolder}
                 onDownloadStateChange={setDownloading}
                 onVoiceStateChange={handleFolderVoiceStateChange}
+                onBatchMutationChange={handleFolderBatchMutationChange}
+                batchMutationActive={batchMutationStates.folder !== null}
                 onShareCreated={handleMomentShareCreated}
                 onThumbnailUpdate={handleThumbnailUpdate}
                 userName={user?.displayName}
