@@ -35,17 +35,29 @@ function runtimeBaseUrl(): string {
   return typeof window === "undefined" ? "https://cloudphotos.top" : window.location.origin;
 }
 
+export function isSameOriginMediaUrl(
+  source: string,
+  pageOrigin = runtimeBaseUrl(),
+): boolean {
+  try {
+    return new URL(source, pageOrigin).origin === new URL(pageOrigin).origin;
+  } catch {
+    return true;
+  }
+}
+
 export function videoPlaybackCrossOrigin(
   source: string,
   pageOrigin = runtimeBaseUrl(),
 ): "anonymous" | undefined {
-  try {
-    return new URL(source, pageOrigin).origin === new URL(pageOrigin).origin
-      ? "anonymous"
-      : undefined;
-  } catch {
-    return "anonymous";
-  }
+  return isSameOriginMediaUrl(source, pageOrigin) ? "anonymous" : undefined;
+}
+
+export function canCaptureVideoPlaybackThumbnail(
+  source: string,
+  pageOrigin = runtimeBaseUrl(),
+): boolean {
+  return videoPlaybackCrossOrigin(source, pageOrigin) === "anonymous";
 }
 
 function proxyBaseForRuntime(): string {
@@ -320,32 +332,23 @@ export async function selectFastestVideoMediaRoute(
   const directUrl = toDirectMediaUrl(videoUrl);
   const proxyUrl = toProxyMediaUrl(directUrl);
   if (absoluteUrl(directUrl) === absoluteUrl(proxyUrl)) return "direct";
+  if (!isSameOriginMediaUrl(proxyUrl)) return "direct";
 
-  const directController = new AbortController();
   const proxyController = new AbortController();
   const timeoutId = setTimeout(() => {
-    directController.abort();
     proxyController.abort();
   }, ROUTE_PROBE_TIMEOUT_MS);
   try {
-    const route = await firstSuccessfulProbe([
-      probeVideoMediaUrl(directUrl, directController.signal).then((valid) => {
-        if (!valid) throw new Error("Direct video route does not support Range");
-        return "direct" as const;
-      }),
-      probeVideoMediaUrl(proxyUrl, proxyController.signal).then((valid) => {
-        if (!valid) throw new Error("Proxy video route does not support Range");
-        return "proxy" as const;
-      }),
-    ]);
-    rememberRoute(route);
-    return route;
+    const proxySupportsRange = await probeVideoMediaUrl(proxyUrl, proxyController.signal);
+    if (!proxySupportsRange) return "direct";
+    rememberRoute("proxy");
+    return "proxy";
   } catch {
-    // A route that cannot prove byte-range support must not be preferred for video.
+    // Browser fetch cannot prove a cross-origin Blob without storage CORS.
+    // Let the media element try direct playback and use bounded recovery on failure.
     return "direct";
   } finally {
     clearTimeout(timeoutId);
-    directController.abort();
     proxyController.abort();
   }
 }

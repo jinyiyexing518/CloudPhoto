@@ -134,11 +134,13 @@ export function restartVideoPlaybackSession(
 
 export function claimVideoThumbnailCapture(
   session: VideoPlaybackSession,
+  canCapture = true,
 ): { session: VideoPlaybackSession; shouldCapture: boolean } {
   if (
     !session.hasPlayableContent
     || !session.needsThumbnailCapture
     || session.thumbnailCaptureAttempted
+    || !canCapture
   ) {
     return { session, shouldCapture: false };
   }
@@ -220,6 +222,7 @@ export function createVideoPlaybackController({
   let pendingRestore: VideoPlaybackSnapshot | null = null;
   let lastSnapshot: VideoPlaybackSnapshot | null = null;
   let currentStatus: VideoPlaybackStatus = "idle";
+  let interruptionPending = false;
 
   const emitStatus = (status: VideoPlaybackStatus) => {
     currentStatus = status;
@@ -266,11 +269,11 @@ export function createVideoPlaybackController({
   };
 
   const canWatch = (media: VideoPlaybackMedia): boolean => (
-    playIntent
+    interruptionPending
+    && playIntent
     && !media.paused
     && !media.ended
     && !media.seeking
-    && media.readyState < HAVE_FUTURE_DATA
     && isVisible()
   );
 
@@ -287,6 +290,7 @@ export function createVideoPlaybackController({
       return false;
     }
     clearWatchdog();
+    interruptionPending = false;
     const restore = pendingRestore ?? snapshot(media);
     lastSnapshot = restore;
     const fallback = fallbackVideoPlaybackSession(
@@ -333,6 +337,16 @@ export function createVideoPlaybackController({
     }, VIDEO_STALL_WATCHDOG_MS);
   };
 
+  const onPlaybackInterruption = (sessionKey: string, media: VideoPlaybackMedia) => {
+    if (!canHandleMediaEvent(sessionKey, media)) return;
+    if (!playIntent || media.paused || media.ended || media.seeking) {
+      interruptionPending = false;
+    } else {
+      interruptionPending = true;
+    }
+    armWatchdog(sessionKey, media);
+  };
+
   return {
     activate(session) {
       clearWatchdog();
@@ -342,6 +356,7 @@ export function createVideoPlaybackController({
       pendingRestore = session.restore ?? null;
       lastSnapshot = session.restore ?? null;
       playIntent = session.restore?.shouldResume ?? false;
+      interruptionPending = false;
       emitStatus(session.restore ? "buffering" : "idle");
     },
     dispose() {
@@ -351,6 +366,7 @@ export function createVideoPlaybackController({
       pendingRestore = null;
       lastSnapshot = null;
       playIntent = false;
+      interruptionPending = false;
     },
     onPlay(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media)) return;
@@ -369,6 +385,7 @@ export function createVideoPlaybackController({
     onPlaying(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media)) return;
       clearWatchdog();
+      interruptionPending = false;
       recovering = false;
       playIntent = true;
       snapshot(media);
@@ -376,8 +393,8 @@ export function createVideoPlaybackController({
       if (current) setSession(markVideoPlaybackPlayable(current));
       emitStatus("idle");
     },
-    onWaiting: armWatchdog,
-    onStalled: armWatchdog,
+    onWaiting: onPlaybackInterruption,
+    onStalled: onPlaybackInterruption,
     onTimeUpdate(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media)) return;
       const progressed = watchdogId !== null
@@ -385,18 +402,21 @@ export function createVideoPlaybackController({
       snapshot(media);
       if (progressed) {
         clearWatchdog();
+        interruptionPending = false;
         emitStatus("idle");
       }
     },
     onCanPlay(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media)) return;
       clearWatchdog();
+      interruptionPending = false;
       snapshot(media);
       emitStatus("idle");
     },
     onPause(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media) || recovering) return;
       playIntent = false;
+      interruptionPending = false;
       snapshot(media);
       clearWatchdog();
       emitStatus("idle");
@@ -404,17 +424,20 @@ export function createVideoPlaybackController({
     onSeeking(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media)) return;
       clearWatchdog();
+      interruptionPending = false;
       snapshot(media);
       emitStatus("idle");
     },
     onSeeked(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media)) return;
       clearWatchdog();
+      interruptionPending = false;
       snapshot(media);
     },
     onEnded(sessionKey, media) {
       if (!canHandleMediaEvent(sessionKey, media)) return;
       playIntent = false;
+      interruptionPending = false;
       snapshot(media);
       clearWatchdog();
       emitStatus("idle");
@@ -423,7 +446,7 @@ export function createVideoPlaybackController({
       if (!isVisible()) {
         clearWatchdog();
         if (currentStatus === "buffering") emitStatus("idle");
-      } else if (media && activeKey) {
+      } else if (interruptionPending && media && activeKey) {
         armWatchdog(activeKey, media);
       }
     },

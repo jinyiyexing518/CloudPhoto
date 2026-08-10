@@ -460,6 +460,7 @@ for (const [name, source] of [["timeline playback", gallery], ["folder playback"
  assert(!source.includes("fallbackVideoPlaybackSession"), `${name} must not duplicate route recovery`);
 }
 requireText(resilientVideoPlayback, "claimVideoThumbnailCapture", "shared playback thumbnail claim");
+requireText(resilientVideoPlayback, "canCaptureVideoPlaybackThumbnail", "route-safe playback thumbnail capture");
 requireText(resilientVideoPlayback, "selectFastestVideoMediaRoute", "strict video route selection");
 requireText(videoPlayback, "VIDEO_STALL_WATCHDOG_MS = 4_000", "bounded playback stall watchdog");
 requireText(videoPlayback, "attemptedSources", "finite per-session route budget");

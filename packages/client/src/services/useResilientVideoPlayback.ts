@@ -8,6 +8,7 @@ import {
   type VideoHTMLAttributes,
 } from "react";
 import {
+  canCaptureVideoPlaybackThumbnail,
   getMediaUrlForRoute,
   promoteSuccessfulMediaUrl,
   selectFastestVideoMediaRoute,
@@ -161,7 +162,10 @@ export function useResilientVideoPlayback({
         const current = sessionRef.current;
         if (!current || current.key !== key) return;
         if (current.fallbackAttempted) promoteSuccessfulMediaUrl(current.source);
-        const capture = claimVideoThumbnailCapture(current);
+        const capture = claimVideoThumbnailCapture(
+          current,
+          canCaptureVideoPlaybackThumbnail(current.source),
+        );
         if (capture.session !== current) setSession(capture.session);
         onPlayableRef.current?.({
           photoName: current.photoName,
