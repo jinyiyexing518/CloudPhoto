@@ -109,7 +109,7 @@ test("global file drag prevents navigation but blocks overlay and tab changes be
   assert.match(appSource, /const onDrop =[\s\S]*preventDefault\(\)[\s\S]*classifyGlobalFileIntent/);
   assert.match(appSource, /dropDecision === "ignore-editor-or-modal"[\s\S]*请先关闭弹窗/);
   assert.match(appSource, /dropDecision === "block-transfer"[\s\S]*transferGuardMessageRef\.current/);
-  assert.match(appSource, /dropDecision !== "accept"[\s\S]*stopPropagation\(\)[\s\S]*return[\s\S]*activeTabRef\.current !== "folder"[\s\S]*setActiveTab\("folder"\)/);
+  assert.match(appSource, /dropDecision !== "accept"[\s\S]*stopPropagation\(\)[\s\S]*return[\s\S]*activeTabRef\.current !== "folder"[\s\S]*switchTab\("folder"\)/);
   assert.match(appSource, /addEventListener\("dragenter", onDragEnter, true\)/);
   assert.match(appSource, /addEventListener\("dragover", onDragOver, true\)/);
   assert.match(appSource, /addEventListener\("drop", onDrop, true\)/);

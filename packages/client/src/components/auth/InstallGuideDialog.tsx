@@ -6,12 +6,14 @@ interface Props {
   instructions: string[];
   isStandalone: boolean;
   onClose: () => void;
+  restoreFocusTo?: HTMLElement | null;
 }
 
 export default function InstallGuideDialog({
   instructions,
   isStandalone,
   onClose,
+  restoreFocusTo,
 }: Props) {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -22,6 +24,7 @@ export default function InstallGuideDialog({
     layerRef,
     containerRef: dialogRef,
     initialFocusRef: closeButtonRef,
+    restoreFocusTo,
     onEscape: () => {
       onClose();
       return true;

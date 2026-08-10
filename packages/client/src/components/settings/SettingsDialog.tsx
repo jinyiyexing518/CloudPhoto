@@ -74,7 +74,7 @@ interface Props {
   initialTab?: SettingsEntryTab;
   initialFocusTarget?: SettingsFocusTarget;
   initialFocusItemId?: string;
-  onInstallApp?: () => void;
+  onInstallApp?: (trigger: HTMLElement) => void;
   restoreFocusTo?: HTMLElement | null;
   onMaintenanceStateChange?: (event: MaintenanceTaskEvent) => void;
   onTrashMutationStateChange?: (event: TrashMutationEvent) => void;
@@ -717,8 +717,8 @@ export default function SettingsDialog({
                 <button
                   type="button"
                   className="settings-save-btn"
-                  onClick={onInstallApp}
-                  disabled={isStandalone}
+                  onClick={(event) => onInstallApp?.(event.currentTarget)}
+                  disabled={isStandalone || settingsActivityActive}
                 >
                   {isStandalone ? "已安装到设备" : canInstall ? "立即安装应用" : "安装应用"}
                 </button>

@@ -53,7 +53,7 @@ test("authenticated app aggregates all three sources into tab, group, unload, an
   assert.match(app, /batchMutationActive=\{batchMutationStates\.moments !== null\}/);
   assert.match(app, /batchMutationActive=\{batchMutationStates\.folder !== null\}/);
   assert.match(app, /const transferring =[\s\S]*activeBatchMutation !== null/);
-  assert.match(app, /const switchTab = \(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
+  assert.match(app, /const switchTab = useCallback\(\(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
   assert.match(app, /<GroupSwitcher[\s\S]*disabled=\{transferring\}/);
   assert.match(app, /window\.addEventListener\("beforeunload", onBeforeUnload\)/);
   assert.match(app, /setDangerousOperationActivity\(\s*"authenticated-app",\s*transferring/);

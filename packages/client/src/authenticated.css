@@ -491,6 +491,11 @@ body {
   box-shadow: none;
 }
 
+.view-tab:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: -3px;
+}
+
 .view-tab.active {
   color: #0f172a;
   font-weight: 700;
