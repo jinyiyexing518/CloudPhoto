@@ -9,7 +9,6 @@ import {
   isAuthorizationDriftError,
   updatePhotoGps,
 } from "../../services/photoApi";
-import { fallbackMediaSource } from "../../services/mediaRoute";
 import MediaThumb from "../shared/MediaThumb";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import { useToast } from "../../contexts/ToastContext";
