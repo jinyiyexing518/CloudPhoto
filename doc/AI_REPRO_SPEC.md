@@ -20,24 +20,25 @@
 2.28 PhotoCard.tsx 中视频使用 <video preload="metadata" muted playsInline> 渲染缩略图，右下角显示 photo-video-badge (.▶)
 2.29 文件夹路径刷新持久化：FolderView 使用惰性 useState 初始器从 localStorage 直接读取 currentPath 和 extraFolders，确保刷新页面后立即回到上次所在文件夹，而不是重置到根目录；persist effect 使用 hydratedContextRef 防止首次渲染覆盖
 2.30 删除确认弹窗必须通过 createPortal(…, document.body) 渲染，避免受父元素 transform/overflow 影响导致 position:fixed 偏移出视口
-2.31 批量删除与清空回收站进度：App.tsx 中新增 deleteProgress state（done/total/label）；handleBatchDeleteWithProgress 顺序调用 deletePhoto 并逐步更新进度；transferring 条件包含 deleteProgress !== null；transfer-banner 新增 deleteProgress 分支（🗑️ 图标 + 百分比 + 进度轨道）；TrashView 内部有独立 emptyProgress state，渲染 .trash-empty-progress 内联进度块（复用 transfer-banner-* CSS 类）；清空过程中"清空回收站"和"全部恢复"按钮 disabled
+2.31 批量删除与清空回收站进度：AuthenticatedApp.tsx 中新增 deleteProgress state（done/total/label）；handleBatchDeleteWithProgress 顺序调用 deletePhoto 并逐步更新进度；transferring 条件包含 deleteProgress !== null；transfer-banner 新增 deleteProgress 分支（🗑️ 图标 + 百分比 + 进度轨道）；TrashView 内部有独立 emptyProgress state，渲染 .trash-empty-progress 内联进度块（复用 transfer-banner-* CSS 类）；清空过程中"清空回收站"和"全部恢复"按钮 disabled
 2.32 WhatsNewPopup：src/components/WhatsNewPopup.tsx；CHANGELOG 数组含 id/date/icon/title/desc 字段；getRecentEntries() 过滤 3 天内条目；localStorage key cf_whats_new_seen 存储最近已见日期；仅当有比已见日期更新的条目时展示；createPortal 渲染到 document.body；requestAnimationFrame 驱动倒计时进度条（100→0），AUTO_DISMISS_MS=10000；关闭后写入 latestDate 到 localStorage；新功能只需向 CHANGELOG 头部追加条目
 2.33 详情弹窗移动端垂直居中：media query 内 .modal-content 使用 margin: auto（替代 margin: 0）；max-height 改为 none；overlay 保持 align-items: flex-start + overflow-y: auto，实现"有空间时居中、超高时从顶部滚动"的标准 flex 模式
 2.34 视频缩略图居中裁剪：.photo-thumbnail video 与 img 共用同一规则块，均设置 width:100%; height:100%; object-fit:cover; object-position:center；hover 缩放同步适用于 video 元素
-2.35 历史上的今天（OnThisDayCard）：src/components/OnThisDayCard.tsx；Props: photos: Photo[], onJumpToPhoto?: (name: string) => void；过滤 photos 中月日与今天一致且年份小于当年的照片；按年分组，显示缩略图 + 「X年前」标签；默认展示前 6 张，「+N」按钮展开；整体渲染在 App.tsx 时间线分支的 PhotoGallery 上方；CSS 前缀 .otd-*
+2.35 历史上的今天（OnThisDayCard）：src/components/OnThisDayCard.tsx；Props: photos: Photo[], onJumpToPhoto?: (name: string) => void；过滤 photos 中月日与今天一致且年份小于当年的照片；按年分组，显示缩略图 + 「X年前」标签；默认展示前 6 张，「+N」按钮展开；整体渲染在 AuthenticatedApp.tsx 时间线分支的 PhotoGallery 上方；CSS 前缀 .otd-*
 2.36 记忆地图（MemoryMap）：src/components/MemoryMap.tsx；lazy 加载（dynamic import）；使用 leaflet 直接操作（非 react-leaflet）；在 useEffect 中 import("leaflet").then(L => ...) 初始化地图；OpenStreetMap tiles；markers 为 L.divIcon（含照片缩略图，class map-photo-marker）；点击 marker 底部弹出详情面板（.memory-map-detail）；Props: photos: Photo[], onViewPhoto?: (name: string) => void；仅展示 p.gpsLat && p.gpsLon 的照片；Tab 按钮显示含 GPS 照片数量；新增 ViewTab: "map"；CSS 前缀 .memory-map-* .map-photo-marker
 2.37 时光胶囊（TimeCapsule）：src/components/TimeCapsule.tsx；lazy 加载；localStorage key cf_capsules_{userId}；capsule 结构: { id, title, photoNames, unlockDate, createdAt }；锁定/解锁分区；创建弹窗使用 createPortal；新增 ViewTab: "capsule"；CSS 前缀 .capsule-*
 2.38 自动故事（AutoStory）：src/components/AutoStory.tsx；lazy 加载；选择文件夹/全部 + 过渡效果(fade/slide/zoom) + 播放间隔(2-10s)；全屏播放器通过 createPortal；键盘 ←→/Esc 支持；顶部进度段可点击；背景为当前图片的 blur 大图；新增 ViewTab: "story"；CSS 前缀 .story-*；@keyframes story-fade-in/story-slide-in/story-zoom-in
 2.39 GPS 数据管道：客户端上传时用 exifr.gps(file) 提取 latitude/longitude，作为 gpsLat/gpsLon 查询参数传给 uploadPhoto；服务端 uploadPhoto.ts 从 request.query 读取并写入 blob metadata；listPhotos.ts 在返回的照片对象中携带 gpsLat/gpsLon 字段；Photo interface 新增 gpsLat?: string; gpsLon?: string;
 2.40 EXIF 拍摄时间时区：exifr 内部将 EXIF 日期时间视为 UTC，因此使用 getUTCFullYear/Month/Date/Hours/Minutes/Seconds 格式化为不含 Z 后缀的 naive datetime 字符串（如 "2024-05-20T14:30:00"）；客户端 new Date("2024-05-20T14:30:00") 按本地时区解析，UTC+8 用户显示 14:30 而非 22:30
-2.41 排序键切换（takenAt / uploadedAt）：PhotoGallery 新增 sortKey prop（"taken" | "uploaded"，默认 "taken"）；groupByDate 和 flatPhotos useMemo 均按 sortKey 选择日期字段——"taken" 使用 photo.takenAt ?? photo.createdAt ?? photo.lastModified，"uploaded" 使用 photo.createdAt ?? photo.lastModified；App.tsx 新增 photoSortKey state，工具栏新增「📷 拍摄时间」和「☁ 上传时间」chip 切换按钮
+2.41 排序键切换（takenAt / uploadedAt）：PhotoGallery 新增 sortKey prop（"taken" | "uploaded"，默认 "taken"）；groupByDate 和 flatPhotos useMemo 均按 sortKey 选择日期字段——"taken" 使用 photo.takenAt ?? photo.createdAt ?? photo.lastModified，"uploaded" 使用 photo.createdAt ?? photo.lastModified；AuthenticatedApp.tsx 新增 photoSortKey state，工具栏新增「📷 拍摄时间」和「☁ 上传时间」chip 切换按钮
 2.42 历史照片元数据回填：POST /api/photos/backfill?limit=30[&groupId=<id>&cursor=<opaque>]，limit 必填，缺失时返回 400 防止旧客户端把单页误报为全部完成；每次最多列出一个 Azure Blob 页并排除 `_th_` derivative，下载本页缺少 takenAt 或 GPS 的原始照片，用 exifr.parse + exifr.gps 提取并以 ETag 条件写回；游标绑定 `metadata|thumbnails + personal user|group` 上下文，客户端 auth generation 变化后终止后续批次；GPS 缓存从写入后的最新 Blob metadata 对账到 photoLocations Cosmos，Blob ETag 改变时只按 Cosmos ETag 撤销本次迟到写入，防止并发编辑/删除被覆盖；返回 { processed, updated, failed, hasMore, cursor? }，客户端持续分页并聚合统计；在 SettingsDialog「📱 应用」Tab 新增「历史照片回填」卡片，含加载状态和结果/错误展示
 2.42a 上传批次授权、空间与幂等：客户端在批次开始时捕获 auth generation、显示名和 groupId，订阅认证与当前空间变化并用同一 AbortSignal 终止当前 XHR、暂停/离线等待、重试和剩余文件；认证/空间变化或 AbortError 不进入三次网络重试，进度、照片追加、视频封面和最终刷新也校验原空间。每个文件在重试循环外生成一次 crypto.randomUUID() 作为 uploadId；服务端校验 UUID，以 `{scope}/{folder}/{uploadId}-{safeName}` 为稳定 Blob 名并用 ifNoneMatch=* 条件创建，412 或已存在时从当前 Blob 对账 GPS Cosmos 后返回同一 Blob；groupId 上传必须通过 isGroupMember。带 uploadId 的代理上传在网络错误、超时、缺失路由或网关错误时只直连补偿一次。
 2.43 批量修改拍摄时间：PhotoGallery 批量模式工具栏新增「修改时间 (N)」按钮；展开内联 datetime-local 输入框；handleBatchSetTakenAt 遍历 selected 集合调用 updatePhotoTakenAt，使用本地时区 naive datetime（不调用 toISOString()）
 2.44 批量修改 GPS 位置：PhotoGallery 批量模式工具栏新增「修改位置 (N)」按钮；展开内联纬度/经度输入框；handleBatchSetGps 校验 ±90/±180 范围后遍历 selected 调用 updatePhotoGps；通过 onGpsUpdate prop 回调同步 App state 中的 photos 数组
 2.45 重要片段 Top 20 限制：PhotoGallery 新增常量 MOMENTS_MAX = 20；momentCards useMemo 中将 ranked.slice(0, visibleCount) 改为 ranked.slice(0, MOMENTS_MAX)；hasMore 加入 !momentsMode 条件，重要片段视图不显示「加载更多」按钮
 2.46 change file 管道：changes/ 目录下所有文件命名规范为 YYYY-MM-DD-id.json，文件内 id 字段与文件名（去掉 .json）一致；scripts/create-change.mjs 支持 stdin 管道模式（!process.stdin.isTTY 时读 JSON 跳过交互）；deploy-frontend.yml 在 Build 步骤前执行 node scripts/collect-changes.mjs 自动重建 changelog.json；sync-changelog.yml 在 changes/** push 时自动同步到 Cosmos DB changelogs 容器
-2.47 登录首屏分包：App.tsx 必须通过 React.lazy 动态导入 PhotoGallery，未认证状态不请求图库 chunk；鉴权成功后 useEffect 立即调用同一 loader 预载，使图库代码下载与照片列表请求并行。时间线与重要片段均提供「正在加载照片视图…」Suspense fallback；构建产物必须包含单独的 `PhotoGallery-<hash>.js`。Workbox 的应用代码预缓存仅包含 index.html、入口 JS/CSS、React vendor、PWA 注册和 workbox-window，另保留安装所需 manifest/图标；其他 `/assets/` chunk 使用 `app-code-v1` CacheFirst 在首次请求后缓存，PhotoGallery 不得出现在 sw.js precache manifest。
+2.47 登录首屏分包：AuthenticatedApp.tsx 必须通过 React.lazy 动态导入 PhotoGallery，未认证状态不请求图库 chunk；认证工作区挂载后 useEffect 立即调用同一 loader 预载，使图库代码下载与照片列表请求并行。时间线与重要片段均提供「正在加载照片视图…」Suspense fallback；构建产物必须包含单独的 `PhotoGallery-<hash>.js`。Workbox 的应用代码预缓存仅包含 index.html、入口 JS/CSS、React vendor、PWA 注册和 workbox-window，另保留安装所需 manifest/图标；其他 `/assets/` chunk 使用 `app-code-v1` CacheFirst 在首次请求后缓存，PhotoGallery 不得出现在 sw.js precache manifest。
+2.48 认证工作区分包：App.tsx 只保留 ToastProvider、AuthProvider、AuthPage、会话门和 Suspense/ErrorBoundary；完整工作区及 GroupProvider 位于 React.lazy 加载的 AuthenticatedApp.tsx。模块加载器缓存同一个 Promise：已有 token 在模块初始化时预载，登录与注册提交通过 AuthPage onAuthIntent 在 API 请求前预载。chunk 失败时必须显示可刷新恢复 UI；构建产物必须存在 `AuthenticatedApp-<hash>.js`，且该文件不得进入 sw.js 预缓存。
 
 ## 1. 目标
 
@@ -86,12 +87,12 @@
 2.6 首页应提供内容整理助手，至少覆盖“缺少主题”和“未分类照片”两类可直接处理的问题
 2.7 首页上的快捷动作不能只停留在“切页签/切 Tab”，而应尽量直接滚动或定位到目标照片、目标管理区或目标链接，减少移动端用户额外滑动成本
 2.8 首页默认视觉重心应放在照片内容本身；统计、运营洞察、活动流等内容应尽量轻量化或放入可折叠区域，避免长期占据首屏主要空间
-2.9 首页相关 UI 应保持模块化实现，建议将首页焦点导航与洞察面板放在独立 home 组件目录中，而不是持续堆叠在 App.tsx 内
+2.9 首页相关 UI 应保持模块化实现，建议将首页焦点导航与洞察面板放在独立 home 组件目录中，而不是持续堆叠在 AuthenticatedApp.tsx 内
 2.10 时间线与重要片段页应优先考虑“照片为主、工具为辅”的布局；筛选、快捷整理、分享洞察等更适合放在右侧可收起侧边栏，而不是长期占据照片流上方空间
 2.11 右侧侧边栏应从页面右侧整段滑入，默认占据完整页面高度和部分横向宽度；开合动画需明确体现“从侧边弹出 / 收回”，不要做成底部抽屉感
 2.12 侧边栏入口建议采用更强辨识度的胶囊悬浮组件，而不是普通小按钮
 2.13 侧边栏展开时仍应保留一部分未被占据的主页面暗区，以强化“侧边面板”感；面板内容区域必须可独立滚动到底部
-2.14 悬浮胶囊入口应作为独立组件实现，并与侧边栏主体分目录放置，避免 App.tsx 同时承担布局、侧边栏和悬浮入口三类职责
+2.14 悬浮胶囊入口应作为独立组件实现，并与侧边栏主体分目录放置，避免 AuthenticatedApp.tsx 同时承担布局、侧边栏和悬浮入口三类职责
 2.15 顶部主 Tab 在中小宽度下应避免换行破坏节奏，可通过横向滚动或紧凑 rail 方案保持可读性
 2.16 设置页不应只是表单字段堆叠，需具备更明确的视觉层级，如 hero 区、卡片分组、信息网格和更稳定的操作按钮节奏
 2.17 重要片段浏览量在前端展示时应尽量避免因异步返回顺序导致的数值回跳；客户端合并服务端响应时应保持计数单调稳定

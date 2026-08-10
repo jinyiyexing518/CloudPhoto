@@ -168,7 +168,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 - **管理员工具** — 超级管理员（通过 `SUPER_ADMIN_USERNAME` 环境变量配置）可将其他用户提升为 admin
 - **PWA 应用模式** — 可安装为桌面/移动应用；中文 manifest、标准 192/512 PNG 与 iOS 180px 主屏幕图标保持跨平台安装兼容
 - **PWA 快速更新模式** — 网页与已安装 App 共用自动更新 Service Worker；首装只预缓存应用壳，功能 chunk 首次使用后缓存
-- **登录首屏分包** — 未认证访客不再下载照片图库；鉴权成功后立即并行预载，入口 JS 体积降低约 33%
+- **登录首屏分包** — 未认证访客只加载鉴权壳；工作区与图库按认证意图并行预载，入口 JS 体积累计降低约 80%
 - **阅读进度条** — 视口最顶部一条渐变细条，随时间线滚动填充，提供即时空间定位感
 - **全局拖拽提示** — 向应用窗口拖入图片文件时触发全屏引导覆盖层，drop 后自动跳转文件夹视图
 - **键盘快捷键帮助面板** — 随时按 `?`（或点击 header 中 ⌨️）打开悬浮快捷键速查表；再按 Escape 或 `?` 关闭
@@ -594,7 +594,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 | 同步更新日志 | `.github/workflows/sync-changelog.yml` | `changes/**` 变更 |
 | 生产健康检查 | `.github/workflows/production-health.yml` | 每 30 分钟、手动触发、前端或后端部署完成 |
 
-部署和更新日志同步 workflow 使用 **OIDC 认证**（无存储的 Azure 密码/密钥）；生产健康检查仅需仓库只读权限。共享算法仅在 `src/**`、`package.json` 或 `tsconfig.json` 变化时触发生产部署，README 等文档修改不会重建前后端。前端构建配置使用 `packages/client/vite.config.mts` 和 Vite ESM Node API，静态契约会拒绝重新引入触发 CJS 弃用警告的 `.ts` 配置。构建产物契约同时要求 `PhotoGallery` 保持独立哈希 chunk，防止图库代码重新进入未登录首屏。
+部署和更新日志同步 workflow 使用 **OIDC 认证**（无存储的 Azure 密码/密钥）；生产健康检查仅需仓库只读权限。共享算法仅在 `src/**`、`package.json` 或 `tsconfig.json` 变化时触发生产部署，README 等文档修改不会重建前后端。前端构建配置使用 `packages/client/vite.config.mts` 和 Vite ESM Node API，静态契约会拒绝重新引入触发 CJS 弃用警告的 `.ts` 配置。构建产物契约同时要求 `AuthenticatedApp` 与 `PhotoGallery` 保持独立哈希 chunk，防止工作区代码重新进入未登录首屏。
 
 ### 生产健康检查
 
@@ -626,7 +626,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 
 - Vite 生成的 `/assets/*` 内容哈希文件缓存一年并标记 `immutable`
 - SPA shell、Service Worker 和注册入口每次重验证，确保 PWA 能发现新版本
-- Service Worker 首装只预缓存 HTML、入口 JS/CSS、React 与注册运行时（393.69 KiB）；图库等动态 chunk 首次使用后进入 `app-code-v1`，不再把 894.44 KiB 全站资源与登录页并发下载
+- Service Worker 首装只预缓存 HTML、入口 JS/CSS、React 与注册运行时（306.93 KiB）；工作区与图库等动态 chunk 首次使用后进入 `app-code-v1`，不再把 894.44 KiB 全站资源与登录页并发下载
 - manifest、静态图标与 `changelog.json` 使用短缓存并重验证；`.webmanifest` 明确返回 `application/manifest+json`
 - `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
 - `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖

@@ -10,6 +10,10 @@ import { useAuth } from "../../contexts/AuthContext";
 
 type AuthTab = "login" | "register";
 
+interface AuthPageProps {
+  onAuthIntent?: () => void;
+}
+
 interface PasswordFieldProps {
   id: string;
   label: string;
@@ -66,7 +70,7 @@ function PasswordField({
   );
 }
 
-export default function AuthPage() {
+export default function AuthPage({ onAuthIntent }: AuthPageProps) {
   const { login, register } = useAuth();
   const [tab, setTab] = useState<AuthTab>("login");
   const [error, setError] = useState("");
@@ -97,6 +101,7 @@ export default function AuthPage() {
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
+    onAuthIntent?.();
     setLoading(true);
     try {
       await login(loginUsername.trim(), loginPassword);
@@ -118,6 +123,7 @@ export default function AuthPage() {
       setError("两次输入的密码不一致");
       return;
     }
+    onAuthIntent?.();
     setLoading(true);
     try {
       await register({

@@ -11,7 +11,9 @@ const requireText = (source, text, label) => {
   assert(source.includes(text), `${label}: missing ${JSON.stringify(text)}`);
 };
 
-const app = read("packages/client/src/App.tsx");
+const authGate = read("packages/client/src/App.tsx");
+const app = read("packages/client/src/AuthenticatedApp.tsx");
+const authPage = read("packages/client/src/components/auth/AuthPage.tsx");
 const auth = read("packages/client/src/contexts/AuthContext.tsx");
 const groupContext = read("packages/client/src/contexts/GroupContext.tsx");
 const groupSwitcher = read("packages/client/src/components/groups/GroupSwitcher.tsx");
@@ -58,8 +60,25 @@ requireText(
   "deferred gallery import",
 );
 requireText(app, "const PhotoGallery = lazy(loadPhotoGallery);", "lazy gallery component");
-requireText(app, "if (user) void loadPhotoGallery();", "authenticated gallery preload");
+requireText(app, "void loadPhotoGallery();", "authenticated gallery preload");
 requireText(app, "正在加载照片视图…", "gallery chunk loading state");
+assert(
+  !authGate.includes("function AppContent()"),
+  "the authenticated workspace must not ship in the login entry bundle",
+);
+requireText(
+  authGate,
+  'import("./AuthenticatedApp")',
+  "deferred authenticated workspace import",
+);
+requireText(authGate, "if (getToken()) void loadAuthenticatedApp();", "restored-session workspace preload");
+requireText(authGate, "onAuthIntent", "interactive-auth workspace preload");
+requireText(authGate, "window.location.reload();", "workspace chunk recovery");
+assert.equal(
+  (authPage.match(/onAuthIntent\?\.\(\);/g) ?? []).length,
+  2,
+  "login and registration must both preload the authenticated workspace",
+);
 
 // Private list/media cache constraints and account cleanup.
 requireText(listCache, "const CACHE_MAX_ENTRIES = 24", "cache bound");
