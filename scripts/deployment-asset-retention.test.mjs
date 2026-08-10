@@ -160,6 +160,40 @@ test("evicts complete oldest generations until both generation and unique-byte l
   }
 });
 
+test("first migration refuses to evict a required bootstrap generation", async () => {
+  const files = await fixture();
+  try {
+    await writeAsset(files.currentDist, "assets/index-current12.js", "current");
+    const previous = {
+      path: "assets/index-previous1.js",
+      bytes: Buffer.byteLength("previous"),
+      sha256: sha256("previous"),
+    };
+    const { mergeDeploymentAssets } = await import("./deployment-assets.mjs");
+
+    await assert.rejects(
+      mergeDeploymentAssets({
+        distDir: files.currentDist,
+        generationId: "current-generation",
+        previousManifest: {
+          version: 1,
+          generations: [{ id: "bootstrap-live-generation", assets: [previous] }],
+        },
+        fetchAsset: async () => Buffer.from("previous"),
+        config: {
+          maxGenerations: 2,
+          maxBytes: Buffer.byteLength("current"),
+          revokedGenerationIds: [],
+        },
+        requiredPreviousGenerationIds: ["bootstrap-live-generation"],
+      }),
+      /required bootstrap generation does not fit/i,
+    );
+  } finally {
+    await files.dispose();
+  }
+});
+
 test("revocation, source-map rejection, and digest validation fail closed", async () => {
   const files = await fixture();
   try {
@@ -259,6 +293,8 @@ test("repository retention policy is finite and includes the stranded pre-recove
   assert.deepEqual(policy.bootstrapSourceManifest, {
     status: 200,
     contentType: "text/html",
+    captureHashedAssets: true,
+    maxAssets: 512,
     normalizedSha256: "c791270cc8ce1c60ccd672dc8f6ea52406a6755c41d8c14c2e0215a99affb91a",
     expiresAt: "2026-09-30T00:00:00Z",
   });
@@ -332,6 +368,79 @@ test("bootstrap accepts only the pinned pre-migration HTML fallback before expir
   assert.equal(
     matchesBootstrapSourceResponse(response, expected, Date.parse(expected.expiresAt)),
     false,
+  );
+});
+
+test("first migration recursively captures the exact live hashed JS/CSS generation", async () => {
+  const { captureLiveBootstrapGeneration } = await import("./deployment-assets.mjs");
+  const html = Buffer.from([
+    '<script src="/assets/index-live0001.js"></script>',
+    '<link href="/assets/react-vendor-live0001.js">',
+    '<link href="/assets/index-live0001.css">',
+    '<script src="https://evil.example/assets/ignored-live0001.js"></script>',
+  ].join(""));
+  const bodies = new Map([
+    ["assets/index-live0001.js", [
+      'import "./react-vendor-live0001.js";',
+      'const deps=["assets/AuthenticatedApp-live0001.js","assets/AuthenticatedApp-live0001.css"];',
+    ].join("")],
+    ["assets/react-vendor-live0001.js", "export const vendor = true;"],
+    ["assets/index-live0001.css", "body{color:green}"],
+    ["assets/AuthenticatedApp-live0001.js", 'import("./FolderView-live0001.js");'],
+    ["assets/AuthenticatedApp-live0001.css", ".app{display:block}"],
+    ["assets/FolderView-live0001.js", "export default true;"],
+  ]);
+  const requested = [];
+  const captured = await captureLiveBootstrapGeneration({
+    source: "https://cloudphotos.top",
+    htmlBody: html,
+    maxAssets: 32,
+    maxBytes: 4096,
+    fetchImpl: async (url) => {
+      assert.equal(url.origin, "https://cloudphotos.top");
+      const path = url.pathname.slice(1);
+      requested.push(path);
+      const content = bodies.get(path);
+      assert.notEqual(content, undefined, `unexpected bootstrap request: ${path}`);
+      return new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": path.endsWith(".css") ? "text/css" : "text/javascript",
+        },
+      });
+    },
+  });
+
+  assert.deepEqual(requested.sort(), [...bodies.keys()].sort());
+  assert.deepEqual(
+    captured.manifest.generations[0].assets.map(({ path }) => path),
+    [...bodies.keys()].sort(),
+  );
+  assert.match(captured.manifest.generations[0].id, /^bootstrap-live-[a-f0-9]{24}$/);
+  const lazy = captured.manifest.generations[0].assets.find(
+    ({ path }) => path === "assets/AuthenticatedApp-live0001.js",
+  );
+  assert.equal(
+    (await captured.fetchAsset(lazy)).toString("utf8"),
+    bodies.get(lazy.path),
+  );
+  assert.doesNotMatch(JSON.stringify(captured.manifest), /https?:|token|workspace/i);
+});
+
+test("first migration rejects a live asset hidden behind HTML MIME", async () => {
+  const { captureLiveBootstrapGeneration } = await import("./deployment-assets.mjs");
+  await assert.rejects(
+    captureLiveBootstrapGeneration({
+      source: "https://cloudphotos.top",
+      htmlBody: Buffer.from('<script src="/assets/index-live0001.js"></script>'),
+      maxAssets: 8,
+      maxBytes: 1024,
+      fetchImpl: async () => new Response("<!doctype html>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      }),
+    }),
+    /bootstrap live asset fetch failed.*text\/html/i,
   );
 });
 

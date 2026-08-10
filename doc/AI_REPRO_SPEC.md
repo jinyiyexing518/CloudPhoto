@@ -1,4 +1,5 @@
 # AI_REPRO_SPEC
+2.72b 首轮当前生产代捕获契约：线上尚无 `deployment-assets.json` 且响应命中固定 HTML pin 时，发布脚本必须从 entry/modulepreload/style 开始，同源递归下载可达 hashed `.js`/`.css` 原始字节作为独立必需 bootstrap generation；不得只保留固定历史事故 CSS。只接受 200 `text/javascript|application/javascript|text/css`，拒绝跨域、非 hash、source map、HTML fallback、空内容、非法 UTF-8、超过 512 个资源或总 64 MiB。当前构建、当前生产捕获代与固定历史事故代任一无法完整装入预算时必须拒绝发布；hermetic contract 覆盖 HTML→entry→lazy→nested 闭包、原始字节 SHA-256、MIME fail-closed 和必需代预算拒绝。
 20. 时间线排序切换（最新/最早）chip 可用
 21. 键盘快捷键 1/2/3/S/Backspace 在非输入框状态均可正确触发
 22. 周报卡片显示存储用量（非硬编码，基于实际 blob size 聚合）

@@ -163,7 +163,7 @@ SWA 与 Nginx 模板统一使用 `Strict-Transport-Security: max-age=31536000; i
 - **激活筛选指示点** — 任意筛选激活时时间线页签标签上出现橙色小点
 - **空相册首次引导** — 空间无照片时显示「还没有照片」友好提示和直达上传入口
 - **传输进度横幅** — 上传、下载、回收站 mutation、批量 mutation、文件夹重命名与历史维护任务共用固定横幅；文件夹重命名明确显示 `旧名称 → 新名称`，未知服务端进度时不伪造百分比
-- **跨部署 lazy chunk 自恢复** — 每次生产发布保留最多 24 代、合计不超过 64 MiB 的历史 hashed JS/CSS，旧 active Service Worker 缓存的应用壳仍能加载其精确依赖；未来超出窗口的可信同源 chunk 失败再由 React 启动前恢复器最多自动恢复一次。上传、下载、语音、批量、回收站、维护或文件夹重命名期间不激活 waiting worker、不刷新，任务结束后才继续；每个 Tab 使用独立错误边界，界面不显示 chunk URL、SAS 或技术错误
+- **跨部署 lazy chunk 自恢复** — 每次生产发布保留最多 24 代、合计不超过 64 MiB 的历史 hashed JS/CSS；首次迁移也会从受 pin 的当前生产 HTML 出发，同源递归抓取其完整 hashed JS/CSS 原始字节，因此发布瞬间仍由旧 active Service Worker 控制的应用壳不会丢失当前代依赖。未来超出窗口的可信同源 chunk 失败再由 React 启动前恢复器最多自动恢复一次。上传、下载、语音、批量、回收站、维护或文件夹重命名期间不激活 waiting worker、不刷新，任务结束后才继续；每个 Tab 使用独立错误边界，界面不显示 chunk URL、SAS 或技术错误
 - **返回顶部按钮** — 滚动 500px 后出现悬浮圆形按钮，一键平滑回顶；侧边栏锁定滚动时隐藏
 - **窗口聚焦自动刷新** — 切回应用时静默重新获取照片列表（每 60 秒最多一次），多设备编辑无需手动刷新
 - **键盘快捷键** — R=刷新；1–6=切换 Tab；S=切换侧边栏；Backspace/Delete=清空筛选；?=快捷键速查表；Esc=关闭任意浮层；输入、按钮、链接、可编辑控件、IME、已处理事件与打开的模态层均不会触发背景快捷键，长按 R/数字也不会重复刷新或切换
@@ -691,7 +691,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 ### 前端缓存策略
 
 - Vite 生成的 `/assets/*` 内容哈希文件缓存一年并标记 `immutable`
-- 部署前读取线上 `deployment-assets.json` 并按 SHA-256 拉回历史 JS/CSS；每次 workflow run 使用独立代次 ID，只保留最近 24 个完整代次、64 MiB 唯一字节，最旧代次整体淘汰，拒绝 source map、越界路径、摘要不符和显式撤销代次。首次迁移从固定历史 commit 确定性重建实证缺失的旧 CSS，此后 JS/CSS 均保留线上原始字节，不使用旧 hash alias
+- 部署前读取线上 `deployment-assets.json` 并按 SHA-256 拉回历史 JS/CSS；每次 workflow run 使用独立代次 ID，只保留最近 24 个完整代次、64 MiB 唯一字节，最旧代次整体淘汰，拒绝 source map、越界路径、摘要不符和显式撤销代次。首次迁移在固定 HTML 骨架和 512 资源上限内递归抓取当前生产入口可达的同源 hashed JS/CSS 原始字节，同时从固定历史 commit 确定性重建实证缺失的旧 CSS；两类 bootstrap 代次任一无法装入预算即拒绝发布，此后 JS/CSS 均保留线上原始字节，不使用旧 hash alias
 - `/deployment-assets.json`、SPA shell 与 Service Worker 均禁止长期缓存；随机缺失的 `.js`/`.css` 必须返回 404 JSON 而不是 SPA HTML，主域 Nginx 原样透传 SWA 状态与 MIME
 - SPA shell、Service Worker 和注册入口每次重验证，确保 PWA 能发现新版本
 - Service Worker 首装只预缓存 HTML、10.66 kB 登录样式、约 35 kB 入口 JS、React 与注册运行时（约 191 KiB）；工作区 JS/CSS、注册表单与图库等动态 chunk 首次使用后进入 `app-code-v1`，相较原始 894.44 KiB 首装资源减少约 79%

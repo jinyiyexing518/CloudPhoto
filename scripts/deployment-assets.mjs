@@ -22,6 +22,7 @@ const root = dirname(dirname(scriptPath));
 const MANIFEST_NAME = "deployment-assets.json";
 const MANIFEST_VERSION = 1;
 const HASHED_CODE_PATTERN = /^assets\/.+-[A-Za-z0-9_-]{8,}\.(?:css|js)$/;
+const JAVASCRIPT_MEDIA_TYPES = new Set(["application/javascript", "text/javascript"]);
 
 function digest(content) {
   return createHash("sha256").update(content).digest("hex");
@@ -83,6 +84,10 @@ function assertConfig(config) {
   if (config.bootstrapSourceManifest !== undefined && (
     config.bootstrapSourceManifest.status !== 200
     || config.bootstrapSourceManifest.contentType !== "text/html"
+    || config.bootstrapSourceManifest.captureHashedAssets !== true
+    || !Number.isSafeInteger(config.bootstrapSourceManifest.maxAssets)
+    || config.bootstrapSourceManifest.maxAssets < 1
+    || config.bootstrapSourceManifest.maxAssets > 2048
     || typeof config.bootstrapSourceManifest.normalizedSha256 !== "string"
     || !/^[a-f0-9]{64}$/.test(config.bootstrapSourceManifest.normalizedSha256)
     || typeof config.bootstrapSourceManifest.expiresAt !== "string"
@@ -270,6 +275,7 @@ export async function mergeDeploymentAssets({
   previousManifest = { version: MANIFEST_VERSION, generations: [] },
   fetchAsset,
   config,
+  requiredPreviousGenerationIds = [],
 }) {
   assertConfig(config);
   assertGenerationId(generationId);
@@ -288,6 +294,12 @@ export async function mergeDeploymentAssets({
     assets: await assetsFromDist(distDir),
   };
   const selected = selectGenerations(current, previousManifest, config);
+  for (const id of requiredPreviousGenerationIds) {
+    assertGenerationId(id);
+    if (!selected.generations.some((generation) => generation.id === id)) {
+      throw new Error(`Required bootstrap generation does not fit the retention policy: ${id}`);
+    }
+  }
 
   for (const generation of selected.generations.slice(1)) {
     for (const asset of generation.assets) {
@@ -400,6 +412,115 @@ function mediaType(value) {
   return value?.split(";", 1)[0].trim().toLowerCase() ?? "";
 }
 
+function referencedHashedCodePaths(content, baseUrl) {
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(content);
+  } catch {
+    throw new Error(`Bootstrap asset is not valid UTF-8: ${baseUrl.pathname}`);
+  }
+  const references = new Set();
+  const pattern = /(?:^|["'`(\s=,:])((?:\/assets\/|\.\/|assets\/)[A-Za-z0-9_./-]+-[A-Za-z0-9_-]{8,}\.(?:css|js))/g;
+  for (const match of text.matchAll(pattern)) {
+    const candidate = match[1];
+    const url = candidate.startsWith("assets/")
+      ? new URL(`/${candidate}`, baseUrl)
+      : new URL(candidate, baseUrl);
+    const path = url.pathname.slice(1);
+    if (url.origin === baseUrl.origin && HASHED_CODE_PATTERN.test(path)) {
+      references.add(path);
+    }
+  }
+  return [...references].sort();
+}
+
+export async function captureLiveBootstrapGeneration({
+  source,
+  htmlBody,
+  maxAssets,
+  maxBytes,
+  fetchImpl = fetch,
+}) {
+  if (!Number.isSafeInteger(maxAssets) || maxAssets < 1 || maxAssets > 2048) {
+    throw new Error("Bootstrap live generation asset limit is invalid");
+  }
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("Bootstrap live generation byte limit is invalid");
+  }
+  const sourceUrl = new URL("/", source);
+  const discovered = new Set();
+  const pending = [];
+  const contents = new Map();
+  let totalBytes = 0;
+
+  const discover = (content, baseUrl) => {
+    for (const path of referencedHashedCodePaths(content, baseUrl)) {
+      if (discovered.has(path)) continue;
+      discovered.add(path);
+      pending.push(path);
+    }
+    pending.sort();
+    if (discovered.size > maxAssets) {
+      throw new Error(`Bootstrap live generation exceeds the ${maxAssets}-asset limit`);
+    }
+  };
+
+  discover(htmlBody, sourceUrl);
+  if (pending.length === 0) {
+    throw new Error("Bootstrap HTML contains no hashed JavaScript or CSS assets");
+  }
+
+  while (pending.length > 0) {
+    const path = pending.shift();
+    const assetUrl = new URL(`/${path}`, sourceUrl);
+    const response = await fetchImpl(assetUrl, {
+      cache: "no-store",
+      headers: { "User-Agent": "cloudphoto-deployment-retention/1.0" },
+    });
+    const type = mediaType(response.headers.get("content-type"));
+    const expectedType = path.endsWith(".css")
+      ? type === "text/css"
+      : JAVASCRIPT_MEDIA_TYPES.has(type);
+    if (response.status !== 200 || !expectedType) {
+      throw new Error(
+        `Bootstrap live asset fetch failed (${response.status} ${type || "unknown content type"}): ${path}`,
+      );
+    }
+    const content = Buffer.from(await response.arrayBuffer());
+    if (content.byteLength === 0) {
+      throw new Error(`Bootstrap live asset is empty: ${path}`);
+    }
+    totalBytes += content.byteLength;
+    if (totalBytes > maxBytes) {
+      throw new Error(`Bootstrap live generation exceeds the ${maxBytes}-byte retention budget`);
+    }
+    contents.set(path, content);
+    discover(content, assetUrl);
+  }
+
+  const assets = [...contents.entries()]
+    .map(([path, content]) => ({
+      path,
+      bytes: content.byteLength,
+      sha256: digest(content),
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const generationId = `bootstrap-live-${digest(htmlBody).slice(0, 24)}`;
+  const manifest = validateDeploymentManifest({
+    version: MANIFEST_VERSION,
+    generations: [{ id: generationId, assets }],
+    totalBytes,
+  });
+  return {
+    fetchAsset: async (asset) => {
+      const content = contents.get(asset.path);
+      if (!content) throw new Error(`Missing captured bootstrap asset: ${asset.path}`);
+      return content;
+    },
+    manifest,
+  };
+}
+
 export function normalizedBootstrapHtmlDigest(body) {
   let html;
   try {
@@ -437,6 +558,7 @@ async function loadPreviousDeployment(
   bootstrapRefs,
   bootstrapGenerationAssets,
   bootstrapSourceManifest,
+  maxBytes,
 ) {
   const manifestUrl = new URL(`/${MANIFEST_NAME}?retention=${Date.now()}`, source);
   const response = await fetch(manifestUrl, {
@@ -462,6 +584,7 @@ async function loadPreviousDeployment(
       },
       manifest,
       cleanup: async () => {},
+      requiredGenerationIds: [],
       source: "live-manifest",
     };
   }
@@ -480,14 +603,26 @@ async function loadPreviousDeployment(
     );
   }
 
+  const live = await captureLiveBootstrapGeneration({
+    source,
+    htmlBody: body,
+    maxAssets: bootstrapSourceManifest.maxAssets,
+    maxBytes,
+  });
   const builds = [];
   try {
     for (const ref of bootstrapRefs) {
       builds.push(await buildBootstrapGeneration(ref, bootstrapGenerationAssets[ref]));
     }
-    const generations = builds.flatMap(({ manifest }) => manifest.generations);
+    const generations = [
+      ...live.manifest.generations,
+      ...builds.flatMap(({ manifest }) => manifest.generations),
+    ];
     return {
       fetchAsset: async (asset, generation) => {
+        if (generation.id === live.manifest.generations[0].id) {
+          return live.fetchAsset(asset);
+        }
         const build = builds.find(
           ({ manifest }) => manifest.generations[0].id === generation.id,
         );
@@ -509,7 +644,8 @@ async function loadPreviousDeployment(
           await removeBootstrapWorktree(build.worktree);
         }
       },
-      source: "bootstrap-build",
+      requiredGenerationIds: generations.map(({ id }) => id),
+      source: "bootstrap-live-and-build",
     };
   } catch (error) {
     for (const build of builds) {
@@ -564,6 +700,7 @@ async function main() {
     policy.bootstrapGenerationRefs,
     policy.bootstrapGenerationAssets,
     policy.bootstrapSourceManifest,
+    policy.maxBytes,
   );
   try {
     const manifest = await mergeDeploymentAssets({
@@ -572,6 +709,7 @@ async function main() {
       previousManifest: previous.manifest,
       fetchAsset: previous.fetchAsset,
       config: policy,
+      requiredPreviousGenerationIds: previous.requiredGenerationIds,
     });
     console.log(
       `Deployment assets ready: source=${previous.source} generations=${manifest.generations.length}/${policy.maxGenerations} bytes=${manifest.totalBytes}/${policy.maxBytes}`,

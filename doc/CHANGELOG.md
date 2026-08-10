@@ -55,7 +55,7 @@
 ### 2026-08-11 — 旧客户端跨部署资产恢复
 
 **Bug 修复**
-- **🛟 旧 Service Worker 不再因已删除 hashed 资源瘫痪** — 生产部署按 SHA-256 保留最多 24 代、64 MiB 的历史 JS/CSS，旧 app shell 和 PWA 新标签可继续加载精确 lazy 资源；缺失 JS/CSS 保持 404 JSON 而非 SPA HTML。安全撤销、完整代次淘汰、危险操作零自动刷新、双标签 waiting worker 与 standalone 均有 hermetic/真实浏览器契约，已登录 Header 顶部安装入口保持删除
+- **🛟 旧 Service Worker 不再因已删除 hashed 资源瘫痪** — 生产部署按 SHA-256 保留最多 24 代、64 MiB 的历史 JS/CSS；首次启用 manifest 时还会从固定 HTML pin 同源递归抓取发布瞬间当前生产代的完整 lazy JS/CSS，避免迁移本身制造新的旧壳断链。旧 app shell 和 PWA 新标签可继续加载精确资源，缺失 JS/CSS 保持 404 JSON 而非 SPA HTML。安全撤销、完整代次淘汰、危险操作零自动刷新、双标签 waiting worker 与 standalone 均有 hermetic/真实浏览器契约，已登录 Header 顶部安装入口保持删除
 
 ---
 

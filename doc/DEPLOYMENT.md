@@ -26,6 +26,8 @@
 
 `packages/client/deployment-retention.json` 是唯一策略源。`revokedGenerationIds` 使用 `deployment-assets.json` 中的精确代次 ID 做安全回滚：历史代次会立即排除，若当前发布代次自身被撤销则部署直接失败。首次上线时旧 SWA 会把缺失 manifest 伪装成 `200 text/html`；bootstrap 仅接受 policy 固定的响应状态、MIME、入口 HTML 骨架 SHA-256 且受 `expiresAt` 限时。骨架计算只归一化恰好一个 content-hashed `index-*.js` 与 `index-*.css` 名称，其余 HTML 字节必须一致；模板漂移、多入口、真 404、非法 UTF-8 或过期响应都拒绝部署，不能静默缩短兼容窗口。workflow 使用 `fetch-depth: 0` 保证 policy 固定的历史 commit 可达，复用本次 workflow 已安装的前端工具链执行 Vite 构建，并且只选取 `bootstrapGenerationAssets` 明列且精确 hash 文件名确实重建出的迁移资源；当前唯一条目是自然生成且与实证请求一致的 `AuthenticatedApp-BkGhvsE_.css`，不是旧 hash alias。受 build timestamp 影响的重建 JS 不进入 bootstrap；首轮之后历史 JS/CSS 都从线上读取原始字节。完成迁移后应删除 bootstrap source pin；若迁移资源发生安全撤销，则同时删除对应 bootstrap ref/assets/pin 并加入精确 revoked generation，禁止回建。
 
+首轮发布还必须保护发布瞬间的当前生产代：通过上述已 pin HTML 提取入口 JS/CSS 和 modulepreload，再递归扫描其同源 hashed `.js`/`.css` 引用并下载原始字节。每个响应必须为 200 且保持 `text/javascript`/`application/javascript` 或 `text/css`，跨域、非 hash、source map、HTML fallback、空响应、非法 UTF-8、超过 512 个资源或超过 64 MiB 均拒绝发布。抓取代次与固定历史 CSS 都是首轮必需代次；若当前构建加两类 bootstrap 无法完整装入代数/字节预算，部署失败而不是淘汰其中一代。这样不只修复 2026-08-11 已受困 CSS，也不会在第一次启用 manifest 时删除当时生产 app shell 正在使用的 lazy JS/CSS。
+
 该保留层是旧客户端的必要恢复面：旧 active Service Worker 可能继续返回缓存的 `index.html`/入口 JS，根本不会执行当前 `deploymentRecovery.ts`。只要其代次仍在窗口内，新标签即可加载旧 app shell 的精确 lazy JS/CSS，waiting worker 保持 waiting，不强制接管其他标签或 PWA。超过窗口后的可信同源 chunk 失败才进入客户端一次性恢复；离线、`sessionStorage` 不可用或上传/下载/删除/语音/批量/回收站/维护/文件夹重命名进行中时自动刷新保持关闭。
 
 ### 上传内存与并发边界

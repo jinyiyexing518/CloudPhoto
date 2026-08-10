@@ -273,6 +273,10 @@ function checkHashedAssets(configPath) {
     || Array.isArray(retentionPolicy.bootstrapGenerationAssets)
     || retentionPolicy.bootstrapSourceManifest?.status !== 200
     || retentionPolicy.bootstrapSourceManifest?.contentType !== "text/html"
+    || retentionPolicy.bootstrapSourceManifest?.captureHashedAssets !== true
+    || !Number.isSafeInteger(retentionPolicy.bootstrapSourceManifest?.maxAssets)
+    || retentionPolicy.bootstrapSourceManifest.maxAssets < 1
+    || retentionPolicy.bootstrapSourceManifest.maxAssets > 2048
     || !/^[a-f0-9]{64}$/.test(
       retentionPolicy.bootstrapSourceManifest?.normalizedSha256 ?? ""
     )
