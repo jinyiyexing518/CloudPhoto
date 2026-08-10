@@ -89,6 +89,7 @@
     "Cache-Control": "no-cache, must-revalidate"
   },
   "mimeTypes": {
-    ".json": "application/json"
+    ".json": "application/json",
+    ".webmanifest": "application/manifest+json"
   }
 }

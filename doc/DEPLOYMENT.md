@@ -126,7 +126,7 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 
 `/healthz` 在新版 Nginx 中直接返回 `cloudphoto-proxy`。前端也部署一个 `cloudphoto-frontend` JSON 兜底；直达 SWA 时客户端继续使用 Azure API，旧 Nginx 反代该 fallback 时则通过同源响应的 Nginx `Server` 标识确认 `/api` 仍可用。生产 smoke 接受两个入口标识并继续独立检查 API。
 
-前端缓存规则由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
+前端缓存规则由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。`.webmanifest` 必须显式映射为 `application/manifest+json`，否则 SWA 会返回 `application/octet-stream`，在 `nosniff` 下无法可靠安装 PWA。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
 
 ### 部署后更新 GitHub Secret
 
@@ -147,7 +147,7 @@ https://cloudphoto-api.azurewebsites.net/api
 
 ### 部署后健康检查
 
-`.github/workflows/production-health.yml` 在前端或后端部署完成后运行，并每 30 分钟定时检查一次。它通过 `scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、未登录认证状态和更新日志 JSON 契约。同一轮 6 个检查并行执行，结果按固定检查顺序输出；跨轮仍串行重试。按 10 秒请求超时、8 轮和 15 秒轮次间隔计算，最坏检查时长为 185 秒（不含 runner setup），低于 workflow 的 10 分钟上限。触发它的部署失败时，健康 workflow 会显式失败；部署成功但传播尚未完成时，检查使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
+`.github/workflows/production-health.yml` 在前端或后端部署完成后运行，并每 30 分钟定时检查一次。它通过 `scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、manifest MIME 与安装字段、未登录认证状态和更新日志 JSON 契约，并检查主域 `/healthz`。同一轮 9 个检查并行执行，结果按固定检查顺序输出；跨轮仍串行重试。按 10 秒请求超时、8 轮和 15 秒轮次间隔计算，最坏检查时长为 185 秒（不含 runner setup），低于 workflow 的 10 分钟上限。触发它的部署失败时，健康 workflow 会显式失败；部署成功但传播尚未完成时，检查使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
 
 本地先运行 `yarn test:production-smoke` 验证 fixture，再按需运行 `node scripts/production-smoke.mjs` 检查线上。
 

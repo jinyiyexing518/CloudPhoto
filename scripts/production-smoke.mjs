@@ -29,6 +29,41 @@ async function validateHomepage(response) {
   }
 }
 
+async function validateManifest(response) {
+  if (response.status !== 200) {
+    throw new Error(`expected 200, received ${response.status}`);
+  }
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes("application/manifest+json")) {
+    throw new Error("response is not a web app manifest");
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("response is not valid JSON");
+  }
+  const hasInstallMetadata = (
+    typeof body?.name === "string"
+    && body.name.length > 0
+    && typeof body?.start_url === "string"
+    && body.start_url.length > 0
+    && Array.isArray(body?.icons)
+    && body.icons.some((icon) => (
+      typeof icon?.src === "string"
+      && icon.src.length > 0
+      && typeof icon?.sizes === "string"
+      && icon.sizes.length > 0
+      && typeof icon?.type === "string"
+      && icon.type.length > 0
+    ))
+  );
+  if (!hasInstallMetadata) {
+    throw new Error("manifest is missing required install metadata");
+  }
+}
+
 async function validateAuthMe(response) {
   const status = response.status;
   await response.arrayBuffer();
@@ -95,6 +130,22 @@ export function createChecks(env = process.env) {
         env.PRODUCTION_AZURE_HOME_URL ??
         new URL("/", azureFrontendUrl).href,
       validate: validateHomepage,
+    },
+    {
+      target: "primary",
+      name: "manifest",
+      url:
+        env.PRODUCTION_MANIFEST_URL ??
+        new URL("/manifest.webmanifest", primaryBaseUrl).href,
+      validate: validateManifest,
+    },
+    {
+      target: "azure",
+      name: "manifest",
+      url:
+        env.PRODUCTION_AZURE_MANIFEST_URL ??
+        new URL("/manifest.webmanifest", azureFrontendUrl).href,
+      validate: validateManifest,
     },
     {
       target: "primary",

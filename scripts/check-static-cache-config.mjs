@@ -96,6 +96,9 @@ for (const configPath of configPaths) {
   if (!/\bno-cache\b/i.test(globalCache) || /\bimmutable\b/i.test(globalCache)) {
     fail(configPath, "global Cache-Control must require revalidation and must not be immutable");
   }
+  if (config.mimeTypes?.[".webmanifest"] !== "application/manifest+json") {
+    fail(configPath, ".webmanifest must use application/manifest+json");
+  }
 
   for (const route of shellRoutes) {
     const value = cacheControl(requireRoute(configPath, config.routes, route));

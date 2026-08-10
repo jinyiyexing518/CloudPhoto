@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-pwa-manifest-mime",
+  "date": "2026-08-10",
+  "icon": "📲",
+  "title": "修复 PWA 安装清单类型",
+  "type": "fix",
+  "desc": "修复线上 manifest.webmanifest 被作为 application/octet-stream 返回、可能导致浏览器无法可靠识别和安装 CloudPhoto 的问题。",
+  "details": "SWA 现在将 .webmanifest 明确映射为 application/manifest+json；静态配置契约会阻止 MIME 回归，生产健康检查也会同时验证主域和 Azure 直连入口的 manifest 类型、名称、启动路径与图标字段。",
+  "seq": 1786333638292
+}

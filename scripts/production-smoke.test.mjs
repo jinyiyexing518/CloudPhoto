@@ -24,7 +24,9 @@ function testEnvironment(origin) {
   return {
     PRODUCTION_HOME_URL: `${origin}/primary`,
     PRODUCTION_HEALTH_URL: `${origin}/primary/healthz`,
+    PRODUCTION_MANIFEST_URL: `${origin}/primary/manifest.webmanifest`,
     PRODUCTION_AZURE_HOME_URL: `${origin}/azure`,
+    PRODUCTION_AZURE_MANIFEST_URL: `${origin}/azure/manifest.webmanifest`,
     PRODUCTION_AUTH_ME_URL: `${origin}/primary/api/auth/me`,
     PRODUCTION_AZURE_AUTH_ME_URL: `${origin}/azure/api/auth/me`,
     PRODUCTION_CHANGELOGS_URL: `${origin}/primary/api/changelogs`,
@@ -68,6 +70,16 @@ test("builds primary and Azure checks from base URL overrides", () => {
       },
       {
         target: "primary",
+        name: "manifest",
+        url: "https://primary.example/manifest.webmanifest",
+      },
+      {
+        target: "azure",
+        name: "manifest",
+        url: "https://frontend.example/manifest.webmanifest",
+      },
+      {
+        target: "primary",
         name: "auth/me",
         url: "https://primary.example/api/auth/me",
       },
@@ -87,6 +99,26 @@ test("builds primary and Azure checks from base URL overrides", () => {
         url: "https://api.example/api/changelogs",
       },
     ]
+  );
+});
+
+test("rejects a manifest with an unsafe MIME type or incomplete metadata", async () => {
+  const manifestCheck = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+  }).find(({ target, name }) => target === "primary" && name === "manifest");
+  assert(manifestCheck);
+
+  await assert.rejects(
+    manifestCheck.validate(new Response('{"name":"Cloud Photo"}', {
+      headers: { "content-type": "application/octet-stream" },
+    })),
+    /response is not a web app manifest/,
+  );
+  await assert.rejects(
+    manifestCheck.validate(new Response('{"name":"Cloud Photo"}', {
+      headers: { "content-type": "application/manifest+json" },
+    })),
+    /required install metadata/,
   );
 });
 
@@ -117,6 +149,9 @@ test("passes the primary and Azure production contracts with timings", async () 
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
         response.end('{"status":"ok","route":"cloudphoto-frontend"}');
+      } else if (request.url?.endsWith("/manifest.webmanifest")) {
+        response.writeHead(200, { "content-type": "application/manifest+json" });
+        response.end('{"name":"Cloud Photo","start_url":"/","icons":[{"src":"/icon.svg","sizes":"192x192","type":"image/svg+xml"}]}');
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
@@ -140,7 +175,7 @@ test("passes the primary and Azure production contracts with timings", async () 
       assert.equal(passed, true);
       assert.equal(
         messages.output.filter((message) => message.startsWith("PASS ")).length,
-        7
+        9
       );
       assert.ok(
         messages.output.some((message) =>
@@ -166,6 +201,9 @@ test("retries and fails when either changelog response is not an array", async (
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
         response.end('{"status":"ok","route":"cloudphoto-frontend"}');
+      } else if (request.url?.endsWith("/manifest.webmanifest")) {
+        response.writeHead(200, { "content-type": "application/manifest+json" });
+        response.end('{"name":"Cloud Photo","start_url":"/","icons":[{"src":"/icon.svg","sizes":"192x192","type":"image/svg+xml"}]}');
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
@@ -220,6 +258,12 @@ test("runs all checks concurrently and reports an isolated failure in order", as
     if (url.endsWith("/healthz")) {
       return Response.json({ status: "ok", route: "cloudphoto-frontend" });
     }
+    if (url.endsWith("/manifest.webmanifest")) {
+      return new Response(
+        '{"name":"Cloud Photo","start_url":"/","icons":[{"src":"/icon.svg","sizes":"192x192","type":"image/svg+xml"}]}',
+        { headers: { "content-type": "application/manifest+json" } },
+      );
+    }
     if (url.endsWith("/api/auth/me")) {
       return new Response('{"error":"Unauthorized"}', { status: 401 });
     }
@@ -241,8 +285,8 @@ test("runs all checks concurrently and reports an isolated failure in order", as
   });
 
   assert.equal(passed, false);
-  assert.equal(maxInFlight, 7);
-  assert.equal(completed, 7);
+  assert.equal(maxInFlight, 9);
+  assert.equal(completed, 9);
   assert.deepEqual(
     messages.output
       .filter((message) => /^(PASS|FAIL) /.test(message))
@@ -251,13 +295,15 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       "primary homepage",
       "primary healthz",
       "azure homepage",
+      "primary manifest",
+      "azure manifest",
       "primary auth/me",
       "azure auth/me",
       "primary changelogs",
       "azure changelogs",
     ]
   );
-  assert.match(messages.output[6], /^FAIL azure changelogs:/);
+  assert.match(messages.output[8], /^FAIL azure changelogs:/);
   assert.match(
     messages.output.at(-1),
     /Production smoke checks failed after 1 attempts:/
