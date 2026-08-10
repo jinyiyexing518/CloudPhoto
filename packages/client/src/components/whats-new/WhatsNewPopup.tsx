@@ -124,7 +124,7 @@ export default function WhatsNewPopup() {
         return b.date.localeCompare(a.date);
       });
       setEntries(normalized);
-      if (normalized.length > 0) setVisible(true);
+      if (normalized.length > 0 && !hasActiveModalLayer()) setVisible(true);
     });
     return () => {
       mountedRef.current = false;

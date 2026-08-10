@@ -166,6 +166,7 @@ test("component keeps the complete dialog accessibility contract", () => {
   assert.match(componentSource, /clearModalTimers\(timerHandles\.current\)/);
   assert.match(componentSource, /restoreFocus\(previousFocusRef\.current\)/);
   assert.match(componentSource, /requestId !== changelogRequestIdRef\.current/);
+  assert.match(componentSource, /normalized\.length > 0 && !hasActiveModalLayer\(\)/);
   assert.match(componentSource, /entry\.details \? \([\s\S]*<button[\s\S]*type="button"/);
   assert.match(componentSource, /: \([\s\S]*<div className="whats-new-item-summary">/);
 });

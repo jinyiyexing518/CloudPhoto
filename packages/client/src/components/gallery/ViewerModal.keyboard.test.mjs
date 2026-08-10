@@ -4,6 +4,7 @@ import test from "node:test";
 
 const timelineSource = readFileSync(new URL("./PhotoGallery.tsx", import.meta.url), "utf8");
 const folderSource = readFileSync(new URL("./FolderView.tsx", import.meta.url), "utf8");
+const photoCardSource = readFileSync(new URL("./PhotoCard.tsx", import.meta.url), "utf8");
 const timeDialogSource = readFileSync(new URL("../shared/PhotoTimeEditDialog.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../AuthenticatedApp.tsx", import.meta.url), "utf8");
 const cssSource = readFileSync(new URL("../../authenticated.css", import.meta.url), "utf8");
@@ -111,6 +112,8 @@ test("timeline and folder viewers share the complete dialog boundary contract", 
     assert.match(source, /onModalKeyDown[\s\S]*ArrowLeft[\s\S]*ArrowRight/);
     assert.doesNotMatch(source, /Keyboard navigation when modal is open/);
   }
+  assert.match(photoCardSource, /tabIndex=\{!onSelect && !interactionDisabled \? -1 : undefined\}/);
+  assert.match(photoCardSource, /event\.currentTarget\.focus\(\{ preventScroll: true \}\);[\s\S]*onClick\(\)/);
 });
 
 test("nested viewer layers are independently named and focus-managed", () => {

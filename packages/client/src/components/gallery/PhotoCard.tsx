@@ -169,7 +169,15 @@ function PhotoCard({
           ref={videoRepairTargetRef}
           className="photo-thumbnail"
           data-media-policy={GRID_MEDIA_POLICY_MARKER}
-          onClick={interactionDisabled ? undefined : (onSelect ?? onClick)}
+          tabIndex={!onSelect && !interactionDisabled ? -1 : undefined}
+          onClick={interactionDisabled ? undefined : (event) => {
+            if (onSelect) {
+              onSelect(event);
+              return;
+            }
+            event.currentTarget.focus({ preventScroll: true });
+            onClick();
+          }}
         >
           {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
           {useVideoThumb ? (
