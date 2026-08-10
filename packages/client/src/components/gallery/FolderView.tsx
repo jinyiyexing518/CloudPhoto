@@ -60,7 +60,7 @@ import {
 } from "./folderCardAccessibility";
 import { isModalShortcutTarget } from "../shared/modalFocus";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
-import { readGpsCoordinates } from "../../utils/gpsCoordinates";
+import { getGoogleMapsUrl, readGpsCoordinates } from "../../utils/gpsCoordinates";
 
 let folderBatchMutationSequence = 0;
 
@@ -1010,7 +1010,7 @@ function FolderContent({
     loading: geoLoading,
     status: geoStatus,
   } = usePhotoLocationAddress(selectedPhoto);
-  const selectedGps = readGpsCoordinates(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
+  const selectedMapUrl = getGoogleMapsUrl(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
   const [downloading, setDownloading] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
@@ -2213,7 +2213,7 @@ function FolderContent({
                 <span className="modal-detail-label">格式</span>
                 <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
 
-                {selectedGps && (
+                {selectedMapUrl && (
                   <>
                     <span className="modal-detail-label">位置</span>
                     <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -2226,7 +2226,7 @@ function FolderContent({
                               : (geoAddress ?? "地址暂不可用")}
                         </span>
                         <a
-                          href={`https://maps.google.com/?q=${selectedGps.lat},${selectedGps.lon}`}
+                          href={selectedMapUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="modal-edit-btn"
@@ -2254,7 +2254,7 @@ function FolderContent({
                     </span>
                   </>
                 )}
-                {!selectedGps && (
+                {!selectedMapUrl && (
                   <>
                     <span className="modal-detail-label">位置</span>
                     <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>

@@ -71,7 +71,7 @@ import {
   type PrivateMomentsContext,
 } from "../../services/privateMomentsStore";
 import { registerPrivatePhotoCacheReset } from "../../services/privatePhotoCacheLifecycle";
-import { readGpsCoordinates } from "../../utils/gpsCoordinates";
+import { getGoogleMapsUrl, readGpsCoordinates } from "../../utils/gpsCoordinates";
 
 let photoGalleryBatchMutationSequence = 0;
 
@@ -357,7 +357,7 @@ function PhotoGallery({
     loading: geoLoading,
     status: geoStatus,
   } = usePhotoLocationAddress(selectedPhoto);
-  const selectedGps = readGpsCoordinates(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
+  const selectedMapUrl = getGoogleMapsUrl(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
   const [downloading, setDownloading] = useState(false);
   const [copyingImage, setCopyingImage] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
@@ -2088,7 +2088,7 @@ function PhotoGallery({
                     <span className="modal-detail-label">文件类型</span>
                     <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
 
-                    {selectedGps && (
+                    {selectedMapUrl && (
                       <>
                         <span className="modal-detail-label">位置</span>
                         <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -2101,7 +2101,7 @@ function PhotoGallery({
                                   : (geoAddress ?? "地址暂不可用")}
                             </span>
                             <a
-                              href={`https://maps.google.com/?q=${selectedGps.lat},${selectedGps.lon}`}
+                              href={selectedMapUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="modal-edit-btn"
@@ -2129,7 +2129,7 @@ function PhotoGallery({
                         </span>
                       </>
                     )}
-                    {!selectedGps && (
+                    {!selectedMapUrl && (
                       <>
                         <span className="modal-detail-label">位置</span>
                         <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>

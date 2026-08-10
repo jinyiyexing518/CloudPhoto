@@ -31,11 +31,13 @@ test("address failures remain distinct from missing GPS without rendering coordi
     source("../shared/BatchOperationsBar.tsx"),
   ]);
   for (const surface of [timeline, folders]) {
-    assert.match(surface, /const selectedGps = readGpsCoordinates\(selectedPhoto\?\.gpsLat, selectedPhoto\?\.gpsLon\)/);
+    assert.match(surface, /const selectedMapUrl = getGoogleMapsUrl\(selectedPhoto\?\.gpsLat, selectedPhoto\?\.gpsLon\)/);
     assert.match(surface, /geoStatus === "unavailable"[\s\S]*\? "地址暂不可用"/);
-    assert.doesNotMatch(surface, /geoAddress \?\? `\$\{selectedGps\.lat\.toFixed\(4\)\}°/);
-    assert.match(surface, /\{selectedGps && \(/);
-    assert.match(surface, /\{!selectedGps && \(/);
+    assert.doesNotMatch(surface, /geoAddress \?\? `\$\{selectedPhoto\.gpsLat/);
+    assert.match(surface, /\{selectedMapUrl && \(/);
+    assert.match(surface, /href=\{selectedMapUrl\}/);
+    assert.match(surface, /\{!selectedMapUrl && \(/);
+    assert.doesNotMatch(surface, /href=\{`https:\/\/maps\.google\.com\/\?q=\$\{selectedPhoto\.(?:gpsLat|gpsLon)/);
     assert.match(surface, /const session = \+\+gpsSaveSessionRef\.current;[\s\S]*await updatePhotoGps\(targetPhoto\.name, lat, lon\);[\s\S]*!mountedRef\.current \|\| session !== gpsSaveSessionRef\.current/);
     assert.match(surface, /const invalidateGpsSave = useCallback\(\(\) => \{[\s\S]*gpsSaveSessionRef\.current \+= 1;[\s\S]*setSavingGps\(false\)/);
     assert.match(surface, /setEditingGps\(false\);[\s\S]*gpsEditButtonRef\.current[\s\S]*target\?\.isConnected[\s\S]*target\.focus\(\{ preventScroll: true \}\)/);
@@ -44,6 +46,23 @@ test("address failures remain distinct from missing GPS without rendering coordi
   assert.doesNotMatch(batchOperations, /showBatchGpsEdit[\s\S]{0,160}batchGpsButtonRef\.current/);
   assert.match(hook, /"missing-coordinates"/);
   assert.match(hook, /"unavailable"/);
+});
+
+test("all four location surfaces share the finite coordinate pair policy", async () => {
+  const [timeline, folders, memoryMap, app] = await Promise.all([
+    source("PhotoGallery.tsx"),
+    source("FolderView.tsx"),
+    source("../memory-map/MemoryMap.tsx"),
+    source("../../AuthenticatedApp.tsx"),
+  ]);
+  for (const surface of [timeline, folders]) {
+    assert.match(surface, /getGoogleMapsUrl\(selectedPhoto\?\.gpsLat, selectedPhoto\?\.gpsLon\)/);
+    assert.doesNotMatch(surface, /gpsLat\s*&&\s*selectedPhoto\.gpsLon/);
+    assert.doesNotMatch(surface, /isFinite\(parseFloat\(selectedPhoto\.gps/);
+  }
+  assert.match(memoryMap, /partitionPhotoLocations\(currentPhotos, cosmosLocations\)/);
+  assert.match(memoryMap, /readGpsCoordinates\(manualLat, manualLon\) !== null/);
+  assert.match(app, /filters\.noGpsOnly && hasValidGps\(p\.gpsLat, p\.gpsLon\)/);
 });
 
 test("memory map renders Cosmos locations only for the workspace that produced them", async () => {

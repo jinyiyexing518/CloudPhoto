@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-11-gallery-map-links",
+    "date": "2026-08-11",
+    "icon": "🗺️",
+    "title": "照片详情地图链接使用有效坐标",
+    "type": "fix",
+    "desc": "照片详情只为完整、有限且范围内的坐标显示地图链接。",
+    "details": "时间线与文件夹详情共用有限坐标对 helper，并从规范化数值生成 Google Maps 链接；单边、NaN、Infinity 或越界坐标进入缺失位置与编辑流程，不再产生无效外链。",
+    "seq": 1786474200000
+  },
+  {
     "id": "2026-08-11-production-health-workflow-identity",
     "date": "2026-08-11",
     "icon": "🩺",

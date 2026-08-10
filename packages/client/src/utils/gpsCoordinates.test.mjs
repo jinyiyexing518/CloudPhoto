@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   classifyGpsCoordinates,
+  getGoogleMapsUrl,
   hasValidGps,
   parseFiniteCoordinate,
   readGpsCoordinates,
@@ -15,6 +16,22 @@ test("client GPS parsing matches the finite atomic range contract", () => {
   assert.equal(readGpsCoordinates("0", "181"), null);
   assert.equal(parseFiniteCoordinate("Infinity", -90, 90), null);
   assert.equal(hasValidGps("-90", "180"), true);
+});
+
+test("Google Maps links use canonical finite in-range coordinates", () => {
+  assert.equal(
+    getGoogleMapsUrl(" 01.500 ", "-002.2500"),
+    "https://maps.google.com/?q=1.5,-2.25",
+  );
+  for (const pair of [
+    ["91", "0"],
+    ["0", "181"],
+    ["NaN", "2"],
+    ["1", "Infinity"],
+    ["1", undefined],
+  ]) {
+    assert.equal(getGoogleMapsUrl(pair[0], pair[1]), null);
+  }
 });
 
 test("GPS diagnostics form one closed finite-pair partition", () => {

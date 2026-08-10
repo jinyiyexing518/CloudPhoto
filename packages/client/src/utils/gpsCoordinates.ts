@@ -49,3 +49,13 @@ export function hasValidGps(
 ): boolean {
   return readGpsCoordinates(rawLat, rawLon) !== null;
 }
+
+export function getGoogleMapsUrl(
+  rawLat: string | null | undefined,
+  rawLon: string | null | undefined,
+): string | null {
+  const coordinates = readGpsCoordinates(rawLat, rawLon);
+  return coordinates
+    ? `https://maps.google.com/?q=${coordinates.lat},${coordinates.lon}`
+    : null;
+}
