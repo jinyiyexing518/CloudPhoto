@@ -130,7 +130,10 @@ test("nested viewer layers are independently named and focus-managed", () => {
 
   assert.match(timeDialogSource, /useModalFocusBoundary\(\{/);
   assert.match(timeDialogSource, /className="confirm-overlay"[\s\S]*data-modal-layer/);
-  assert.match(timeDialogSource, /className="time-edit-dialog"[\s\S]*role="dialog"/);
+  assert.match(
+    timeDialogSource,
+    /className="(?=[^"]*\btime-edit-dialog\b)(?=[^"]*\bauth-native-control-scope\b)[^"]*"[\s\S]*role="dialog"/,
+  );
   assert.match(timeDialogSource, /aria-modal="true"/);
   assert.match(timeDialogSource, /aria-labelledby="photo-time-edit-title"/);
   assert.match(timeDialogSource, /id="photo-time-edit-title"/);
