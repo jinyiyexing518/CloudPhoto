@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
+import {
+  advanceIncrementalWindow,
+  createIncrementalRenderWindow,
+  resolveIncrementalVisibleCount,
+} from "../shared/incrementalRenderWindow";
 import MediaThumb from "../shared/MediaThumb";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
@@ -17,9 +22,6 @@ interface Props {
   userId: string;
   onViewPhoto?: (name: string) => void;
 }
-
-const CAPSULE_INITIAL_PHOTO_COUNT = 18;
-const CAPSULE_PHOTO_BATCH_SIZE = 12;
 
 function storageKey(userId: string) {
   return `cf_capsules_${userId}`;
@@ -41,13 +43,15 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
   const createLayerRef = useRef<HTMLDivElement | null>(null);
   const createDialogRef = useRef<HTMLDivElement | null>(null);
   const capsuleTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const capsulePhotoGridRef = useRef<HTMLDivElement | null>(null);
+  const capsulePhotoSentinelRef = useRef<HTMLDivElement | null>(null);
   const viewLayerRef = useRef<HTMLDivElement | null>(null);
   const viewDialogRef = useRef<HTMLDivElement | null>(null);
   const viewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const photoGridRef = useRef<HTMLDivElement | null>(null);
-  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [capsules, setCapsules] = useState<Capsule[]>(() => loadCapsules(userId));
   const [showCreate, setShowCreate] = useState(false);
+  const showCreateRef = useRef(showCreate);
+  showCreateRef.current = showCreate;
   const [openedCapsuleId, setOpenedCapsuleId] = useState<string | null>(null);
 
   // Create form state
@@ -59,8 +63,8 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
   });
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [folderFilter, setFolderFilter] = useState("");
-  const [visiblePhotoCount, setVisiblePhotoCount] = useState(CAPSULE_INITIAL_PHOTO_COUNT);
-  const photoWindowSourceRef = useRef({ photos, userId, folderFilter, showCreate });
+  const [photoRenderWindow, setPhotoRenderWindow] = useState(createIncrementalRenderWindow);
+  const [photoScrollState, setPhotoScrollState] = useState({ sourceKey: "", scrolled: false });
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -76,52 +80,37 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
         : photos.slice(0, 60),
     [photos, folderFilter],
   );
-  const photoWindowSourceChanged =
-    photoWindowSourceRef.current.photos !== photos
-    || photoWindowSourceRef.current.userId !== userId
-    || photoWindowSourceRef.current.folderFilter !== folderFilter
-    || photoWindowSourceRef.current.showCreate !== showCreate;
-  const renderedVisiblePhotoCount = photoWindowSourceChanged
-    ? CAPSULE_INITIAL_PHOTO_COUNT
-    : visiblePhotoCount;
-  const visiblePhotos = useMemo(
-    () => displayPhotos.slice(0, renderedVisiblePhotoCount),
-    [displayPhotos, renderedVisiblePhotoCount],
+  const displayPhotoSourceKey = useMemo(
+    () => `${folderFilter}\u0000${displayPhotos.map((photo) => photo.name).join("\u0000")}`,
+    [displayPhotos, folderFilter],
   );
+  const displayPhotoSourceKeyRef = useRef(displayPhotoSourceKey);
+  displayPhotoSourceKeyRef.current = displayPhotoSourceKey;
+  const committedPhotoSourceKeyRef = useRef(displayPhotoSourceKey);
 
-  useEffect(() => {
-    photoWindowSourceRef.current = { photos, userId, folderFilter, showCreate };
-    setVisiblePhotoCount(CAPSULE_INITIAL_PHOTO_COUNT);
-    if (photoGridRef.current) photoGridRef.current.scrollTop = 0;
-  }, [folderFilter, photos, showCreate, userId]);
-
-  useEffect(() => {
-    if (!showCreate || renderedVisiblePhotoCount >= displayPhotos.length) return;
-    const root = photoGridRef.current;
-    const sentinel = loadMoreSentinelRef.current;
-    if (!root || !sentinel) return;
-
-    let stale = false;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (stale || !entry?.isIntersecting) return;
-        setVisiblePhotoCount((count) => Math.min(
-          displayPhotos.length,
-          count + CAPSULE_PHOTO_BATCH_SIZE,
-        ));
-      },
-      {
-        root: photoGridRef.current,
-        rootMargin: "0px 0px 40px 0px",
-        threshold: 0.01,
-      },
-    );
-    observer.observe(sentinel);
-    return () => {
-      stale = true;
-      observer.disconnect();
-    };
-  }, [displayPhotos.length, renderedVisiblePhotoCount, showCreate]);
+  const focusedPhotoIndex = (() => {
+    if (typeof document === "undefined") return -1;
+    const activeElement = document.activeElement;
+    const scrollRoot = capsulePhotoGridRef.current;
+    if (!(activeElement instanceof HTMLElement) || !scrollRoot?.contains(activeElement)) return -1;
+    const focusedName = activeElement.dataset.capsulePhotoName;
+    return focusedName ? displayPhotos.findIndex((photo) => photo.name === focusedName) : -1;
+  })();
+  const visiblePhotoCount = resolveIncrementalVisibleCount(
+    photoRenderWindow,
+    displayPhotoSourceKey,
+    displayPhotos.length,
+    focusedPhotoIndex,
+  );
+  const visibleDisplayPhotos = useMemo(
+    () => displayPhotos.slice(0, visiblePhotoCount),
+    [displayPhotos, visiblePhotoCount],
+  );
+  const hasMoreDisplayPhotos = visiblePhotoCount < displayPhotos.length;
+  const photoGridHasScrolled = (
+    photoScrollState.sourceKey === displayPhotoSourceKey
+    && photoScrollState.scrolled
+  );
 
   const handleCreate = () => {
     if (!title.trim() || selectedNames.size === 0) return;
@@ -159,9 +148,83 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
     setShowCreate(false);
   }, []);
 
+  const resetCapsulePhotoWindow = useCallback(() => {
+    setPhotoRenderWindow(createIncrementalRenderWindow());
+    setPhotoScrollState({ sourceKey: "", scrolled: false });
+    if (capsulePhotoGridRef.current) capsulePhotoGridRef.current.scrollTop = 0;
+  }, []);
+
+  const openCreateDialog = useCallback(() => {
+    resetCapsulePhotoWindow();
+    setShowCreate(true);
+  }, [resetCapsulePhotoWindow]);
+
   const closeViewDialog = useCallback(() => {
     setOpenedCapsuleId(null);
   }, []);
+
+  useLayoutEffect(() => {
+    if (committedPhotoSourceKeyRef.current === displayPhotoSourceKey) return;
+    committedPhotoSourceKeyRef.current = displayPhotoSourceKey;
+    setPhotoRenderWindow({
+      sourceKey: displayPhotoSourceKey,
+      count: visiblePhotoCount,
+    });
+    setPhotoScrollState({
+      sourceKey: displayPhotoSourceKey,
+      scrolled: false,
+    });
+    if (capsulePhotoGridRef.current) capsulePhotoGridRef.current.scrollTop = 0;
+  }, [displayPhotoSourceKey, visiblePhotoCount]);
+
+  useEffect(() => {
+    if (
+      !showCreate
+      || !photoGridHasScrolled
+      || !hasMoreDisplayPhotos
+      || typeof IntersectionObserver === "undefined"
+    ) return;
+    const scrollRoot = capsulePhotoGridRef.current;
+    const sentinel = capsulePhotoSentinelRef.current;
+    if (!scrollRoot || !sentinel) return;
+
+    let active = true;
+    const observerSourceKey = displayPhotoSourceKey;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          !active
+          || !showCreateRef.current
+          || displayPhotoSourceKeyRef.current !== observerSourceKey
+          || !entries.some((entry) => entry.isIntersecting)
+        ) return;
+        setPhotoRenderWindow((current) => advanceIncrementalWindow(
+          current,
+          observerSourceKey,
+          displayPhotos.length,
+          focusedPhotoIndex,
+        ));
+      },
+      {
+        root: scrollRoot,
+        rootMargin: "0px 0px 96px 0px",
+        threshold: 0.01,
+      },
+    );
+    observer.observe(sentinel);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [
+    displayPhotoSourceKey,
+    displayPhotos.length,
+    focusedPhotoIndex,
+    hasMoreDisplayPhotos,
+    photoGridHasScrolled,
+    showCreate,
+    visiblePhotoCount,
+  ]);
 
   useModalFocusBoundary({
     active: showCreate,
@@ -192,7 +255,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
           <span className="capsule-title">💌 时光胶囊</span>
           <span className="capsule-subtitle">将照片锁定到未来，到期后解锁查看</span>
         </div>
-        <button className="capsule-new-btn" onClick={() => setShowCreate(true)}>＋ 新建胶囊</button>
+        <button className="capsule-new-btn" onClick={openCreateDialog}>＋ 新建胶囊</button>
       </div>
 
       {capsules.length === 0 && (
@@ -200,7 +263,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
           <div className="capsule-empty-icon">⏳</div>
           <p>还没有时光胶囊</p>
           <p className="capsule-empty-hint">选择一组照片，设定未来某天解锁，留给未来的自己一份礼物</p>
-          <button className="capsule-new-btn" onClick={() => setShowCreate(true)}>创建第一个胶囊</button>
+          <button className="capsule-new-btn" onClick={openCreateDialog}>创建第一个胶囊</button>
         </div>
       )}
 
@@ -319,7 +382,10 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                 <select
                   className="capsule-select"
                   value={folderFilter}
-                  onChange={(e) => setFolderFilter(e.target.value)}
+                  onChange={(e) => {
+                    resetCapsulePhotoWindow();
+                    setFolderFilter(e.target.value);
+                  }}
                 >
                   <option value="">最近上传（前60张）</option>
                   {folders.map((f) => (
@@ -327,14 +393,25 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   ))}
                 </select>
               </div>
-              <div ref={photoGridRef} className="capsule-photo-grid">
-                {visiblePhotos.map((p) => {
+              <div
+                ref={capsulePhotoGridRef}
+                className="capsule-photo-grid"
+                onScroll={(event) => {
+                  if (event.currentTarget.scrollTop <= 0) return;
+                  setPhotoScrollState({
+                    sourceKey: displayPhotoSourceKey,
+                    scrolled: true,
+                  });
+                }}
+              >
+                {visibleDisplayPhotos.map((p) => {
                   const sel = selectedNames.has(p.name);
                   return (
                     <button
                       key={p.name}
                       type="button"
                       className={`capsule-photo-thumb${sel ? " selected" : ""}`}
+                      data-capsule-photo-name={p.name}
                       aria-label={`${sel ? "取消选择" : "选择"}照片${p.originalName ?? p.name}`}
                       aria-pressed={sel}
                       onClick={() => {
@@ -353,9 +430,10 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                     </button>
                   );
                 })}
-                {renderedVisiblePhotoCount < displayPhotos.length && (
+                {hasMoreDisplayPhotos && (
                   <div
-                    ref={loadMoreSentinelRef}
+                    key="capsule-photo-sentinel"
+                    ref={capsulePhotoSentinelRef}
                     className="capsule-photo-sentinel"
                     aria-hidden="true"
                   />
