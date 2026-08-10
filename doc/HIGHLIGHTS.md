@@ -162,7 +162,7 @@
 - **图标控件无障碍语义** — 关闭、清空、导航、播放、收藏与编辑按钮具备明确 ARIA 名称，状态型控件同步暴露 pressed 状态
 - **六视图 WAI-ARIA 页签模型** — tablist/tab/tabpanel 以稳定 ID 关联并使用 roving tabindex；方向键循环激活、Home/End 首尾跳转，mutation/modal guard 拒绝时 selection 与焦点均不漂移，窄屏只做 nearest 横向滚动
 - **动态跳到主要内容入口** — 首个键盘焦点可直接跳过 Header 与六视图页签并进入当前 active panel；目标随页签同步，焦点时才显示，侧栏/模态层打开时退出后台 Tab 序列，320/390px 与 200% zoom 根级横向溢出为 **0**
-- **记忆地图完整键盘路径** — 22px 视觉标记保留地理锚点但交互命中区扩为 **44×44**；照片名语义、Tab/Enter/Space、详情/编辑 stacked modal、保存 pending、迟到回调和 connected-only 回焦形成闭环，搜索与坐标输入复用原生按钮和严格 finite/range parser
+- **记忆地图完整键盘路径** — 22px 视觉标记保留地理锚点但交互命中区扩为 **44×44**；照片名语义、Tab/Enter/Space、详情/编辑 stacked modal、保存 pending 与 connected-only 回焦形成闭环。位置搜索使用真实 44px 按钮、方向键/Enter/Escape、polite live status 和 request/auth generation 围栏，清空、关闭、卸载或切空间后迟到结果为 **0 次覆盖**
 - **Header 菜单与嵌套弹窗焦点链** — 空间切换和用户菜单统一支持方向键、Home/End、Escape、Tab 与 disabled skip；触发器获焦、菜单或子弹窗活跃时会 reveal 并锁定自动隐藏 Header。群组、安装、快捷键和管理员子弹窗共享 stacked modal boundary，pending 期间不可提前关闭且只向仍连接且可见的触发器恢复
 
 ---
