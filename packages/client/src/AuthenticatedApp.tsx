@@ -78,7 +78,10 @@ import {
 import {
   aggregateUploadProgress,
   getUploadConcurrencyPolicy,
+  getUploadProgressPercent,
   runWeightedUploadQueue,
+  sampleUploadSpeed,
+  type UploadAggregateProgress,
 } from "./transfer/uploadQueue";
 import {
   computeUploadRetryDelayMs,
@@ -414,16 +417,10 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{
-    bytesLoaded: number;
-    bytesTotal: number;
-    filesDone: number;
-    filesTotal: number;
-    activeCount: number;
-    queuedCount: number;
+  const [uploadProgress, setUploadProgress] = useState<(UploadAggregateProgress & {
     folder: string;
     currentFile?: string;
-  } | null>(null);
+  }) | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [voiceTransferStates, setVoiceTransferStates] = useState(createInitialVoiceTransferStates);
@@ -472,7 +469,11 @@ function AppContent() {
     workspaceId: string;
   } | null>(null);
   const folderRenameGate = useRef<FolderRenameGate>({ current: null }).current;
-  const speedRef = useRef<{ ts: number; bytes: number; ema: number }>({ ts: 0, bytes: 0, ema: 0 });
+  const speedRef = useRef({
+    ts: 0,
+    transferredBytes: 0,
+    emaBytesPerSecond: 0,
+  });
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
   const [photoSortKey, setPhotoSortKey] = useState<"taken" | "uploaded">("taken");
@@ -1452,13 +1453,22 @@ function AppContent() {
       setUploadProgress({
         bytesLoaded: 0,
         bytesTotal,
-        filesDone: 0,
+        transferredBytes: 0,
+        filesSettled: 0,
         filesTotal: valid.length,
+        succeededCount: 0,
+        failedCount: 0,
+        cancelledCount: 0,
         activeCount: 0,
         queuedCount: valid.length,
+        activeFiles: [],
         folder,
       });
-      speedRef.current = { ts: Date.now(), bytes: 0, ema: 0 };
+      speedRef.current = {
+        ts: Date.now(),
+        transferredBytes: 0,
+        emaBytesPerSecond: 0,
+      };
       pausedRef.current = false;
       setUploadPaused(false);
       setUploadSpeed("");
@@ -1477,21 +1487,18 @@ function AppContent() {
           return;
           }
           const progress = aggregateUploadProgress(queueItems);
-          const now = Date.now();
-          const elapsed = (now - speedRef.current.ts) / 1000;
-          if (elapsed >= 0.5) {
-          const byteDelta = progress.bytesLoaded - speedRef.current.bytes;
-          if (byteDelta >= 0) {
-            const rawBps = byteDelta / elapsed;
-            speedRef.current.ema = speedRef.current.ema === 0
-              ? rawBps
-              : speedRef.current.ema * 0.7 + rawBps * 0.3;
-            setUploadSpeed(formatSpeed(speedRef.current.ema));
-          } else {
-            speedRef.current.ema = 0;
-          }
-          speedRef.current.ts = now;
-          speedRef.current.bytes = progress.bytesLoaded;
+          const speedSample = sampleUploadSpeed(
+            speedRef.current,
+            progress.transferredBytes,
+            Date.now(),
+          );
+          if (speedSample.sampled) {
+            speedRef.current = speedSample;
+            setUploadSpeed(
+              speedSample.emaBytesPerSecond > 0
+                ? formatSpeed(speedSample.emaBytesPerSecond)
+                : "",
+            );
           }
           setUploadProgress({
           ...progress,
@@ -1537,7 +1544,6 @@ function AppContent() {
 
           let uploadedPhoto: Photo | undefined;
           for (let attempt = 0; attempt < 3; attempt += 1) {
-          controls.markUploading();
           try {
             uploadedPhoto = await uploadPhotoWithProgress(
               uploadFile,
@@ -1559,6 +1565,7 @@ function AppContent() {
               batchController.signal,
               videoTakenAt,
               uploadId,
+              controls.markUploading,
             );
             break;
           } catch (error) {
@@ -1653,27 +1660,28 @@ function AppContent() {
         return;
       }
 
+      const finalProgress = aggregateUploadProgress(result.items);
       setUploadProgress({
-        bytesLoaded: bytesTotal,
-        bytesTotal,
-        filesDone: valid.length,
-        filesTotal: valid.length,
-        activeCount: 0,
-        queuedCount: 0,
+        ...finalProgress,
         folder,
       });
-      await fetchPhotos();
+      setUploadSpeed("");
+      if (result.succeeded.length > 0) {
+        await fetchPhotos();
+      }
       setUploadProgress(null);
       setUploadTotalSize(null);
-      setUploadSpeed("");
       setUploadPaused(false);
       pausedRef.current = false;
       const failed = result.failed.map((item) => item.file.name);
       if (failed.length > 0) {
-        showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
+        showToast(
+          `上传结束：成功 ${result.succeeded.length}，失败 ${result.failed.length}: ${failed.join(", ")}`,
+          "error",
+        );
       } else {
-        const hasVideo = valid.some((file) => VIDEO_TYPES.has(file.type));
-        showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
+        const hasVideo = result.succeeded.some((item) => VIDEO_TYPES.has(item.file.type));
+        showToast(`成功上传 ${result.succeeded.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
       }
     } finally {
       unsubscribeAuth();
@@ -2205,15 +2213,21 @@ function AppContent() {
                     <span className="transfer-banner-text">
                       {uploadPaused
                         ? uploadProgress.activeCount > 0
-                          ? `已暂停，${uploadProgress.activeCount} 个仍在上传 (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
-                          : `已暂停 (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
+                          ? `已暂停，${uploadProgress.activeCount} 个仍在上传 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
+                          : `已暂停 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
                         : uploadProgress.currentFile
-                          ? `上传中 ${uploadProgress.currentFile}${uploadProgress.activeCount > 1 ? ` 等 ${uploadProgress.activeCount} 个` : ""} (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
-                          : `上传完成 (${uploadProgress.filesTotal}/${uploadProgress.filesTotal})`}
+                          ? `上传中 ${uploadProgress.currentFile}${uploadProgress.activeCount > 1 ? ` 等 ${uploadProgress.activeCount} 个` : ""} (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
+                          : uploadProgress.failedCount > 0
+                            ? `成功 ${uploadProgress.succeededCount} / 失败 ${uploadProgress.failedCount}`
+                            : uploadProgress.cancelledCount > 0
+                              ? `成功 ${uploadProgress.succeededCount} / 已取消 ${uploadProgress.cancelledCount}`
+                              : uploadProgress.filesSettled === uploadProgress.filesTotal
+                                ? `上传完成 (${uploadProgress.succeededCount}/${uploadProgress.filesTotal})`
+                                : `准备上传 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`}
                     </span>
                     {uploadTotalSize && (
                       <span className="transfer-banner-size">
-                        {(uploadProgress.bytesLoaded / 1024 / 1024).toFixed(1)} / {(uploadProgress.bytesTotal / 1024 / 1024).toFixed(1)} MB
+                        已传输 {(uploadProgress.transferredBytes / 1024 / 1024).toFixed(1)} / 本批 {(uploadProgress.bytesTotal / 1024 / 1024).toFixed(1)} MB
                         {uploadSpeed ? <span className="transfer-banner-speed"> · {uploadSpeed}</span> : null}
                       </span>
                     )}
@@ -2239,17 +2253,13 @@ function AppContent() {
                     )}
                   </button>
                   <span className="transfer-banner-pct">
-                    {Math.round((uploadProgress.bytesTotal === 0
-                      ? uploadProgress.filesDone / uploadProgress.filesTotal
-                      : uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%
+                    {getUploadProgressPercent(uploadProgress)}%
                   </span>
                 </div>
                 <div className="transfer-banner-track">
                   <div
                     className="transfer-banner-fill"
-                    style={{ width: `${Math.round((uploadProgress.bytesTotal === 0
-                      ? uploadProgress.filesDone / uploadProgress.filesTotal
-                      : uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%` }}
+                    style={{ width: `${getUploadProgressPercent(uploadProgress)}%` }}
                   />
                 </div>
               </>

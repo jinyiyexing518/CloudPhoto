@@ -37,6 +37,7 @@ import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
 import { usePhotoLocationAddress } from "./usePhotoLocationAddress";
 import { type VoiceTransferState } from "../../transfer/voiceTransferState";
+import { type UploadAggregateProgress } from "../../transfer/uploadQueue";
 import {
   runBatchMutationBoundary,
   type BatchMutationEvent,
@@ -267,6 +268,11 @@ function FolderCard({
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+type FolderUploadProgress = UploadAggregateProgress & {
+  folder: string;
+  currentFile?: string;
+};
+
 interface Props {
   photos: Photo[];
   onDelete: (name: string) => void;
@@ -276,7 +282,7 @@ interface Props {
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
+  uploadProgress: FolderUploadProgress | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onBatchDelete?: (names: string[]) => Promise<void>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
@@ -813,7 +819,7 @@ interface ContentProps {
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
+  uploadProgress: FolderUploadProgress | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
   onDeleteSubFolder?: (sub: string) => void;
@@ -1568,7 +1574,7 @@ function FolderContent({
                 disabled={anyUploading || batchMutationBusy}
               >
                 {isMyUpload && uploadProgress
-                  ? `⏳ ${uploadProgress.filesDone}/${uploadProgress.filesTotal}`
+                  ? `⏳ ${uploadProgress.filesSettled}/${uploadProgress.filesTotal}`
                   : "+ 添加原图"}
               </button>
             </>
@@ -1645,7 +1651,7 @@ function FolderContent({
             {isMyUpload && uploadProgress ? (
               <>
                 <span className="folder-upload-icon">⏳</span>
-                <span className="folder-upload-label">{uploadProgress.filesDone}/{uploadProgress.filesTotal}</span>
+                <span className="folder-upload-label">{uploadProgress.filesSettled}/{uploadProgress.filesTotal}</span>
               </>
             ) : (
               <>
