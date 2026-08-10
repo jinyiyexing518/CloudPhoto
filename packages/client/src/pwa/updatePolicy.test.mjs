@@ -60,7 +60,8 @@ test("broadcasts update-ready event", () => {
 
 test("main.tsx onNeedRefresh contract: no immediate activation or reload", () => {
   const source = readFileSync(new URL("../main.tsx", import.meta.url), "utf8");
-  assert.match(source, /onNeedRefresh\(\)\s*\{\s*markPwaUpdateReady\(installWindow\);\s*\}/);
+  assert.match(source, /onNeedRefresh\(\)\s*\{[\s\S]*__CF_PWA_UPDATE_READY__\s*=\s*true/);
+  assert.match(source, /onNeedRefresh\(\)\s*\{[\s\S]*dispatchEvent\(new Event\(PWA_UPDATE_READY_EVENT\)\)/);
   assert.doesNotMatch(source, /onNeedRefresh\(\)\s*\{[\s\S]*updateSW\(true\)/);
   assert.doesNotMatch(source, /onNeedRefresh\(\)\s*\{[\s\S]*location\.reload/);
 });

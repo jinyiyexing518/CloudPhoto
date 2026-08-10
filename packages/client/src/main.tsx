@@ -2,15 +2,15 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import {
-  markPwaUpdateReady,
-  PWA_OFFLINE_READY_EVENT,
-  type PwaUpdateBrowserWindow,
-} from "./pwa/updatePolicy";
 
-const installWindow = window as PwaUpdateBrowserWindow & {
+const PWA_UPDATE_READY_EVENT = "cloudphoto-pwa-update-ready";
+const PWA_OFFLINE_READY_EVENT = "cloudphoto-pwa-offline-ready";
+
+const installWindow = window as Window & {
   __CF_PWA__?: Event;
   __CF_PWA_INSTALLED__?: boolean;
+  __CF_PWA_UPDATE_READY__?: boolean;
+  __CF_UPDATE_SW__?: (reloadPage?: boolean) => Promise<void>;
 };
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
@@ -45,7 +45,8 @@ const registerPwa = async () => {
       window.addEventListener("online", checkForUpdates);
     },
     onNeedRefresh() {
-      markPwaUpdateReady(installWindow);
+      installWindow.__CF_PWA_UPDATE_READY__ = true;
+      window.dispatchEvent(new Event(PWA_UPDATE_READY_EVENT));
     },
     onOfflineReady() {
       window.dispatchEvent(new Event(PWA_OFFLINE_READY_EVENT));
