@@ -109,6 +109,14 @@ test("320px, 390px, and 500px leave document scrolling to the root", () => {
   }
 });
 
+test("desktop decorations stay inside auth-page scroll bounds", () => {
+  assert.equal(declaration(cssBlock(".auth-page::before"), "right"), "0");
+  assert.match(
+    styles,
+    /\.auth-page::after\s*\{\s*width:[^}]*bottom\s*:\s*0;[^}]*left\s*:\s*0;/,
+  );
+});
+
 test("every auth control keeps at least a 44px by 44px hit target", () => {
   const controls = [
     ".auth-tab",

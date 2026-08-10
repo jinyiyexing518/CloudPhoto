@@ -44,14 +44,14 @@ body {
   width: 22rem;
   height: 22rem;
   top: -10rem;
-  right: -7rem;
+  right: 0;
 }
 
 .auth-page::after {
   width: 16rem;
   height: 16rem;
-  bottom: -8rem;
-  left: -5rem;
+  bottom: 0;
+  left: 0;
 }
 
 .auth-shell {
