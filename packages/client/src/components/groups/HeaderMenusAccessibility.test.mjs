@@ -102,6 +102,10 @@ test("user-menu dialogs remain pinned through shared focus restoration", () => {
     authenticatedApp,
     /settingsRestoreFocusRef\.current = userAvatarButtonRef\.current;[\s\S]*lockHeaderForUserMenuDialog\(\)/,
   );
+  assert.match(
+    authenticatedApp,
+    /restoreFocusTo === userAvatarButtonRef\.current[\s\S]*lockHeaderForUserMenuDialog\(\)/,
+  );
   assert.match(authenticatedApp, /releaseUserMenuDialogLock/);
 });
 

@@ -2053,7 +2053,6 @@ function AppContent() {
   const handleInstallApp = async (
     restoreFocusTo?: HTMLElement | null,
     closeSettingsForGuidance = false,
-    lockHeaderForDialog = false,
   ) => {
     const promptRestoreTarget = restoreFocusTo
       ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -2061,7 +2060,9 @@ function AppContent() {
       ? settingsRestoreFocusRef.current ?? promptRestoreTarget
       : promptRestoreTarget;
     const showInstallGuidance = () => {
-      if (lockHeaderForDialog) lockHeaderForUserMenuDialog();
+      if (restoreFocusTo === userAvatarButtonRef.current) {
+        lockHeaderForUserMenuDialog();
+      }
       if (closeSettingsForGuidance) setShowSettings(false);
       setShowInstallGuide(true);
     };
@@ -2333,7 +2334,7 @@ function AppContent() {
                 disabled={isStandalone}
                 onClick={() => {
                   closeUserMenu(true);
-                  void handleInstallApp(userAvatarButtonRef.current, false, true);
+                  void handleInstallApp(userAvatarButtonRef.current);
                 }}
               >
                 <span className="user-menu-item-icon">{isStandalone ? "✅" : "📲"}</span>

@@ -33,7 +33,7 @@ test("user-menu dialogs restore through the connected avatar trigger", () => {
   );
   assert.match(
     authenticatedApp,
-    /closeUserMenu\(true\);\s*void handleInstallApp\(userAvatarButtonRef\.current, false, true\)/,
+    /closeUserMenu\(true\);\s*void handleInstallApp\(userAvatarButtonRef\.current\)/,
   );
   assert.match(authenticatedApp, /<InstallGuideDialog[\s\S]*restoreFocusTo=\{installGuideRestoreFocusRef\.current\}/);
 });
