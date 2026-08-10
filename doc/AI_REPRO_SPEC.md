@@ -43,6 +43,7 @@
 2.50 认证服务边界：AuthContext.tsx 必须直接从 authApi.ts 导入 AuthUser/AuthResponse 与登录、注册、会话、资料 API，并从 http.ts 导入 token 生命周期工具，禁止通过 photoApi.ts 兼容 barrel。构建后的 `index-<hash>.js` 必须小于 32 kB，且不得包含媒体线路超时、候选预载或媒体 fallback 错误文本；这些照片工作区 helper 只能随 AuthenticatedApp chunk 加载。
 2.51 私有照片缓存生命周期边界：AuthContext.tsx 只能从 privatePhotoCacheLifecycle.ts 获取账号/角色归属准备和清理能力，禁止直接导入 photoListCache.ts。生命周期模块必须在清理前同步递增 generation、同步通知内存缓存 reset，并等待已注册的持久化写入后再删除照片列表及私有媒体 Cache Storage；photoListCache.ts 仅保留认证后需要的列表读写、过期裁剪和序列化。构建后的 `index-<hash>.js` 必须小于 30 kB，且不得包含照片列表虚拟缓存路径或读写失败文本。
 2.52 照片策略模块边界：http.ts 必须从 authScope.ts 获取 JWT authorization snapshot，从 apiRoutingPolicy.ts 获取安全重放、代理探测 TTL 和 hedge 竞速；禁止导入 photoLoadingPolicy.ts。photoLoadingPolicy.ts 仅保留照片列表 cache key、发布代次、刷新节流和媒体缓存资格规则。构建后的 `index-<hash>.js` 必须小于 29.7 kB，且不得包含照片列表 `:group:` cache key 片段；行为测试必须在拆分后继续覆盖角色隔离、路由竞速、取消和昂贵读取不 hedge。
+2.53 注册表单意图边界：AuthPage.tsx 只保留默认登录表单，并通过缓存同一个 Promise 的 React.lazy loader 加载 RegisterForm.tsx；注册 Tab 的 pointer hover、键盘 focus 与实际切换均触发预载。RegisterForm 挂载后在登录/注册 Tab 间保持字段状态，注册提交仍必须在 API 请求前调用 onAuthIntent 预载认证工作区。构建必须产生唯一 `RegisterForm-<hash>.js`，该 chunk 不得进入 sw.js precache；登录入口必须小于 27.6 kB，且不得包含「正在创建账号…」注册提交文案。
 
 ## 1. 目标
 

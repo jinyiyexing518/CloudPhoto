@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-register-form-intent-split",
+    "date": "2026-08-10",
+    "icon": "⚡",
+    "title": "注册表单改为按需加载",
+    "type": "improvement",
+    "desc": "默认登录页不再下载完整注册表单，用户靠近或打开注册入口时才加载。",
+    "details": "注册字段、密码校验和提交状态移入独立 RegisterForm chunk；注册 Tab hover、focus 和切换共享同一个预载 Promise，加载后在 Tab 往返时保持字段状态，提交仍会提前加载认证工作区。生产入口由 29,584 bytes 降至 27,476 bytes，本地入口由 28.48 kB 降至 26.58 kB，gzip 由 10.31 kB 降至 9.91 kB；PWA 首装预缓存降至 180.90 KiB。源码和构建契约防止注册逻辑回流登录首屏或预缓存。",
+    "seq": 1786344563747
+  },
+  {
     "id": "2026-08-10-photo-policy-boundary",
     "date": "2026-08-10",
     "icon": "⚡",

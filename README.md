@@ -168,7 +168,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 - **管理员工具** — 超级管理员（通过 `SUPER_ADMIN_USERNAME` 环境变量配置）可将其他用户提升为 admin
 - **PWA 应用模式** — 可安装为桌面/移动应用；中文 manifest、标准 192/512 PNG 与 iOS 180px 主屏幕图标保持跨平台安装兼容
 - **PWA 快速更新模式** — 网页与已安装 App 共用自动更新 Service Worker；首装只预缓存应用壳，功能 chunk 首次使用后缓存
-- **登录首屏分包** — 未认证访客只加载鉴权壳；工作区与图库按认证意图并行预载，入口 JS 从 179.82 kB 降至 28.48 kB（约 -84%），首屏 CSS 从 128.56 kB 降至 9.38 kB
+- **登录首屏分包** — 未认证访客只加载鉴权壳；工作区、图库与注册表单按用户意图加载，入口 JS 从 179.82 kB 降至 26.58 kB（约 -85%），首屏 CSS 从 128.56 kB 降至 9.38 kB
 - **阅读进度条** — 视口最顶部一条渐变细条，随时间线滚动填充，提供即时空间定位感
 - **全局拖拽提示** — 向应用窗口拖入图片文件时触发全屏引导覆盖层，drop 后自动跳转文件夹视图
 - **键盘快捷键帮助面板** — 随时按 `?`（或点击 header 中 ⌨️）打开悬浮快捷键速查表；再按 Escape 或 `?` 关闭
@@ -626,7 +626,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 
 - Vite 生成的 `/assets/*` 内容哈希文件缓存一年并标记 `immutable`
 - SPA shell、Service Worker 和注册入口每次重验证，确保 PWA 能发现新版本
-- Service Worker 首装只预缓存 HTML、9.38 kB 登录样式、28.48 kB 入口 JS、React 与注册运行时（182.96 KiB）；工作区 JS/CSS 与图库等动态 chunk 首次使用后进入 `app-code-v1`，相较原始 894.44 KiB 首装资源减少约 80%
+- Service Worker 首装只预缓存 HTML、9.38 kB 登录样式、26.58 kB 入口 JS、React 与注册运行时（180.90 KiB）；工作区 JS/CSS、注册表单与图库等动态 chunk 首次使用后进入 `app-code-v1`，相较原始 894.44 KiB 首装资源减少约 80%
 - manifest、静态图标与 `changelog.json` 使用短缓存并重验证；`.webmanifest` 明确返回 `application/manifest+json`
 - `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
 - `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖

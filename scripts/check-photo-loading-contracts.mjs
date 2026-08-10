@@ -14,6 +14,7 @@ const requireText = (source, text, label) => {
 const authGate = read("packages/client/src/App.tsx");
 const app = read("packages/client/src/AuthenticatedApp.tsx");
 const authPage = read("packages/client/src/components/auth/AuthPage.tsx");
+const registerForm = read("packages/client/src/components/auth/RegisterForm.tsx");
 const auth = read("packages/client/src/contexts/AuthContext.tsx");
 const groupContext = read("packages/client/src/contexts/GroupContext.tsx");
 const groupSwitcher = read("packages/client/src/components/groups/GroupSwitcher.tsx");
@@ -76,13 +77,30 @@ requireText(
   'import("./AuthenticatedApp")',
   "deferred authenticated workspace import",
 );
+requireText(
+  authPage,
+  'import("./RegisterForm")',
+  "deferred registration form import",
+);
+requireText(authPage, "registerFormPromise ??=", "cached registration loader");
+requireText(authPage, "const RegisterForm = lazy(loadRegisterForm);", "lazy registration form");
+requireText(authPage, "void loadRegisterForm();", "registration intent preload");
+assert(!authPage.includes("handleRegister"), "registration submission must stay out of the login entry");
+assert(!authPage.includes("正在创建账号…"), "registration copy must stay out of the login entry");
+requireText(registerForm, "handleRegister", "deferred registration submission");
+requireText(registerForm, "hidden={!active}", "persistent registration state");
 requireText(authGate, "if (getToken()) void loadAuthenticatedApp();", "restored-session workspace preload");
 requireText(authGate, "onAuthIntent", "interactive-auth workspace preload");
 requireText(authGate, "window.location.reload();", "workspace chunk recovery");
 assert.equal(
   (authPage.match(/onAuthIntent\?\.\(\);/g) ?? []).length,
-  2,
-  "login and registration must both preload the authenticated workspace",
+  1,
+  "login must preload the authenticated workspace",
+);
+assert.equal(
+  (registerForm.match(/onAuthIntent\?\.\(\);/g) ?? []).length,
+  1,
+  "registration must preload the authenticated workspace",
 );
 assert(
   !auth.includes('from "../services/photoApi"'),
