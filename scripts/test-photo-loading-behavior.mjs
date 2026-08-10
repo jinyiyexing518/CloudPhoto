@@ -775,10 +775,14 @@ const http = await import(httpUrl);
   const uploadRetryUrl = await compileTypeScript(
     "packages/client/src/services/uploadRetry.ts",
   );
+  const uploadLocationUrl = await compileTypeScript(
+    "packages/client/src/uploadLocation.ts",
+  );
   const uploadApi = await importTypeScript(
     "packages/client/src/services/uploadApi.ts",
     (source) => source
       .replace('"../utils/apiBase"', JSON.stringify(apiBaseUrl))
+      .replace('"../uploadLocation"', JSON.stringify(uploadLocationUrl))
       .replace('"./http"', JSON.stringify(httpUrl))
       .replace('"./mediaRoute"', JSON.stringify(mediaStubUrl))
       .replace('"./uploadRetry"', JSON.stringify(uploadRetryUrl)),
