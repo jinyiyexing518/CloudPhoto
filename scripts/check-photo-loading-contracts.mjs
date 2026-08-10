@@ -166,6 +166,16 @@ requireText(listCache, "registerPrivatePhotoCacheReset", "synchronous memory res
 requireText(listCache, "registerPrivatePhotoCacheWrite(operation)", "in-flight write registration");
 requireText(cacheLifecycle, "activePersistentWrites", "in-flight cache cleanup");
 requireText(cacheLifecycle, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
+requireText(cacheLifecycle, '"workbox-expiration"', "Workbox expiration metadata inventory");
+requireText(cacheLifecycle, '"cache-entries"', "Workbox expiration metadata store");
+requireText(cacheLifecycle, "objectStoreNames.contains", "defensive Workbox schema discovery");
+requireText(cacheLifecycle, "openCursor()", "bounded metadata row scan");
+requireText(cacheLifecycle, "privateCacheNames.has", "targeted private metadata selection");
+requireText(cacheLifecycle, "for (let pass = 0; pass < 2; pass += 1)", "late-write cleanup pass");
+assert(
+  !cacheLifecycle.includes("deleteDatabase("),
+  "private cleanup must never delete the Workbox database or app-code metadata",
+);
 for (const name of ["cloudphoto-photo-lists-v1", "photo-media-v1", "cf-media-v1"]) {
   requireText(cacheLifecycle, name, "private cache cleanup");
 }

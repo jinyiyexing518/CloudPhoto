@@ -57,6 +57,83 @@ const lifecycle = await import("../packages/client/src/services/privatePhotoCach
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
 const shareStore = await import("../packages/client/src/services/share/shareLinksStore.ts");
 
+function createFakeWorkboxExpirationDb(
+  entries,
+  { includeDatabase = true, includeStore = true, onClose } = {},
+) {
+  const rows = new Map(entries.map((entry) => [entry.id, { ...entry }]));
+  let openCount = 0;
+
+  const db = {
+    objectStoreNames: {
+      contains: (name) => includeStore && name === "cache-entries",
+    },
+    transaction(_storeName, mode) {
+      const transaction = {
+        error: null,
+        objectStore() {
+          return {
+            indexNames: { contains: () => false },
+            openCursor() {
+              const request = {};
+              const storedRows = [...rows.values()];
+              let index = 0;
+              const advance = () => {
+                const value = storedRows[index++];
+                request.result = value
+                  ? {
+                      primaryKey: value.id,
+                      value,
+                      continue: () => queueMicrotask(advance),
+                    }
+                  : null;
+                request.onsuccess?.();
+              };
+              queueMicrotask(advance);
+              return request;
+            },
+            delete(key) {
+              rows.delete(key);
+              return {};
+            },
+          };
+        },
+      };
+      if (mode === "readwrite") {
+        queueMicrotask(() => transaction.oncomplete?.());
+      }
+      return transaction;
+    },
+    close() {
+      onClose?.({
+        add: (entry) => rows.set(entry.id, { ...entry }),
+        openCount,
+      });
+    },
+  };
+
+  const factory = {
+    async databases() {
+      return includeDatabase ? [{ name: "workbox-expiration", version: 1 }] : [];
+    },
+    open() {
+      openCount += 1;
+      const request = {};
+      queueMicrotask(() => {
+        request.result = db;
+        request.onsuccess?.();
+      });
+      return request;
+    },
+  };
+
+  return {
+    factory,
+    openCount: () => openCount,
+    count: (cacheName) => [...rows.values()].filter((entry) => entry.cacheName === cacheName).length,
+  };
+}
+
 const insight = {
   photoName: "private/photo.jpg",
   totalViews: 2,
@@ -384,11 +461,100 @@ assert.equal(
 localStorage.setItem = storageSetItem;
 await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
 
+{
+  const expirationDb = createFakeWorkboxExpirationDb([
+    ...Array.from({ length: 350 }, (_, index) => ({
+      id: `private-${index}`,
+      cacheName: "photo-media-v1",
+      timestamp: index,
+    })),
+    ...Array.from({ length: 48 }, (_, index) => ({
+      id: `app-${index}`,
+      cacheName: "app-code-v1",
+      timestamp: index,
+    })),
+    { id: "legacy-private", cacheName: "cf-media-v1", timestamp: 1 },
+    { id: "list-private", cacheName: "cloudphoto-photo-lists-v1", timestamp: 1 },
+    { id: "unknown", cacheName: "future-public-cache-v1", timestamp: 1 },
+  ]);
+
+  const first = await lifecycle.purgePrivateWorkboxExpirationMetadata(expirationDb.factory);
+  assert.equal(first.status, "deleted");
+  assert.equal(first.deletedEntries, 352);
+  assert.equal(expirationDb.count("photo-media-v1"), 0);
+  assert.equal(expirationDb.count("cf-media-v1"), 0);
+  assert.equal(expirationDb.count("cloudphoto-photo-lists-v1"), 0);
+  assert.equal(expirationDb.count("app-code-v1"), 48);
+  assert.equal(expirationDb.count("future-public-cache-v1"), 1);
+
+  const second = await lifecycle.purgePrivateWorkboxExpirationMetadata(expirationDb.factory);
+  assert.equal(second.status, "deleted");
+  assert.equal(second.deletedEntries, 0);
+  assert.equal(expirationDb.count("app-code-v1"), 48);
+  assert.equal(expirationDb.count("future-public-cache-v1"), 1);
+
+  const absentDb = createFakeWorkboxExpirationDb([], { includeDatabase: false });
+  assert.equal(
+    (await lifecycle.purgePrivateWorkboxExpirationMetadata(absentDb.factory)).status,
+    "database-absent",
+  );
+  assert.equal(absentDb.openCount(), 0);
+
+  const absentStore = createFakeWorkboxExpirationDb([], { includeStore: false });
+  assert.equal(
+    (await lifecycle.purgePrivateWorkboxExpirationMetadata(absentStore.factory)).status,
+    "store-absent",
+  );
+}
+
+availableCacheNames.add("photo-media-v1");
+globalThis.indexedDB = {
+  async databases() {
+    throw new Error("metadata inventory unavailable");
+  },
+  open() {
+    throw new Error("metadata database unavailable");
+  },
+};
+await lifecycle.clearPrivatePhotoCaches();
+assert.equal(
+  availableCacheNames.has("photo-media-v1"),
+  false,
+  "metadata cleanup failure must not block private Cache Storage deletion",
+);
+
+let recreatedLateEntry = false;
+const lifecycleExpirationDb = createFakeWorkboxExpirationDb(
+  [
+    ...Array.from({ length: 350 }, (_, index) => ({
+      id: `lifecycle-private-${index}`,
+      cacheName: "photo-media-v1",
+      timestamp: index,
+    })),
+    ...Array.from({ length: 48 }, (_, index) => ({
+      id: `lifecycle-app-${index}`,
+      cacheName: "app-code-v1",
+      timestamp: index,
+    })),
+  ],
+  {
+    onClose({ add }) {
+      if (recreatedLateEntry) return;
+      recreatedLateEntry = true;
+      add({ id: "late-private", cacheName: "photo-media-v1", timestamp: 999 });
+    },
+  },
+);
+globalThis.indexedDB = lifecycleExpirationDb.factory;
 await lifecycle.clearPrivatePhotoCaches();
 assert.deepEqual(momentsStore.readPrivateMomentInsights("personal"), {}, "logout/401 must delete scoped moments");
 assert.deepEqual(shareStore.listRecentShareLinks(), [], "logout/401 must delete scoped recent share links");
 assert.equal(availableCacheNames.has("photo-media-v1"), false, "logout must still remove private media");
 assert.equal(availableCacheNames.has("workbox-precache-v2"), true, "logout must preserve the private app shell");
+assert.equal(lifecycleExpirationDb.count("photo-media-v1"), 0, "logout must remove private expiration metadata");
+assert.equal(lifecycleExpirationDb.count("app-code-v1"), 48, "logout must preserve app-code expiration metadata");
+assert.ok(lifecycleExpirationDb.openCount() >= 2, "logout must repeat targeted cleanup after active writes");
+delete globalThis.indexedDB;
 for (const key of [
   "cf_grid_size",
   "fab-pos",
