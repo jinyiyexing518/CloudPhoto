@@ -1,7 +1,8 @@
 /**
- * MediaThumb — renders a thumbnail for photos or videos.
+ * MediaThumb — renders a thumbnail for photos, videos, or audio files.
  *
- * For videos: if a thumbnail/preview is provided, renders an <img>. When no
+ * Audio always renders a local placeholder and never mounts a network-backed
+ * media element. For videos: if a thumbnail/preview is provided, renders an <img>. When no
  * derivative exists it renders a local placeholder, never an original-video
  * element. The actual video is created only by an explicit playback surface.
  *
@@ -9,9 +10,9 @@
  *   url           — full-resolution src reserved for an explicit viewer action
  *   thumbnailUrl  — preferred low-cost thumbnail; img used for videos when provided
  *   alt           — alt text
- *   contentType   — MIME type; if it starts with "video/" renders video badge
+ *   contentType   — MIME type; video and audio receive type-specific badges
  *   className     — class applied to the inner element
- *   wrapClass     — wraps video+badge in <span className={wrapClass}>
+ *   wrapClass     — optional class added to the media+badge wrapper
  *   loading       — lazy (default) | eager
  */
 import { useEffect, useState } from "react";
@@ -42,12 +43,41 @@ export default function MediaThumb({
   priority = false,
 }: Props) {
   const isVideo = contentType?.startsWith("video/") ?? false;
-  const derivativeSources = selectGridMediaSources({ thumbnailUrl, previewUrl })
-    .map(getPreferredMediaUrl);
-  const imageSources = derivativeSources;
+  const isAudio = contentType?.startsWith("audio/") ?? false;
 
   const [videoPosterFailed, setVideoPosterFailed] = useState(false);
   useEffect(() => setVideoPosterFailed(false), [thumbnailUrl, previewUrl]);
+
+  if (isAudio) {
+    const placeholder = (
+      <span
+        className={[className, "audio-thumb-placeholder"].filter(Boolean).join(" ")}
+        data-media-policy={GRID_MEDIA_POLICY_MARKER}
+        role="img"
+        aria-label={alt ? `${alt}，音频文件` : "音频文件"}
+      >
+        <span className="audio-thumb-placeholder-icon" aria-hidden="true">🎵</span>
+        <span className="audio-thumb-placeholder-text">音频</span>
+      </span>
+    );
+    const badge = <span className="photo-audio-badge" aria-hidden="true">音频</span>;
+    return (
+      <span
+        className={[
+          wrapClass,
+          "media-thumb-audio-wrap",
+          wrapClass ? "" : "media-thumb-audio-wrap--fill",
+        ].filter(Boolean).join(" ")}
+      >
+        {placeholder}
+        {badge}
+      </span>
+    );
+  }
+
+  const derivativeSources = selectGridMediaSources({ thumbnailUrl, previewUrl })
+    .map(getPreferredMediaUrl);
+  const imageSources = derivativeSources;
 
   if (!isVideo) {
     if (imageSources.length === 0) {

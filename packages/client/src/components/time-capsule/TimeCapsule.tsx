@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
+import { useToast } from "../../contexts/ToastContext";
 import {
   advanceIncrementalWindow,
   createIncrementalRenderWindow,
@@ -8,38 +9,26 @@ import {
 } from "../shared/incrementalRenderWindow";
 import MediaThumb from "../shared/MediaThumb";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
-
-interface Capsule {
-  id: string;
-  title: string;
-  photoNames: string[];
-  unlockDate: string; // ISO date string "YYYY-MM-DD"
-  createdAt: string;
-}
+import {
+  Capsule,
+  MAX_CAPSULES,
+  MAX_CAPSULE_PHOTOS,
+  MAX_TITLE_LENGTH,
+  loadCapsulesFromStorage,
+  normalizeCapsules,
+  removeLegacyCapsules,
+  saveCapsulesToStorage,
+} from "./capsuleStorage";
 
 interface Props {
   photos: Photo[];
   userId: string;
+  workspaceKey: string;
   onViewPhoto?: (name: string) => void;
 }
 
-function storageKey(userId: string) {
-  return `cf_capsules_${userId}`;
-}
-
-function loadCapsules(userId: string): Capsule[] {
-  try {
-    return JSON.parse(localStorage.getItem(storageKey(userId)) ?? "[]") as Capsule[];
-  } catch {
-    return [];
-  }
-}
-
-function saveCapsules(userId: string, capsules: Capsule[]) {
-  localStorage.setItem(storageKey(userId), JSON.stringify(capsules));
-}
-
-export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
+export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto }: Props) {
+  const showToast = useToast();
   const createLayerRef = useRef<HTMLDivElement | null>(null);
   const createDialogRef = useRef<HTMLDivElement | null>(null);
   const capsuleTitleInputRef = useRef<HTMLInputElement | null>(null);
@@ -48,7 +37,15 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
   const viewLayerRef = useRef<HTMLDivElement | null>(null);
   const viewDialogRef = useRef<HTMLDivElement | null>(null);
   const viewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [capsules, setCapsules] = useState<Capsule[]>(() => loadCapsules(userId));
+  const initialLoadRef = useRef<ReturnType<typeof loadCapsulesFromStorage> | null>(null);
+  if (initialLoadRef.current === null) {
+    initialLoadRef.current = loadCapsulesFromStorage(localStorage, userId, workspaceKey);
+  }
+  const initialLoad = initialLoadRef.current;
+  const [capsules, setCapsules] = useState<Capsule[]>(initialLoad.capsules);
+  const [storageError, setStorageError] = useState<string | null>(
+    initialLoad.error ? "无法读取时光胶囊，本次更改不会被静默保存。" : null,
+  );
   const [showCreate, setShowCreate] = useState(false);
   const showCreateRef = useRef(showCreate);
   showCreateRef.current = showCreate;
@@ -65,6 +62,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
   const [folderFilter, setFolderFilter] = useState("");
   const [photoRenderWindow, setPhotoRenderWindow] = useState(createIncrementalRenderWindow);
   const [photoScrollState, setPhotoScrollState] = useState({ sourceKey: "", scrolled: false });
+  const migrationHandledRef = useRef(false);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -112,18 +110,65 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
     && photoScrollState.scrolled
   );
 
+  useEffect(() => {
+    if (migrationHandledRef.current) return;
+    migrationHandledRef.current = true;
+    if (initialLoad.error) {
+      showToast("无法读取时光胶囊，请检查浏览器存储权限。", "error");
+      return;
+    }
+    if (initialLoad.discardedInvalidData) {
+      showToast("已忽略损坏或不安全的时光胶囊数据。", "info");
+    }
+    if (!initialLoad.needsMigration) return;
+    try {
+      saveCapsulesToStorage(localStorage, userId, workspaceKey, initialLoad.capsules);
+      removeLegacyCapsules(localStorage, userId);
+    } catch {
+      const message = "迁移时光胶囊失败，旧数据已保留。";
+      setStorageError(message);
+      showToast(message, "error");
+    }
+  }, [initialLoad, showToast, userId, workspaceKey]);
+
+  const persistCapsules = useCallback((updated: Capsule[]): boolean => {
+    try {
+      const normalized = saveCapsulesToStorage(localStorage, userId, workspaceKey, updated);
+      setCapsules(normalized);
+      setStorageError(null);
+      return true;
+    } catch {
+      const message = "保存时光胶囊失败，请检查浏览器存储空间或权限。";
+      setStorageError(message);
+      showToast(message, "error");
+      return false;
+    }
+  }, [showToast, userId, workspaceKey]);
+
   const handleCreate = () => {
     if (!title.trim() || selectedNames.size === 0) return;
+    if (capsules.length >= MAX_CAPSULES) {
+      const message = `最多保存 ${MAX_CAPSULES} 个时光胶囊，请先删除一个再创建。`;
+      setStorageError(message);
+      showToast(message, "error");
+      return;
+    }
     const newCapsule: Capsule = {
       id: `cap-${Date.now()}`,
-      title: title.trim(),
+      title: title.trim().slice(0, MAX_TITLE_LENGTH),
       photoNames: [...selectedNames],
       unlockDate,
       createdAt: new Date().toISOString().slice(0, 10),
     };
-    const updated = [...capsules, newCapsule];
-    setCapsules(updated);
-    saveCapsules(userId, updated);
+    const normalizedNewCapsule = normalizeCapsules([newCapsule])[0];
+    if (!normalizedNewCapsule || normalizedNewCapsule.photoNames.length !== selectedNames.size) {
+      const message = "胶囊日期或记忆项无效，未保存任何更改。";
+      setStorageError(message);
+      showToast(message, "error");
+      return;
+    }
+    const updated = [...capsules, normalizedNewCapsule];
+    if (!persistCapsules(updated)) return;
     setShowCreate(false);
     setTitle("");
     setSelectedNames(new Set());
@@ -131,8 +176,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
 
   const handleDelete = (id: string) => {
     const updated = capsules.filter((c) => c.id !== id);
-    setCapsules(updated);
-    saveCapsules(userId, updated);
+    persistCapsules(updated);
   };
 
   const openedCapsule = capsules.find((c) => c.id === openedCapsuleId);
@@ -253,16 +297,18 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
       <div className="capsule-header">
         <div>
           <span className="capsule-title">💌 时光胶囊</span>
-          <span className="capsule-subtitle">将照片锁定到未来，到期后解锁查看</span>
+          <span className="capsule-subtitle">将记忆项锁定到未来，到期后解锁查看</span>
         </div>
         <button className="capsule-new-btn" onClick={openCreateDialog}>＋ 新建胶囊</button>
       </div>
+
+      {storageError && <p className="capsule-storage-error" role="alert">{storageError}</p>}
 
       {capsules.length === 0 && (
         <div className="capsule-empty">
           <div className="capsule-empty-icon">⏳</div>
           <p>还没有时光胶囊</p>
-          <p className="capsule-empty-hint">选择一组照片，设定未来某天解锁，留给未来的自己一份礼物</p>
+          <p className="capsule-empty-hint">选择一组照片、视频或音频，设定未来某天解锁，留给未来的自己一份礼物</p>
           <button className="capsule-new-btn" onClick={openCreateDialog}>创建第一个胶囊</button>
         </div>
       )}
@@ -294,7 +340,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   <div className="capsule-card-info">
                     <div className="capsule-card-name">{c.title}</div>
                     <div className="capsule-card-meta">
-                      🗓 创建于 {c.createdAt} · {c.photoNames.length} 张照片
+                      🗓 创建于 {c.createdAt} · {c.photoNames.length} 个记忆项
                     </div>
                     <div className="capsule-card-unlocked-date">🎁 已于 {c.unlockDate} 解锁</div>
                   </div>
@@ -323,7 +369,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   <div className="capsule-card-info">
                     <div className="capsule-card-name">{c.title}</div>
                     <div className="capsule-card-meta">
-                      🗓 创建于 {c.createdAt} · {c.photoNames.length} 张照片
+                      🗓 创建于 {c.createdAt} · {c.photoNames.length} 个记忆项
                     </div>
                     <div className="capsule-card-countdown">
                       ⏳ 还有 {daysLeft} 天解锁（{c.unlockDate}）
@@ -364,7 +410,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="给这个胶囊起个名字…"
-                maxLength={40}
+                maxLength={MAX_TITLE_LENGTH}
               />
               <label className="capsule-label" htmlFor="capsule-unlock-date">解锁日期</label>
               <input
@@ -376,7 +422,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                 onChange={(e) => setUnlockDate(e.target.value)}
               />
               <label className="capsule-label">
-                选择照片（{selectedNames.size} 已选）
+                选择记忆项（{selectedNames.size} 已选）
               </label>
               <div className="capsule-folder-filter">
                 <select
@@ -412,7 +458,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                       type="button"
                       className={`capsule-photo-thumb${sel ? " selected" : ""}`}
                       data-capsule-photo-name={p.name}
-                      aria-label={`${sel ? "取消选择" : "选择"}照片${p.originalName ?? p.name}`}
+                      aria-label={`${sel ? "取消选择" : "选择"}记忆项${p.originalName ?? p.name}`}
                       aria-pressed={sel}
                       onFocus={(event) => {
                         if (
@@ -429,7 +475,14 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                       }}
                       onClick={() => {
                         const next = new Set(selectedNames);
-                        sel ? next.delete(p.name) : next.add(p.name);
+                        if (sel) {
+                          next.delete(p.name);
+                        } else if (next.size >= MAX_CAPSULE_PHOTOS) {
+                          showToast(`每个胶囊最多选择 ${MAX_CAPSULE_PHOTOS} 个记忆项。`, "info");
+                          return;
+                        } else {
+                          next.add(p.name);
+                        }
                         setSelectedNames(next);
                       }}
                     >
@@ -459,7 +512,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                 className="capsule-confirm-btn"
                 onClick={handleCreate}
                 disabled={!title.trim() || selectedNames.size === 0}
-              >创建胶囊 ({selectedNames.size} 张)</button>
+              >创建胶囊 ({selectedNames.size} 项)</button>
             </div>
           </div>
         </div>,
@@ -483,7 +536,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
               <button ref={viewCloseButtonRef} type="button" className="dialog-close-btn" onClick={closeViewDialog} aria-label="关闭时光胶囊">✕</button>
             </div>
             <p className="capsule-view-meta">
-              创建于 {openedCapsule.createdAt} · 解锁于 {openedCapsule.unlockDate} · {openedCapsule.photoNames.length} 张照片
+              创建于 {openedCapsule.createdAt} · 解锁于 {openedCapsule.unlockDate} · {openedCapsule.photoNames.length} 个记忆项
             </p>
             <div className="capsule-view-grid">
               {openedPhotos.map((p) => (
@@ -492,7 +545,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   type="button"
                   className="capsule-view-thumb"
                   onClick={() => { setOpenedCapsuleId(null); onViewPhoto?.(p.name); }}
-                  aria-label={`查看照片${p.originalName ?? p.name}`}
+                  aria-label={`查看${p.contentType?.startsWith("audio/") ? "音频" : p.contentType?.startsWith("video/") ? "视频" : "照片"}${p.originalName ?? p.name}`}
                   title={p.originalName ?? p.name}
                 >
                   <MediaThumb

@@ -12,6 +12,12 @@ interface Props {
 
 type TransitionStyle = "fade" | "slide" | "zoom";
 
+function isStoryEligible(photo: Photo): boolean {
+  if (photo.contentType?.startsWith("image/")) return true;
+  if (!photo.contentType?.startsWith("video/")) return false;
+  return selectGridMediaSources(photo).length > 0;
+}
+
 export default function AutoStory({ photos }: Props) {
   const storyLayerRef = useRef<HTMLDivElement | null>(null);
   const storyDialogRef = useRef<HTMLDivElement | null>(null);
@@ -25,26 +31,28 @@ export default function AutoStory({ photos }: Props) {
   const [intervalSec, setIntervalSec] = useState(4);
   const [animClass, setAnimClass] = useState("story-enter");
 
+  const storyEligiblePhotos = useMemo(() => photos.filter(isStoryEligible), [photos]);
+
   const folders = useMemo(
-    () => [...new Set(photos.map((p) => (p.folder ?? "").trim()).filter(Boolean))].sort(),
-    [photos],
+    () => [...new Set(storyEligiblePhotos.map((p) => (p.folder ?? "").trim()).filter(Boolean))].sort(),
+    [storyEligiblePhotos],
   );
 
   // Pre-compute per-folder counts once — avoids O(n×folders) in render
   const folderCounts = useMemo<Record<string, number>>(() => {
     const map: Record<string, number> = {};
-    for (const p of photos) {
+    for (const p of storyEligiblePhotos) {
       const f = (p.folder ?? "").trim();
       if (f) map[f] = (map[f] ?? 0) + 1;
     }
     return map;
-  }, [photos]);
+  }, [storyEligiblePhotos]);
 
   const storyPhotos = useMemo(() => {
-    if (selectedFolder === null) return photos.slice().reverse();
-    if (selectedFolder === "") return photos.filter((p) => !(p.folder ?? "").trim()).slice().reverse();
-    return photos.filter((p) => (p.folder ?? "").trim() === selectedFolder).slice().reverse();
-  }, [photos, selectedFolder]);
+    if (selectedFolder === null) return storyEligiblePhotos.slice().reverse();
+    if (selectedFolder === "") return storyEligiblePhotos.filter((p) => !(p.folder ?? "").trim()).slice().reverse();
+    return storyEligiblePhotos.filter((p) => (p.folder ?? "").trim() === selectedFolder).slice().reverse();
+  }, [selectedFolder, storyEligiblePhotos]);
 
   const cancelPendingNavigation = useCallback(() => {
     if (navigationTimerRef.current === null) return;
@@ -84,7 +92,7 @@ export default function AutoStory({ photos }: Props) {
   }, [intervalSec, next, paused, playing, storyPhotos.length]);
 
   const currentPhoto = storyPhotos[currentIndex];
-  const currentPhotoIsVideo = currentPhoto?.contentType.startsWith("video/") ?? false;
+  const currentPhotoIsVideo = currentPhoto?.contentType?.startsWith("video/") ?? false;
   const currentDerivativeSources = currentPhoto ? selectGridMediaSources(currentPhoto) : [];
   const currentPreviewSources = [...currentDerivativeSources].reverse();
   const currentPhotoPoster = currentDerivativeSources[0];
@@ -133,7 +141,7 @@ export default function AutoStory({ photos }: Props) {
     <div className="story-wrap">
       <div className="story-header">
         <span className="story-title">🎬 自动故事</span>
-        <span className="story-subtitle">选择文件夹，一键生成幻灯片</span>
+        <span className="story-subtitle">选择文件夹，一键播放照片和视频</span>
       </div>
 
       <div className="story-controls">
@@ -148,11 +156,13 @@ export default function AutoStory({ photos }: Props) {
               setCurrentIndex(0);
             }}
           >
-            <option value="__all__">全部照片（{photos.length} 张）</option>
+            <option value="__all__">全部可播放照片/视频（{storyEligiblePhotos.length} 项）</option>
             {folders.map((f) => (
-              <option key={f} value={f}>{f}（{folderCounts[f] ?? 0} 张）</option>
+              <option key={f} value={f}>{f}（{folderCounts[f] ?? 0} 项）</option>
             ))}
-            <option value="">未分类文件夹</option>
+            <option value="">
+              未分类文件夹（{storyEligiblePhotos.filter((p) => !(p.folder ?? "").trim()).length} 项）
+            </option>
           </select>
         </div>
 
@@ -187,9 +197,15 @@ export default function AutoStory({ photos }: Props) {
           onClick={() => { cancelPendingNavigation(); setAnimClass("story-enter"); setCurrentIndex(0); setPaused(false); setPlaying(true); }}
           disabled={storyPhotos.length === 0}
         >
-          ▶ 开始播放（{storyPhotos.length} 张）
+          ▶ 开始播放（{storyPhotos.length} 项）
         </button>
       </div>
+
+      {storyPhotos.length === 0 && (
+        <div className="story-empty" role="status">
+          没有可播放的照片或视频
+        </div>
+      )}
 
       {/* Preview grid */}
       <div className="story-preview-grid">

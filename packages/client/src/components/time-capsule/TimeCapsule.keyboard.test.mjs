@@ -4,6 +4,7 @@ import test from "node:test";
 
 const capsuleSource = readFileSync(new URL("./TimeCapsule.tsx", import.meta.url), "utf8");
 const boundarySource = readFileSync(new URL("../shared/useModalFocusBoundary.ts", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("../../AuthenticatedApp.tsx", import.meta.url), "utf8");
 
 test("capsule creator uses the shared stacked dialog boundary", () => {
   assert.match(capsuleSource, /useModalFocusBoundary\(\{[\s\S]*active: showCreate/);
@@ -47,8 +48,27 @@ test("capsule photo picker incrementally mounts bounded derivative-only batches"
 test("capsule selection remains independent from the visible photo window", () => {
   assert.match(capsuleSource, /const \[selectedNames, setSelectedNames\] = useState<Set<string>>/);
   assert.match(capsuleSource, /photoNames: \[\.\.\.selectedNames\]/);
-  assert.match(capsuleSource, /创建胶囊 \(\{selectedNames\.size\} 张\)/);
+  assert.match(capsuleSource, /创建胶囊 \(\{selectedNames\.size\} 项\)/);
   assert.match(capsuleSource, /value=\{folderFilter\}[\s\S]*resetCapsulePhotoWindow\(\);[\s\S]*setFolderFilter\(e\.target\.value\)/);
+});
+
+test("capsule delegates audio memories to the shared zero-network thumbnail and viewer", () => {
+  assert.match(capsuleSource, /visibleDisplayPhotos\.map[\s\S]*<MediaThumb[\s\S]*contentType=\{p\.contentType\}/);
+  assert.match(capsuleSource, /openedPhotos\.map[\s\S]*<MediaThumb[\s\S]*contentType=\{p\.contentType\}/);
+  assert.match(capsuleSource, /onViewPhoto\?\.\(p\.name\)/);
+  assert.doesNotMatch(capsuleSource, /<audio/);
+});
+
+test("capsule persistence is workspace scoped and reports write failures", () => {
+  assert.match(appSource, /<TimeCapsule[\s\S]*workspaceKey=\{currentGroupId \|\| "personal"\}/);
+  assert.match(capsuleSource, /workspaceKey: string/);
+  assert.match(capsuleSource, /loadCapsulesFromStorage\(localStorage, userId, workspaceKey\)/);
+  assert.match(capsuleSource, /saveCapsulesToStorage\(localStorage, userId, workspaceKey/);
+  assert.match(capsuleSource, /showToast\([^,]+,\s*"error"\)/);
+  assert.match(capsuleSource, /role="alert"/);
+  assert.match(capsuleSource, /MAX_CAPSULE_PHOTOS/);
+  assert.match(capsuleSource, /capsules\.length >= MAX_CAPSULES/);
+  assert.match(capsuleSource, /normalizeCapsules\(\[newCapsule\]\)\[0\]/);
 });
 
 test("opened capsule viewer is also a named reusable modal layer", () => {

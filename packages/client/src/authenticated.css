@@ -1226,6 +1226,14 @@ body {
 }
 .capsule-empty-icon { font-size: 3rem; margin-bottom: 12px; }
 .capsule-empty-hint { font-size: 0.82rem; color: #94a3b8; margin: 8px 0 20px; }
+.capsule-storage-error {
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.82rem;
+}
 .capsule-section { padding: 0 16px 16px; }
 .capsule-section-title { font-size: 0.88rem; font-weight: 600; color: #475569; margin-bottom: 10px; }
 .capsule-list { display: flex; flex-direction: column; gap: 10px; }
@@ -4374,6 +4382,7 @@ body {
 }
 
 .video-thumb-placeholder,
+.audio-thumb-placeholder,
 .photo-thumb-placeholder {
   width: 100%;
   height: 100%;
@@ -4392,13 +4401,29 @@ body {
     linear-gradient(145deg, #374151, #111827);
 }
 .video-thumb-placeholder { pointer-events: none; }
+.audio-thumb-placeholder {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.2) 0 18%, transparent 19%),
+    linear-gradient(145deg, #4338ca, #1e1b4b);
+}
+.audio-thumb-placeholder,
+.photo-audio-badge { pointer-events: none; }
+.media-thumb-audio-wrap {
+  position: relative;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+}
+.media-thumb-audio-wrap--fill { width: 100%; height: 100%; }
 
-.video-thumb-placeholder-icon {
+.video-thumb-placeholder-icon,
+.audio-thumb-placeholder-icon {
   font-size: 1.35rem;
   line-height: 1;
 }
 
-.video-thumb-placeholder-text {
+.video-thumb-placeholder-text,
+.audio-thumb-placeholder-text {
   max-width: 15em;
   font-size: 0.72rem;
   line-height: 1.35;
@@ -4902,6 +4927,25 @@ body {
   border-radius: 4px;
   pointer-events: none;
   backdrop-filter: blur(4px);
+}
+.photo-audio-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(49, 46, 129, 0.82);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.story-empty {
+  padding: 32px 16px;
+  color: #64748b;
+  text-align: center;
+  font-size: 0.9rem;
 }
 .photo-favorite-badge {
   position: absolute;

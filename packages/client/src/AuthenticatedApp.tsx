@@ -2973,7 +2973,12 @@ function AppContent() {
                     onError={reportLazyBoundaryFailure}
                   >
                   <Suspense fallback={null}>
-                    <TimeCapsule photos={photos} userId={user.id} onViewPhoto={jumpToTimelinePhoto} />
+                    <TimeCapsule
+                      photos={photos}
+                      userId={user.id}
+                      workspaceKey={currentGroupId || "personal"}
+                      onViewPhoto={jumpToTimelinePhoto}
+                    />
                   </Suspense>
                   </ErrorBoundary>
                 ) : null}

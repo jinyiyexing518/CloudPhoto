@@ -9,6 +9,24 @@ const previewGridSource = storySource.slice(
 );
 const playerSource = storySource.slice(storySource.indexOf("{/* Full-screen player */"));
 
+test("AutoStory only includes images and poster-backed videos", () => {
+  assert.match(storySource, /function isStoryEligible\(photo: Photo\): boolean/);
+  assert.match(storySource, /if \(photo\.contentType\?\.startsWith\("image\/"\)\) return true/);
+  assert.match(storySource, /if \(!photo\.contentType\?\.startsWith\("video\/"\)\) return false/);
+  assert.match(storySource, /return selectGridMediaSources\(photo\)\.length > 0/);
+  assert.match(storySource, /const storyEligiblePhotos = useMemo\(\(\) => photos\.filter\(isStoryEligible\), \[photos\]\)/);
+  assert.match(storySource, /storyEligiblePhotos\.filter/);
+  assert.doesNotMatch(storySource, /return photos\.slice\(\)\.reverse\(\)/);
+});
+
+test("AutoStory counts playable media as items and exposes a truthful empty state", () => {
+  assert.match(storySource, /全部可播放照片\/视频（\{storyEligiblePhotos\.length\} 项）/);
+  assert.match(storySource, /\{f\}（\{folderCounts\[f\] \?\? 0\} 项）/);
+  assert.match(storySource, /开始播放（\{storyPhotos\.length\} 项）/);
+  assert.match(storySource, /story-empty[\s\S]*没有可播放的照片或视频/);
+  assert.doesNotMatch(storySource, /开始播放（\{storyPhotos\.length\} 张）/);
+});
+
 test("StoryPlayer uses the shared modal boundary and restores its trigger", () => {
   assert.match(storySource, /useModalFocusBoundary\(\{[\s\S]*active: playing && currentPhoto !== undefined/);
   assert.match(storySource, /className=\{`story-player story-player--\$\{transition\}`\}[\s\S]*data-modal-layer/);
