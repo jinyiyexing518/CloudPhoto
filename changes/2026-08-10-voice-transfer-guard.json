@@ -1,0 +1,8 @@
+{
+  "id": "2026-08-10-voice-transfer-guard",
+  "date": "2026-08-10",
+  "title": "fix: 语音备注录制/上传接入全局传输守卫",
+  "description": "修复时间线、重要片段和文件夹视图中的语音备注状态未上报到顶层传输守卫的问题。新增按 source key 聚合的 voice state（timeline/moments/folder），recording/uploading 均纳入 transferring，统一阻止切 Tab、切群组、beforeunload 与 PWA 立即更新。transfer banner 新增语音分支，明确区分“录音中，请先结束录音”和“语音备注上传中，请勿关闭页面”，避免误显示为下载中。",
+  "type": "fix",
+  "seq": 1786356000000
+}

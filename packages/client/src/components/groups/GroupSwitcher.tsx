@@ -4,7 +4,12 @@ import { useGroup } from "../../contexts/GroupContext";
 import CreateGroupDialog from "./CreateGroupDialog";
 import GroupSettings from "./GroupSettings";
 
-export default function GroupSwitcher() {
+interface GroupSwitcherProps {
+  disabled?: boolean;
+  onBeforeSelect?: (nextGroupId: string) => boolean;
+}
+
+export default function GroupSwitcher({ disabled = false, onBeforeSelect }: GroupSwitcherProps) {
   const {
     groups,
     currentGroupId,
@@ -32,7 +37,16 @@ export default function GroupSwitcher() {
       ? "个人空间"
       : groups.find((g) => g.id === currentGroupId)?.name ?? "群组";
 
-  const select = (id: string) => { setCurrentGroupId(id); setOpen(false); };
+  const select = (id: string) => {
+    if (id === currentGroupId) {
+      setOpen(false);
+      return;
+    }
+    if (disabled) return;
+    if (onBeforeSelect && !onBeforeSelect(id)) return;
+    setCurrentGroupId(id);
+    setOpen(false);
+  };
 
   const handleCreated = async () => {
     await refreshGroups();
@@ -42,7 +56,7 @@ export default function GroupSwitcher() {
   return (
     <>
       <div className="group-switcher" ref={ref}>
-        <button className="group-switcher-btn" onClick={() => setOpen((v) => !v)}>
+        <button className="group-switcher-btn" onClick={() => setOpen((v) => !v)} disabled={disabled}>
           {currentGroupId ? "👥" : "🏠"} <span className="group-switcher-label">{currentLabel}</span>
           <span className="group-switcher-chevron">▾</span>
         </button>

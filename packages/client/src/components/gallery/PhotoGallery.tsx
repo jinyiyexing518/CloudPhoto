@@ -35,6 +35,7 @@ import { reverseGeocode } from "../../utils/geocode";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
+import { type VoiceTransferState } from "../../transfer/voiceTransferState";
 
 interface Props {
   photos: Photo[];
@@ -47,6 +48,7 @@ interface Props {
   onMovePhoto?: (name: string, toFolder: string) => Promise<boolean>;
   onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
+  onVoiceStateChange?: (state: VoiceTransferState) => void;
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
@@ -296,6 +298,7 @@ function PhotoGallery({
   onMovePhoto,
   onBatchDelete,
   onDownloadStateChange,
+  onVoiceStateChange,
   onMomentsCountChange,
   onShareCreated,
   onThumbnailUpdate,
@@ -402,6 +405,11 @@ function PhotoGallery({
     onDownloadStateChange?.(downloading);
     return () => onDownloadStateChange?.(false);
   }, [downloading, onDownloadStateChange]);
+
+  useEffect(() => {
+    onVoiceStateChange?.(voiceState);
+    return () => onVoiceStateChange?.("idle");
+  }, [voiceState, onVoiceStateChange]);
 
   // Lock body scroll + compensate scrollbar width when modal is open
   useEffect(() => {

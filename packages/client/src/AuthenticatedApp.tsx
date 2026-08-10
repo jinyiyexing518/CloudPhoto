@@ -29,6 +29,13 @@ import {
   PWA_UPDATE_READY_EVENT,
   type PwaUpdateBrowserWindow,
 } from "./pwa/updatePolicy";
+import {
+  createInitialVoiceTransferStates,
+  getActiveVoiceTransferState,
+  setVoiceTransferState,
+  type VoiceTransferSource,
+  type VoiceTransferState,
+} from "./transfer/voiceTransferState";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -341,6 +348,7 @@ function AppContent() {
   const [uploadProgress, setUploadProgress] = useState<{ bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
+  const [voiceTransferStates, setVoiceTransferStates] = useState(createInitialVoiceTransferStates);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const [momentsDisplayCount, setMomentsDisplayCount] = useState<number | null>(null);
@@ -387,7 +395,40 @@ function AppContent() {
   const [gridSize, setGridSize] = useState<GridSize>(() => (localStorage.getItem("cf_grid_size") as GridSize | null) ?? "md");
   const handleGridSizeChange = (size: GridSize) => { setGridSize(size); localStorage.setItem("cf_grid_size", size); };
   const uploadToFolderRef = useRef<((files: FileList, folder: string, subject?: string) => Promise<void>) | null>(null);
-  const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
+  const voiceTransferState = getActiveVoiceTransferState(voiceTransferStates);
+  const transferring = uploadProgress !== null || downloading || deleteProgress !== null || voiceTransferState !== "idle";
+
+  const handleVoiceStateChange = useCallback((source: VoiceTransferSource, state: VoiceTransferState) => {
+    setVoiceTransferStates((current) => setVoiceTransferState(current, source, state));
+  }, []);
+  const handleTimelineVoiceStateChange = useCallback(
+    (state: VoiceTransferState) => handleVoiceStateChange("timeline", state),
+    [handleVoiceStateChange],
+  );
+  const handleMomentsVoiceStateChange = useCallback(
+    (state: VoiceTransferState) => handleVoiceStateChange("moments", state),
+    [handleVoiceStateChange],
+  );
+  const handleFolderVoiceStateChange = useCallback(
+    (state: VoiceTransferState) => handleVoiceStateChange("folder", state),
+    [handleVoiceStateChange],
+  );
+  const transferGuardMessage = voiceTransferState === "recording"
+    ? "录音中，请先结束录音"
+    : voiceTransferState === "uploading"
+      ? "语音备注上传中，请勿离开当前页面"
+      : "传输进行中，请稍候";
+  const blockIfTransferring = useCallback(() => {
+    if (!transferring) return false;
+    showToast(transferGuardMessage, "info");
+    return true;
+  }, [showToast, transferGuardMessage, transferring]);
+
+  const handleGroupSwitch = useCallback((nextGroupId: string) => {
+    if (nextGroupId === currentGroupId) return true;
+    if (blockIfTransferring()) return false;
+    return true;
+  }, [blockIfTransferring, currentGroupId]);
 
   useEffect(() => {
     const batch = uploadBatchRef.current;
@@ -407,6 +448,8 @@ function AppContent() {
   }, []);
 
   const switchTab = (tab: ViewTab) => {
+    if (tab === activeTab) return;
+    if (blockIfTransferring()) return;
     setActiveTab(tab);
     localStorage.setItem(tabKey, tab);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1016,9 +1059,12 @@ function AppContent() {
       setIsDragOver(false);
       if (e.dataTransfer?.files.length) {
         e.preventDefault();
-        setActiveTab("folder");
-        localStorage.setItem(tabKey, "folder");
-        showToast("已切换到文件夹视图，选择文件夹后上传", "success");
+        if (activeTab !== "folder") {
+          if (blockIfTransferring()) return;
+          setActiveTab("folder");
+          localStorage.setItem(tabKey, "folder");
+          showToast("已切换到文件夹视图，选择文件夹后上传", "success");
+        }
       }
     };
     window.addEventListener("dragenter", onDragEnter);
@@ -1031,7 +1077,7 @@ function AppContent() {
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [tabKey, showToast]);
+  }, [activeTab, blockIfTransferring, showToast, tabKey]);
 
   // Global paste: Ctrl+V image upload (screenshots, etc.)
   useEffect(() => {
@@ -1655,7 +1701,7 @@ function AppContent() {
           Cloud Photo
           <span className="header-greeting">{greetingText} 👋</span>
         </h1>
-        <GroupSwitcher />
+        <GroupSwitcher onBeforeSelect={handleGroupSwitch} disabled={transferring} />
         {!isStandalone && (
           <button
             type="button"
@@ -1828,12 +1874,22 @@ function AppContent() {
                   />
                 </div>
               </>
-            ) : (
+            ) : voiceTransferState === "recording" ? (
+              <div className="transfer-banner-row">
+                <span className="transfer-banner-icon">🎙️</span>
+                <span className="transfer-banner-text">录音中，请先结束录音</span>
+              </div>
+            ) : voiceTransferState === "uploading" ? (
+              <div className="transfer-banner-row">
+                <span className="transfer-banner-icon">🎤</span>
+                <span className="transfer-banner-text">语音备注上传中，请勿关闭页面</span>
+              </div>
+            ) : downloading ? (
               <div className="transfer-banner-row">
                 <span className="transfer-banner-icon">⬇️</span>
                 <span className="transfer-banner-text">下载中，请勿关闭页面</span>
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -2105,6 +2161,7 @@ function AppContent() {
                       onToggleFavorite={handleToggleFavorite}
                       onMovePhoto={handleMovePhoto}
                       onDownloadStateChange={setDownloading}
+                      onVoiceStateChange={handleTimelineVoiceStateChange}
                       onShareCreated={handleMomentShareCreated}
                       onThumbnailUpdate={handleThumbnailUpdate}
                       userName={user?.displayName}
@@ -2135,6 +2192,7 @@ function AppContent() {
                   onToggleFavorite={handleToggleFavorite}
                   onMovePhoto={handleMovePhoto}
                   onDownloadStateChange={setDownloading}
+                  onVoiceStateChange={handleMomentsVoiceStateChange}
                   onShareCreated={handleMomentShareCreated}
                   onThumbnailUpdate={handleThumbnailUpdate}
                   userName={user?.displayName}
@@ -2166,6 +2224,7 @@ function AppContent() {
                 onMovePhoto={handleMovePhoto}
                 onRenameFolder={handleRenameFolder}
                 onDownloadStateChange={setDownloading}
+                onVoiceStateChange={handleFolderVoiceStateChange}
                 onShareCreated={handleMomentShareCreated}
                 onThumbnailUpdate={handleThumbnailUpdate}
                 userName={user?.displayName}

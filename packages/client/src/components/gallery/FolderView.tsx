@@ -32,6 +32,7 @@ import { reverseGeocode } from "../../utils/geocode";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
+import { type VoiceTransferState } from "../../transfer/voiceTransferState";
 
 const UNCATEGORIZED = "(未分类)";
 const MOVE_UNSELECTED = "__UNSEL__";
@@ -218,6 +219,7 @@ interface Props {
   onBatchDelete?: (names: string[]) => Promise<void>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
+  onVoiceStateChange?: (state: VoiceTransferState) => void;
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
@@ -242,6 +244,7 @@ export default function FolderView({
   onBatchDelete,
   onRenameFolder,
   onDownloadStateChange,
+  onVoiceStateChange,
   onShareCreated,
   onThumbnailUpdate,
   userName,
@@ -680,6 +683,7 @@ export default function FolderView({
           onDeleteSubFolder={(sub) => handleDeleteFolder(sub)}
           onBatchDelete={onBatchDelete}
           onDownloadStateChange={onDownloadStateChange}
+          onVoiceStateChange={onVoiceStateChange}
           onShareCreated={onShareCreated}
           onThumbnailUpdate={onThumbnailUpdate}
           userName={userName}
@@ -714,6 +718,7 @@ interface ContentProps {
   onDeleteSubFolder?: (sub: string) => void;
   onBatchDelete?: (names: string[]) => Promise<void>;
   onDownloadStateChange?: (downloading: boolean) => void;
+  onVoiceStateChange?: (state: VoiceTransferState) => void;
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
@@ -742,6 +747,7 @@ function FolderContent({
   onDeleteSubFolder,
   onBatchDelete,
   onDownloadStateChange,
+  onVoiceStateChange,
   onShareCreated,
   onThumbnailUpdate,
   userName,
@@ -860,6 +866,11 @@ function FolderContent({
     onDownloadStateChange?.(downloading);
     return () => onDownloadStateChange?.(false);
   }, [downloading, onDownloadStateChange]);
+
+  useEffect(() => {
+    onVoiceStateChange?.(voiceState);
+    return () => onVoiceStateChange?.("idle");
+  }, [onVoiceStateChange, voiceState]);
 
   const requestNewFolderTarget = (): string | null => {
     const raw = prompt("请输入新文件夹名称（会创建在当前目录下）");
