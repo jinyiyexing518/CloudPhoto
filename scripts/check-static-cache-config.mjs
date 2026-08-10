@@ -248,6 +248,12 @@ function checkHashedAssets(configPath) {
   if (registerFormChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred RegisterForm chunk");
   }
+  const whatsNewPopupChunks = assets.filter((asset) =>
+    /^WhatsNewPopup-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (whatsNewPopupChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred WhatsNewPopup chunk");
+  }
   const pwaInstallEntryChunks = assets.filter((asset) =>
     /^PwaInstallEntry-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
@@ -323,6 +329,9 @@ function checkHashedAssets(configPath) {
   }
   if (serviceWorker.includes(`assets/${basename(registerFormChunks[0])}`)) {
     fail(configPath, "deferred RegisterForm chunk must not be downloaded by the precache");
+  }
+  if (serviceWorker.includes(`assets/${basename(whatsNewPopupChunks[0])}`)) {
+    fail(configPath, "deferred WhatsNewPopup chunk must not be downloaded by the precache");
   }
   if (serviceWorker.includes(`assets/${basename(pwaInstallEntryChunks[0])}`)) {
     fail(configPath, "PWA install entry must stay out of the app-shell precache");

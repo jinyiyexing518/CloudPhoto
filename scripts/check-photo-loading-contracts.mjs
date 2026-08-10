@@ -71,6 +71,25 @@ requireText(app, "const PhotoGallery = lazy(loadPhotoGallery);", "lazy gallery c
 requireText(app, "void loadPhotoGallery();", "authenticated gallery preload");
 requireText(app, "正在加载照片视图…", "gallery chunk loading state");
 assert(
+  !app.includes('import WhatsNewPopup from "./components/whats-new/WhatsNewPopup";'),
+  "WhatsNewPopup must not ship in the initial authenticated workspace chunk",
+);
+requireText(
+  app,
+  'const loadWhatsNewPopup = () => import("./components/whats-new/WhatsNewPopup")',
+  "deferred whats-new import",
+);
+requireText(app, "const WhatsNewPopup = lazy(loadWhatsNewPopup);", "lazy whats-new component");
+requireText(app, "const WHATS_NEW_IDLE_TIMEOUT_MS = 2_000;", "bounded whats-new idle timeout");
+requireText(app, "window.requestIdleCallback(", "whats-new idle scheduling");
+requireText(app, "{ timeout: WHATS_NEW_IDLE_TIMEOUT_MS }", "whats-new idle timeout option");
+requireText(app, "window.cancelIdleCallback(idleTaskHandle);", "whats-new idle cancellation");
+requireText(app, "setTimeout(runWhenCurrent, 0);", "whats-new idle fallback");
+requireText(app, "if (loading) return;", "whats-new loading gate");
+requireText(app, "setShowWhatsNewPopup(false);", "whats-new loading reset");
+requireText(app, "if (whatsNewMountRequest.current !== requestId) return;", "whats-new stale task guard");
+requireText(app, "{showWhatsNewPopup && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}", "whats-new lazy mount");
+assert(
   !authGate.includes("function AppContent()"),
   "the authenticated workspace must not ship in the login entry bundle",
 );

@@ -171,6 +171,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 - **PWA 应用模式** — 可安装为桌面/移动应用；中文 manifest、标准 192/512 PNG 与 iOS 180px 主屏幕图标保持跨平台安装兼容
 - **PWA 快速更新模式** — 网页与已安装 App 共用自动更新 Service Worker；首装只预缓存应用壳，功能 chunk 首次使用后缓存
 - **登录首屏分包** — 未认证访客只加载鉴权壳；工作区、图库与注册表单按用户意图加载，入口 JS 从 179.82 kB 降至 26.58 kB（约 -85%），首屏 CSS 从 128.56 kB 降至 9.38 kB
+- **更新弹窗延后挂载** — `WhatsNewPopup` 改为独立 lazy chunk，并仅在照片列表完成后通过 `requestIdleCallback(timeout=2000)+fallback` 调度挂载；`AuthenticatedApp` 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB），避免与首批照片请求争抢关键路径
 - **阅读进度条** — 视口最顶部一条渐变细条，随时间线滚动填充，提供即时空间定位感
 - **全局拖拽提示** — 向应用窗口拖入图片文件时触发全屏引导覆盖层，drop 后自动跳转文件夹视图
 - **键盘快捷键帮助面板** — 随时按 `?`（或点击 header 中 ⌨️）打开悬浮快捷键速查表；再按 Escape 或 `?` 关闭

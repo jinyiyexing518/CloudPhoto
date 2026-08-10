@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-whats-new-idle-deferred",
+  "date": "2026-08-10",
+  "icon": "⚡",
+  "title": "更新弹窗延后到空闲时段加载",
+  "type": "improvement",
+  "desc": "照片列表加载完成前不再挂载 WhatsNewPopup，也不会提前请求 changelog。",
+  "details": "AuthenticatedApp 将 WhatsNewPopup 改为 React.lazy 独立 chunk，并在 loading=false 后通过 requestIdleCallback({ timeout: 2000 }) + setTimeout fallback 调度挂载；loading 重新变为 true 或组件卸载会取消旧 idle 任务并阻止迟到挂载。构建结果新增 3.81 kB 的 WhatsNewPopup chunk，同时 AuthenticatedApp 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB）。",
+  "seq": 1786352400000
+}

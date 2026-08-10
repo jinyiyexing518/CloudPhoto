@@ -8,6 +8,8 @@ import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm"
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
+const loadWhatsNewPopup = () => import("./components/whats-new/WhatsNewPopup");
+const WhatsNewPopup = lazy(loadWhatsNewPopup);
 import { FilterState, emptyFilter, GridSize } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
 import WorkspaceFab from "./components/home/floating/WorkspaceFab";
@@ -16,7 +18,6 @@ const SettingsDialog = lazy(() => import("./components/settings/SettingsDialog")
 import { useAuth } from "./contexts/AuthContext";
 import { GroupProvider, useGroup } from "./contexts/GroupContext";
 import { useToast } from "./contexts/ToastContext";
-import WhatsNewPopup from "./components/whats-new/WhatsNewPopup";
 import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
@@ -29,6 +30,40 @@ const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPag
 
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
+const WHATS_NEW_IDLE_TIMEOUT_MS = 2_000;
+
+function scheduleIdleMount(task: () => void) {
+  let idleTaskHandle: number | null = null;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  let cancelled = false;
+
+  const runWhenCurrent = () => {
+    if (cancelled) return;
+    cancelled = true;
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+    task();
+  };
+
+  if (typeof window.requestIdleCallback === "function") {
+    idleTaskHandle = window.requestIdleCallback(() => {
+      runWhenCurrent();
+    }, { timeout: WHATS_NEW_IDLE_TIMEOUT_MS });
+  } else {
+    timeoutHandle = setTimeout(runWhenCurrent, 0);
+  }
+
+  return () => {
+    if (cancelled) return;
+    cancelled = true;
+    if (idleTaskHandle !== null && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(idleTaskHandle);
+    }
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  };
+}
 
 class UploadWorkspaceChangedError extends Error {
   constructor() {
@@ -293,6 +328,7 @@ function AppContent() {
   });
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -324,6 +360,8 @@ function AppContent() {
   // display:none until the user actually opens the tab.
   const [momentsMounted, setMomentsMounted] = useState(() => activeTab === "moments");
   const [dragFileCount, setDragFileCount] = useState(0);
+  const whatsNewMountRequest = useRef(0);
+  const cancelIdleWhatsNewMount = useRef<(() => void) | null>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [uploadTotalSize, setUploadTotalSize] = useState<string | null>(null);
   const [uploadPaused, setUploadPaused] = useState(false);
@@ -400,6 +438,25 @@ function AppContent() {
     window.addEventListener("scroll", handleScrollHide, { passive: true });
     return () => window.removeEventListener("scroll", handleScrollHide);
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    whatsNewMountRequest.current += 1;
+    const requestId = whatsNewMountRequest.current;
+    cancelIdleWhatsNewMount.current?.();
+    cancelIdleWhatsNewMount.current = null;
+    setShowWhatsNewPopup(false);
+    if (loading) return;
+
+    cancelIdleWhatsNewMount.current = scheduleIdleMount(() => {
+      if (whatsNewMountRequest.current !== requestId) return;
+      setShowWhatsNewPopup(true);
+    });
+
+    return () => {
+      cancelIdleWhatsNewMount.current?.();
+      cancelIdleWhatsNewMount.current = null;
+    };
+  }, [loading]);
   // Always show header when sidebar opens
   useEffect(() => { if (sidebarOpen) setHeaderHidden(false); }, [sidebarOpen]);
   useEffect(() => {
@@ -2171,7 +2228,7 @@ function AppContent() {
           aria-label="返回顶部"
         >顶部</button>
       )}
-      <WhatsNewPopup />
+      {showWhatsNewPopup && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}
     </div>
   );
 }

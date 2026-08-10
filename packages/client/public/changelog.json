@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-whats-new-idle-deferred",
+    "date": "2026-08-10",
+    "icon": "⚡",
+    "title": "更新弹窗延后到空闲时段加载",
+    "type": "improvement",
+    "desc": "照片列表加载完成前不再挂载 WhatsNewPopup，也不会提前请求 changelog。",
+    "details": "AuthenticatedApp 将 WhatsNewPopup 改为 React.lazy 独立 chunk，并在 loading=false 后通过 requestIdleCallback({ timeout: 2000 }) + setTimeout fallback 调度挂载；loading 重新变为 true 或组件卸载会取消旧 idle 任务并阻止迟到挂载。构建结果新增 3.81 kB 的 WhatsNewPopup chunk，同时 AuthenticatedApp 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB）。",
+    "seq": 1786352400000
+  },
+  {
     "id": "2026-08-10-media-fast-paths",
     "date": "2026-08-10",
     "icon": "⚡",
@@ -18,6 +28,16 @@
     "desc": "默认登录页不再下载完整注册表单，用户靠近或打开注册入口时才加载。",
     "details": "注册字段、密码校验和提交状态移入独立 RegisterForm chunk；注册 Tab hover、focus 和切换共享同一个预载 Promise，加载后在 Tab 往返时保持字段状态，提交仍会提前加载认证工作区。生产入口由 29,584 bytes 降至 27,476 bytes，本地入口由 28.48 kB 降至 26.58 kB，gzip 由 10.31 kB 降至 9.91 kB；PWA 首装预缓存降至 180.90 KiB。源码和构建契约防止注册逻辑回流登录首屏或预缓存。",
     "seq": 1786344563747
+  },
+  {
+    "id": "2026-08-10-pwa-install-entry",
+    "date": "2026-08-10",
+    "icon": "📲",
+    "title": "新增常驻应用安装入口",
+    "type": "fix",
+    "desc": "修复 PWA 安装事件早于照片空间加载时被丢失、已登录安装入口自动消失或难以发现的问题。",
+    "details": "登录页、已登录顶部栏、用户菜单和“设置 → 应用”现在始终提供“安装应用”入口。Chrome、Edge 和 Android 会打开原生安装确认；iOS Safari 显示“分享 → 添加到主屏幕”步骤；其他浏览器显示可执行的菜单指引。安装事件会在 React 挂载前缓存，取消后入口仍保留，安装完成或独立窗口运行时显示已安装状态。",
+    "seq": 1786344353487
   },
   {
     "id": "2026-08-10-photo-policy-boundary",
