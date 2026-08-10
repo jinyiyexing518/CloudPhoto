@@ -47,6 +47,9 @@ jobs:
       - name: Verify mobile layout and PWA metadata contracts
         run: yarn test:mobile-layout-contracts
 
+      - name: Verify workspace tab accessibility and contrast contracts
+        run: yarn test:workspace-tabs
+
       - name: Verify static cache contract
         run: yarn check:static-cache packages/client/public/staticwebapp.config.json packages/client/dist/staticwebapp.config.json
 
