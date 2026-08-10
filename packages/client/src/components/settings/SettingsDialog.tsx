@@ -1,4 +1,12 @@
-import { useState, useMemo, useCallback, useEffect, FormEvent, useRef } from "react";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  FormEvent,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useGroup } from "../../contexts/GroupContext";
 import {
@@ -14,6 +22,12 @@ import { copyText } from "../../services/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
 import type { PwaInstallOutcome } from "../../pwa/installPrompt";
+import {
+  focusElement,
+  handleModalKeyDown,
+  restoreFocus,
+} from "../shared/modalFocus";
+import { getSettingsCloseGuardMessage } from "./settingsCloseGuard";
 import {
   beginMaintenanceTask,
   createMaintenanceTask,
@@ -61,6 +75,7 @@ interface Props {
   initialFocusTarget?: SettingsFocusTarget;
   initialFocusItemId?: string;
   onInstallApp?: () => void;
+  restoreFocusTo?: HTMLElement | null;
   onMaintenanceStateChange?: (event: MaintenanceTaskEvent) => void;
   onTrashMutationStateChange?: (event: TrashMutationEvent) => void;
 }
@@ -75,6 +90,7 @@ export default function SettingsDialog({
   initialFocusTarget = "overview",
   initialFocusItemId,
   onInstallApp,
+  restoreFocusTo,
   onMaintenanceStateChange,
   onTrashMutationStateChange,
 }: Props) {
@@ -98,6 +114,9 @@ export default function SettingsDialog({
   const [tab, setTab] = useState<SettingsEntryTab>(initialTab);
   const settingsBodyRef = useRef<HTMLDivElement | null>(null);
   const settingsTabsRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const managedSharesRef = useRef<HTMLDivElement | null>(null);
   const diagnosticsRef = useRef<HTMLDivElement | null>(null);
   const managedShareItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -256,15 +275,21 @@ export default function SettingsDialog({
   };
 
   const handleProtectedClose = () => {
-    if (isTrashMutationActive(trashMutationRef.current)) {
-      showToast("回收站任务运行中，请先点击“停止任务”", "info");
-      return;
-    }
-    if (isMaintenanceTaskActive(maintenanceTaskRef.current)) {
-      showToast("维护任务运行中，请先点击“停止任务”", "info");
+    const guardMessage = getSettingsCloseGuardMessage({
+      maintenanceActive: isMaintenanceTaskActive(maintenanceTaskRef.current),
+      trashActive: isTrashMutationActive(trashMutationRef.current),
+    });
+    if (guardMessage) {
+      showToast(guardMessage, "info");
       return;
     }
     onClose();
+  };
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    handleModalKeyDown(event, dialog, document.activeElement, handleProtectedClose);
   };
 
   useEffect(() => {
@@ -291,6 +316,18 @@ export default function SettingsDialog({
           message: "设置已卸载，维护任务已停止。",
         });
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    previousFocusRef.current = restoreFocusTo ?? (
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    );
+    focusElement(closeButtonRef.current);
+
+    return () => {
+      restoreFocus(previousFocusRef.current);
+      previousFocusRef.current = null;
     };
   }, []);
 
@@ -474,11 +511,19 @@ export default function SettingsDialog({
 
   return (
     <div className="dialog-overlay" onClick={handleProtectedClose}>
-      <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="settings-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-dialog-title"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleDialogKeyDown}
+      >
         {/* Header */}
         <div className="settings-header">
-          <span>设置</span>
-          <button type="button" className="dialog-close-btn" onClick={handleProtectedClose} aria-label="关闭设置">✕</button>
+          <span id="settings-dialog-title">设置</span>
+          <button ref={closeButtonRef} type="button" className="dialog-close-btn" onClick={handleProtectedClose} aria-label="关闭设置">✕</button>
         </div>
 
         {/* Tab bar */}

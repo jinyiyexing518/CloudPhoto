@@ -7,7 +7,7 @@ import {
   handleModalKeyDown,
   restoreFocus,
   type ModalTimerHandles,
-} from "./modalFocus";
+} from "../shared/modalFocus";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });

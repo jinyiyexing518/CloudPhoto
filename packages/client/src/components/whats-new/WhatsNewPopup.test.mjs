@@ -7,7 +7,7 @@ const componentSource = readFileSync(
   "utf8",
 );
 
-const modalFocus = import("./modalFocus.ts");
+const modalFocus = import("../shared/modalFocus.ts");
 
 class FakeElement {
   constructor(name, { connected = true } = {}) {

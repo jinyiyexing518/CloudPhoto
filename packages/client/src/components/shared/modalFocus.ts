@@ -86,7 +86,7 @@ export function handleModalKeyDown(
   container: FocusContainer,
   activeElement: EventTarget | null,
   dismiss: () => void,
-  pin: () => void,
+  pin: () => void = () => undefined,
 ): boolean {
   event.stopPropagation();
   if (event.key === "Escape") {

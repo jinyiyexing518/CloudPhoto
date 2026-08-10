@@ -87,10 +87,10 @@ requireText(app, "window.requestIdleCallback(", "whats-new idle scheduling");
 requireText(app, "{ timeout: WHATS_NEW_IDLE_TIMEOUT_MS }", "whats-new idle timeout option");
 requireText(app, "window.cancelIdleCallback(idleTaskHandle);", "whats-new idle cancellation");
 requireText(app, "setTimeout(runWhenCurrent, 0);", "whats-new idle fallback");
-requireText(app, "if (loading) return;", "whats-new loading gate");
+requireText(app, "if (loading || showSettings) return;", "whats-new loading and Settings gate");
 requireText(app, "setShowWhatsNewPopup(false);", "whats-new loading reset");
 requireText(app, "if (whatsNewMountRequest.current !== requestId) return;", "whats-new stale task guard");
-requireText(app, "{showWhatsNewPopup && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}", "whats-new lazy mount");
+requireText(app, "{showWhatsNewPopup && !showSettings && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}", "whats-new lazy modal-safe mount");
 assert(
   !authGate.includes("function AppContent()"),
   "the authenticated workspace must not ship in the login entry bundle",

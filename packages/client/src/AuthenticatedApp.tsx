@@ -4,6 +4,7 @@ import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgres
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
+import { isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
@@ -291,6 +292,7 @@ function AppContent() {
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const settingsRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsEntryTab>("profile");
   const [settingsFocusTarget, setSettingsFocusTarget] = useState<SettingsFocusTarget>("overview");
@@ -314,6 +316,7 @@ function AppContent() {
   const scrollHideRef = useRef(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const userAvatarButtonRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -562,7 +565,7 @@ function AppContent() {
     cancelIdleWhatsNewMount.current?.();
     cancelIdleWhatsNewMount.current = null;
     setShowWhatsNewPopup(false);
-    if (loading) return;
+    if (loading || showSettings) return;
 
     cancelIdleWhatsNewMount.current = scheduleIdleMount(() => {
       if (whatsNewMountRequest.current !== requestId) return;
@@ -573,7 +576,7 @@ function AppContent() {
       cancelIdleWhatsNewMount.current?.();
       cancelIdleWhatsNewMount.current = null;
     };
-  }, [loading]);
+  }, [loading, showSettings]);
   // Always show header when sidebar opens
   useEffect(() => { if (sidebarOpen) setHeaderHidden(false); }, [sidebarOpen]);
   useEffect(() => {
@@ -1053,8 +1056,7 @@ function AppContent() {
   // Keyboard shortcuts: R=refresh, ?=help, 1/2/3=tabs, S=sidebar, Backspace=clear, Esc=close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as Element)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!isGlobalShortcutEligible(e, document)) return;
       if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         if (blockIfTransferring()) return;
@@ -1660,10 +1662,19 @@ function AppContent() {
   };
 
   const openSettingsTab = (tab: SettingsEntryTab, focusTarget: SettingsFocusTarget = "overview", focusItemId?: string) => {
+    settingsRestoreFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setSettingsInitialTab(tab);
     setSettingsFocusTarget(focusTarget);
     setSettingsFocusItemId(focusItemId);
     setShowSettings(true);
+  };
+
+  const openSettingsFromUserMenu = () => {
+    settingsRestoreFocusRef.current = userAvatarButtonRef.current;
+    setShowSettings(true);
+    setUserMenuOpen(false);
   };
 
   const jumpToTimelinePhoto = (photoName: string, nextFilters?: Partial<FilterState>) => {
@@ -1797,6 +1808,7 @@ function AppContent() {
         {/* ── Avatar user-menu ── */}
         <div className="user-avatar-wrap" ref={userMenuRef}>
           <button
+            ref={userAvatarButtonRef}
             className={`user-avatar-btn${user?.role === "admin" ? " user-avatar-btn--admin" : ""}`}
             onClick={() => setUserMenuOpen((v) => !v)}
             aria-haspopup="true"
@@ -1815,7 +1827,7 @@ function AppContent() {
                   {user?.role === "admin" && <span className="role-badge">Admin</span>}
                 </div>
               </div>
-              <button className="user-menu-item" onClick={() => { setShowSettings(true); setUserMenuOpen(false); }}>
+              <button className="user-menu-item" onClick={openSettingsFromUserMenu}>
                 <span className="user-menu-item-icon">⚙️</span> 设置
               </button>
               <button
@@ -1858,6 +1870,7 @@ function AppContent() {
           initialFocusTarget={settingsFocusTarget}
           initialFocusItemId={settingsFocusItemId}
           onInstallApp={() => void handleInstallApp()}
+          restoreFocusTo={settingsRestoreFocusRef.current}
           onMaintenanceStateChange={handleMaintenanceStateChange}
           onTrashMutationStateChange={handleTrashMutationStateChange}
         /></Suspense>
@@ -2435,7 +2448,7 @@ function AppContent() {
           aria-label="返回顶部"
         >顶部</button>
       )}
-      {showWhatsNewPopup && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}
+      {showWhatsNewPopup && !showSettings && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}
     </div>
   );
 }
