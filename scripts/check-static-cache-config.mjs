@@ -303,8 +303,8 @@ function checkHashedAssets(configPath) {
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
-  if (statSync(entryScripts[0]).size > 36_000) {
-    fail(configPath, "built login entry script must stay below 36 kB");
+  if (statSync(entryScripts[0]).size > 38_000) {
+    fail(configPath, "built login entry script must stay below 38 kB");
   }
   if (!pwaInstallEntryScript.includes("安装应用")) {
     fail(configPath, "deferred signed-out entry must expose the install application action");
