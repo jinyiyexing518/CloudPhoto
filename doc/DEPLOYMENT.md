@@ -20,6 +20,14 @@
 - 前端 Vite 配置使用 `.mts` ESM 入口并从 `import.meta.url` 解析源码别名；构建后的静态契约会拒绝旧 `.ts` 配置或 CommonJS `__dirname` 回归
 - 共享算法触发面严格限定为 `packages/algorithm/src/**`、`package.json` 和 `tsconfig.json`；README 等不会改变部署产物的文件不触发生产重建
 
+### 跨部署静态资产保留
+
+前端构建后、SWA upload 前执行 `scripts/deployment-assets.mjs`。脚本从 Azure 直连入口读取 `deployment-assets.json`，只接受 `assets/*-<hash>.js|css`，逐项验证字节数与 SHA-256 后复制到新 `dist`。代次 ID 由 commit SHA、GitHub run ID 和 attempt 组成，保证同一 commit 重跑时前一构建的精确 hash 仍按独立代次保留。当前代排在首位，最多保留 24 个完整代次和 64 MiB 唯一 JS/CSS；达到任一上限即从最旧完整代次开始淘汰，不保留 source map，也不允许路径碰撞、摘要漂移或无限累积。
+
+`packages/client/deployment-retention.json` 是唯一策略源。`revokedGenerationIds` 使用 `deployment-assets.json` 中的精确代次 ID 做安全回滚：历史代次会立即排除，若当前发布代次自身被撤销则部署直接失败。首次上线时线上 manifest 尚不存在，workflow 使用 `fetch-depth: 50` 并从 policy 固定的历史 commit 只重建 `bootstrapGenerationAssets` 明列的迁移资源；当前唯一条目是自然生成且与实证请求一致的 `AuthenticatedApp-BkGhvsE_.css`，不是旧 hash alias。受 build timestamp 影响的重建 JS 不进入 bootstrap；首轮之后历史 JS/CSS 都从线上读取原始字节。
+
+该保留层是旧客户端的必要恢复面：旧 active Service Worker 可能继续返回缓存的 `index.html`/入口 JS，根本不会执行当前 `deploymentRecovery.ts`。只要其代次仍在窗口内，新标签即可加载旧 app shell 的精确 lazy JS/CSS，waiting worker 保持 waiting，不强制接管其他标签或 PWA。超过窗口后的可信同源 chunk 失败才进入客户端一次性恢复；离线、`sessionStorage` 不可用或上传/下载/删除/语音/批量/回收站/维护/文件夹重命名进行中时自动刷新保持关闭。
+
 ### 上传内存与并发边界
 
 `uploadPhoto` 在 `request.arrayBuffer()` 前检查 `Content-Length`，声明超出图片 20 MiB / 视频 200 MiB 时立即返回 413，缺失返回 411、非法返回 400；读取后再次校验真实字节数不超限且与声明一致。每个 Node Function 实例内有一个异常安全的加权准入器：
@@ -146,7 +154,7 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 
 `/healthz` 在新版 Nginx 中直接返回 `cloudphoto-proxy`。前端也部署一个 `cloudphoto-frontend` JSON 兜底；直达 SWA 时客户端继续使用 Azure API，旧 Nginx 反代该 fallback 时则通过同源响应的 Nginx `Server` 标识确认 `/api` 仍可用。生产 smoke 接受两个入口标识并继续独立检查 API。
 
-前端缓存与全局响应头由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。全局安全基线要求 `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`、`X-Frame-Options: SAMEORIGIN`、`Content-Security-Policy: frame-ancestors 'self'`、`X-Content-Type-Options: nosniff` 和 `Referrer-Policy: same-origin`，使 SWA 直连与 Nginx 主域都拒绝第三方页面嵌入；CSP 仅约束 framing，不限制脚本、图片、地图或 API 连接。`.webmanifest` 必须显式映射为 `application/manifest+json`，否则 SWA 会返回 `application/octet-stream`，在 `nosniff` 下无法可靠安装 PWA。manifest 固定使用根路径 `id`、`zh-CN` 语言以及 192/512 PNG 图标，另提供 512px maskable PNG；iOS 主屏幕入口使用独立 180px `apple-touch-icon.png`。构建契约会检查这些响应头、字段、用途、文件格式和实际像素尺寸；生产 smoke 要求 SWA 默认域名只返回 canonical HSTS，并要求 `cloudphotos.top` 的第一个 effective HSTS 为 canonical。Nginx 前端代理模板隐藏 SWA 的 HSTS、X-Content-Type-Options 与 X-Frame-Options 后再使用本地安全头，避免重复响应头；仓库变更不会自动热加载到 VM，必须按上文手动部署。未热加载期间首值已 canonical、尾部仍是旧本地值属于不阻断浏览器策略的 drift，但仍应手动部署模板以消除重复，且不得宣称 VM 已更新。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
+前端缓存与全局响应头由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、部署资产 manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。`navigationFallback` 必须排除 `/assets/*`，全局 404 rewrite 固定返回 `404.json` 并保留 404；`.js`/`.css` MIME 显式映射，缺失 hashed asset 不得伪装成 200/404 HTML。Nginx `/` location 未启用 `proxy_intercept_errors` 或本地 `try_files`，因此主域原样透传 SWA 的 404、JSON MIME 与正文。全局安全基线要求 `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`、`X-Frame-Options: SAMEORIGIN`、`Content-Security-Policy: frame-ancestors 'self'`、`X-Content-Type-Options: nosniff` 和 `Referrer-Policy: same-origin`，使 SWA 直连与 Nginx 主域都拒绝第三方页面嵌入；CSP 仅约束 framing，不限制脚本、图片、地图或 API 连接。`.webmanifest` 必须显式映射为 `application/manifest+json`，否则 SWA 会返回 `application/octet-stream`，在 `nosniff` 下无法可靠安装 PWA。manifest 固定使用根路径 `id`、`zh-CN` 语言以及 192/512 PNG 图标，另提供 512px maskable PNG；iOS 主屏幕入口使用独立 180px `apple-touch-icon.png`。构建契约会检查这些响应头、字段、用途、文件格式和实际像素尺寸；生产 smoke 要求 SWA 默认域名只返回 canonical HSTS，并要求 `cloudphotos.top` 的第一个 effective HSTS 为 canonical。Nginx 前端代理模板隐藏 SWA 的 HSTS、X-Content-Type-Options 与 X-Frame-Options 后再使用本地安全头，避免重复响应头；仓库变更不会自动热加载到 VM，必须按上文手动部署。未热加载期间首值已 canonical、尾部仍是旧本地值属于不阻断浏览器策略的 drift，但仍应手动部署模板以消除重复，且不得宣称 VM 已更新。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
 
 ### 部署后更新 GitHub Secret
 
@@ -175,7 +183,7 @@ https://cloudphoto-api.azurewebsites.net/api
 
 `.github/workflows/production-health.yml` 在前端或后端 workflow 完成后运行，并每 30 分钟定时检查一次。`workflow_run` 使用稳定的 workflow 文件路径识别前后端部署，不依赖会被自定义 `run-name` 覆盖的名称；并发分组、事件分类、SHA marker gate 和报告使用同一身份。该路径先在隔离的 controller checkout 中读取当前 canonical classifier；classifier 使用事件的 run ID 与 `run_attempt` 调用 attempt-specific jobs API，不能因重跑复用 run ID 而混合不同 attempt 的 conclusion 与 jobs。Frontend 只有该 attempt 的 `Deploy production` job 确实 started 才被视为部署，validation、build-before-deploy failure 和 Azure 前 coalesce 都不会伪造生产红灯。分类通过后，部署 SHA、报告文本和 `.deployment` checkout ref 均固定使用 `github.event.workflow_run.head_sha`，禁止以健康 workflow 的 `github.sha` 或已经前移的当前 `main` 代替实际部署版本。
 
-网络检查前会从该 deployed revision 执行 workflow/runtime、production smoke 和安全头契约。`scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、manifest MIME/身份/语言/PNG 安装字段、180px Apple Touch PNG、未登录认证状态和更新日志 JSON 契约，并检查主域 `/healthz`。每次前端 production build 还会写入只含 commit SHA 的 `deployment.json`；SWA 对它返回 `Cache-Control: no-store`，controller-owned identity smoke 使用 cache-busting query 要求主域与 SWA 直连 marker 都精确等于 triggering SHA。普通轮次并行执行 11 个检查，Frontend deployed-SHA full smoke 增加两条 marker 检查；结果按固定顺序输出，跨轮仍串行重试。
+网络检查前会从该 deployed revision 执行 workflow/runtime、production smoke 和安全头契约。`scripts/production-smoke.mjs` 同时验证 `cloudphotos.top` 与 Azure 直连前端/API 的首页 HTML、manifest MIME/身份/语言/PNG 安装字段、180px Apple Touch PNG、未登录认证状态和更新日志 JSON 契约，并检查主域 `/healthz`。两个入口还分别请求随机缺失的 hashed JS 与 CSS，必须收到 404 JSON 且正文不得是 HTML。每次前端 production build 还会写入只含 commit SHA 的 `deployment.json`；SWA 对它返回 `Cache-Control: no-store`，controller-owned identity smoke 使用 cache-busting query 要求主域与 SWA 直连 marker 都精确等于 triggering SHA。普通轮次并行执行 15 个检查，Frontend deployed-SHA full smoke 增加两条 marker 检查；结果按固定顺序输出，跨轮仍串行重试。
 
 canonical Frontend、Frontend non-deployment、Backend 和定时/手动检查使用隔离的 concurrency group；较新的同类成功检查可以取代陈旧检查，但真实失败与 Frontend non-deployment 按 triggering run ID + attempt 隔离，不会被同一 run 的重跑或后续成功事件取消。按 10 秒请求超时、8 轮和 15 秒轮次间隔计算，最坏检查时长为 185 秒（不含 runner setup），低于 workflow 的 10 分钟上限。部署成功但传播尚未完成时，检查使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
 

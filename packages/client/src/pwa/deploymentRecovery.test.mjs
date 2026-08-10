@@ -295,6 +295,50 @@ test("blocked session storage never permits an unbounded automatic refresh", asy
   assert.equal(fixture.coordinator.getState().primaryActionLabel, "刷新新版");
 });
 
+test("blocked sessionStorage getter fails closed before React startup", async () => {
+  const source = await import("./deploymentRecovery.ts");
+  const target = new EventTarget();
+  Object.defineProperties(target, {
+    location: {
+      value: {
+        href: "https://cloudphotos.top/",
+        origin: "https://cloudphotos.top",
+        replace() {},
+      },
+    },
+    navigator: { value: { onLine: true } },
+    history: { value: { state: null, replaceState() {} } },
+    sessionStorage: {
+      get() {
+        throw new DOMException("Storage blocked", "SecurityError");
+      },
+    },
+  });
+
+  assert.doesNotThrow(() => source.installDeploymentRecovery(target, "test-build"));
+  assert.equal(
+    source.reportLazyBoundaryFailure(
+      new Error("Unable to preload CSS for /assets/AuthenticatedApp-blocked1.css"),
+    ),
+    true,
+  );
+  await flushRecovery();
+  assert.equal(source.getDeploymentRecoveryState().status, "exhausted");
+});
+
+test("blocked storage removal cannot escape recovery intent consumption", () => {
+  const blocked = {
+    getItem() {
+      throw new DOMException("Storage blocked", "SecurityError");
+    },
+    removeItem() {
+      throw new DOMException("Storage blocked", "SecurityError");
+    },
+  };
+  assert.doesNotThrow(() => consumeDeploymentRecoveryIntent(blocked));
+  assert.equal(consumeDeploymentRecoveryIntent(blocked), null);
+});
+
 test("recovery intent restores only an allowlisted tab and never stores workspace or tokens", () => {
   const storage = new MemoryStorage();
   storage.setItem("cf_deployment_recovery_intent_v1", JSON.stringify({

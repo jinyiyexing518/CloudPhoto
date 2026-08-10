@@ -45,6 +45,8 @@ jobs:
   assert.deepEqual(inspected.contractInvocations, [
     ".github/workflows/example.yml",
   ]);
+  assert.deepEqual(inspected.checkoutFetchDepths, []);
+  assert.ok(inspected.runCommands.includes("node scripts/check-workflow-runtime-contracts.mjs"));
 });
 
 test("reports active deprecated action and runtime values", () => {
@@ -844,4 +846,33 @@ test("requires frontend gate script changes to trigger frontend validation", () 
       issue.includes("must include frontend gate path scripts/auth-layout-cdp.mjs")
     )
   );
+});
+
+test("reads checkout depth and rejects a frontend deploy without retention gates", () => {
+  const inspected = inspectWorkflow(`
+jobs:
+  deploy:
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 50
+      - run: node scripts/deployment-assets.mjs
+`, ".github/workflows/deploy-frontend.yml");
+  assert.deepEqual(inspected.checkoutFetchDepths, [{
+    path: ".github/workflows/deploy-frontend.yml",
+    depth: "50",
+  }]);
+  assert.ok(inspected.runCommands.includes("node scripts/deployment-assets.mjs"));
+
+  const result = checkWorkflowRuntimeContracts([{
+    path: ".github/workflows/deploy-frontend.yml",
+    text: `
+jobs:
+  deploy:
+    steps:
+      - uses: actions/checkout@v5
+`,
+  }]);
+  assert.ok(result.issues.some((issue) => issue.includes("bounded deployment assets")));
+  assert.ok(result.issues.some((issue) => issue.includes("browser contracts")));
 });

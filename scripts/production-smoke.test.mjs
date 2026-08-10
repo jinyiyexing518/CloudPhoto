@@ -80,6 +80,10 @@ function testEnvironment(origin) {
     PRODUCTION_MANIFEST_URL: `${origin}/primary/manifest.webmanifest`,
     PRODUCTION_AZURE_HOME_URL: `${origin}/azure`,
     PRODUCTION_AZURE_MANIFEST_URL: `${origin}/azure/manifest.webmanifest`,
+    PRODUCTION_MISSING_JS_URL: `${origin}/primary/assets/missing-deadbeef.js`,
+    PRODUCTION_MISSING_CSS_URL: `${origin}/primary/assets/missing-deadbeef.css`,
+    PRODUCTION_AZURE_MISSING_JS_URL: `${origin}/azure/assets/missing-deadbeef.js`,
+    PRODUCTION_AZURE_MISSING_CSS_URL: `${origin}/azure/assets/missing-deadbeef.css`,
     PRODUCTION_APPLE_TOUCH_ICON_URL: `${origin}/primary/apple-touch-icon.png`,
     PRODUCTION_AZURE_APPLE_TOUCH_ICON_URL: `${origin}/azure/apple-touch-icon.png`,
     PRODUCTION_AUTH_ME_URL: `${origin}/primary/api/auth/me`,
@@ -132,6 +136,26 @@ test("builds primary and Azure checks from base URL overrides", () => {
         target: "azure",
         name: "manifest",
         url: "https://frontend.example/manifest.webmanifest",
+      },
+      {
+        target: "primary",
+        name: "missing-js-asset",
+        url: "https://primary.example/assets/__cloudphoto_missing_asset__-deadbeef.js",
+      },
+      {
+        target: "primary",
+        name: "missing-css-asset",
+        url: "https://primary.example/assets/__cloudphoto_missing_asset__-deadbeef.css",
+      },
+      {
+        target: "azure",
+        name: "missing-js-asset",
+        url: "https://frontend.example/assets/__cloudphoto_missing_asset__-deadbeef.js",
+      },
+      {
+        target: "azure",
+        name: "missing-css-asset",
+        url: "https://frontend.example/assets/__cloudphoto_missing_asset__-deadbeef.css",
       },
       {
         target: "primary",
@@ -469,6 +493,33 @@ test("rejects a proxy health route that falls through to the SPA", async () => {
   );
 });
 
+test("rejects missing hashed assets that are successful or disguised as HTML", async () => {
+  const missingAssetCheck = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+  }).find(({ target, name }) => (
+    target === "primary" && name === "missing-css-asset"
+  ));
+  assert(missingAssetCheck);
+
+  await assert.rejects(
+    missingAssetCheck.validate(new Response("<!doctype html><title>App</title>", {
+      status: 404,
+      headers: { "content-type": "text/html" },
+    })),
+    /unsafe MIME/,
+  );
+  await assert.rejects(
+    missingAssetCheck.validate(Response.json({ error: "not_found" })),
+    /expected 404/,
+  );
+  await assert.doesNotReject(
+    missingAssetCheck.validate(Response.json(
+      { error: "not_found" },
+      { status: 404 },
+    )),
+  );
+});
+
 test("passes the primary and Azure production contracts with timings", async () => {
   await withServer(
     (request, response) => {
@@ -481,6 +532,9 @@ test("passes the primary and Azure production contracts with timings", async () 
       } else if (request.url?.endsWith("/manifest.webmanifest")) {
         response.writeHead(200, { "content-type": "application/manifest+json" });
         response.end(INSTALLABLE_MANIFEST);
+      } else if (request.url?.includes("/assets/missing-deadbeef.")) {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end('{"error":"not_found"}');
       } else if (request.url?.endsWith("/apple-touch-icon.png")) {
         response.writeHead(200, { "content-type": "image/png" });
         response.end(APPLE_TOUCH_ICON);
@@ -507,7 +561,7 @@ test("passes the primary and Azure production contracts with timings", async () 
       assert.equal(passed, true);
       assert.equal(
         messages.output.filter((message) => message.startsWith("PASS ")).length,
-        11
+        15
       );
       assert.ok(
         messages.output.some((message) =>
@@ -536,6 +590,9 @@ test("retries and fails when either changelog response is not an array", async (
       } else if (request.url?.endsWith("/manifest.webmanifest")) {
         response.writeHead(200, { "content-type": "application/manifest+json" });
         response.end(INSTALLABLE_MANIFEST);
+      } else if (request.url?.includes("/assets/missing-deadbeef.")) {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end('{"error":"not_found"}');
       } else if (request.url?.endsWith("/apple-touch-icon.png")) {
         response.writeHead(200, { "content-type": "image/png" });
         response.end(APPLE_TOUCH_ICON);
@@ -599,6 +656,9 @@ test("runs all checks concurrently and reports an isolated failure in order", as
         { headers: { "content-type": "application/manifest+json" } },
       );
     }
+    if (url.includes("/assets/missing-deadbeef.")) {
+      return Response.json({ error: "not_found" }, { status: 404 });
+    }
     if (url.endsWith("/apple-touch-icon.png")) {
       return new Response(APPLE_TOUCH_ICON, {
         headers: { "content-type": "image/png" },
@@ -625,8 +685,8 @@ test("runs all checks concurrently and reports an isolated failure in order", as
   });
 
   assert.equal(passed, false);
-  assert.equal(maxInFlight, 11);
-  assert.equal(completed, 11);
+  assert.equal(maxInFlight, 15);
+  assert.equal(completed, 15);
   assert.deepEqual(
     messages.output
       .filter((message) => /^(PASS|FAIL) /.test(message))
@@ -637,6 +697,10 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       "azure homepage",
       "primary manifest",
       "azure manifest",
+      "primary missing-js-asset",
+      "primary missing-css-asset",
+      "azure missing-js-asset",
+      "azure missing-css-asset",
       "primary apple-touch-icon",
       "azure apple-touch-icon",
       "primary auth/me",
@@ -645,7 +709,7 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       "azure changelogs",
     ]
   );
-  assert.match(messages.output[10], /^FAIL azure changelogs:/);
+  assert.match(messages.output[14], /^FAIL azure changelogs:/);
   assert.match(
     messages.output.at(-1),
     /Production smoke checks failed after 1 attempts:/

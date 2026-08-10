@@ -143,6 +143,20 @@ async function validateManifest(response) {
   }
 }
 
+async function validateMissingAsset(response) {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const body = await response.text();
+  if (response.status !== 404) {
+    throw new Error(`expected 404, received ${response.status}`);
+  }
+  if (!contentType.includes("application/json") || contentType.includes("text/html")) {
+    throw new Error(`missing asset response has unsafe MIME ${contentType || "(missing)"}`);
+  }
+  if (/<(?:!doctype\s+html|html)\b/i.test(body)) {
+    throw new Error("missing asset response fell through to an HTML document");
+  }
+}
+
 function validatePngIcon(expectedWidth, expectedHeight) {
   return async (response) => {
     if (response.status !== 200) {
@@ -294,6 +308,38 @@ export function createChecks(env = process.env) {
         env.PRODUCTION_AZURE_MANIFEST_URL ??
         new URL("/manifest.webmanifest", azureFrontendUrl).href,
       validate: validateManifest,
+    },
+    {
+      target: "primary",
+      name: "missing-js-asset",
+      url:
+        env.PRODUCTION_MISSING_JS_URL
+        ?? new URL("/assets/__cloudphoto_missing_asset__-deadbeef.js", primaryBaseUrl).href,
+      validate: validateMissingAsset,
+    },
+    {
+      target: "primary",
+      name: "missing-css-asset",
+      url:
+        env.PRODUCTION_MISSING_CSS_URL
+        ?? new URL("/assets/__cloudphoto_missing_asset__-deadbeef.css", primaryBaseUrl).href,
+      validate: validateMissingAsset,
+    },
+    {
+      target: "azure",
+      name: "missing-js-asset",
+      url:
+        env.PRODUCTION_AZURE_MISSING_JS_URL
+        ?? new URL("/assets/__cloudphoto_missing_asset__-deadbeef.js", azureFrontendUrl).href,
+      validate: validateMissingAsset,
+    },
+    {
+      target: "azure",
+      name: "missing-css-asset",
+      url:
+        env.PRODUCTION_AZURE_MISSING_CSS_URL
+        ?? new URL("/assets/__cloudphoto_missing_asset__-deadbeef.css", azureFrontendUrl).href,
+      validate: validateMissingAsset,
     },
     {
       target: "primary",

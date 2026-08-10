@@ -41,6 +41,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 50
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -63,6 +65,14 @@ jobs:
         env:
           # Full URL of the Azure Function App, e.g. https://cloudphoto-api.azurewebsites.net/api
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+
+      - name: Retain bounded deployment assets
+        run: node scripts/deployment-assets.mjs --dist packages/client/dist --generation "$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --source https://brave-sand-053b07a00.7.azurestaticapps.net --policy packages/client/deployment-retention.json
+        env:
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+
+      - name: Verify stale deployment browser contracts
+        run: node --test --test-force-exit scripts/deployment-asset-retention.test.mjs scripts/stale-deployment-browser.test.mjs
 
       - name: Record deployment identity
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')

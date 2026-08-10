@@ -44,14 +44,16 @@ interface RecoveryNavigationIntent {
 interface RecoveryTarget extends EventTarget {
   location?: Location;
   navigator?: Navigator;
-  sessionStorage?: Storage;
+  sessionStorage?: RecoveryStorage;
   history?: History;
   __CF_HARD_REFRESH__?: () => void;
 }
 
+type RecoveryStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
 interface CoordinatorOptions {
   target: EventTarget;
-  storage: Storage;
+  storage: RecoveryStorage | null;
   buildId: string;
   origin: string;
   isOnline: () => boolean;
@@ -73,6 +75,18 @@ const IDLE_STATE: DeploymentRecoveryState = {
   status: "idle",
   message: "",
 };
+
+function manualRecoveryState(
+  status: Exclude<DeploymentRecoveryStatus, "idle" | "recovering">,
+  message: string,
+): DeploymentRecoveryState {
+  return {
+    status,
+    message,
+    primaryActionLabel: "刷新新版",
+    secondaryActionLabel: "稍后重试",
+  };
+}
 
 function errorText(value: unknown): string {
   if (value instanceof Error) return value.message;
@@ -148,7 +162,8 @@ export function classifyDeploymentChunkFailure(
   return null;
 }
 
-function readRecord(storage: Storage): RecoveryRecord {
+function readRecord(storage: RecoveryStorage | null): RecoveryRecord {
+  if (!storage) return { attempts: [], chunks: [] };
   try {
     const parsed = JSON.parse(storage.getItem(RECOVERY_STORAGE_KEY) ?? "{}") as Partial<RecoveryRecord>;
     return {
@@ -165,7 +180,8 @@ function readRecord(storage: Storage): RecoveryRecord {
   }
 }
 
-function writeRecord(storage: Storage, record: RecoveryRecord): boolean {
+function writeRecord(storage: RecoveryStorage | null, record: RecoveryRecord): boolean {
+  if (!storage) return false;
   try {
     storage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify({
       attempts: record.attempts.slice(-8),
@@ -183,7 +199,8 @@ function safeIntent(intent: RecoveryNavigationIntent | null | undefined): Recove
   return { activeTab: intent.activeTab };
 }
 
-function saveIntent(storage: Storage, intent: RecoveryNavigationIntent): void {
+function saveIntent(storage: RecoveryStorage | null, intent: RecoveryNavigationIntent): void {
+  if (!storage) return;
   try {
     storage.setItem(RECOVERY_INTENT_KEY, JSON.stringify(intent));
   } catch (error) {
@@ -199,7 +216,11 @@ export function consumeDeploymentRecoveryIntent(
     storage.removeItem(RECOVERY_INTENT_KEY);
     return safeIntent(parsed);
   } catch (error) {
-    storage.removeItem(RECOVERY_INTENT_KEY);
+    try {
+      storage.removeItem(RECOVERY_INTENT_KEY);
+    } catch {
+      // The caller already receives a fail-closed null intent.
+    }
     console.error("[DeploymentRecovery] Cannot restore navigation intent:", error);
     return null;
   }
@@ -221,21 +242,11 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
     if (disposed || recoveryInFlight) return;
     const dangerousOperation = options.getDangerousOperationSnapshot();
     if (dangerousOperation.active) {
-      setState({
-        status: "blocked-operation",
-        message: "新版资源已发布，当前操作完成后刷新",
-        primaryActionLabel: "刷新新版",
-        secondaryActionLabel: "稍后重试",
-      });
+      setState(manualRecoveryState("blocked-operation", "新版资源已发布，当前操作完成后刷新"));
       return;
     }
     if (!options.isOnline()) {
-      setState({
-        status: "blocked-offline",
-        message: "新版资源已发布，联网后将刷新",
-        primaryActionLabel: "刷新新版",
-        secondaryActionLabel: "稍后重试",
-      });
+      setState(manualRecoveryState("blocked-offline", "新版资源已发布，联网后将刷新"));
       return;
     }
 
@@ -252,12 +263,7 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
         || record.chunks.includes(failure.fingerprint)
       )
     ) {
-      setState({
-        status: "exhausted",
-        message: "新版资源仍未加载，请刷新新版或稍后重试。",
-        primaryActionLabel: "刷新新版",
-        secondaryActionLabel: "稍后重试",
-      });
+      setState(manualRecoveryState("exhausted", "新版资源仍未加载，请刷新新版或稍后重试。"));
       return;
     }
 
@@ -273,12 +279,7 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
     const latestDangerousOperation = options.getDangerousOperationSnapshot();
     if (latestDangerousOperation.active) {
       recoveryInFlight = false;
-      setState({
-        status: "blocked-operation",
-        message: "新版资源已发布，当前操作完成后刷新",
-        primaryActionLabel: "刷新新版",
-        secondaryActionLabel: "稍后重试",
-      });
+      setState(manualRecoveryState("blocked-operation", "新版资源已发布，当前操作完成后刷新"));
       return;
     }
     if (!manual && failure && attemptId) {
@@ -288,12 +289,7 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
       });
       if (!persisted) {
         recoveryInFlight = false;
-        setState({
-          status: "exhausted",
-          message: "无法安全自动刷新，请选择刷新新版或稍后重试。",
-          primaryActionLabel: "刷新新版",
-          secondaryActionLabel: "稍后重试",
-        });
+        setState(manualRecoveryState("exhausted", "无法安全自动刷新，请选择刷新新版或稍后重试。"));
         return;
       }
     }
@@ -372,15 +368,27 @@ function clearRecoveryQuery(target: RecoveryTarget): void {
   target.history.replaceState(target.history.state, "", url.toString());
 }
 
-export function installDeploymentRecovery(target: RecoveryTarget = window): void {
+function recoveryStorage(target: RecoveryTarget): RecoveryStorage | null {
+  try {
+    return target.sessionStorage ?? sessionStorage;
+  } catch (error) {
+    console.error("[DeploymentRecovery] Storage unavailable:", error);
+    return null;
+  }
+}
+
+export function installDeploymentRecovery(
+  target: RecoveryTarget = window,
+  buildId = `${__APP_VERSION__}:${__APP_BUILD_TIME__}`,
+): void {
   if (installedCoordinator) return;
   clearRecoveryQuery(target);
   target.__CF_HARD_REFRESH__ = () => hardRefreshLocation(target);
-  const storage = target.sessionStorage ?? sessionStorage;
+  const storage = recoveryStorage(target);
   installedCoordinator = createDeploymentRecoveryCoordinator({
     target,
     storage,
-    buildId: `${__APP_VERSION__}:${__APP_BUILD_TIME__}`,
+    buildId,
     origin: target.location?.origin ?? window.location.origin,
     isOnline: () => target.navigator?.onLine !== false,
     getDangerousOperationSnapshot,

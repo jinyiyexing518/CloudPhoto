@@ -1,0 +1,13 @@
+{
+  "maxGenerations": 24,
+  "maxBytes": 67108864,
+  "bootstrapGenerationRefs": [
+    "ebd80d1b2bbe0ffca11f9c1fe56dfe1279657ef2"
+  ],
+  "bootstrapGenerationAssets": {
+    "ebd80d1b2bbe0ffca11f9c1fe56dfe1279657ef2": [
+      "assets/AuthenticatedApp-BkGhvsE_.css"
+    ]
+  },
+  "revokedGenerationIds": []
+}

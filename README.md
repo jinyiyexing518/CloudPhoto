@@ -163,7 +163,7 @@ SWA 与 Nginx 模板统一使用 `Strict-Transport-Security: max-age=31536000; i
 - **激活筛选指示点** — 任意筛选激活时时间线页签标签上出现橙色小点
 - **空相册首次引导** — 空间无照片时显示「还没有照片」友好提示和直达上传入口
 - **传输进度横幅** — 上传、下载、回收站 mutation、批量 mutation、文件夹重命名与历史维护任务共用固定横幅；文件夹重命名明确显示 `旧名称 → 新名称`，未知服务端进度时不伪造百分比
-- **跨部署 lazy chunk 自恢复** — React 启动前捕获可信的同源 hashed JS/CSS 加载失败，安全会话最多自动恢复一次；先有界激活 waiting Service Worker，再用 cache-busting 导航越过旧 index/SW。上传、下载、语音、批量、回收站、维护或文件夹重命名期间保持 0 次刷新，任务结束后自动继续；每个 Tab 使用独立错误边界，文件夹失败不会遮掉已加载时间线，用户界面不显示 chunk URL、SAS 或技术错误
+- **跨部署 lazy chunk 自恢复** — 每次生产发布保留最多 24 代、合计不超过 64 MiB 的历史 hashed JS/CSS，旧 active Service Worker 缓存的应用壳仍能加载其精确依赖；未来超出窗口的可信同源 chunk 失败再由 React 启动前恢复器最多自动恢复一次。上传、下载、语音、批量、回收站、维护或文件夹重命名期间不激活 waiting worker、不刷新，任务结束后才继续；每个 Tab 使用独立错误边界，界面不显示 chunk URL、SAS 或技术错误
 - **返回顶部按钮** — 滚动 500px 后出现悬浮圆形按钮，一键平滑回顶；侧边栏锁定滚动时隐藏
 - **窗口聚焦自动刷新** — 切回应用时静默重新获取照片列表（每 60 秒最多一次），多设备编辑无需手动刷新
 - **键盘快捷键** — R=刷新；1–6=切换 Tab；S=切换侧边栏；Backspace/Delete=清空筛选；?=快捷键速查表；Esc=关闭任意浮层；输入、按钮、链接、可编辑控件、IME、已处理事件与打开的模态层均不会触发背景快捷键，长按 R/数字也不会重复刷新或切换
@@ -665,7 +665,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 
 ### 生产健康检查
 
-`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML，并携带 `SAMEORIGIN`、`frame-ancestors 'self'`、`nosniff` 和 `same-origin` referrer 安全头；两个 manifest 均以 `application/manifest+json` 返回完整安装字段，两张 Apple Touch PNG 均可解码为 180px 图标，两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组；主域还会检查 `/healthz`。普通定时、手动或后端事件同一轮执行 11 个检查；前端 deployment 事件额外检查主域与 SWA 的 no-store `deployment.json`，共 13 个，并要求两者 SHA 与该 Frontend run 的 `head_sha` 完全一致。所有检查并行执行，完成后仍按固定顺序输出目标、状态和耗时；每个请求 10 秒超时，失败后最多重试 8 次、轮次间隔 15 秒，以覆盖前后端部署传播竞态。最坏检查时长为 185 秒（8 × 10 秒并行轮次 + 7 × 15 秒等待，不含 runner setup），低于 workflow 的 10 分钟上限。Frontend production、Backend 与普通定时/手动检查使用相互隔离的成功并发组：同类 deployment 更新会取消旧轮次，但普通、后端或 Frontend validation 检查不能取消前端 SHA 验证；Frontend 非部署完成事件与失败部署按 run ID + attempt 隔离，其显式结果不会被同一 run 的重跑或后续成功事件覆盖。
+`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML，并携带 `SAMEORIGIN`、`frame-ancestors 'self'`、`nosniff` 和 `same-origin` referrer 安全头；两个 manifest 均以 `application/manifest+json` 返回完整安装字段，两张 Apple Touch PNG 均可解码为 180px 图标，两个入口的随机缺失 hashed JS/CSS 均返回 404 JSON 而非 HTML，两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组；主域还会检查 `/healthz`。普通定时、手动或后端事件同一轮执行 15 个检查；前端 deployment 事件额外检查主域与 SWA 的 no-store `deployment.json`，共 17 个，并要求两者 SHA 与该 Frontend run 的 `head_sha` 完全一致。所有检查并行执行，完成后仍按固定顺序输出目标、状态和耗时；每个请求 10 秒超时，失败后最多重试 8 次、轮次间隔 15 秒，以覆盖前后端部署传播竞态。最坏检查时长为 185 秒（8 × 10 秒并行轮次 + 7 × 15 秒等待，不含 runner setup），低于 workflow 的 10 分钟上限。Frontend production、Backend 与普通定时/手动检查使用相互隔离的成功并发组：同类 deployment 更新会取消旧轮次，但普通、后端或 Frontend validation 检查不能取消前端 SHA 验证；Frontend 非部署完成事件与失败部署按 run ID + attempt 隔离，其显式结果不会被同一 run 的重跑或后续成功事件覆盖。
 
 默认入口为 `https://cloudphotos.top`、`https://brave-sand-053b07a00.7.azurestaticapps.net` 和 `https://cloudphoto-api.azurewebsites.net/api`。可通过 `PRODUCTION_BASE_URL`、`PRODUCTION_AZURE_FRONTEND_URL`、`PRODUCTION_AZURE_API_BASE_URL` 覆盖入口，或使用对应的 `PRODUCTION_HOME_URL` / `PRODUCTION_MANIFEST_URL` / `PRODUCTION_AUTH_ME_URL` / `PRODUCTION_CHANGELOGS_URL` / `PRODUCTION_DEPLOYMENT_URL` 与 `PRODUCTION_AZURE_*` 变量覆盖单个检查地址；仅设置合法 40 位 `PRODUCTION_DEPLOYED_SHA` 时启用精确部署标记检查。运行 `yarn test:production-smoke` 可在本机用内置 HTTP fixture 重复验证成功、重试和失败路径，无需访问生产环境。
 
@@ -691,8 +691,10 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 ### 前端缓存策略
 
 - Vite 生成的 `/assets/*` 内容哈希文件缓存一年并标记 `immutable`
+- 部署前读取线上 `deployment-assets.json` 并按 SHA-256 拉回历史 JS/CSS；每次 workflow run 使用独立代次 ID，只保留最近 24 个完整代次、64 MiB 唯一字节，最旧代次整体淘汰，拒绝 source map、越界路径、摘要不符和显式撤销代次。首次迁移从固定历史 commit 确定性重建实证缺失的旧 CSS，此后 JS/CSS 均保留线上原始字节，不使用旧 hash alias
+- `/deployment-assets.json`、SPA shell 与 Service Worker 均禁止长期缓存；随机缺失的 `.js`/`.css` 必须返回 404 JSON 而不是 SPA HTML，主域 Nginx 原样透传 SWA 状态与 MIME
 - SPA shell、Service Worker 和注册入口每次重验证，确保 PWA 能发现新版本
-- Service Worker 首装只预缓存 HTML、9.38 kB 登录样式、26.58 kB 入口 JS、React 与注册运行时（180.90 KiB）；工作区 JS/CSS、注册表单与图库等动态 chunk 首次使用后进入 `app-code-v1`，相较原始 894.44 KiB 首装资源减少约 80%
+- Service Worker 首装只预缓存 HTML、10.66 kB 登录样式、约 35 kB 入口 JS、React 与注册运行时（约 191 KiB）；工作区 JS/CSS、注册表单与图库等动态 chunk 首次使用后进入 `app-code-v1`，相较原始 894.44 KiB 首装资源减少约 79%
 - manifest、静态图标与 `changelog.json` 使用短缓存并重验证；`.webmanifest` 明确返回 `application/manifest+json`
 - `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
 - `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖

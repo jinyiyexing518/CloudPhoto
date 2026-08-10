@@ -190,6 +190,16 @@
     "seq": 1786388492134
   },
   {
+    "id": "2026-08-11-stale-deployment-assets",
+    "date": "2026-08-11",
+    "icon": "🛟",
+    "title": "修复旧客户端跨部署资源失效",
+    "type": "fix",
+    "desc": "旧 Service Worker 缓存的应用入口在新版本发布后仍能加载其精确 JS/CSS，不再整页落入刷新重试。",
+    "details": "生产部署按 SHA-256 保留最多 24 个完整代次、64 MiB 的历史 hashed JS/CSS，并支持显式安全撤销与确定性淘汰；缺失 JS/CSS 返回 404 JSON 而不是 SPA HTML。双标签 waiting worker、PWA standalone、危险操作零自动刷新和旧版到新版发布均有隔离浏览器契约，已登录 Header 顶部安装入口保持删除。",
+    "seq": 1786384800000
+  },
+  {
     "id": "2026-08-11-workspace-navigation-focus-visibility",
     "date": "2026-08-11",
     "icon": "⌨️",

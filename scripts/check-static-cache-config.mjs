@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -13,6 +14,8 @@ const entryCssPath = join(root, "packages", "client", "src", "index.css");
 const authenticatedCssPath = join(root, "packages", "client", "src", "authenticated.css");
 const authenticatedAppPath = join(root, "packages", "client", "src", "AuthenticatedApp.tsx");
 const authPagePath = join(root, "packages", "client", "src", "components", "auth", "AuthPage.tsx");
+const missingResponsePath = join(root, "packages", "client", "public", "404.json");
+const retentionPolicyPath = join(root, "packages", "client", "deployment-retention.json");
 const configPaths = process.argv.slice(2).map((configPath) => resolve(configPath));
 if (configPaths.length === 0) configPaths.push(defaultConfig);
 
@@ -29,6 +32,8 @@ const mutableRoutes = [
   "/healthz",
   "/manifest.webmanifest",
   "/changelog.json",
+  "/deployment-assets.json",
+  "/404.json",
   "/favicon.svg",
   "/apple-touch-icon.svg",
   "/pwa-192x192.svg",
@@ -122,6 +127,12 @@ function checkAuthenticatedStyleBoundary() {
     if (entryCss.includes(selector)) fail(entryCssPath, `workspace selector ${selector} leaked into login CSS`);
     if (!authenticatedCss.includes(selector)) {
       fail(authenticatedCssPath, `missing preserved workspace selector ${selector}`);
+    }
+    if (
+      authenticatedApp.includes("header-install-button")
+      || authenticatedCss.includes(".header-install-button")
+    ) {
+      fail(authenticatedAppPath, "authenticated header must not restore the permanent install entry");
     }
   }
 }
@@ -238,55 +249,161 @@ function checkHashedAssets(configPath) {
       fail(configPath, `asset is not content-hashed: ${relative(dirname(configPath), asset)}`);
     }
   }
-  const galleryChunks = assets.filter((asset) =>
+  const deploymentManifestPath = join(dirname(configPath), "deployment-assets.json");
+  let deploymentManifest;
+  let retentionPolicy;
+  try {
+    deploymentManifest = JSON.parse(readFileSync(deploymentManifestPath, "utf8"));
+    retentionPolicy = JSON.parse(readFileSync(retentionPolicyPath, "utf8"));
+  } catch (error) {
+    fail(configPath, `cannot inspect bounded deployment assets: ${error.message}`);
+  }
+  if (
+    deploymentManifest.version !== 1
+    || !Array.isArray(deploymentManifest.generations)
+    || deploymentManifest.generations.length < 1
+    || deploymentManifest.generations.length > retentionPolicy.maxGenerations
+  ) {
+    fail(configPath, "deployment asset generations exceed or violate the retention policy");
+  }
+  if (
+    !Array.isArray(retentionPolicy.bootstrapGenerationRefs)
+    || !retentionPolicy.bootstrapGenerationAssets
+    || typeof retentionPolicy.bootstrapGenerationAssets !== "object"
+    || Array.isArray(retentionPolicy.bootstrapGenerationAssets)
+  ) {
+    fail(configPath, "deployment bootstrap generations must declare exact migration assets");
+  }
+  for (const ref of retentionPolicy.bootstrapGenerationRefs) {
+    const requiredAssets = retentionPolicy.bootstrapGenerationAssets[ref];
+    if (
+      !Array.isArray(requiredAssets)
+      || requiredAssets.length === 0
+      || requiredAssets.some((asset) => (
+        !/^assets\/.+-[A-Za-z0-9_-]{8,}\.(?:css|js)$/.test(asset)
+      ))
+    ) {
+      fail(configPath, `deployment bootstrap generation ${ref} has invalid migration assets`);
+    }
+  }
+  const retainedAssets = new Map();
+  const retainedGenerations = new Map();
+  for (const generation of deploymentManifest.generations) {
+    if (retentionPolicy.revokedGenerationIds.includes(generation.id)) {
+      fail(configPath, `revoked deployment generation remains published: ${generation.id}`);
+    }
+    if (!Array.isArray(generation.assets) || generation.assets.length === 0) {
+      fail(configPath, `deployment generation has no assets: ${generation.id}`);
+    }
+    retainedGenerations.set(generation.id, generation);
+    for (const retained of generation.assets) {
+      if (
+        !/^assets\/.+-[A-Za-z0-9_-]{8,}\.(?:css|js)$/.test(retained.path)
+        || retained.path.endsWith(".map")
+      ) {
+        fail(configPath, `invalid retained deployment asset: ${retained.path}`);
+      }
+      const known = retainedAssets.get(retained.path);
+      if (
+        known
+        && (known.sha256 !== retained.sha256 || known.bytes !== retained.bytes)
+      ) {
+        fail(configPath, `retained deployment asset collision: ${retained.path}`);
+      }
+      retainedAssets.set(retained.path, retained);
+    }
+  }
+  for (const ref of retentionPolicy.bootstrapGenerationRefs) {
+    const generation = retainedGenerations.get(ref);
+    if (!generation) continue;
+    const generationPaths = new Set(generation.assets.map((asset) => asset.path));
+    for (const requiredAsset of retentionPolicy.bootstrapGenerationAssets[ref]) {
+      if (!generationPaths.has(requiredAsset)) {
+        fail(configPath, `bootstrap generation ${ref} is missing ${requiredAsset}`);
+      }
+    }
+  }
+  const retainedBytes = [...retainedAssets.values()]
+    .reduce((sum, asset) => sum + asset.bytes, 0);
+  if (
+    retainedBytes !== deploymentManifest.totalBytes
+    || retainedBytes > retentionPolicy.maxBytes
+  ) {
+    fail(configPath, "deployment asset byte total exceeds or disagrees with the retention policy");
+  }
+  for (const [assetPath, retained] of retainedAssets) {
+    const content = readFileSync(join(dirname(configPath), ...assetPath.split("/")));
+    const actualDigest = createHash("sha256").update(content).digest("hex");
+    if (content.byteLength !== retained.bytes || actualDigest !== retained.sha256) {
+      fail(configPath, `retained deployment asset integrity mismatch: ${assetPath}`);
+    }
+  }
+  const builtCodePaths = new Set(
+    assets
+      .filter((asset) => /\.(?:css|js)$/.test(asset))
+      .map((asset) => relative(dirname(configPath), asset).replaceAll("\\", "/"))
+  );
+  if (
+    builtCodePaths.size !== retainedAssets.size
+    || [...builtCodePaths].some((path) => !retainedAssets.has(path))
+  ) {
+    fail(configPath, "dist JavaScript/CSS must exactly match the bounded deployment manifest");
+  }
+  const currentAssetPaths = new Set(
+    deploymentManifest.generations[0].assets.map((asset) => asset.path)
+  );
+  const currentAssets = assets.filter((asset) =>
+    currentAssetPaths.has(relative(dirname(configPath), asset).replaceAll("\\", "/"))
+  );
+  const galleryChunks = currentAssets.filter((asset) =>
     /^PhotoGallery-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (galleryChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred PhotoGallery chunk");
   }
-  const authenticatedAppChunks = assets.filter((asset) =>
+  const authenticatedAppChunks = currentAssets.filter((asset) =>
     /^AuthenticatedApp-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (authenticatedAppChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred AuthenticatedApp chunk");
   }
-  const registerFormChunks = assets.filter((asset) =>
+  const registerFormChunks = currentAssets.filter((asset) =>
     /^RegisterForm-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (registerFormChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred RegisterForm chunk");
   }
-  const whatsNewPopupChunks = assets.filter((asset) =>
+  const whatsNewPopupChunks = currentAssets.filter((asset) =>
     /^WhatsNewPopup-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (whatsNewPopupChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred WhatsNewPopup chunk");
   }
-  const pwaInstallEntryChunks = assets.filter((asset) =>
+  const pwaInstallEntryChunks = currentAssets.filter((asset) =>
     /^PwaInstallEntry-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (pwaInstallEntryChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred PWA install entry chunk");
   }
-  const privateMetadataChunks = assets.filter((asset) =>
+  const privateMetadataChunks = currentAssets.filter((asset) =>
     /^idb-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (privateMetadataChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred private metadata cleanup chunk");
   }
-  const entryStylesheets = assets.filter((asset) =>
+  const entryStylesheets = currentAssets.filter((asset) =>
     /^index-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
   );
   if (entryStylesheets.length !== 1) {
     fail(configPath, "built assets must contain one login entry stylesheet");
   }
-  const authenticatedStylesheets = assets.filter((asset) =>
+  const authenticatedStylesheets = currentAssets.filter((asset) =>
     /^AuthenticatedApp-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
   );
   if (authenticatedStylesheets.length !== 1) {
     fail(configPath, "built assets must contain one deferred AuthenticatedApp stylesheet");
   }
-  const entryScripts = assets.filter((asset) =>
+  const entryScripts = currentAssets.filter((asset) =>
     /^index-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (entryScripts.length !== 1) {
@@ -296,7 +413,7 @@ function checkHashedAssets(configPath) {
   const authenticatedStyles = readFileSync(authenticatedStylesheets[0], "utf8");
   const entryScript = readFileSync(entryScripts[0], "utf8");
   const pwaInstallEntryScript = readFileSync(pwaInstallEntryChunks[0], "utf8");
-  const builtJavaScript = assets
+  const builtJavaScript = currentAssets
     .filter((asset) => asset.endsWith(".js"))
     .map((asset) => readFileSync(asset, "utf8"))
     .join("\n");
@@ -308,6 +425,9 @@ function checkHashedAssets(configPath) {
   }
   if (!pwaInstallEntryScript.includes("安装应用")) {
     fail(configPath, "deferred signed-out entry must expose the install application action");
+  }
+  if (authenticatedStyles.includes(".header-install-button")) {
+    fail(configPath, "built authenticated CSS must not restore the permanent header install entry");
   }
   for (const marker of [
     "cloudphoto-photo-workspace-resolved-v1",
@@ -418,6 +538,21 @@ for (const configPath of configPaths) {
   if (config.mimeTypes?.[".webmanifest"] !== "application/manifest+json") {
     fail(configPath, ".webmanifest must use application/manifest+json");
   }
+  if (
+    config.mimeTypes?.[".css"] !== "text/css"
+    || config.mimeTypes?.[".js"] !== "text/javascript"
+  ) {
+    fail(configPath, "hashed JavaScript and CSS must keep explicit non-HTML MIME types");
+  }
+  let missingResponse;
+  try {
+    missingResponse = JSON.parse(readFileSync(missingResponsePath, "utf8"));
+  } catch (error) {
+    fail(missingResponsePath, `missing asset response must be valid JSON: ${error.message}`);
+  }
+  if (missingResponse?.error !== "not_found") {
+    fail(missingResponsePath, "missing asset response must identify a not_found error");
+  }
 
   for (const route of shellRoutes) {
     const value = cacheControl(requireRoute(configPath, config.routes, route));
@@ -453,6 +588,12 @@ for (const configPath of configPaths) {
   const fallback = config.navigationFallback;
   if (fallback?.rewrite !== "/index.html" || !fallback.exclude?.includes("/assets/*")) {
     fail(configPath, "navigationFallback must rewrite to /index.html and exclude /assets/*");
+  }
+  if (
+    config.responseOverrides?.["404"]?.rewrite !== "/404.json"
+    || config.responseOverrides?.["404"]?.statusCode !== 404
+  ) {
+    fail(configPath, "404 responses must remain 404 and use the non-HTML JSON error body");
   }
 
   checkHashedAssets(configPath);

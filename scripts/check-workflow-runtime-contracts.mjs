@@ -88,6 +88,11 @@ const deployWorkflows = [
   ".github/workflows/deploy-backend.yml",
   frontendWorkflow,
 ];
+const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
+const retentionCommand =
+  'node scripts/deployment-assets.mjs --dist packages/client/dist --generation "$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --source https://brave-sand-053b07a00.7.azurestaticapps.net --policy packages/client/deployment-retention.json';
+const browserContractCommand =
+  "node --test --test-force-exit scripts/deployment-asset-retention.test.mjs scripts/stale-deployment-browser.test.mjs";
 const runtimeAlgorithmPaths = [
   "packages/algorithm/src/**",
   "packages/algorithm/package.json",
@@ -316,6 +321,8 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const azureLoginRefs = [];
   const setupNodeVersions = [];
   const contractInvocations = [];
+  const checkoutFetchDepths = [];
+  const runCommands = [];
   const pushPaths = nestedListItems(text, ["on", "push", "paths"]);
   const workflowDispatchModes = nestedListItems(text, [
     "on",
@@ -371,6 +378,14 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   for (const step of activeStepBlocks(text)) {
     const name = stepField(step, "name");
     const uses = stepField(step, "uses");
+    const run = stepField(step, "run");
+    if (run) runCommands.push(run);
+    if (uses?.startsWith("actions/checkout@")) {
+      checkoutFetchDepths.push({
+        path,
+        depth: stepChildField(step, "with", "fetch-depth"),
+      });
+    }
     const azureLogin = uses?.match(/^azure\/login@(.+)$/);
     if (azureLogin) {
       azureLoginRefs.push({ path, version: azureLogin[1] });
@@ -394,7 +409,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
       });
     }
 
-    if (stepField(step, "run") === "node scripts/check-workflow-runtime-contracts.mjs") {
+    if (run === "node scripts/check-workflow-runtime-contracts.mjs") {
       contractInvocations.push(path);
     }
 
@@ -489,6 +504,8 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     checkoutRefs,
     setupNodeVersions,
     contractInvocations,
+    checkoutFetchDepths,
+    runCommands,
     concurrency,
     pushPaths,
     runName: quotedRootScalar(text, "run-name"),
@@ -518,6 +535,10 @@ export function checkWorkflowRuntimeContracts(workflows) {
   const healthWorkflow = workflows.find(
     (workflow) => workflow.path === productionHealthWorkflow
   );
+  const frontend = workflows.find((workflow) => workflow.path === frontendWorkflow);
+  const inspectedFrontend = frontend
+    ? inspectWorkflow(frontend.text, frontend.path)
+    : null;
   const healthConcurrency = healthWorkflow
     ? inspectWorkflow(healthWorkflow.text, healthWorkflow.path).concurrency
     : null;
@@ -577,6 +598,22 @@ export function checkWorkflowRuntimeContracts(workflows) {
     issues.push(
       `expected ${requiredContractWorkflows.length} workflow contract steps, found ${aggregate.contractInvocations.length}`
     );
+  }
+  if (!inspectedFrontend) {
+    issues.push(`${frontendWorkflow} is missing`);
+  } else {
+    if (
+      inspectedFrontend.checkoutFetchDepths.length !== 1
+      || inspectedFrontend.checkoutFetchDepths[0].depth !== "50"
+    ) {
+      issues.push(`${frontendWorkflow} must fetch 50 commits for the bounded bootstrap generation`);
+    }
+    if (!inspectedFrontend.runCommands.includes(retentionCommand)) {
+      issues.push(`${frontendWorkflow} must prepare bounded deployment assets before upload`);
+    }
+    if (!inspectedFrontend.runCommands.includes(browserContractCommand)) {
+      issues.push(`${frontendWorkflow} must run the stale deployment browser contracts`);
+    }
   }
   if (!healthConcurrency) {
     issues.push(`${productionHealthWorkflow} is missing`);

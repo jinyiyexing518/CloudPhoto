@@ -83,7 +83,10 @@ import {
   reportLazyBoundaryFailure,
   setDeploymentRecoveryIntentProvider,
 } from "./pwa/deploymentRecovery";
-import { setDangerousOperationActivity } from "./pwa/dangerousOperationGate";
+import {
+  hasDangerousOperation,
+  setDangerousOperationActivity,
+} from "./pwa/dangerousOperationGate";
 import {
   createInitialVoiceTransferStates,
   getActiveVoiceTransferState,
@@ -612,14 +615,16 @@ function AppContent() {
   const activeBatchMutation = getActiveBatchMutation(batchMutationStates);
   const batchMutationActiveRef = useRef(false);
   batchMutationActiveRef.current = activeBatchMutation !== null;
-  const transferring = uploadProgress !== null
-    || downloading
-    || deleteProgress !== null
-    || voiceTransferState !== "idle"
-    || activeBatchMutation !== null
-    || isTrashMutationActive(trashMutation)
-    || isMaintenanceTaskActive(maintenanceTask)
-    || folderRenameOperation !== null;
+  const transferring = hasDangerousOperation({
+    upload: uploadProgress !== null,
+    download: downloading,
+    deletion: deleteProgress !== null,
+    voice: voiceTransferState !== "idle",
+    batchMutation: activeBatchMutation !== null,
+    trashMutation: isTrashMutationActive(trashMutation),
+    maintenance: isMaintenanceTaskActive(maintenanceTask),
+    folderRename: folderRenameOperation !== null,
+  });
 
   const handleVoiceStateChange = useCallback((source: VoiceTransferSource, state: VoiceTransferState) => {
     setVoiceTransferStates((current) => setVoiceTransferState(current, source, state));

@@ -3,8 +3,30 @@ export interface DangerousOperationSnapshot {
   message: string;
 }
 
+export interface DangerousOperationFacts {
+  upload: boolean;
+  download: boolean;
+  deletion: boolean;
+  voice: boolean;
+  batchMutation: boolean;
+  trashMutation: boolean;
+  maintenance: boolean;
+  folderRename: boolean;
+}
+
 const activities = new Map<string, string>();
 const listeners = new Set<(snapshot: DangerousOperationSnapshot) => void>();
+
+export function hasDangerousOperation(facts: DangerousOperationFacts): boolean {
+  return facts.upload
+    || facts.download
+    || facts.deletion
+    || facts.voice
+    || facts.batchMutation
+    || facts.trashMutation
+    || facts.maintenance
+    || facts.folderRename;
+}
 
 function snapshot(): DangerousOperationSnapshot {
   const first = activities.values().next();
