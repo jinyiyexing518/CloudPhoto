@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { BLANK_GIF, GRID_MEDIA_POLICY_MARKER, selectGridMediaSources } from "@cloudphoto/algorithm";
@@ -8,8 +8,12 @@ import {
   useVideoCoverRepair,
 } from "../../services/videoCoverRepair";
 import {
+  getPhotoActionLabel,
   getPhotoCardGroupLabel,
-  getPhotoCardPrimaryLabel,
+  getPhotoDisplayName,
+  getPhotoMediaKind,
+  getPhotoPrimaryActionLabel,
+  type PhotoCardLabelInput,
 } from "./photoCardAccessibility";
 
 interface Props {
@@ -74,7 +78,7 @@ function PhotoCard({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
-  const primaryButtonRef = useRef<HTMLButtonElement>(null);
+  const primaryActionRef = useRef<HTMLButtonElement>(null);
   const publishedRepairUrlRef = useRef<string | null>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
   // Video cards render only server-persisted derivatives. Missing or broken
@@ -138,8 +142,7 @@ function PhotoCard({
     setImgLoaded(false);
     setGifPaused((paused) => !paused);
   };
-  const basename = photo.name.split("/").pop() ?? photo.name;
-  const displayName = photo.originalName || basename.replace(/^\d+-/, "");
+  const displayName = getPhotoDisplayName(photo.name, photo.originalName);
   const uploadTime = photo.createdAt
     ? new Date(photo.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
@@ -149,41 +152,44 @@ function PhotoCard({
   // Show taken date if it's different from upload date (or if upload date unknown)
   const showTakenDate = takenTime && takenTime !== uploadTime;
   const selectionMode = onSelect !== undefined;
-  const mediaType = isVideo
-    ? "视频"
-    : isGif
-      ? "GIF 动图"
-      : isMotionPhoto
-        ? "动态照片"
-        : isAnimated
-          ? "动图"
-          : "照片";
-  const dateLabel = takenTime
-    ? `拍摄于 ${takenTime}`
-    : uploadTime
-      ? `上传于 ${uploadTime}`
-      : null;
-  const primaryLabel = getPhotoCardPrimaryLabel(
+  const labelInput: PhotoCardLabelInput = {
     displayName,
-    mediaType,
-    dateLabel,
+    isVideo,
+    mediaKind: getPhotoMediaKind(photo),
+    favorite: !!photo.favorite,
+    takenDate: takenTime,
+    uploadDate: uploadTime,
     selectionMode,
-    Boolean(selected),
-  );
-  const primaryAction = (event: React.MouseEvent<HTMLButtonElement>) => {
+    selected: !!selected,
+  };
+  const groupLabel = getPhotoCardGroupLabel(labelInput);
+  const primaryActionLabel = getPhotoPrimaryActionLabel(labelInput);
+  const descriptionId = useId();
+  const videoRepairStatus = videoRepairState.phase === "queued" || videoRepairState.phase === "repairing"
+    ? "正在生成封面"
+    : "打开视频后生成封面";
+  const primaryDescriptionIds = [
+    photo.subject ? `${descriptionId}-subject` : null,
+    photo.createdBy ? `${descriptionId}-creator` : null,
+    isVideo && !useVideoThumb ? `${descriptionId}-video-status` : null,
+  ].filter(Boolean).join(" ");
+
+  const handlePrimaryAction = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (interactionDisabled) return;
     event.currentTarget.focus({ preventScroll: true });
-    if (onSelect) {
-      onSelect(event);
-      return;
+    if (selectionMode) {
+      onSelect?.(event);
+    } else {
+      onClick();
     }
-    onClick();
   };
 
   return (
     <>
-      <article
+      <div
         className={`photo-card${selected ? " photo-card--selected" : ""}${draggable ? " photo-card--draggable" : ""}`}
-        aria-label={getPhotoCardGroupLabel(displayName)}
+        role="group"
+        aria-label={groupLabel}
         aria-disabled={interactionDisabled || undefined}
         draggable={draggable}
         onDragStart={onDragStart}
@@ -203,151 +209,169 @@ function PhotoCard({
             {selected ? "✓" : ""}
           </div>
         )}
-        <div
-          ref={videoRepairTargetRef}
-          className="photo-thumbnail"
-          data-media-policy={GRID_MEDIA_POLICY_MARKER}
+        <button
+          ref={primaryActionRef}
+          type="button"
+          className="photo-card-primary"
+          aria-label={primaryActionLabel}
+          aria-describedby={primaryDescriptionIds || undefined}
+          aria-pressed={selectionMode ? !!selected : undefined}
+          disabled={interactionDisabled}
+          onClick={handlePrimaryAction}
         >
-          {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
-          {useVideoThumb ? (
-            <img
-              ref={videoThumbImgRef}
-              crossOrigin="anonymous"
-              src={videoPosterSrc}
-              alt={displayName}
-              loading={priority ? "eager" : "lazy"}
-              fetchPriority={priority ? "high" : "auto"}
-              className={imgLoaded ? "img-loaded" : "img-loading"}
-              onLoad={(event) => {
-                if (isLowInformationVideoCoverImage(event.currentTarget) === true) {
-                  if (fallbackMediaSource(event.currentTarget, videoPosterSources)) {
+          <div
+            ref={videoRepairTargetRef}
+            className="photo-thumbnail"
+            data-media-policy={GRID_MEDIA_POLICY_MARKER}
+          >
+            {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
+            {useVideoThumb ? (
+              <img
+                ref={videoThumbImgRef}
+                crossOrigin="anonymous"
+                src={videoPosterSrc}
+                alt=""
+                loading={priority ? "eager" : "lazy"}
+                fetchPriority={priority ? "high" : "auto"}
+                className={imgLoaded ? "img-loaded" : "img-loading"}
+                onLoad={(event) => {
+                  if (isLowInformationVideoCoverImage(event.currentTarget) === true) {
+                    if (fallbackMediaSource(event.currentTarget, videoPosterSources)) {
+                      setImgLoaded(false);
+                      return;
+                    }
+                    setVideoThumbFailed(true);
                     setImgLoaded(false);
+                    markDerivativeBroken();
                     return;
                   }
-                  setVideoThumbFailed(true);
-                  setImgLoaded(false);
-                  markDerivativeBroken();
-                  return;
-                }
-                setImgLoaded(true);
-              }}
-              onError={(e) => {
-                if (!fallbackMediaSource(e.currentTarget, videoPosterSources)) {
-                  setVideoThumbFailed(true);
-                  setImgLoaded(false);
-                  markDerivativeBroken();
-                }
-              }}
-            />
-          ) : isVideo ? (
-           <div
-             className="video-thumb-placeholder"
-           >
-             <span className="video-thumb-placeholder-icon" aria-hidden="true">▶</span>
-             <span className="video-thumb-placeholder-text" aria-live="polite">
-               {videoRepairState.phase === "queued" || videoRepairState.phase === "repairing"
-                 ? "正在生成封面"
-                 : "打开视频后生成封面"}
-             </span>
-           </div>
-          ) : isMotionPhoto ? (
-            <img
-              ref={gifImgRef}
-              src={lowDataImageSrc}
-              alt={displayName}
-              loading={priority ? "eager" : "lazy"}
-              fetchPriority={priority ? "high" : "auto"}
-              className={imgLoaded ? "img-loaded" : "img-loading"}
-              onLoad={() => setImgLoaded(true)}
-              onError={(e) => {
-                if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
-              }}
-            />
-          ) : isAnimated ? (
-            <img
-              ref={gifImgRef}
-              src={isGif ? gifDisplaySrc : staticAnimatedSrc}
-              alt={displayName}
-              loading={priority ? "eager" : "lazy"}
-              fetchPriority={priority ? "high" : "auto"}
-              className={imgLoaded ? "img-loaded" : "img-loading"}
-              onLoad={() => setImgLoaded(true)}
-              onError={(e) => {
-                const sources = isGif && !gifPaused
-                  ? [originalImageUrl]
-                  : derivativeImageSources;
-                if (!fallbackMediaSource(e.currentTarget, sources)) setImgLoaded(false);
-              }}
-            />
-          ) : (
-            <img
-              src={lowDataImageSrc}
-              alt={displayName}
-              loading={priority ? "eager" : "lazy"}
-              fetchPriority={priority ? "high" : "auto"}
-              decoding="async"
-              className={imgLoaded ? "img-loaded" : "img-loading"}
-              onLoad={() => setImgLoaded(true)}
-              onError={(e) => {
-                // A broken derivative may try the preview and alternate route,
-                // but never silently downloads a 20 MB original as fallback.
-                if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
-              }}
-            />
-          )}
-          {isVideo && <div className="photo-video-badge">▶</div>}
-          {isHeic && <div className="photo-format-badge">HEIC</div>}
-          {photo.favorite && <div className="photo-favorite-badge" title="已收藏">★</div>}
-          {isAnimated && isMotionPhoto && (
-            <div className="photo-video-badge">动态照片 📱</div>
-          )}
-          {isGif && (
-            gifPaused ? (
-              <>
-                <div className="photo-gif-paused-overlay" />
-                <div className="gif-play-center">
-                  <button type="button" className="gif-play-center-btn" onClick={toggleGifPause} aria-label="继续播放动图" title="继续播放">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </button>
-                </div>
-              </>
+                  setImgLoaded(true);
+                }}
+                onError={(e) => {
+                  if (!fallbackMediaSource(e.currentTarget, videoPosterSources)) {
+                    setVideoThumbFailed(true);
+                    setImgLoaded(false);
+                    markDerivativeBroken();
+                  }
+                }}
+              />
+            ) : isVideo ? (
+              <span className="video-thumb-placeholder" aria-hidden="true">
+                <span className="video-thumb-placeholder-icon">▶</span>
+                <span className="video-thumb-placeholder-text">{videoRepairStatus}</span>
+              </span>
+            ) : isMotionPhoto ? (
+              <img
+                ref={gifImgRef}
+                src={lowDataImageSrc}
+                alt=""
+                loading={priority ? "eager" : "lazy"}
+                fetchPriority={priority ? "high" : "auto"}
+                className={imgLoaded ? "img-loaded" : "img-loading"}
+                onLoad={() => setImgLoaded(true)}
+                onError={(e) => {
+                  if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
+                }}
+              />
+            ) : isAnimated ? (
+              <img
+                ref={gifImgRef}
+                src={isGif ? gifDisplaySrc : staticAnimatedSrc}
+                alt=""
+                loading={priority ? "eager" : "lazy"}
+                fetchPriority={priority ? "high" : "auto"}
+                className={imgLoaded ? "img-loaded" : "img-loading"}
+                onLoad={() => setImgLoaded(true)}
+                onError={(e) => {
+                  const sources = isGif && !gifPaused
+                    ? [originalImageUrl]
+                    : derivativeImageSources;
+                  if (!fallbackMediaSource(e.currentTarget, sources)) setImgLoaded(false);
+                }}
+              />
             ) : (
-              <>
-                <span className="gif-animated-badge">{isGif ? "GIF" : "动图"}</span>
-                <button type="button" className="gif-pause-corner-btn" onClick={toggleGifPause} aria-label="暂停动图" title="暂停动图">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <img
+                src={lowDataImageSrc}
+                alt=""
+                loading={priority ? "eager" : "lazy"}
+                fetchPriority={priority ? "high" : "auto"}
+                decoding="async"
+                className={imgLoaded ? "img-loaded" : "img-loading"}
+                onLoad={() => setImgLoaded(true)}
+                onError={(e) => {
+                  // A broken derivative may try the preview and alternate route,
+                  // but never silently downloads a 20 MB original as fallback.
+                  if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
+                }}
+              />
+            )}
+            {isVideo && <div className="photo-video-badge">▶</div>}
+            {isHeic && <div className="photo-format-badge">HEIC</div>}
+            {photo.favorite && <div className="photo-favorite-badge" title="已收藏">★</div>}
+            {isAnimated && isMotionPhoto && (
+              <div className="photo-video-badge">动态照片 📱</div>
+            )}
+            {isGif && gifPaused && <div className="photo-gif-paused-overlay" />}
+            {isGif && !gifPaused && <span className="gif-animated-badge">GIF</span>}
+            {isAnimated && !isMotionPhoto && !isGif && (
+              <span className="gif-animated-badge">动图</span>
+            )}
+          </div>
+          <div className="photo-info">
+            <span className="photo-name" title={displayName}>
+              {displayName}
+            </span>
+          </div>
+          {(uploadTime || takenTime || photo.createdBy || photo.subject) && (
+            <div className="photo-meta">
+              {photo.subject && <span id={`${descriptionId}-subject`} className="photo-subject-tag">{photo.subject}</span>}
+              {photo.createdBy && <span id={`${descriptionId}-creator`} className="photo-meta-by">👤 {photo.createdBy}</span>}
+              {showTakenDate && <span className="photo-meta-taken" title="拍摄时间">📷 {takenTime}</span>}
+              {uploadTime && !showTakenDate && <span className="photo-meta-date">{uploadTime}</span>}
+            </div>
+          )}
+        </button>
+        {isVideo && !useVideoThumb && (
+          <span id={`${descriptionId}-video-status`} className="photo-card-status" role="status">
+            {videoRepairStatus}
+          </span>
+        )}
+        {(isGif || (!selectionMode && !interactionDisabled)) && (
+          <div className="photo-card-controls">
+            {isGif && (
+              gifPaused ? (
+                <button
+                  type="button"
+                  className="gif-play-center-btn"
+                  onClick={toggleGifPause}
+                  aria-label={`继续播放动图 ${displayName}`}
+                  title="继续播放"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="gif-pause-corner-btn"
+                  onClick={toggleGifPause}
+                  aria-label={`暂停动图 ${displayName}`}
+                  title="暂停动图"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                   </svg>
                 </button>
-              </>
             )
           )}
-          {isAnimated && !isMotionPhoto && !isGif && (
-            <span className="gif-animated-badge">动图</span>
-          )}
-        </div>
-        <button
-          ref={primaryButtonRef}
-          type="button"
-          className="photo-card-primary"
-          aria-label={primaryLabel}
-          aria-pressed={selectionMode ? Boolean(selected) : undefined}
-          disabled={interactionDisabled}
-          onClick={primaryAction}
-        ></button>
-        <div className="photo-info">
-          <span className="photo-name" title={displayName}>
-            {displayName}
-          </span>
-          {!onSelect && !interactionDisabled && (
+          {!selectionMode && !interactionDisabled && (
             <>
               {onMoveRequest && (
                 <button
                   type="button"
                   className="move-btn"
-                  aria-label={`移动照片 ${displayName}`}
+                  aria-label={getPhotoActionLabel("move", displayName)}
                   title="移动照片"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -361,8 +385,8 @@ function PhotoCard({
                 <button
                   type="button"
                   className={`favorite-btn${photo.favorite ? " favorite-btn--on" : ""}`}
-                  aria-label={`${photo.favorite ? "取消收藏" : "收藏"} ${displayName}`}
-                  aria-pressed={photo.favorite}
+                  aria-label={getPhotoActionLabel(photo.favorite ? "unfavorite" : "favorite", displayName)}
+                  aria-pressed={!!photo.favorite}
                   title={photo.favorite ? "取消收藏" : "收藏"}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -375,7 +399,7 @@ function PhotoCard({
               <button
                 type="button"
                 className="delete-btn"
-                aria-label={`删除照片 ${displayName}`}
+                aria-label={getPhotoActionLabel("delete", displayName)}
                 title="删除照片"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -387,15 +411,8 @@ function PhotoCard({
             </>
           )}
         </div>
-        {(uploadTime || takenTime || photo.createdBy || photo.subject) && (
-          <div className="photo-meta">
-            {photo.subject && <span className="photo-subject-tag">{photo.subject}</span>}
-            {photo.createdBy && <span className="photo-meta-by">👤 {photo.createdBy}</span>}
-            {showTakenDate && <span className="photo-meta-taken" title="拍摄时间">📷 {takenTime}</span>}
-            {uploadTime && !showTakenDate && <span className="photo-meta-date">{uploadTime}</span>}
-          </div>
         )}
-      </article>
+      </div>
 
       {showConfirm && createPortal(
         <div className="confirm-overlay" onClick={() => setShowConfirm(false)}>
@@ -427,7 +444,7 @@ function PhotoCard({
             <li
               className="photo-ctx-item"
               onClick={() => {
-                primaryButtonRef.current?.focus({ preventScroll: true });
+                primaryActionRef.current?.focus({ preventScroll: true });
                 setCtxMenu(null);
                 onClick();
               }}

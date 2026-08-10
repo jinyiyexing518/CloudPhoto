@@ -101,5 +101,5 @@ test("batch operations expose semantic busy and disabled state for conflicting c
   assert.match(folder, /onDrop=\{batchMutationBusy \? undefined/);
   assert.match(card, /aria-disabled=\{interactionDisabled \|\| undefined\}/);
   assert.match(card, /if \(interactionDisabled\) return;/);
-  assert.match(card, /\{!onSelect && !interactionDisabled && \(/);
+  assert.match(card, /\{!selectionMode && !interactionDisabled && \(/);
 });

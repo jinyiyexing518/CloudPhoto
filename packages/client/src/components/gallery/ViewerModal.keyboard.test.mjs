@@ -112,9 +112,9 @@ test("timeline and folder viewers share the complete dialog boundary contract", 
     assert.match(source, /onModalKeyDown[\s\S]*ArrowLeft[\s\S]*ArrowRight/);
     assert.doesNotMatch(source, /Keyboard navigation when modal is open/);
   }
-  assert.match(photoCardSource, /ref=\{primaryButtonRef\}[\s\S]*className="photo-card-primary"/);
+  assert.match(photoCardSource, /ref=\{primaryActionRef\}[\s\S]*className="photo-card-primary"/);
   assert.match(photoCardSource, /event\.currentTarget\.focus\(\{ preventScroll: true \}\);[\s\S]*onClick\(\)/);
-  assert.match(photoCardSource, /primaryButtonRef\.current\?\.focus\(\{ preventScroll: true \}\);[\s\S]*setCtxMenu\(null\);[\s\S]*onClick\(\)/);
+  assert.match(photoCardSource, /primaryActionRef\.current\?\.focus\(\{ preventScroll: true \}\);[\s\S]*setCtxMenu\(null\);[\s\S]*onClick\(\)/);
   assert.match(timelineSource, /className="moments-card"[\s\S]*<PhotoCard[\s\S]*interactionDisabled=\{batchMutationBusy\}/);
   assert.doesNotMatch(timelineSource, /className="moments-card"[\s\S]{0,160}role="button"/);
 });

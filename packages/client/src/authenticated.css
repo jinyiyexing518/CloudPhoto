@@ -4267,6 +4267,43 @@ body {
   flex-direction: column;
 }
 
+.photo-card-primary {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 12px 12px 0 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.photo-card-primary:disabled {
+  cursor: default;
+}
+
+.photo-card-primary:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: -3px;
+}
+
+.photo-card-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .photo-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
@@ -4284,29 +4321,9 @@ body {
   position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  cursor: default;
+  cursor: inherit;
   background: #f3f4f6;
   flex-shrink: 0;
-}
-
-.photo-card-primary {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  left: 0;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border: 0;
-  border-radius: 12px 12px 0 0;
-  padding: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.photo-card-primary:disabled { cursor: default; }
-.photo-card-primary:focus-visible {
-  outline: 3px solid #005a9e;
-  outline-offset: -4px;
 }
 
 .photo-thumbnail img,
@@ -4362,6 +4379,29 @@ body {
   gap: 6px;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+
+.photo-card-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-top: 1px solid #f1f5f9;
+  background: #fff;
+}
+
+.photo-card-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-card-controls button:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: 1px;
 }
 
 .photo-name {
@@ -4926,10 +4966,6 @@ body {
 
 /* Small circular pause button, bottom-right — invisible until hover */
 .gif-pause-corner-btn {
-  position: absolute;
-  z-index: 2;
-  bottom: 8px;
-  right: 8px;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -4942,16 +4978,12 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.18s, background 0.15s, transform 0.12s;
   padding: 0;
 }
 
-.photo-card:hover .gif-pause-corner-btn {
-  opacity: 1;
-}
 .gif-pause-corner-btn:focus-visible {
-  opacity: 1;
   outline: 3px solid #fff;
   outline-offset: 2px;
 }
@@ -4959,12 +4991,6 @@ body {
 .gif-pause-corner-btn:hover {
   background: rgba(0, 0, 0, 0.78);
   transform: scale(1.12);
-}
-
-@media (hover: none), (pointer: coarse) {
-  .gif-pause-corner-btn {
-    opacity: 1;
-  }
 }
 
 /* GIF badge inside the review modal */
@@ -7363,7 +7389,7 @@ body {
   font-size: 0.75rem;
   font-weight: 700;
   z-index: 2;
-  cursor: pointer;
+  pointer-events: none;
   transition: background 0.15s, border-color 0.15s;
   pointer-events: none;
 }
