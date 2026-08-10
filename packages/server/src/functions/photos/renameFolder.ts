@@ -4,7 +4,12 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { getBlobServiceClient, containerName, generateSasUrl } from "../../utils/blob/blobStorage";
+import {
+  getBlobServiceClient,
+  containerName,
+  generateSasUrlWithKey,
+  getUserDelegationKey,
+} from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import {
@@ -55,12 +60,16 @@ app.http("renameFolder", {
 
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
+      let delegationKeyPromise: ReturnType<typeof getUserDelegationKey> | null = null;
 
       const result = await renameFolderBlobs({
         container: containerClient,
         oldPrefix,
         newPrefix,
-        generateSourceUrl: (blobName) => generateSasUrl(blobName, 2),
+        generateSourceUrl: async (blobName, abortSignal) => {
+          delegationKeyPromise ??= getUserDelegationKey(2, { abortSignal });
+          return generateSasUrlWithKey(blobName, await delegationKeyPromise, 2);
+        },
         context,
       });
 

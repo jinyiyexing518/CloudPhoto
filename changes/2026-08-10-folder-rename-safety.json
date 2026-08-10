@@ -5,6 +5,6 @@
   "title": "修复文件夹重命名覆盖与半迁移风险",
   "type": "fix",
   "desc": "文件夹重命名现在拒绝覆盖已有目标，并在离开或空间变化时保护当前操作。",
-  "details": "服务端先完整检查源和目标，再用 Azure Blob 目标 no-overwrite 与源 ETag 条件复制全部原图及派生媒体；copy 后复核完整 inventory，删除每个源前短租约锁住并验证对应目标的 copyId + final ETag，再按源 ETag 条件删除。失败时保留源，并仅回滚仍可证明归属本操作的目标；任何并发变化、部分删除或不确定 copy initiation 都明确返回需对账状态。客户端新增同级冲突与非法名称校验、同步防双击 gate、AbortSignal、成功/失败/超时后的当前空间对账，以及 Tab、群组、关闭页面、PWA 更新和所有冲突文件夹控件的统一保护。已登录 Header 布局与安装入口约束保持不变。",
+  "details": "服务端用有界分页完整检查源和目标，并为整批 copy 复用一次可取消的 delegation-key 请求，再用 Azure Blob 目标 no-overwrite 与源 ETag 条件复制全部原图及派生媒体；copy/delete 采用独立 4 路有界并发，故障 rollback 降为 2 路，首个 copy 失败立即停止派发。单次最多 100 个 Blob，copy phase 120 秒后按 copyId 终止在途 copy，rollback 60 秒且总请求 210 秒；60 秒目标租约内的源删除关键区限制为 20 秒。429/503 只使用 Azure SDK 退避，避免流量与重试风暴。copy 后复核完整 inventory，删除每个源前验证对应目标的 copyId + final ETag，再按源 ETag 条件删除。失败时保留源，并仅回滚仍可证明归属本操作的目标；任何并发变化、部分删除或不确定 copy initiation 都明确返回需对账状态。客户端新增同级冲突与非法名称校验、同步防双击 gate、AbortSignal、成功/失败/超时后的当前空间对账，以及 Tab、群组、关闭页面、PWA 更新和所有冲突文件夹控件的统一保护。已登录 Header 布局与安装入口约束保持不变。",
   "seq": 1786376400000
 }

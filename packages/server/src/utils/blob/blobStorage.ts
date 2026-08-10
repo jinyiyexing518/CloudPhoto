@@ -38,7 +38,10 @@ function delegationKeyExpiryMs(key: UserDelegationKey): number {
  * Fetches (or returns a cached) User Delegation Key from Azure Storage.
  * Required Azure role: "Storage Blob Delegator" on the Storage Account.
  */
-export async function getUserDelegationKey(expiryHours = 2): Promise<UserDelegationKey> {
+export async function getUserDelegationKey(
+  expiryHours = 2,
+  options: { abortSignal?: AbortSignal } = {},
+): Promise<UserDelegationKey> {
   const nowMs = Date.now();
   const requiredExpiresAt = nowMs + expiryHours * 3600 * 1000;
   // Reuse cached key if it still has more than 10 minutes of validity
@@ -53,7 +56,7 @@ export async function getUserDelegationKey(expiryHours = 2): Promise<UserDelegat
   // 5-minute back-date to absorb clock-skew between Azure nodes
   const startsOn = new Date(nowMs - 5 * 60 * 1000);
   const expiresOn = new Date(requiredExpiresAt);
-  const key = await client.getUserDelegationKey(startsOn, expiresOn);
+  const key = await client.getUserDelegationKey(startsOn, expiresOn, options);
   const keyExpiresAt = delegationKeyExpiryMs(key) || requiredExpiresAt;
   _delegationKeyCache = { key, expiresAt: keyExpiresAt };
   return key;
@@ -93,8 +96,12 @@ export function generateSasUrlWithKey(
 }
 
 /** Convenience async wrapper for single-blob callers (upload, move, etc.). */
-export async function generateSasUrl(blobName: string, expiryHours = 2): Promise<string> {
-  const key = await getUserDelegationKey(expiryHours);
+export async function generateSasUrl(
+  blobName: string,
+  expiryHours = 2,
+  abortSignal?: AbortSignal,
+): Promise<string> {
+  const key = await getUserDelegationKey(expiryHours, { abortSignal });
   return generateSasUrlWithKey(blobName, key, expiryHours);
 }
 

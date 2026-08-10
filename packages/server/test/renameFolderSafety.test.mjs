@@ -3,10 +3,22 @@ import test from "node:test";
 import renameSafety from "../dist/src/functions/photos/renameFolderSafety.js";
 
 const {
+  FOLDER_RENAME_CONCURRENCY,
+  FOLDER_RENAME_REQUEST_LIMITS,
   FolderRenameError,
   planFolderRename,
-  renameFolderBlobs,
+  renameFolderBlobs: renameFolderBlobsWithDefaults,
 } = renameSafety;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const waitForAbort = (signal) => new Promise((_, reject) => {
+  if (signal?.aborted) reject(signal.reason);
+  else signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+});
+const renameFolderBlobs = (options) => renameFolderBlobsWithDefaults({
+  copyPollIntervalMs: 0,
+  ...options,
+});
 
 function createContainer(initialNames, options = {}) {
   const names = new Set(initialNames);
@@ -16,26 +28,59 @@ function createContainer(initialNames, options = {}) {
   ]));
   const events = [];
   const copyCalls = [];
+  const abortedCopies = [];
+  const listPageSizes = [];
   const sourceDeletes = [];
   const sourceDeleteOptions = [];
   const destinationDeletes = [];
+  const activity = {
+    activeCopies: 0,
+    maxActiveCopies: 0,
+    activeSourceDeletes: 0,
+    maxActiveSourceDeletes: 0,
+    activeRollbacks: 0,
+    maxActiveRollbacks: 0,
+  };
   let copySequence = 0;
 
   return {
     names,
     events,
     copyCalls,
+    abortedCopies,
+    listPageSizes,
     sourceDeletes,
     sourceDeleteOptions,
     destinationDeletes,
-    listBlobsFlat({ prefix }) {
+    activity,
+    listBlobsFlat({ prefix, abortSignal }) {
       events.push(`list:${prefix}`);
       const snapshot = [...names].filter((name) => name.startsWith(prefix));
       return {
         async *[Symbol.asyncIterator]() {
-          for (const name of snapshot) {
+          for (let index = 0; index < snapshot.length; index += 1) {
+            if (
+              options.maxListItemsBeforeThrow
+              && index >= options.maxListItemsBeforeThrow
+            ) {
+              throw new Error("read-past-limit");
+            }
+            const name = snapshot[index];
             yield { name, properties: { etag: blobs.get(name)?.etag } };
           }
+        },
+        byPage({ maxPageSize }) {
+          listPageSizes.push({ prefix, maxPageSize });
+          return {
+            async *[Symbol.asyncIterator]() {
+              if (abortSignal?.aborted) throw abortSignal.reason;
+              const pageItems = snapshot.slice(0, maxPageSize).map((name) => ({
+                name,
+                properties: { etag: blobs.get(name)?.etag },
+              }));
+              yield { segment: { blobItems: pageItems } };
+            },
+          };
         },
       };
     },
@@ -44,16 +89,26 @@ function createContainer(initialNames, options = {}) {
         async beginCopyFromURL(sourceUrl, copyOptions) {
           events.push(`copy:${name}`);
           copyCalls.push({ name, sourceUrl, options: copyOptions });
+          activity.activeCopies += 1;
+          activity.maxActiveCopies = Math.max(activity.maxActiveCopies, activity.activeCopies);
+          let copyFinished = false;
+          const finishCopy = () => {
+            if (copyFinished) return;
+            copyFinished = true;
+            activity.activeCopies -= 1;
+          };
           if (options.failCopyBeginAfterCreate === name) {
             names.add(name);
             blobs.set(name, { etag: '"uncertain"', copyId: "uncertain-copy" });
             const error = new Error("copy response lost and retry collided");
             error.statusCode = options.failCopyBeginAfterCreateStatusCode;
+            finishCopy();
             throw error;
           }
           if (options.failCopyBegin === name) {
             const error = new Error("copy begin failed");
-            error.statusCode = 412;
+            error.statusCode = options.failCopyStatusCode ?? 412;
+            finishCopy();
             throw error;
           }
           const sourceName = sourceUrl.slice("sas:".length);
@@ -61,36 +116,95 @@ function createContainer(initialNames, options = {}) {
           if (!source || source.etag !== copyOptions.sourceConditions?.ifMatch) {
             const error = new Error("source changed");
             error.statusCode = 412;
+            finishCopy();
             throw error;
           }
           if (names.has(name) && copyOptions.conditions?.ifNoneMatch === "*") {
             const error = new Error("destination exists");
             error.statusCode = 412;
+            finishCopy();
             throw error;
           }
           const copyId = `copy-${++copySequence}`;
+          let cancelled = false;
+          let done = false;
+          let result;
           names.add(name);
-          blobs.set(name, { etag: `"copying-${copySequence}"`, copyId });
+          blobs.set(name, { etag: `"copying-${copySequence}"`, copyId, pending: true });
           return {
             getOperationState() {
               return { copyId };
             },
+            async cancelOperation({ abortSignal } = {}) {
+              if (abortSignal?.aborted) throw abortSignal.reason;
+              if (done) return;
+              cancelled = true;
+              done = true;
+              finishCopy();
+            },
+            isDone() {
+              return done;
+            },
+            getResult() {
+              return result;
+            },
+            async poll({ abortSignal } = {}) {
+              try {
+                const copyDelay = typeof options.copyDelayMs === "function"
+                  ? options.copyDelayMs(name)
+                  : options.copyDelayMs;
+                if (copyDelay) {
+                  await Promise.race([
+                    delay(copyDelay),
+                    new Promise((_, reject) => {
+                      if (abortSignal?.aborted) reject(abortSignal.reason);
+                      else abortSignal?.addEventListener(
+                        "abort",
+                        () => reject(abortSignal.reason),
+                        { once: true },
+                      );
+                    }),
+                  ]);
+                }
+                if (cancelled) throw new Error("copy cancelled");
+                if (options.failCopyPoll === name) throw new Error("copy poll failed");
+                if (options.changeSourceAfterCopy === sourceName) {
+                  blobs.set(sourceName, { etag: `"changed-${copySequence}"`, copyId: undefined });
+                }
+                const copied = { etag: `"copied-${copySequence}"`, copyId };
+                blobs.set(name, copied);
+                if (options.addTargetAfterCopy === name) {
+                  names.add(options.addTargetAfterCopyName);
+                  blobs.set(options.addTargetAfterCopyName, { etag: '"external-target"', copyId: undefined });
+                }
+                result = { copyStatus: "success", ...copied };
+                done = true;
+              } catch (error) {
+                done = true;
+                throw error;
+              } finally {
+                finishCopy();
+              }
+            },
             async pollUntilDone() {
-              if (options.failCopyPoll === name) throw new Error("copy poll failed");
-              if (options.changeSourceAfterCopy === sourceName) {
-                blobs.set(sourceName, { etag: `"changed-${copySequence}"`, copyId: undefined });
-              }
-              const copied = { etag: `"copied-${copySequence}"`, copyId };
-              blobs.set(name, copied);
-              if (options.addTargetAfterCopy === name) {
-                names.add(options.addTargetAfterCopyName);
-                blobs.set(options.addTargetAfterCopyName, { etag: '"external-target"', copyId: undefined });
-              }
-              return { copyStatus: "success", ...copied };
+              await this.poll();
+              return result;
             },
           };
         },
-        async getProperties() {
+        async abortCopyFromURL(copyId, { abortSignal } = {}) {
+          if (abortSignal?.aborted) throw abortSignal.reason;
+          const blob = blobs.get(name);
+          if (!blob || blob.copyId !== copyId || !blob.pending) {
+            const error = new Error("copy is not pending");
+            error.statusCode = 409;
+            throw error;
+          }
+          abortedCopies.push({ name, copyId });
+          blob.pending = false;
+        },
+        async getProperties({ abortSignal } = {}) {
+          if (abortSignal?.aborted) throw abortSignal.reason;
           const blob = blobs.get(name);
           if (!blob) {
             const error = new Error("not found");
@@ -100,8 +214,22 @@ function createContainer(initialNames, options = {}) {
           return { ...blob };
         },
         async deleteIfExists(deleteOptions = {}) {
+          if (deleteOptions.abortSignal?.aborted) throw deleteOptions.abortSignal.reason;
           const isSource = initialNames.includes(name);
           events.push(`${isSource ? "delete-source" : "delete-destination"}:${name}`);
+          const activeKey = isSource ? "activeSourceDeletes" : "activeRollbacks";
+          const maxKey = isSource ? "maxActiveSourceDeletes" : "maxActiveRollbacks";
+          activity[activeKey] += 1;
+          activity[maxKey] = Math.max(activity[maxKey], activity[activeKey]);
+          const operationDelay = isSource ? options.sourceDeleteDelayMs : options.rollbackDelayMs;
+          if (isSource && options.sourceDeleteNeverSettles) {
+            await waitForAbort(deleteOptions.abortSignal);
+          }
+          if (!isSource && options.rollbackNeverSettles) {
+            await waitForAbort(deleteOptions.abortSignal);
+          }
+          if (operationDelay) await delay(operationDelay);
+          try {
           if (isSource) {
             sourceDeletes.push(name);
             sourceDeleteOptions.push(deleteOptions);
@@ -114,6 +242,11 @@ function createContainer(initialNames, options = {}) {
             }
           }
           const blob = blobs.get(name);
+          if (blob?.pending) {
+            const error = new Error("PendingCopyOperation");
+            error.statusCode = 409;
+            throw error;
+          }
           if (deleteOptions.conditions?.ifMatch && blob?.etag !== deleteOptions.conditions.ifMatch) {
             const error = new Error("condition failed");
             error.statusCode = 412;
@@ -122,10 +255,14 @@ function createContainer(initialNames, options = {}) {
           const succeeded = names.delete(name);
           blobs.delete(name);
           return { succeeded };
+          } finally {
+            activity[activeKey] -= 1;
+          }
         },
         getBlobLeaseClient() {
           return {
-            async acquireLease() {
+            async acquireLease(_duration, { abortSignal } = {}) {
+              if (abortSignal?.aborted) throw abortSignal.reason;
               if (options.replaceDestinationBeforeSourceDelete === name) {
                 blobs.set(name, { etag: '"external-before-delete"', copyId: "external-copy" });
               }
@@ -136,7 +273,8 @@ function createContainer(initialNames, options = {}) {
               }
               return { leaseId: `lease:${name}` };
             },
-            async releaseLease() {
+            async releaseLease({ abortSignal } = {}) {
+              if (abortSignal?.aborted) throw abortSignal.reason;
               return {};
             },
           };
@@ -193,7 +331,8 @@ test("preflights both complete prefixes and rejects any target blob without muta
   const container = createContainer([
     `${oldPrefix}photo.jpg`,
     `${newPrefix}existing.jpg`,
-  ]);
+    `${newPrefix}second.jpg`,
+  ], { maxListItemsBeforeThrow: 1 });
 
   await assert.rejects(
     renameFolderBlobs({
@@ -211,6 +350,10 @@ test("preflights both complete prefixes and rejects any target blob without muta
     },
   );
   assert.deepEqual(container.events, [`list:${oldPrefix}`, `list:${newPrefix}`]);
+  assert.deepEqual(container.listPageSizes, [
+    { prefix: oldPrefix, maxPageSize: FOLDER_RENAME_REQUEST_LIMITS.maxBlobs + 1 },
+    { prefix: newPrefix, maxPageSize: 1 },
+  ]);
   assert.equal(container.copyCalls.length, 0);
   assert.equal(container.sourceDeletes.length, 0);
 });
@@ -279,8 +422,12 @@ test("a middle copy failure rolls back only created destinations and never delet
   assert.deepEqual(container.sourceDeletes, []);
   assert.deepEqual(
     container.destinationDeletes.sort(),
-    [`${newPrefix}a.jpg`, failedDestination].sort(),
+    [`${newPrefix}a.jpg`, failedDestination, `${newPrefix}c.jpg`].sort(),
   );
+  assert.deepEqual(container.abortedCopies, [{
+    name: failedDestination,
+    copyId: "copy-2",
+  }]);
   assert.ok(sources.every((name) => container.names.has(name)));
 });
 
@@ -331,7 +478,7 @@ test("delete failure returns a non-success partial result while every media item
       assert.ok(error instanceof FolderRenameError);
       assert.equal(error.status, 500);
       assert.equal(error.details.phase, "delete");
-      assert.deepEqual(error.details.remainingSources, [failedSource, `${oldPrefix}c.jpg`]);
+      assert.deepEqual(error.details.remainingSources, [failedSource]);
       return true;
     },
   );
@@ -488,5 +635,220 @@ test("a lost begin-copy response reports an unowned destination as recovery-need
 
   assert.ok(container.names.has(source));
   assert.ok(container.names.has(destination));
+  assert.deepEqual(container.sourceDeletes, []);
+});
+
+test("copy and delete phases use their independent bounded concurrency limits", async () => {
+  assert.deepEqual(FOLDER_RENAME_CONCURRENCY, {
+    copy: 4,
+    delete: 4,
+    rollback: 2,
+  });
+  assert.deepEqual(FOLDER_RENAME_REQUEST_LIMITS, {
+    maxBlobs: 100,
+    copyPhaseTimeoutMs: 120_000,
+    copyPollIntervalMs: 2_000,
+    copyCancelTimeoutMs: 10_000,
+    rollbackPhaseTimeoutMs: 60_000,
+    deleteCriticalSectionTimeoutMs: 20_000,
+    requestTimeoutMs: 210_000,
+  });
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const sources = Array.from({ length: 12 }, (_, index) => `${oldPrefix}${index}.jpg`);
+  const container = createContainer(sources, {
+    copyDelayMs: 15,
+    sourceDeleteDelayMs: 15,
+  });
+
+  await renameFolderBlobs({
+    container,
+    oldPrefix,
+    newPrefix,
+    generateSourceUrl: async (name) => `sas:${name}`,
+    context: { error() {} },
+  });
+
+  assert.equal(container.activity.maxActiveCopies, FOLDER_RENAME_CONCURRENCY.copy);
+  assert.equal(container.activity.maxActiveSourceDeletes, FOLDER_RENAME_CONCURRENCY.delete);
+  assert.ok(container.activity.maxActiveCopies > 1);
+  assert.ok(container.activity.maxActiveSourceDeletes > 1);
+});
+
+test("copy failure stops dispatching new work and rollback remains independently bounded", async () => {
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const sources = Array.from({ length: 12 }, (_, index) => `${oldPrefix}${index}.jpg`);
+  const failedDestination = `${newPrefix}1.jpg`;
+  const container = createContainer(sources, {
+    copyDelayMs: (name) => name === failedDestination ? 5 : 25,
+    failCopyPoll: failedDestination,
+    rollbackDelayMs: 15,
+  });
+
+  await assert.rejects(
+    renameFolderBlobs({
+      container,
+      oldPrefix,
+      newPrefix,
+      generateSourceUrl: async (name) => `sas:${name}`,
+      context: { error() {} },
+    }),
+    FolderRenameError,
+  );
+
+  assert.equal(container.activity.maxActiveCopies, FOLDER_RENAME_CONCURRENCY.copy);
+  assert.equal(container.copyCalls.length, FOLDER_RENAME_CONCURRENCY.copy);
+  assert.equal(container.activity.maxActiveRollbacks, FOLDER_RENAME_CONCURRENCY.rollback);
+  assert.ok(container.activity.maxActiveRollbacks > 1);
+  assert.deepEqual(container.sourceDeletes, []);
+});
+
+test("oversized folders are rejected before mutation instead of overrunning one HTTP request", async () => {
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const sources = Array.from(
+    { length: FOLDER_RENAME_REQUEST_LIMITS.maxBlobs + 50 },
+    (_, index) => `${oldPrefix}${index}.jpg`,
+  );
+  const container = createContainer(sources, {
+    maxListItemsBeforeThrow: FOLDER_RENAME_REQUEST_LIMITS.maxBlobs + 1,
+  });
+
+  await assert.rejects(
+    renameFolderBlobs({
+      container,
+      oldPrefix,
+      newPrefix,
+      generateSourceUrl: async (name) => `sas:${name}`,
+      context: { error() {} },
+    }),
+    (error) => {
+      assert.equal(error.status, 413);
+      assert.equal(error.details.recoveryNeeded, false);
+      return true;
+    },
+  );
+  assert.deepEqual(container.copyCalls, []);
+  assert.deepEqual(container.sourceDeletes, []);
+});
+
+test("copy timeout cancels active pollers, rolls back boundedly, and preserves every source", async () => {
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const sources = Array.from({ length: 8 }, (_, index) => `${oldPrefix}${index}.jpg`);
+  const container = createContainer(sources, {
+    copyDelayMs: 30,
+    rollbackDelayMs: 10,
+  });
+
+  await assert.rejects(
+    renameFolderBlobs({
+      container,
+      oldPrefix,
+      newPrefix,
+      generateSourceUrl: async (name) => `sas:${name}`,
+      context: { error() {} },
+      copyPhaseTimeoutMs: 5,
+    }),
+    (error) => {
+      assert.equal(error.details.phase, "copy");
+      return true;
+    },
+  );
+
+  assert.equal(container.copyCalls.length, FOLDER_RENAME_CONCURRENCY.copy);
+  assert.equal(container.abortedCopies.length, FOLDER_RENAME_CONCURRENCY.copy);
+  assert.ok(container.activity.maxActiveRollbacks <= FOLDER_RENAME_CONCURRENCY.rollback);
+  assert.ok(sources.every((name) => container.names.has(name)));
+  assert.deepEqual(container.sourceDeletes, []);
+});
+
+test("the server request deadline also bounds rollback storage calls", async () => {
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const sources = ["a.jpg", "b.jpg", "c.jpg"].map((name) => oldPrefix + name);
+  const container = createContainer(sources, {
+    failCopyPoll: `${newPrefix}b.jpg`,
+    rollbackNeverSettles: true,
+  });
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    renameFolderBlobs({
+      container,
+      oldPrefix,
+      newPrefix,
+      generateSourceUrl: async (name) => `sas:${name}`,
+      context: { error() {} },
+      requestTimeoutMs: 20,
+    }),
+    (error) => {
+      assert.equal(error.details.phase, "copy");
+      assert.equal(error.details.recoveryNeeded, true);
+      return true;
+    },
+  );
+
+  assert.ok(Date.now() - startedAt < 500);
+  assert.deepEqual(container.sourceDeletes, []);
+  assert.ok(sources.every((name) => container.names.has(name)));
+});
+
+test("source deletion cannot outlive the destination lease safety margin", async () => {
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const source = `${oldPrefix}photo.jpg`;
+  const destination = `${newPrefix}photo.jpg`;
+  const container = createContainer([source], { sourceDeleteNeverSettles: true });
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    renameFolderBlobs({
+      container,
+      oldPrefix,
+      newPrefix,
+      generateSourceUrl: async (name) => `sas:${name}`,
+      context: { error() {} },
+      deleteCriticalSectionTimeoutMs: 20,
+    }),
+    (error) => {
+      assert.equal(error.details.phase, "delete");
+      assert.equal(error.details.recoveryNeeded, true);
+      return true;
+    },
+  );
+
+  assert.ok(Date.now() - startedAt < 500);
+  assert.ok(container.names.has(source));
+  assert.ok(container.names.has(destination));
+});
+
+test("service throttling is left to Azure SDK retry and never creates an outer retry storm", async () => {
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const sources = Array.from({ length: 8 }, (_, index) => `${oldPrefix}${index}.jpg`);
+  const failedDestination = `${newPrefix}0.jpg`;
+  const container = createContainer(sources, {
+    failCopyBegin: failedDestination,
+    failCopyStatusCode: 503,
+  });
+
+  await assert.rejects(
+    renameFolderBlobs({
+      container,
+      oldPrefix,
+      newPrefix,
+      generateSourceUrl: async (name) => `sas:${name}`,
+      context: { error() {} },
+    }),
+    FolderRenameError,
+  );
+
+  assert.equal(
+    container.copyCalls.filter((call) => call.name === failedDestination).length,
+    1,
+  );
+  assert.ok(container.copyCalls.length <= FOLDER_RENAME_CONCURRENCY.copy);
   assert.deepEqual(container.sourceDeletes, []);
 });
