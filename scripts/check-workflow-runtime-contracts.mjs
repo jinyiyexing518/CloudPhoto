@@ -327,6 +327,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const contractInvocations = [];
   const checkoutFetchDepths = [];
   const runCommands = [];
+  const runSteps = [];
   const pushPaths = nestedListItems(text, ["on", "push", "paths"]);
   const workflowDispatchModes = nestedListItems(text, [
     "on",
@@ -358,6 +359,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   ]);
   const staticWebAppActions = [];
   const artifactActions = [];
+  const artifactSteps = [];
   const checkoutRefs = [];
   const activeSource = text
     .split(/\r?\n/)
@@ -379,11 +381,14 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     cancelInProgress: rootChildField(text, "concurrency", "cancel-in-progress"),
   };
 
-  for (const step of activeStepBlocks(text)) {
+  for (const [order, step] of activeStepBlocks(text).entries()) {
     const name = stepField(step, "name");
     const uses = stepField(step, "uses");
     const run = stepField(step, "run");
-    if (run) runCommands.push(run);
+    if (run) {
+      runCommands.push(run);
+      runSteps.push({ command: run, job: step.job, order });
+    }
     if (uses?.startsWith("actions/checkout@")) {
       checkoutFetchDepths.push({
         path,
@@ -443,6 +448,13 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         retentionDays: stepChildField(step, "with", "retention-days"),
         stepName: name,
         uses,
+      });
+      artifactSteps.push({
+        action: artifact[1].toLowerCase(),
+        job: step.job,
+        name: stepChildField(step, "with", "name"),
+        order,
+        path: stepChildField(step, "with", "path"),
       });
     }
 
@@ -504,12 +516,14 @@ export function inspectWorkflow(text, path = "workflow.yml") {
 
   return {
     artifactActions,
+    artifactSteps,
     azureLoginRefs,
     checkoutRefs,
     setupNodeVersions,
     contractInvocations,
     checkoutFetchDepths,
     runCommands,
+    runSteps,
     concurrency,
     pushPaths,
     runName: quotedRootScalar(text, "run-name"),
@@ -609,11 +623,40 @@ export function checkWorkflowRuntimeContracts(workflows) {
     ) {
       issues.push(`${frontendWorkflow} must fetch full history for pinned bootstrap generations`);
     }
-    if (!inspectedFrontend.runCommands.includes(retentionCommand)) {
+    const retentionStep = inspectedFrontend.runSteps.find(
+      (step) => step.command === retentionCommand
+    );
+    const browserContractStep = inspectedFrontend.runSteps.find(
+      (step) => step.command === browserContractCommand
+    );
+    const frontendArtifactUpload = inspectedFrontend.artifactSteps.find(
+      (action) =>
+        action.action === "upload-artifact"
+        && action.job === "build"
+        && action.name === frontendArtifactName
+        && action.path === frontendArtifactPath
+    );
+    if (!retentionStep) {
       issues.push(`${frontendWorkflow} must prepare bounded deployment assets before upload`);
+    } else if (
+      frontendArtifactUpload
+      && (
+        retentionStep.job !== "build"
+        || retentionStep.order >= frontendArtifactUpload.order
+      )
+    ) {
+      issues.push(`${frontendWorkflow} must prepare bounded deployment assets in build before upload`);
     }
-    if (!inspectedFrontend.runCommands.includes(browserContractCommand)) {
+    if (!browserContractStep) {
       issues.push(`${frontendWorkflow} must run the stale deployment browser contracts`);
+    } else if (
+      frontendArtifactUpload
+      && (
+        browserContractStep.job !== "build"
+        || browserContractStep.order >= frontendArtifactUpload.order
+      )
+    ) {
+      issues.push(`${frontendWorkflow} must run stale deployment browser contracts in build before upload`);
     }
   }
   if (!healthConcurrency) {

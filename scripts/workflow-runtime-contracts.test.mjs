@@ -876,3 +876,35 @@ jobs:
   assert.ok(result.issues.some((issue) => issue.includes("bounded deployment assets")));
   assert.ok(result.issues.some((issue) => issue.includes("browser contracts")));
 });
+
+test("rejects retention gates moved after frontend artifact staging", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  );
+  const retentionStart = frontend.indexOf("      - name: Retain bounded deployment assets");
+  const markerStart = frontend.indexOf("      - name: Record deployment identity");
+  const deployJobStart = frontend.indexOf("  deploy_production:");
+  assert.ok(retentionStart >= 0 && markerStart > retentionStart && deployJobStart > markerStart);
+
+  const retentionGates = frontend.slice(retentionStart, markerStart);
+  const reordered = [
+    frontend.slice(0, retentionStart),
+    frontend.slice(markerStart, deployJobStart),
+    retentionGates,
+    frontend.slice(deployJobStart),
+  ].join("");
+  const result = checkWorkflowRuntimeContracts([{ path, text: reordered }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("bounded deployment assets in build before upload")
+    )
+  );
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("browser contracts in build before upload")
+    )
+  );
+});
