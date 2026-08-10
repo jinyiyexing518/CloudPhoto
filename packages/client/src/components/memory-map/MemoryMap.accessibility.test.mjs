@@ -59,6 +59,9 @@ test("manual coordinates and no-GPS photo controls expose complete contracts", a
   assert.match(memoryMap, /alt=""/);
   assert.match(memoryMap, /ref=\{manualLatRef\}/);
   assert.match(memoryMap, /showToast\("更新位置失败",\s*"error"\)/);
+  assert.match(memoryMap, /workspaceRef\.current = groupId/);
+  assert.match(memoryMap, /mountedRef\.current = false;[\s\S]*editSessionRef\.current \+= 1/);
+  assert.match(memoryMap, /target\.workspace !== workspaceRef\.current/);
 });
 
 test("shared coordinate parser rejects partial and out-of-range manual values", async () => {

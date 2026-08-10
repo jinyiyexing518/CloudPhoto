@@ -90,6 +90,9 @@ export default function MemoryMap({
   const manualLatRef = useRef<HTMLInputElement>(null);
   const editRestoreFocusRef = useRef<HTMLElement | null>(null);
   const editSessionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const workspaceRef = useRef(groupId);
+  workspaceRef.current = groupId;
 
   const [mapReady, setMapReady] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<{ workspace: string; name: string } | null>(null);
@@ -290,6 +293,8 @@ export default function MemoryMap({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
+      editSessionRef.current += 1;
       for (const registration of markerMapRef.current.values()) {
         removeMarkerRegistration(registration);
       }
@@ -349,7 +354,7 @@ export default function MemoryMap({
 
   const saveGps = async (lat: string, lon: string) => {
     const gps = readGpsCoordinates(lat, lon);
-    if (!editTarget || editTarget.workspace !== groupId || !gps) {
+    if (!editTarget || editTarget.workspace !== workspaceRef.current || !gps) {
       showToast("请输入有效的纬度（-90 到 90）和经度（-180 到 180）", "error");
       return;
     }
@@ -360,16 +365,24 @@ export default function MemoryMap({
     setSaving(true);
     try {
       await updatePhotoGps(target.photo.name, normalizedLat, normalizedLon);
-      if (session !== editSessionRef.current || target.workspace !== groupId) return;
+      if (
+        !mountedRef.current
+        || session !== editSessionRef.current
+        || target.workspace !== workspaceRef.current
+      ) return;
       onGpsUpdate?.(target.photo.name, normalizedLat, normalizedLon);
       setSaving(false);
       resetEdit();
     } catch (error) {
-      if (session === editSessionRef.current && target.workspace === groupId) {
+      if (
+        mountedRef.current
+        && session === editSessionRef.current
+        && target.workspace === workspaceRef.current
+      ) {
         showToast(error instanceof Error ? error.message : "更新照片位置失败", "error");
       }
     } finally {
-      if (session === editSessionRef.current) setSaving(false);
+      if (mountedRef.current && session === editSessionRef.current) setSaving(false);
     }
   };
 
