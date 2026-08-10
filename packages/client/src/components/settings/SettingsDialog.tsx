@@ -74,7 +74,7 @@ interface Props {
   initialTab?: SettingsEntryTab;
   initialFocusTarget?: SettingsFocusTarget;
   initialFocusItemId?: string;
-  onInstallApp?: () => void;
+  onInstallApp?: (trigger: HTMLElement) => void;
   restoreFocusTo?: HTMLElement | null;
   onMaintenanceStateChange?: (event: MaintenanceTaskEvent) => void;
   onTrashMutationStateChange?: (event: TrashMutationEvent) => void;
@@ -221,22 +221,56 @@ export default function SettingsDialog({
           },
         });
       } else {
+        const reportMetadataProgress = (progress: Awaited<ReturnType<typeof backfillPhotoMetadata>> & { hasMore: boolean }) => {
+          applyMaintenanceEvent({
+            type: "progress",
+            operationId,
+            processed: progress.processed,
+            changed: progress.updated,
+            skipped: progress.skippedBudget,
+            failed: progress.failed,
+            hasMore: progress.hasMore,
+            candidates: progress.candidates,
+            estimatedBytes: progress.estimatedBytes,
+            bytesRead: progress.bytesRead,
+            recovered: progress.recovered,
+            cleanedInvalid: progress.cleanedInvalid,
+            trulyMissing: progress.trulyMissing,
+            skippedBudget: progress.skippedBudget,
+          });
+          if (currentGroupIdRef.current !== workspaceId) {
+            controller.abort(new DOMException("工作空间已变更，元数据任务已停止", "AbortError"));
+          }
+        };
+        const estimate = await backfillPhotoMetadata(workspaceId, {
+          signal: controller.signal,
+          dryRun: true,
+          onProgress: reportMetadataProgress,
+        });
+        if (currentGroupIdRef.current !== workspaceId) {
+          throw new Error("工作空间已变更，维护任务结果已拒绝");
+        }
+        if (estimate.candidates === 0) {
+          showToast("没有需要恢复的历史照片位置", "info");
+          applyMaintenanceEvent({ type: "complete", operationId });
+          return;
+        }
+        const estimatedSize = estimate.estimatedBytes < 1024 * 1024
+          ? `${Math.ceil(estimate.estimatedBytes / 1024)} KiB`
+          : `${(estimate.estimatedBytes / (1024 * 1024)).toFixed(1)} MiB`;
+        if (!window.confirm(
+          `只读扫描发现 ${estimate.candidates} 张候选照片，最多读取约 ${estimatedSize}。将按页限制流量并恢复有效 EXIF 位置；确认开始吗？`,
+        )) {
+          applyMaintenanceEvent({
+            type: "stop",
+            operationId,
+            message: "已取消写入；只读估算未下载原图或修改数据。",
+          });
+          return;
+        }
         await backfillPhotoMetadata(workspaceId, {
           signal: controller.signal,
-          onProgress: (progress) => {
-            applyMaintenanceEvent({
-              type: "progress",
-              operationId,
-              processed: progress.processed,
-              changed: progress.updated,
-              skipped: 0,
-              failed: progress.failed,
-              hasMore: progress.hasMore,
-            });
-            if (currentGroupIdRef.current !== workspaceId) {
-              controller.abort(new DOMException("工作空间已变更，元数据任务已停止", "AbortError"));
-            }
-          },
+          onProgress: reportMetadataProgress,
         });
       }
       if (currentGroupIdRef.current !== workspaceId) {
@@ -688,7 +722,7 @@ export default function SettingsDialog({
                   <h3>历史照片回填</h3>
                 </div>
                 <p className="add-admin-hint">
-                  对已上传的照片重新提取拍摄时间和 GPS 位置。仅处理尚未有该信息的照片，不会覆盖已有数据。
+                  先只读估算候选照片和最大读取量，确认后再恢复拍摄时间与 GPS。合法位置不会被覆盖；NaN、越界或单边位置会从 EXIF 恢复，确认原图无位置后才清理。
                 </p>
                 <button
                   type="button"
@@ -717,8 +751,8 @@ export default function SettingsDialog({
                 <button
                   type="button"
                   className="settings-save-btn"
-                  onClick={onInstallApp}
-                  disabled={isStandalone}
+                  onClick={(event) => onInstallApp?.(event.currentTarget)}
+                  disabled={isStandalone || settingsActivityActive}
                 >
                   {isStandalone ? "已安装到设备" : canInstall ? "立即安装应用" : "安装应用"}
                 </button>

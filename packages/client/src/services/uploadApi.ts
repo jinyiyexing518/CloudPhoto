@@ -99,6 +99,7 @@ export async function uploadPhotoWithProgress(
   signal?: AbortSignal,
   takenAt?: string,
   uploadId?: string,
+  onAttemptStart?: () => void,
 ): Promise<Photo> {
   const params = new URLSearchParams({ filename: file.name });
   if (uploadedBy) params.set("uploadedBy", uploadedBy);
@@ -132,6 +133,7 @@ export async function uploadPhotoWithProgress(
         return;
       }
 
+      onAttemptStart?.();
       const xhr = new XMLHttpRequest();
       xhr.open("POST", targetUrl);
 

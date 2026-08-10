@@ -13,6 +13,7 @@ test("XHR failures preserve status and Retry-After metadata", () => {
 
 test("XHR cancellation and idempotent direct fallback remain wired", () => {
   assert.match(source, /signal\?\.addEventListener\("abort", abort, \{ once: true \}\)/);
+  assert.match(source, /onAttemptStart\?\.\(\);\s*const xhr = new XMLHttpRequest\(\)/);
   assert.match(source, /if \(!recoverMisroutedProxy \|\| !uploadId \|\| targetUrl === directUploadUrl\) return false/);
   assert.match(source, /void uploadOnce\(directUploadUrl, false\)\.then\(resolve, reject\)/);
 });

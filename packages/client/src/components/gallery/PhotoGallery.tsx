@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { createPortal } from "react-dom";
-import MediaThumb from "../shared/MediaThumb";
 import {
   Photo,
   updatePhotoSubject,
@@ -28,17 +27,11 @@ import {
   fetchMediaWithFallback,
   getPreferredMediaUrl,
   preloadImageWithFallback,
-  promoteSuccessfulMediaUrl,
 } from "../../services/mediaRoute";
 import {
-  VideoPlaybackSession,
-  claimVideoThumbnailCapture,
-  createVideoPlaybackSession,
-  fallbackVideoPlaybackSession,
   getVideoPlaybackRenderState,
-  markVideoPlaybackPlayable,
-  restartVideoPlaybackSession,
 } from "../../services/videoPlaybackSession";
+import { useResilientVideoPlayback } from "../../services/useResilientVideoPlayback";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
@@ -351,12 +344,37 @@ function PhotoGallery({
   const shortcutHelpCloseRef = useRef<HTMLButtonElement | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
-  const [videoSession, setVideoSession] = useState<VideoPlaybackSession | null>(null);
-  const videoSessionIdRef = useRef(0);
-  const videoElementRef = useRef<HTMLVideoElement>(null);
-  const videoPlayableSessionRef = useRef<string | null>(null);
-  const videoFallbackSessionRef = useRef<string | null>(null);
-  const videoCaptureSessionRef = useRef<string | null>(null);
+  const {
+    session: videoSession,
+    videoRef,
+    buffering: videoBuffering,
+    error: videoError,
+    eventHandlers: videoEventHandlers,
+    openVideo,
+    closeVideo,
+    retryVideo,
+  } = useResilientVideoPlayback({
+    onPlayable: ({
+      photoName,
+      video,
+      shouldCaptureThumbnail,
+    }) => {
+      if (
+        !shouldCaptureThumbnail
+        || selectedPhoto?.name !== photoName
+        || selectedPhoto.thumbnailUrl
+      ) {
+        return;
+      }
+      void persistVideoPlaybackThumbnail(photoName, video).then((thumbnailUrl) => {
+        if (!thumbnailUrl) return;
+        onThumbnailUpdate?.(photoName, thumbnailUrl);
+        setSelectedPhoto((current) => current?.name === photoName
+          ? { ...current, thumbnailUrl }
+          : current);
+      });
+    },
+  });
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState("");
   const [savingSubject, setSavingSubject] = useState(false);
@@ -373,8 +391,6 @@ function PhotoGallery({
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
-  const [videoBuffering, setVideoBuffering] = useState(false);
-  const [videoError, setVideoError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
@@ -384,19 +400,19 @@ function PhotoGallery({
 
   const openVideoPlaybackSession = useCallback((photo: Photo) => {
     if (!photo.contentType?.startsWith("video/")) {
-      setVideoSession(null);
+      closeVideo();
       return;
     }
-    const session = createVideoPlaybackSession({
+    openVideo({
       photoName: photo.name,
       originalUrl: photo.url,
-      sessionId: ++videoSessionIdRef.current,
       needsThumbnailCapture: !photo.thumbnailUrl,
     });
-    videoPlayableSessionRef.current = null;
-    videoFallbackSessionRef.current = null;
-    setVideoSession(session);
-  }, []);
+  }, [closeVideo, openVideo]);
+
+  useEffect(() => {
+    if (!selectedPhoto) closeVideo();
+  }, [closeVideo, selectedPhoto]);
 
   useEffect(() => {
     if (!selectedPhoto || selectedPhoto.contentType?.startsWith("video/")) return;
@@ -839,8 +855,6 @@ function PhotoGallery({
     setDownloading(false);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
-    setVideoBuffering(false);
-    setVideoError(false);
     setImageDimensions(null);
     setModalImageLoaded(false);
     setGifViewerSrc("");
@@ -1023,8 +1037,6 @@ function PhotoGallery({
     setVoiceError(null);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
-    setVideoBuffering(false);
-    setVideoError(false);
     setGifViewerSrc("");
   };
 
@@ -1459,27 +1471,22 @@ function PhotoGallery({
               const engagementPercent = Math.max(6, Math.min(100, Math.round(engagement / 4)));
               const rankBadge = rank <= 3 ? (rank === 1 ? "🏆" : rank === 2 ? "🥈" : "🥉") : "⭐";
               return (
-                <article
-                  key={photo.name}
-                  className="moments-card"
-                  role="button"
-                  tabIndex={batchMutationBusy ? -1 : 0}
-                  aria-disabled={batchMutationBusy || undefined}
-                  onClick={(event) => {
-                    if (batchMutationBusy) return;
-                    event.currentTarget.focus({ preventScroll: true });
-                    openModal(photo);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    event.currentTarget.click();
-                  }}
-                >
+                <div key={photo.name} className="moments-card">
                   <div className="moments-rank">{rankBadge} #{rank}</div>
-                  <div className="media-thumb-wrap">
-                    <MediaThumb url={photo.url} thumbnailUrl={photo.thumbnailUrl} previewUrl={photo.previewUrl} alt={display} contentType={photo.contentType} className="moments-thumb" priority={index < GALLERY_EAGER_MEDIA_COUNT} />
-                  </div>
+                  <PhotoCard
+                    photo={photo}
+                    priority={index < GALLERY_EAGER_MEDIA_COUNT}
+                    onClick={() => !selectMode && openModal(photo)}
+                    onDelete={() => onDelete(photo.name)}
+                    onToggleFavorite={(next) => { void onToggleFavorite(photo.name, next); }}
+                    onThumbnailUpdate={onThumbnailUpdate}
+                    selected={selectMode ? selected.has(photo.name) : undefined}
+                    onSelect={selectMode ? (e) => {
+                      e.stopPropagation();
+                      if (!batchMutationBusy) togglePhoto(photo.name);
+                    } : undefined}
+                    interactionDisabled={batchMutationBusy}
+                  />
                   <div className="moments-card-body">
                     <div className="moments-title-row">
                       <div className="moments-title" title={display}>{display}</div>
@@ -1497,7 +1504,7 @@ function PhotoGallery({
                     <div className="moments-meta">👤 {photo.createdBy ?? "未知"} · {dateText}</div>
                     <div className="moments-meta">最近查看：{lastViewedAt ? formatDate(lastViewedAt) : "还没人看过"}{topViewer ? ` · 常看：${topViewer}` : ""}</div>
                   </div>
-                </article>
+                </div>
               );
             })}
           </div>
@@ -1642,7 +1649,7 @@ function PhotoGallery({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
                   {selectedVideoRender && <video
-                    ref={videoElementRef}
+                    ref={videoRef}
                     key={selectedVideoRender.key}
                     crossOrigin="anonymous"
                     src={selectedVideoRender.source}
@@ -1651,67 +1658,7 @@ function PhotoGallery({
                     controls
                     playsInline
                     preload="auto"
-                    onPlay={() => {
-                      setVideoError(false);
-                      setVideoBuffering(true);
-                    }}
-                    onLoadedData={(event) => {
-                      if (selectedVideoRender.session.fallbackAttempted) {
-                        promoteSuccessfulMediaUrl(selectedVideoRender.source);
-                      }
-                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
-                      const activeSession = markVideoPlaybackPlayable(selectedVideoRender.session);
-                      const capture = claimVideoThumbnailCapture(activeSession);
-                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
-                        ? capture.session
-                        : current);
-                      const photoName = selectedPhoto.name;
-                      if (
-                        capture.shouldCapture
-                        && !selectedPhoto.thumbnailUrl
-                        && videoCaptureSessionRef.current !== activeSession.key
-                      ) {
-                        videoCaptureSessionRef.current = activeSession.key;
-                        void persistVideoPlaybackThumbnail(photoName, event.currentTarget)
-                          .then((thumbnailUrl) => {
-                            if (!thumbnailUrl) return;
-                            onThumbnailUpdate?.(photoName, thumbnailUrl);
-                            setSelectedPhoto((current) => current?.name === photoName
-                              ? { ...current, thumbnailUrl }
-                              : current);
-                          });
-                      }
-                    }}
-                    onPlaying={() => {
-                      setVideoBuffering(false);
-                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
-                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
-                        ? markVideoPlaybackPlayable(current)
-                        : current);
-                    }}
-                    onWaiting={() => setVideoBuffering(true)}
-                    onError={(event) => {
-                      const activeSession = videoPlayableSessionRef.current === selectedVideoRender.session.key
-                        ? markVideoPlaybackPlayable(selectedVideoRender.session)
-                        : selectedVideoRender.session;
-                      const fallback = videoFallbackSessionRef.current === selectedVideoRender.session.key
-                        ? null
-                        : fallbackVideoPlaybackSession(
-                            activeSession,
-                            event.currentTarget.currentSrc || event.currentTarget.src,
-                          );
-                      if (fallback) {
-                        videoFallbackSessionRef.current = selectedVideoRender.session.key;
-                        setVideoSession(fallback);
-                        setVideoError(false);
-                        setVideoBuffering(true);
-                        event.currentTarget.src = fallback.source;
-                        event.currentTarget.load();
-                      } else {
-                        setVideoBuffering(false);
-                        setVideoError(true);
-                      }
-                    }}
+                    {...videoEventHandlers}
                   />}
                   {videoBuffering && !videoError && (
                     <div className="modal-video-spinner">
@@ -1725,19 +1672,7 @@ function PhotoGallery({
                       <span style={{ fontSize: 13 }}>视频加载失败</span>
                       <button
                         style={{ marginTop: 4, padding: "4px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13 }}
-                        onClick={() => {
-                          if (!videoSession) return;
-                          const restarted = restartVideoPlaybackSession(videoSession);
-                          videoPlayableSessionRef.current = null;
-                          videoFallbackSessionRef.current = null;
-                          setVideoSession(restarted);
-                          setVideoError(false);
-                          setVideoBuffering(true);
-                          if (videoElementRef.current) {
-                            videoElementRef.current.src = restarted.source;
-                            videoElementRef.current.load();
-                          }
-                        }}
+                        onClick={retryVideo}
                       >重试</button>
                     </div>
                   )}

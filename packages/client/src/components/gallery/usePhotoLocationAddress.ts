@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 import type { Photo } from "../../services/photoApi";
 import { reverseGeocode } from "../../utils/geocode";
+import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 
 function workspaceForPhoto(name: string): string {
   const [kind = "", owner = ""] = name.split("/");
   return `${kind}/${owner}`;
-}
-
-function parseCoordinate(raw: string | undefined): number {
-  return raw?.trim() ? Number(raw) : Number.NaN;
 }
 
 export function usePhotoLocationAddress(photo: Photo | null): {
@@ -16,8 +13,9 @@ export function usePhotoLocationAddress(photo: Photo | null): {
   loading: boolean;
 } {
   const photoName = photo?.name ?? "";
-  const lat = parseCoordinate(photo?.gpsLat);
-  const lon = parseCoordinate(photo?.gpsLon);
+  const gps = readGpsCoordinates(photo?.gpsLat, photo?.gpsLon);
+  const lat = gps?.lat ?? Number.NaN;
+  const lon = gps?.lon ?? Number.NaN;
   const identity = `${photoName}:${photo?.gpsLat ?? ""}:${photo?.gpsLon ?? ""}`;
   const hasCoordinates = Boolean(photoName) && Number.isFinite(lat) && Number.isFinite(lon);
   const [result, setResult] = useState<{

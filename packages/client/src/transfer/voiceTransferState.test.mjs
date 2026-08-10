@@ -30,9 +30,10 @@ test("tracks timeline/moments/folder independently and release is source-scoped"
 test("authenticated app contract uses one derived transferring guard for tab/group/pwa", () => {
   const source = readFileSync(new URL("../AuthenticatedApp.tsx", import.meta.url), "utf8");
   assert.match(source, /const transferring =[\s\S]*voiceTransferState !== "idle"/);
-  assert.match(source, /const switchTab = \(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
+  assert.match(source, /const switchTab = useCallback\(\(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
   assert.match(source, /<GroupSwitcher[\s\S]*onBeforeSelect=\{handleGroupSwitch\}[\s\S]*disabled=\{transferring\}/);
-  assert.match(source, /activatePwaUpdate\(window as PwaUpdateBrowserWindow, \{ transferring \}\)/);
+  assert.match(source, /setDangerousOperationActivity\(\s*"authenticated-app",\s*transferring/);
+  assert.match(source, /activatePwaUpdate\(window as PwaUpdateBrowserWindow\)/);
 });
 
 test("voice transfer banner contract distinguishes recording, voice upload, and download", () => {

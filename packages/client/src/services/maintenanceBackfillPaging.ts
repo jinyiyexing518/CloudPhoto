@@ -4,6 +4,13 @@ export interface MaintenanceBackfillPage {
   skipped: number;
   indexReconciled: number;
   failed: number;
+  candidates: number;
+  estimatedBytes: number;
+  bytesRead: number;
+  recovered: number;
+  cleanedInvalid: number;
+  trulyMissing: number;
+  skippedBudget: number;
   hasMore: boolean;
   cursor?: string;
 }
@@ -14,6 +21,13 @@ export interface MaintenanceBackfillProgress {
   skipped: number;
   indexReconciled: number;
   failed: number;
+  candidates: number;
+  estimatedBytes: number;
+  bytesRead: number;
+  recovered: number;
+  cleanedInvalid: number;
+  trulyMissing: number;
+  skippedBudget: number;
   hasMore: boolean;
 }
 
@@ -53,6 +67,21 @@ function parsePage(value: unknown): MaintenanceBackfillPage {
       ? 0
       : requireCounter(page.indexReconciled, "indexReconciled"),
     failed: requireCounter(page.failed, "failed"),
+    candidates: page.candidates === undefined ? 0 : requireCounter(page.candidates, "candidates"),
+    estimatedBytes: page.estimatedBytes === undefined
+      ? 0
+      : requireCounter(page.estimatedBytes, "estimatedBytes"),
+    bytesRead: page.bytesRead === undefined ? 0 : requireCounter(page.bytesRead, "bytesRead"),
+    recovered: page.recovered === undefined ? 0 : requireCounter(page.recovered, "recovered"),
+    cleanedInvalid: page.cleanedInvalid === undefined
+      ? 0
+      : requireCounter(page.cleanedInvalid, "cleanedInvalid"),
+    trulyMissing: page.trulyMissing === undefined
+      ? 0
+      : requireCounter(page.trulyMissing, "trulyMissing"),
+    skippedBudget: page.skippedBudget === undefined
+      ? 0
+      : requireCounter(page.skippedBudget, "skippedBudget"),
     hasMore: page.hasMore,
     cursor: page.cursor,
   };
@@ -70,6 +99,13 @@ export async function runMaintenanceBackfillPages({
     skipped: 0,
     indexReconciled: 0,
     failed: 0,
+    candidates: 0,
+    estimatedBytes: 0,
+    bytesRead: 0,
+    recovered: 0,
+    cleanedInvalid: 0,
+    trulyMissing: 0,
+    skippedBudget: 0,
   };
   let cursor = "";
 
@@ -81,6 +117,13 @@ export async function runMaintenanceBackfillPages({
     totals.skipped += page.skipped;
     totals.indexReconciled += page.indexReconciled;
     totals.failed += page.failed;
+    totals.candidates += page.candidates;
+    totals.estimatedBytes += page.estimatedBytes;
+    totals.bytesRead += page.bytesRead;
+    totals.recovered += page.recovered;
+    totals.cleanedInvalid += page.cleanedInvalid;
+    totals.trulyMissing += page.trulyMissing;
+    totals.skippedBudget += page.skippedBudget;
     onProgress?.({ ...totals, hasMore: page.hasMore });
     if (!page.hasMore) return totals;
     throwIfAborted(signal);

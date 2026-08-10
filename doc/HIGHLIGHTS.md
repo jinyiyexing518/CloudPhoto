@@ -49,6 +49,7 @@
 - **首屏封面优先级** — 时间线、重点片段和文件夹仅将前 6 张派生图标记为 `loading="eager"` + `fetchpriority="high"`，其余继续原生 lazy，避免首屏封面与屏外资源争抢连接
 - **视频封面体积压缩** — `setVideoThumbnail` 端点用 sharp 将 canvas 截帧（最大 1920×1080，~500KB）缩至 400px 再存储，体积缩小 **10–15×**
 - **视频按意图加载** — 网格只渲染持久化的 WebP 封面，不创建 video 元素；用户明确打开视频后使用 `preload="metadata"` 先取时长与起播所需范围
+- **视频中途卡死自恢复** — 视频线路用 2-byte Range 严格验证 `206`；播放态连续 4 秒无进展才在 Blob 与 `/media` 间有限换线，恢复原时间点、播放意图、音量、静音与倍速。pause/seek/切后台不会误切，两条线路都失败时结束 loading 并提供原位重试
 - **历史视频封面受控修复** — 无派生图、派生图线路全部失败，或 200/400px 派生图内容近乎纯白/纯灰的近视口卡片才在 idle 后进入全局队列；正常明亮但有纹理的画面不误判。同一 Blob 跨时间线/文件夹/故事只解码一次，未知网络并发 1、3G/4G 最多 2，saveData/离线/2G 为 0，并用 48 MiB 单文件、160 MiB 会话估算预算和最多 2 次带退避尝试阻止流量风暴。修复不固定抓第 0 帧，而是从稍后时间点采样最多 3 个候选并选择信息量最高的 WebP，以 ETag 持久化；失败卡片明确提示可打开视频生成封面
 - **动图懒加载** — `loading="lazy"`，GIF/HEIC 接近视口才发请求
 - **地理编码可靠代理** — `/api/geocode/search` 与鉴权 `/api/geocode/reverse` 共用合规 `User-Agent`、约 1 req/s 有界 admission、并发去重和 TTL/LRU 缓存；客户端按账号/空间隔离成功与短暂失败缓存，快速切图会取消旧地址请求，代理故障才直连一次
@@ -72,6 +73,7 @@
 - **Header 空间回收** — 已登录 Header 不再常驻 PWA 安装按钮，避免挤压群组切换、照片数量与用户菜单；安装能力继续保留在登录页、用户菜单和「设置 → 应用」
 - **侧栏筛选容器级响应式** — 同一 `FilterBar` 以显式 sidebar variant 隔离抽屉布局，搜索/清空先行、快捷筛选与网格尺寸按容器自动换行；320–480px 与 200% 缩放下长标签和激活 chip 不再越界，所有交互保持至少 44px，宽桌面默认样式不变
 - **PWA 安全更新闸门** — `onNeedRefresh` 仅设置全局 `update-ready` 状态并发事件，不自动 `updateSW(true)`/刷新页面；登录页期间收到更新事件也会在进入工作区后恢复更新提示
+- **跨部署 chunk 一次性自愈** — pre-React 入口只识别同源 content-hashed JS/CSS 的 dynamic import/preload 失败，安全会话显式激活 waiting SW，再以 cache-busting 导航恢复，自动 reload 上限 **1 次**；危险操作期间 reload 为 **0**，完成后自动续接。时间线、文件夹、重要片段、地图、胶囊与故事各有 keyed ErrorBoundary，因此 FolderView 404 的故障域从整个主区缩至 **1 个 panel**；sessionStorage 只留 opaque 指纹和 allowlisted tab，生产 DOM 中 raw URL/stack 为 **0**。常驻恢复与 waiting-worker 控制令登录入口从 26.58 kB 增至 34.21 kB（gzip 9.91 → 12.76 kB），换取普通 Tab 与 installed PWA 的跨版本可恢复性
 - **Service Worker 私有媒体缓存**
   - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），媒体缓存既要减少同一会话重复下载，也不能跨越账号授权边界
   - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  
@@ -83,6 +85,7 @@
 - **原生浏览器下载，零 JS 文件缓冲** — 查看器空闲时预热按 auth generation 隔离、最多 8 条的附件 SAS；服务端用已校验的个人/群组 Blob 路径和安全文件名直接签票，不再读取 Blob metadata，点击路径不再串行 HEAD，大文件仍由浏览器原生传输
 - **有界上传吞吐** — 4G 权重预算 3（3 图或视频 + 图片）、未知/3G 预算 2、`saveData`/2G 预算 1；相比旧严格串行，小图批次可测并发提升至 2–3×，暂停不打断在途 XHR
 - **状态型上传重试** — XHR 暴露 status/Retry-After；只重试网络、408/425/429/5xx，指数 full jitter 上限 60 秒，413/422 等 4xx 不浪费三次请求
+- **真实上传进度与结果** — succeeded 才按完整大小结算，failed/cancelled 保留实际 loaded；跨重试线传输单调累计供 EMA 使用。settle 后刷新图库期间继续保持离开守卫，最终通知统一报告成功/失败/取消，过期暂停状态不会遮住结果
 - **单实例上传内存背压** — 正文前 Content-Length 快速 413/411/400，读取后真实长度与声明复核；每实例权重 3/256 MiB、每用户 3/220 MiB 的 lease 持有至派生图结束，用户状态归零清理。明确不是分布式限流，也不以 `host.json` 全站降并发替代端点级保护
 - **Tab 切换零重载** — 时间线常驻；重要片段和文件夹首次访问时才挂载，此后用 `display:none` 保持状态；Map/TimeCapsule/Story 等重型 Tab 仍按需加载
 - **GIF 渐进式加载** — 服务端 sharp 为 GIF 生成静态首帧 WebP 缩略图；客户端先显示首帧，再通过共享的有限次直连/代理 fallback 预载完整动图
@@ -116,7 +119,8 @@
 - **IP 滑动窗口限流** — 登录 10/分、注册 5/分、刷新 20/分；超限 `429 + Retry-After: 60`
 - **OIDC 无密码 CI/CD** — GitHub Actions 通过 Azure Federated Credential 认证，无长期密码
 - **用户委托 SAS** — Blob 访问凭证由 Managed Identity 签发（无账户密钥），2h 有效期，最小权限
-- **文件夹重命名无覆盖事务** — 路径策略只接受规范相对路径与同 parent 末段改名，同时保留历史 Unicode source key；完整源/目标预检后，Azure Copy Blob 使用 destination `ifNoneMatch=*` 与 source ETag 原子拒绝竞态覆盖/旧版本搬移。copy/delete 各 4 路有界并发，rollback 仅 2 路；首个 copy 失败停止派发，已启动任务 settle 后统一回滚。copy 后复核 inventory，删除每个源前短租约锁住并验证目标 copyId + final ETag，源删除也受预检 ETag 保护；失败只清理仍可证明归属本操作的目标，保证每个媒体至少一份。根目录与递归文件夹卡片使用有名称的非交互 group 包裹独立原生打开按钮；空白、超长和 emoji 名称均生成完整可访问名称，重命名/删除作为独立兄弟 Tab stop，busy、拖放和焦点状态不会误触打开
+- **文件夹重命名无覆盖事务** — 路径策略只接受规范相对路径与同 parent 末段改名，同时保留历史 Unicode source key；完整源/目标预检后，Azure Copy Blob 使用 destination `ifNoneMatch=*` 与 source ETag 原子拒绝竞态覆盖/旧版本搬移。copy/delete 各 4 路有界并发，rollback 仅 2 路；首个 copy 失败停止派发，已启动任务 settle 后统一回滚。copy 后复核 inventory，删除每个源前短租约锁住并验证目标 copyId + final ETag，源删除也受预检 ETag 保护；失败只清理仍可证明归属本操作的目标，保证每个媒体至少一份。根目录与递归文件夹卡片使用有名称的非交互 group 包裹独立原生打开按钮；空白、超长和 emoji 名称均生成完整可访问名称，重命名/删除作为至少 44×44 的独立兄弟 Tab stop，busy、拖放和焦点状态不会误触打开
+- **照片卡片原生键盘入口** — timeline、moments、insight strip 与 folder grid 共用语义 article；主按钮在普通模式打开、批量模式选择并暴露 `aria-pressed`，可访问名称只组合原文件名、媒体类型与日期。收藏/删除维持独立 44×44 操作和 focus ring，GIF、历史视频封面 repair、右键与拖放继续位于主按钮之外
 - **重命名流量与 HTTP 边界** — 源/目标预检分别用最多 101/1 条的 Azure 分页，整批复用一次可取消的 delegation-key 请求；单次最多 100 个 Blob，超过时 mutation 前返回 413。copy phase 最长 120 秒并按 copyId 直接终止在途 Azure copy，rollback 最长 60 秒；60 秒目标租约内的源删除关键区限为 20 秒，服务端 210 秒总边界低于客户端 220 秒上限。限流错误完全交给 Azure SDK 的 Retry-After 与指数退避，应用层不再包一层重试，避免 429/503/ServerBusy 时形成重试风暴
 
 ---

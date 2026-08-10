@@ -7,6 +7,10 @@ import {
   isLowInformationVideoCoverImage,
   useVideoCoverRepair,
 } from "../../services/videoCoverRepair";
+import {
+  getPhotoCardGroupLabel,
+  getPhotoCardPrimaryLabel,
+} from "./photoCardAccessibility";
 
 interface Props {
   photo: Photo;
@@ -19,8 +23,8 @@ interface Props {
   onSelect?: (e: React.MouseEvent) => void;
   interactionDisabled?: boolean;
   draggable?: boolean;
-  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragStart?: (e: React.DragEvent<HTMLElement>) => void;
+  onDragEnd?: (e: React.DragEvent<HTMLElement>) => void;
   priority?: boolean;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
 }
@@ -70,6 +74,7 @@ function PhotoCard({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
+  const primaryButtonRef = useRef<HTMLButtonElement>(null);
   const publishedRepairUrlRef = useRef<string | null>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
   // Video cards render only server-persisted derivatives. Missing or broken
@@ -143,12 +148,42 @@ function PhotoCard({
     : null;
   // Show taken date if it's different from upload date (or if upload date unknown)
   const showTakenDate = takenTime && takenTime !== uploadTime;
+  const selectionMode = onSelect !== undefined;
+  const mediaType = isVideo
+    ? "视频"
+    : isGif
+      ? "GIF 动图"
+      : isMotionPhoto
+        ? "动态照片"
+        : isAnimated
+          ? "动图"
+          : "照片";
+  const dateLabel = takenTime
+    ? `拍摄于 ${takenTime}`
+    : uploadTime
+      ? `上传于 ${uploadTime}`
+      : null;
+  const primaryLabel = getPhotoCardPrimaryLabel(
+    displayName,
+    mediaType,
+    dateLabel,
+    selectionMode,
+    Boolean(selected),
+  );
+  const primaryAction = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.currentTarget.focus({ preventScroll: true });
+    if (onSelect) {
+      onSelect(event);
+      return;
+    }
+    onClick();
+  };
 
   return (
     <>
-      <div
+      <article
         className={`photo-card${selected ? " photo-card--selected" : ""}${draggable ? " photo-card--draggable" : ""}`}
-        onClick={onSelect}
+        aria-label={getPhotoCardGroupLabel(displayName)}
         aria-disabled={interactionDisabled || undefined}
         draggable={draggable}
         onDragStart={onDragStart}
@@ -161,7 +196,10 @@ function PhotoCard({
         }}
       >
         {onSelect !== undefined && (
-          <div className={`photo-select-badge${selected ? " photo-select-badge--on" : ""}`}>
+          <div
+            className={`photo-select-badge${selected ? " photo-select-badge--on" : ""}`}
+            aria-hidden="true"
+          >
             {selected ? "✓" : ""}
           </div>
         )}
@@ -169,15 +207,6 @@ function PhotoCard({
           ref={videoRepairTargetRef}
           className="photo-thumbnail"
           data-media-policy={GRID_MEDIA_POLICY_MARKER}
-          tabIndex={!onSelect && !interactionDisabled ? -1 : undefined}
-          onClick={interactionDisabled ? undefined : (event) => {
-            if (onSelect) {
-              onSelect(event);
-              return;
-            }
-            event.currentTarget.focus({ preventScroll: true });
-            onClick();
-          }}
         >
           {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
           {useVideoThumb ? (
@@ -211,16 +240,8 @@ function PhotoCard({
               }}
             />
           ) : isVideo ? (
-           <button
-             type="button"
+           <div
              className="video-thumb-placeholder"
-             aria-label={`${displayName}，打开视频后生成封面`}
-             onClick={(event) => {
-               event.stopPropagation();
-               if (interactionDisabled) return;
-               if (onSelect) onSelect(event);
-               else onClick();
-             }}
            >
              <span className="video-thumb-placeholder-icon" aria-hidden="true">▶</span>
              <span className="video-thumb-placeholder-text" aria-live="polite">
@@ -228,7 +249,7 @@ function PhotoCard({
                  ? "正在生成封面"
                  : "打开视频后生成封面"}
              </span>
-           </button>
+           </div>
           ) : isMotionPhoto ? (
             <img
               ref={gifImgRef}
@@ -307,6 +328,15 @@ function PhotoCard({
             <span className="gif-animated-badge">动图</span>
           )}
         </div>
+        <button
+          ref={primaryButtonRef}
+          type="button"
+          className="photo-card-primary"
+          aria-label={primaryLabel}
+          aria-pressed={selectionMode ? Boolean(selected) : undefined}
+          disabled={interactionDisabled}
+          onClick={primaryAction}
+        ></button>
         <div className="photo-info">
           <span className="photo-name" title={displayName}>
             {displayName}
@@ -317,7 +347,7 @@ function PhotoCard({
                 <button
                   type="button"
                   className="move-btn"
-                  aria-label="移动照片"
+                  aria-label={`移动照片 ${displayName}`}
                   title="移动照片"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -331,7 +361,7 @@ function PhotoCard({
                 <button
                   type="button"
                   className={`favorite-btn${photo.favorite ? " favorite-btn--on" : ""}`}
-                  aria-label={photo.favorite ? "取消收藏" : "收藏"}
+                  aria-label={`${photo.favorite ? "取消收藏" : "收藏"} ${displayName}`}
                   aria-pressed={photo.favorite}
                   title={photo.favorite ? "取消收藏" : "收藏"}
                   onClick={(e) => {
@@ -345,7 +375,7 @@ function PhotoCard({
               <button
                 type="button"
                 className="delete-btn"
-                aria-label="删除照片"
+                aria-label={`删除照片 ${displayName}`}
                 title="删除照片"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -365,7 +395,7 @@ function PhotoCard({
             {uploadTime && !showTakenDate && <span className="photo-meta-date">{uploadTime}</span>}
           </div>
         )}
-      </div>
+      </article>
 
       {showConfirm && createPortal(
         <div className="confirm-overlay" onClick={() => setShowConfirm(false)}>
@@ -397,7 +427,7 @@ function PhotoCard({
             <li
               className="photo-ctx-item"
               onClick={() => {
-                videoRepairTargetRef.current?.focus({ preventScroll: true });
+                primaryButtonRef.current?.focus({ preventScroll: true });
                 setCtxMenu(null);
                 onClick();
               }}

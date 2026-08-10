@@ -26,18 +26,37 @@ export interface UploadQueueItem<TFile extends UploadFileLike = UploadFileLike> 
   file: TFile;
   weight: number;
   status: UploadQueueStatus;
+  /** Highest logical byte position observed for this file across retry attempts. */
   loaded: number;
+  /** Byte position reported by the current request attempt. */
+  attemptLoaded: number;
+  /** Actual bytes sent across all attempts; this can exceed file.size after retries. */
+  transferredBytes: number;
   error?: unknown;
 }
 
 export interface UploadAggregateProgress {
   bytesLoaded: number;
   bytesTotal: number;
-  filesDone: number;
+  transferredBytes: number;
+  filesSettled: number;
   filesTotal: number;
+  succeededCount: number;
+  failedCount: number;
+  cancelledCount: number;
   activeCount: number;
   queuedCount: number;
   activeFiles: string[];
+}
+
+export interface UploadSpeedState {
+  ts: number;
+  transferredBytes: number;
+  emaBytesPerSecond: number;
+}
+
+export interface UploadSpeedSample extends UploadSpeedState {
+  sampled: boolean;
 }
 
 interface UploadWorkerControls {
@@ -60,6 +79,7 @@ interface RunWeightedUploadQueueOptions<TFile extends UploadFileLike> {
 
 export interface UploadQueueResult<TFile extends UploadFileLike> {
   items: UploadQueueItem<TFile>[];
+  succeeded: UploadQueueItem<TFile>[];
   failed: UploadQueueItem<TFile>[];
   cancelled: UploadQueueItem<TFile>[];
 }
@@ -84,16 +104,31 @@ export function aggregateUploadProgress(
   items: readonly UploadQueueItem[],
 ): UploadAggregateProgress {
   let bytesLoaded = 0;
-  let filesDone = 0;
+  let transferredBytes = 0;
+  let filesSettled = 0;
+  let succeededCount = 0;
+  let failedCount = 0;
+  let cancelledCount = 0;
   let activeCount = 0;
   let queuedCount = 0;
   const activeFiles: string[] = [];
   for (const item of items) {
-    if (item.status === "succeeded" || item.status === "failed") {
+    const observedBytes = Math.min(item.file.size, Math.max(0, item.loaded));
+    transferredBytes += Math.max(0, item.transferredBytes);
+    if (item.status === "succeeded") {
       bytesLoaded += item.file.size;
-      filesDone += 1;
+      filesSettled += 1;
+      succeededCount += 1;
+    } else if (item.status === "failed") {
+      bytesLoaded += observedBytes;
+      filesSettled += 1;
+      failedCount += 1;
+    } else if (item.status === "cancelled") {
+      bytesLoaded += observedBytes;
+      filesSettled += 1;
+      cancelledCount += 1;
     } else if (item.status === "preparing" || item.status === "uploading") {
-      bytesLoaded += Math.min(item.file.size, Math.max(0, item.loaded));
+      bytesLoaded += observedBytes;
       activeCount += 1;
       activeFiles.push(item.file.name);
     } else if (item.status === "pending") {
@@ -103,11 +138,72 @@ export function aggregateUploadProgress(
   return {
     bytesLoaded,
     bytesTotal: items.reduce((sum, item) => sum + item.file.size, 0),
-    filesDone,
+    transferredBytes,
+    filesSettled,
     filesTotal: items.length,
+    succeededCount,
+    failedCount,
+    cancelledCount,
     activeCount,
     queuedCount,
     activeFiles,
+  };
+}
+
+export function getUploadProgressPercent(
+  progress: Pick<
+    UploadAggregateProgress,
+    "bytesLoaded" | "bytesTotal" | "filesTotal" | "succeededCount"
+  >,
+): number {
+  const ratio = progress.bytesTotal > 0
+    ? progress.bytesLoaded / progress.bytesTotal
+    : progress.filesTotal > 0
+      ? progress.succeededCount / progress.filesTotal
+      : 0;
+  const boundedRatio = Math.min(1, Math.max(0, ratio));
+  return boundedRatio === 1 ? 100 : Math.min(99, Math.round(boundedRatio * 100));
+}
+
+export function formatUploadResultSummary(
+  progress: Pick<
+    UploadAggregateProgress,
+    "succeededCount" | "failedCount" | "cancelledCount"
+  >,
+): string {
+  const cancelled = progress.cancelledCount > 0
+    ? `，取消 ${progress.cancelledCount}`
+    : "";
+  return `上传结束：成功 ${progress.succeededCount}，失败 ${progress.failedCount}${cancelled}`;
+}
+
+export function sampleUploadSpeed(
+  previous: UploadSpeedState,
+  transferredBytes: number,
+  now: number,
+  minimumIntervalMs = 500,
+): UploadSpeedSample {
+  const monotonicBytes = Math.max(
+    previous.transferredBytes,
+    Number.isFinite(transferredBytes) ? Math.max(0, transferredBytes) : previous.transferredBytes,
+  );
+  const elapsedMs = Math.max(0, now - previous.ts);
+  if (elapsedMs < minimumIntervalMs) {
+    return { ...previous, sampled: false };
+  }
+
+  const byteDelta = monotonicBytes - previous.transferredBytes;
+  const rawBytesPerSecond = elapsedMs > 0 ? byteDelta / (elapsedMs / 1_000) : 0;
+  const emaBytesPerSecond = byteDelta === 0
+    ? 0
+    : previous.emaBytesPerSecond === 0
+      ? rawBytesPerSecond
+      : previous.emaBytesPerSecond * 0.7 + rawBytesPerSecond * 0.3;
+  return {
+    ts: now,
+    transferredBytes: monotonicBytes,
+    emaBytesPerSecond,
+    sampled: true,
   };
 }
 
@@ -131,6 +227,8 @@ export async function runWeightedUploadQueue<TFile extends UploadFileLike>({
     weight: getUploadItemWeight(file),
     status: "pending",
     loaded: 0,
+    attemptLoaded: 0,
+    transferredBytes: 0,
   }));
   let activeWeight = 0;
   let activeCount = 0;
@@ -140,6 +238,7 @@ export async function runWeightedUploadQueue<TFile extends UploadFileLike>({
   const emit = () => onChange?.(snapshot());
   const result = () => ({
     items: snapshot(),
+    succeeded: snapshot().filter((item) => item.status === "succeeded"),
     failed: snapshot().filter((item) => item.status === "failed"),
     cancelled: snapshot().filter((item) => item.status === "cancelled"),
   });
@@ -209,20 +308,30 @@ export async function runWeightedUploadQueue<TFile extends UploadFileLike>({
         emit();
         const controls: UploadWorkerControls = {
           markUploading: () => {
-            if (item.status !== "preparing") return;
+            if (item.status !== "preparing" && item.status !== "uploading") return;
             item.status = "uploading";
+            item.attemptLoaded = 0;
             emit();
           },
           setLoaded: (loaded) => {
             if (item.status !== "uploading") return;
-            item.loaded = Math.min(item.file.size, Math.max(0, loaded));
+            const nextAttemptLoaded = Math.min(item.file.size, Math.max(0, loaded));
+            item.transferredBytes += nextAttemptLoaded >= item.attemptLoaded
+              ? nextAttemptLoaded - item.attemptLoaded
+              : nextAttemptLoaded;
+            item.attemptLoaded = nextAttemptLoaded;
+            item.loaded = Math.max(item.loaded, nextAttemptLoaded);
             emit();
           },
         };
         void worker(item, controls).then(
           () => {
             item.status = signal?.aborted ? "cancelled" : "succeeded";
-            if (item.status === "succeeded") item.loaded = item.file.size;
+            if (item.status === "succeeded") {
+              item.transferredBytes += Math.max(0, item.file.size - item.attemptLoaded);
+              item.attemptLoaded = item.file.size;
+              item.loaded = item.file.size;
+            }
           },
           (error: unknown) => {
             item.error = error;

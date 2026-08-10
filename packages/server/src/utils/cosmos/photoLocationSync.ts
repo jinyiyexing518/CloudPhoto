@@ -1,6 +1,7 @@
 import type { Container } from "@azure/cosmos";
 import type { BlockBlobClient } from "@azure/storage-blob";
 import { getPhotoLocationsContainer, PhotoLocationDoc } from "./cosmosClient";
+import { readGpsMetadata } from "../photos/gpsCoordinates";
 
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
@@ -148,12 +149,6 @@ async function removeLocationForMissingBlob(
   return !await readBlobProperties(blockBlobClient, abortSignal);
 }
 
-function parseCoordinate(raw: string | undefined, min: number, max: number): number | null {
-  if (!raw?.trim()) return null;
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= min && value <= max ? value : null;
-}
-
 /**
  * Publishes the current Blob GPS state instead of a caller's stale mutation.
  * A post-write ETag check closes the ordering gap with concurrent edits/deletes;
@@ -164,8 +159,9 @@ export async function syncPhotoLocationFromBlob(
   blobName: string,
   scope: string,
   abortSignal?: AbortSignal,
+  locationContainer?: Container,
 ): Promise<void> {
-  const container = await getPhotoLocationsContainer();
+  const container = locationContainer ?? await getPhotoLocationsContainer();
   const id = encodeURIComponent(blobName);
 
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -180,12 +176,10 @@ export async function syncPhotoLocationFromBlob(
     if (!sourceEtag) {
       throw new Error(`Blob properties returned no ETag: ${blobName}`);
     }
-    const lat = parseCoordinate(getMeta(metadata, "gpsLat"), -90, 90);
-    const lon = parseCoordinate(getMeta(metadata, "gpsLon"), -180, 180);
+    const gps = readGpsMetadata(metadata);
     const hasLocation = (
       !getMeta(metadata, "deletedAt")
-      && lat !== null
-      && lon !== null
+      && gps !== null
     );
 
     let publishedEtag: string | null = null;
@@ -194,8 +188,8 @@ export async function syncPhotoLocationFromBlob(
         id,
         scope,
         name: blobName,
-        lat,
-        lon,
+        lat: Number(gps!.gpsLat),
+        lon: Number(gps!.gpsLon),
         uploadedAt: getMeta(metadata, "createdAt")
           ?? props.createdOn?.toISOString()
           ?? new Date().toISOString(),

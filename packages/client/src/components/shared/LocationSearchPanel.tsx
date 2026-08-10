@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { searchLocation, LocationSearchResult } from "../../utils/geocode";
+import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 
 interface Props {
   saving: boolean;
@@ -20,11 +21,7 @@ function splitDisplayName(name: string): { primary: string; secondary: string } 
 function parseCoords(q: string): { lat: number; lon: number } | null {
   const m = q.trim().match(/^([+-]?\d+\.?\d*)[,\s]+([+-]?\d+\.?\d*)$/);
   if (!m) return null;
-  const lat = parseFloat(m[1]);
-  const lon = parseFloat(m[2]);
-  if (!isFinite(lat) || !isFinite(lon)) return null;
-  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-  return { lat, lon };
+  return readGpsCoordinates(m[1], m[2]);
 }
 
 /**

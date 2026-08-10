@@ -1,5 +1,7 @@
+import { useCallback, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import LocationSearchPanel from "./LocationSearchPanel";
+import { useModalFocusBoundary } from "./useModalFocusBoundary";
 
 export interface BatchOperationsBarProps {
   /** A batch mutation is running and conflicting controls must stay inert. */
@@ -81,6 +83,29 @@ export default function BatchOperationsBar({
   extraToolbarActions,
   className,
 }: BatchOperationsBarProps) {
+  const confirmLayerRef = useRef<HTMLDivElement | null>(null);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const requestClose = useCallback(() => {
+    if (busy) return false;
+    onCancelDelete();
+    return true;
+  }, [busy, onCancelDelete]);
+
+  useModalFocusBoundary({
+    active: showBatchConfirm,
+    layerRef: confirmLayerRef,
+    containerRef: confirmDialogRef,
+    initialFocusRef: cancelButtonRef,
+    onEscape: () => {
+      if (busy) return false;
+      onCancelDelete();
+      return true;
+    },
+  });
+
   return (
     <>
       {/* ── Toolbar row ── */}
@@ -178,12 +203,21 @@ export default function BatchOperationsBar({
       {/* ── Delete confirmation dialog (portal) ── */}
       {showBatchConfirm &&
         createPortal(
-          <div className="confirm-overlay" onClick={onCancelDelete}>
-            <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-              <p className="confirm-title">确认删除 {selectedCount} 张照片？</p>
-              <p className="confirm-filename">此操作不可撤销</p>
+          <div ref={confirmLayerRef} className="confirm-overlay" data-modal-layer onClick={requestClose}>
+            <div
+              ref={confirmDialogRef}
+              className="confirm-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              aria-describedby={descriptionId}
+              tabIndex={-1}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p id={titleId} className="confirm-title">确认删除 {selectedCount} 张照片？</p>
+              <p id={descriptionId} className="confirm-filename">此操作不可撤销</p>
               <div className="confirm-actions">
-                <button className="confirm-cancel-btn" onClick={onCancelDelete} disabled={busy}>
+                <button ref={cancelButtonRef} className="confirm-cancel-btn" onClick={requestClose} disabled={busy}>
                   取消
                 </button>
                 <button className="confirm-delete-btn" onClick={onConfirmDelete} disabled={busy}>

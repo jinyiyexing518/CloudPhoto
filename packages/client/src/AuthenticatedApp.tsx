@@ -1,11 +1,31 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  lazy,
+  Suspense,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import "./authenticated.css";
 import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
-import { isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
+import { hasOpenAriaModal, isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
+import {
+  WORKSPACE_TAB_ORDER,
+  activateWorkspaceTabWithFocus,
+  getWorkspaceTabFromKey,
+  isWorkspaceTab,
+  workspaceTabId,
+  workspaceTabPanelId,
+  type ViewTab,
+} from "./keyboard/workspaceTabs";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
@@ -23,6 +43,10 @@ import { useToast } from "./contexts/ToastContext";
 import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { focusMenuItem, handleMenuKeyDown } from "./components/shared/menuKeyboard";
+import ShortcutsHelpDialog from "./components/auth/ShortcutsHelpDialog";
+import InstallGuideDialog from "./components/auth/InstallGuideDialog";
+import DeploymentRecoveryNotice from "./components/shared/DeploymentRecoveryNotice";
+import { restoreFocus } from "./components/shared/modalFocus";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
 import { usePwaInstall } from "./pwa/usePwaInstall";
 import {
@@ -32,6 +56,12 @@ import {
   PWA_UPDATE_READY_EVENT,
   type PwaUpdateBrowserWindow,
 } from "./pwa/updatePolicy";
+import {
+  consumeDeploymentRecoveryIntent,
+  reportLazyBoundaryFailure,
+  setDeploymentRecoveryIntentProvider,
+} from "./pwa/deploymentRecovery";
+import { setDangerousOperationActivity } from "./pwa/dangerousOperationGate";
 import {
   createInitialVoiceTransferStates,
   getActiveVoiceTransferState,
@@ -77,8 +107,12 @@ import {
 } from "./transfer/folderRenameState";
 import {
   aggregateUploadProgress,
+  formatUploadResultSummary,
   getUploadConcurrencyPolicy,
+  getUploadProgressPercent,
   runWeightedUploadQueue,
+  sampleUploadSpeed,
+  type UploadAggregateProgress,
 } from "./transfer/uploadQueue";
 import {
   computeUploadRetryDelayMs,
@@ -86,6 +120,7 @@ import {
   type UploadRequestError,
   waitForUploadRetry,
 } from "./services/uploadRetry";
+import { hasValidGps } from "./utils/gpsCoordinates";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -98,6 +133,7 @@ const WHATS_NEW_IDLE_TIMEOUT_MS = 2_000;
 const USER_MENU_TRIGGER_ID = "user-menu-trigger";
 const USER_MENU_ID = "user-menu";
 let folderRenameSequence = 0;
+const deploymentRecoveryIntent = consumeDeploymentRecoveryIntent();
 
 function scheduleIdleMount(task: () => void) {
   let idleTaskHandle: number | null = null;
@@ -111,6 +147,7 @@ function scheduleIdleMount(task: () => void) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
     }
+
     task();
   };
 
@@ -130,6 +167,14 @@ function scheduleIdleMount(task: () => void) {
     }
     if (timeoutHandle) clearTimeout(timeoutHandle);
   };
+}
+
+function AuxiliaryLazyBoundary({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <ErrorBoundary label={label} recovery onError={reportLazyBoundaryFailure}>
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 class UploadWorkspaceChangedError extends Error {
@@ -207,7 +252,6 @@ function _parseMoovBox(dv: DataView, u8: Uint8Array, start: number, end: number)
 // ────────────────────────────────────────────────────────────────────────────
 
 // Computed once at module load — avoids recalculating on every render
-type ViewTab = "timeline" | "folder" | "moments" | "map" | "capsule" | "story";
 type SettingsEntryTab = "profile" | "security" | "trash" | "diagnostics" | "app";
 type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
 type QuickDateFilter = "today" | "last7Days" | "thisWeek" | "thisMonth";
@@ -325,6 +369,7 @@ function AppContent() {
   currentGroupIdRef.current = currentGroupId;
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const settingsRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -356,6 +401,14 @@ function AppContent() {
     setUserMenuOpen(false);
     if (restoreFocus) userAvatarButtonRef.current?.focus();
   }, []);
+  const openShortcutsFromUserMenu = () => {
+    closeUserMenu(true);
+    setShowShortcutsHelp(true);
+  };
+  const openAddAdminFromUserMenu = () => {
+    closeUserMenu(true);
+    setShowAddAdmin(true);
+  };
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -405,25 +458,21 @@ function AppContent() {
   // Persist active tab per user across refreshes
   const tabKey = `cf_tab_${user?.username ?? "guest"}`;
   const [activeTab, setActiveTab] = useState<ViewTab>(() => {
+    if (deploymentRecoveryIntent?.activeTab) {
+      return deploymentRecoveryIntent.activeTab as ViewTab;
+    }
     const stored = localStorage.getItem(tabKey);
-    if (stored === "folder" || stored === "timeline" || stored === "moments") return stored;
-    return "timeline";
+    return isWorkspaceTab(stored) ? stored : "timeline";
   });
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [photosGroupId, setPhotosGroupId] = useState<string | null>(resolvedPhotoWorkspaceId);
   const [loading, setLoading] = useState(true);
   const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{
-    bytesLoaded: number;
-    bytesTotal: number;
-    filesDone: number;
-    filesTotal: number;
-    activeCount: number;
-    queuedCount: number;
+  const [uploadProgress, setUploadProgress] = useState<(UploadAggregateProgress & {
     folder: string;
     currentFile?: string;
-  } | null>(null);
+  }) | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [voiceTransferStates, setVoiceTransferStates] = useState(createInitialVoiceTransferStates);
@@ -449,7 +498,7 @@ function AppContent() {
   const lastPhotoRefreshRef = useRef<number>(0);
   const lastPhotoRefreshWorkspaceRef = useRef<string | null>(null);
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const installGuideRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   // Deferred mount: FolderView is lazy-loaded, so we only mount it on the user's first visit
   // to the folder tab. Once mounted it stays mounted (tab-caching). Avoids a failed dynamic
@@ -472,7 +521,11 @@ function AppContent() {
     workspaceId: string;
   } | null>(null);
   const folderRenameGate = useRef<FolderRenameGate>({ current: null }).current;
-  const speedRef = useRef<{ ts: number; bytes: number; ema: number }>({ ts: 0, bytes: 0, ema: 0 });
+  const speedRef = useRef({
+    ts: 0,
+    transferredBytes: 0,
+    emaBytesPerSecond: 0,
+  });
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
   const [photoSortKey, setPhotoSortKey] = useState<"taken" | "uploaded">("taken");
@@ -548,6 +601,20 @@ function AppContent() {
   transferringRef.current = transferring;
   transferGuardMessageRef.current = transferGuardMessage;
   activeTabRef.current = activeTab;
+  useLayoutEffect(() => {
+    setDangerousOperationActivity(
+      "authenticated-app",
+      transferring,
+      transferGuardMessage,
+    );
+  }, [transferGuardMessage, transferring]);
+  useEffect(() => () => {
+    setDangerousOperationActivity("authenticated-app", false, "");
+  }, []);
+  useLayoutEffect(() => {
+    setDeploymentRecoveryIntentProvider(() => ({ activeTab }));
+    return () => setDeploymentRecoveryIntentProvider(null);
+  }, [activeTab]);
   const blockIfTransferring = useCallback(() => {
     if (!transferring) return false;
     showToast(transferGuardMessage, "info");
@@ -594,20 +661,37 @@ function AppContent() {
     );
   }, []);
 
-  const switchTab = (tab: ViewTab) => {
-    if (tab === activeTab) return;
-    if (blockIfTransferring()) return;
+  const switchTab = useCallback((tab: ViewTab) => {
+    if (tab === activeTabRef.current) return true;
+    if (blockIfTransferring()) return false;
     setActiveTab(tab);
     localStorage.setItem(tabKey, tab);
     window.scrollTo({ top: 0, behavior: "smooth" });
     // Close sidebar when switching to folder view
     if (tab === "folder") setSidebarOpen(false);
+    return true;
+  }, [blockIfTransferring, tabKey]);
+
+  const focusWorkspaceTab = (tab: ViewTab) => {
+    const tabElement = document.getElementById(workspaceTabId(tab));
+    tabElement?.focus({ preventScroll: true });
+    tabElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   };
 
-  // Scroll a clicked tab button to the horizontal center of its scroll container
-  const scrollTabToCenter = (el: HTMLElement, container: HTMLElement) => {
-    const targetLeft = el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2;
-    container.scrollTo({ left: targetLeft, behavior: "smooth" });
+  const activateWorkspaceTab = (tab: ViewTab) => {
+    if (hasOpenAriaModal(document)) return false;
+    return activateWorkspaceTabWithFocus(activeTab, tab, switchTab, focusWorkspaceTab);
+  };
+
+  const handleWorkspaceTabKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    tab: ViewTab,
+  ) => {
+    if (hasOpenAriaModal(document)) return;
+    const targetTab = getWorkspaceTabFromKey(tab, event.key);
+    if (!targetTab) return;
+    event.preventDefault();
+    activateWorkspaceTab(targetTab);
   };
 
   useEffect(() => {
@@ -719,7 +803,7 @@ function AppContent() {
       if (filters.favoriteOnly && !p.favorite) return false;
       if (filters.missingSubjectOnly && Boolean(p.subject?.trim())) return false;
       if (filters.uncategorizedOnly && Boolean((p.folder ?? "").trim())) return false;
-      if (filters.noGpsOnly && Boolean(p.gpsLat)) return false;
+      if (filters.noGpsOnly && hasValidGps(p.gpsLat, p.gpsLon)) return false;
       if (filters.folder && (p.folder ?? "").trim() !== filters.folder) return false;
       return true;
     });
@@ -772,7 +856,6 @@ function AppContent() {
     () => new Set(photos.map((photo) => (photo.folder ?? "").trim()).filter(Boolean)).size,
     [photos],
   );
-
   useEffect(() => {
     const updateViewTabAffordance = () => {
       const node = viewTabsRef.current;
@@ -821,6 +904,32 @@ function AppContent() {
     if (filters.noGpsOnly) count++;
     return count;
   }, [filters]);
+  const workspaceTabDetails: Record<ViewTab, {
+    label: string;
+    icon: string;
+    count: number | null;
+    filterActive?: boolean;
+  }> = {
+    timeline: {
+      label: "时间线",
+      icon: "🕐",
+      count: filteredPhotos.length,
+      filterActive: activeFiltersCount > 0,
+    },
+    folder: { label: "文件夹", icon: "📁", count: folderCount },
+    moments: {
+      label: "重要片段",
+      icon: "⭐",
+      count: momentsDisplayCount ?? Math.min(importantPhotos.length, 20),
+    },
+    map: {
+      label: "记忆地图",
+      icon: "🗺️",
+      count: photos.filter((photo) => hasValidGps(photo.gpsLat, photo.gpsLon)).length || null,
+    },
+    capsule: { label: "时光胶囊", icon: "💌", count: null },
+    story: { label: "自动故事", icon: "🎬", count: null },
+  };
 
   const quickDateRanges = getQuickDateRanges();
   const activeQuickDateFilter = QUICK_DATE_FILTER_OPTIONS.find(({ key }) => {
@@ -1282,9 +1391,9 @@ function AppContent() {
       }
       if (!e.dataTransfer?.files.length) return;
       if (activeTabRef.current !== "folder") {
-        setActiveTab("folder");
-        localStorage.setItem(tabKey, "folder");
-        showToast("已切换到文件夹视图，选择文件夹后上传", "success");
+        if (switchTab("folder")) {
+          showToast("已切换到文件夹视图，选择文件夹后上传", "success");
+        }
       }
     };
     window.addEventListener("dragenter", onDragEnter, true);
@@ -1297,7 +1406,7 @@ function AppContent() {
       window.removeEventListener("dragover", onDragOver, true);
       window.removeEventListener("drop", onDrop, true);
     };
-  }, [showToast, tabKey]);
+  }, [showToast, switchTab]);
 
   // Global paste: Ctrl+V image upload (screenshots, etc.)
   useEffect(() => {
@@ -1452,13 +1561,22 @@ function AppContent() {
       setUploadProgress({
         bytesLoaded: 0,
         bytesTotal,
-        filesDone: 0,
+        transferredBytes: 0,
+        filesSettled: 0,
         filesTotal: valid.length,
+        succeededCount: 0,
+        failedCount: 0,
+        cancelledCount: 0,
         activeCount: 0,
         queuedCount: valid.length,
+        activeFiles: [],
         folder,
       });
-      speedRef.current = { ts: Date.now(), bytes: 0, ema: 0 };
+      speedRef.current = {
+        ts: Date.now(),
+        transferredBytes: 0,
+        emaBytesPerSecond: 0,
+      };
       pausedRef.current = false;
       setUploadPaused(false);
       setUploadSpeed("");
@@ -1477,21 +1595,18 @@ function AppContent() {
           return;
           }
           const progress = aggregateUploadProgress(queueItems);
-          const now = Date.now();
-          const elapsed = (now - speedRef.current.ts) / 1000;
-          if (elapsed >= 0.5) {
-          const byteDelta = progress.bytesLoaded - speedRef.current.bytes;
-          if (byteDelta >= 0) {
-            const rawBps = byteDelta / elapsed;
-            speedRef.current.ema = speedRef.current.ema === 0
-              ? rawBps
-              : speedRef.current.ema * 0.7 + rawBps * 0.3;
-            setUploadSpeed(formatSpeed(speedRef.current.ema));
-          } else {
-            speedRef.current.ema = 0;
-          }
-          speedRef.current.ts = now;
-          speedRef.current.bytes = progress.bytesLoaded;
+          const speedSample = sampleUploadSpeed(
+            speedRef.current,
+            progress.transferredBytes,
+            Date.now(),
+          );
+          if (speedSample.sampled) {
+            speedRef.current = speedSample;
+            setUploadSpeed(
+              speedSample.emaBytesPerSecond > 0
+                ? formatSpeed(speedSample.emaBytesPerSecond)
+                : "",
+            );
           }
           setUploadProgress({
           ...progress,
@@ -1537,7 +1652,6 @@ function AppContent() {
 
           let uploadedPhoto: Photo | undefined;
           for (let attempt = 0; attempt < 3; attempt += 1) {
-          controls.markUploading();
           try {
             uploadedPhoto = await uploadPhotoWithProgress(
               uploadFile,
@@ -1559,6 +1673,7 @@ function AppContent() {
               batchController.signal,
               videoTakenAt,
               uploadId,
+              controls.markUploading,
             );
             break;
           } catch (error) {
@@ -1635,6 +1750,14 @@ function AppContent() {
       if (currentGroupIdRef.current !== uploadWorkspaceId && !batchController.signal.aborted) {
         batchController.abort(new UploadWorkspaceChangedError());
       }
+      const finalProgress = aggregateUploadProgress(result.items);
+      const resultSummary = formatUploadResultSummary(finalProgress);
+      const cancellationMessage = () => {
+        const reason = batchAbortReason();
+        return reason instanceof UploadWorkspaceChangedError
+          ? reason.message
+          : "登录状态已变更，上传已停止";
+      };
       if (batchController.signal.aborted || result.cancelled.length > 0) {
         if (ownsUploadBatch()) {
           setUploadProgress(null);
@@ -1643,38 +1766,35 @@ function AppContent() {
           setUploadPaused(false);
           pausedRef.current = false;
         }
-        const reason = batchAbortReason();
-        showToast(
-          reason instanceof UploadWorkspaceChangedError
-          ? reason.message
-          : "登录状态已变更，上传已停止",
-          "error",
-        );
+        showToast(`${resultSummary}；${cancellationMessage()}`, "error");
         return;
       }
 
       setUploadProgress({
-        bytesLoaded: bytesTotal,
-        bytesTotal,
-        filesDone: valid.length,
-        filesTotal: valid.length,
-        activeCount: 0,
-        queuedCount: 0,
+        ...finalProgress,
         folder,
       });
-      await fetchPhotos();
+      setUploadSpeed("");
+      if (result.succeeded.length > 0) {
+        await fetchPhotos();
+      }
       setUploadProgress(null);
       setUploadTotalSize(null);
-      setUploadSpeed("");
       setUploadPaused(false);
       pausedRef.current = false;
-      const failed = result.failed.map((item) => item.file.name);
-      if (failed.length > 0) {
-        showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
-      } else {
-        const hasVideo = valid.some((file) => VIDEO_TYPES.has(file.type));
-        showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
-      }
+      const refreshCancellationMessage = batchController.signal.aborted
+        ? cancellationMessage()
+        : null;
+      showToast(
+        refreshCancellationMessage
+          ? `${resultSummary}；${refreshCancellationMessage}`
+          : resultSummary,
+        refreshCancellationMessage
+          || finalProgress.failedCount > 0
+          || finalProgress.cancelledCount > 0
+          ? "error"
+          : "success",
+      );
     } finally {
       unsubscribeAuth();
       if (ownsUploadBatch()) {
@@ -1797,11 +1917,13 @@ function AppContent() {
     const workspaceId = currentGroupId || "personal";
     const operationId = `folder-rename-${Date.now()}-${++folderRenameSequence}`;
     const controller = new AbortController();
+    const oldSegments = oldFolder.split("/");
+    const newSegments = newFolder.split("/");
     const operation = createFolderRenameOperation(
       operationId,
       workspaceId,
-      oldFolder.split("/").at(-1) ?? oldFolder,
-      newFolder.split("/").at(-1) ?? newFolder,
+      oldSegments[oldSegments.length - 1] ?? oldFolder,
+      newSegments[newSegments.length - 1] ?? newFolder,
     );
     if (!beginFolderRename(folderRenameGate, operation, controller)) {
       throw new Error("已有文件夹重命名正在进行，请等待完成");
@@ -1852,24 +1974,38 @@ function AppContent() {
     }
   };
 
-  const handleInstallApp = async () => {
+  const handleInstallApp = async (
+    restoreFocusTo?: HTMLElement | null,
+    closeSettingsForGuidance = false,
+  ) => {
+    const promptRestoreTarget = restoreFocusTo
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    installGuideRestoreFocusRef.current = closeSettingsForGuidance
+      ? settingsRestoreFocusRef.current ?? promptRestoreTarget
+      : promptRestoreTarget;
+    const showInstallGuidance = () => {
+      if (closeSettingsForGuidance) setShowSettings(false);
+      setShowInstallGuide(true);
+    };
     try {
       const result = await pwaInstall.requestInstall();
       if (result.status === "guidance") {
-        setShowInstallGuide(true);
+        showInstallGuidance();
       } else if (result.status === "prompted" && result.outcome === "accepted") {
         showToast("已确认安装，请按浏览器提示完成", "success");
+        restoreFocus(promptRestoreTarget);
       } else if (result.status === "prompted") {
         showToast("已取消安装，仍可从用户菜单或“设置 → 应用”再次打开", "info");
+        restoreFocus(promptRestoreTarget);
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : "无法打开安装提示，请查看安装指引", "error");
-      setShowInstallGuide(true);
+      showInstallGuidance();
     }
   };
 
   const handleRefreshToUpdate = async () => {
-    const result = await activatePwaUpdate(window as PwaUpdateBrowserWindow, { transferring });
+    const result = await activatePwaUpdate(window as PwaUpdateBrowserWindow);
     if (result === "blocked-transferring") {
       showToast("传输进行中，请在传输完成后更新", "info");
       return;
@@ -1984,6 +2120,38 @@ function AppContent() {
     if (canInstall) return "可安装为 App：点击“立即安装”后，可从桌面图标直接打开。";
     return "可安装为 App：打开安装指引，按设备步骤安装到桌面/主屏幕。";
   }, [canInstall, pwaInstall.mode]);
+  const workspaceUnavailable = loading || loadError || photos.length === 0;
+  const renderWorkspaceStatus = () => {
+    if (loading) {
+      return (
+        <div className="loading">
+          <div className="loading-spinner" />
+          <span>加载中…</span>
+        </div>
+      );
+    }
+    if (loadError) {
+      return (
+        <div className="load-error">
+          <p>加载照片失败</p>
+          <button className="retry-btn" onClick={() => void fetchPhotos()}>重试</button>
+        </div>
+      );
+    }
+    if (photos.length === 0) {
+      return (
+        <div className="empty-gallery">
+          <div className="empty-gallery-icon">📷</div>
+          <p className="empty-gallery-title">还没有照片</p>
+          <p className="empty-gallery-sub">前往文件夹视图，开始上传你的第一张照片吧</p>
+          <div className="empty-gallery-actions">
+            <button className="empty-gallery-btn" onClick={() => switchTab("folder")}>去上传照片</button>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className={`app${headerHidden ? " header-hidden" : ""}`}>
@@ -2003,24 +2171,7 @@ function AppContent() {
 
       {/* Keyboard shortcuts help overlay */}
       {showShortcutsHelp && (
-        <div className="dialog-overlay" onClick={() => setShowShortcutsHelp(false)}>
-          <div className="shortcuts-help-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="shortcuts-help-header">
-              <span>⌨️ 键盘快捷键</span>
-              <button type="button" className="dialog-close-btn" onClick={() => setShowShortcutsHelp(false)} aria-label="关闭键盘快捷键">✕</button>
-            </div>
-            <ul className="shortcuts-list">
-              <li><kbd>R</kbd><span>刷新照片列表</span></li>
-              <li><kbd>?</kbd><span>显示 / 关闭本面板</span></li>
-              <li><kbd>1 / 2 / 3</kbd><span>切换时间线 / 文件夹 / 重要片段</span></li>
-              <li><kbd>4 / 5 / 6</kbd><span>记忆地图 / 时光胶囊 / 自动故事</span></li>
-              <li><kbd>S</kbd><span>开启 / 关闭侧边栏</span></li>
-              <li><kbd>⌫ Backspace</kbd><span>清空所有筛选条件</span></li>
-              <li><kbd>Esc</kbd><span>关闭侧边栏 / 弹框</span></li>
-              <li><kbd>← →</kbd><span>照片详情上一张 / 下一张</span></li>
-            </ul>
-          </div>
-        </div>
+        <ShortcutsHelpDialog onClose={() => setShowShortcutsHelp(false)} />
       )}
       {locationBanner && (
         <div className="location-banner" key={locationBanner}>
@@ -2096,18 +2247,21 @@ function AppContent() {
                 tabIndex={-1}
                 className="user-menu-item"
                 disabled={isStandalone}
-                onClick={() => { setUserMenuOpen(false); void handleInstallApp(); }}
+                onClick={() => {
+                  closeUserMenu(true);
+                  void handleInstallApp(userAvatarButtonRef.current);
+                }}
               >
                 <span className="user-menu-item-icon">{isStandalone ? "✅" : "📲"}</span>
                 {isStandalone ? "已安装应用" : "安装应用"}
               </button>
-              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={() => { setShowShortcutsHelp(true); setUserMenuOpen(false); }}>
+              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={openShortcutsFromUserMenu}>
                 <span className="user-menu-item-icon">⌨️</span> 快捷键
               </button>
               {user?.username === SUPER_ADMIN && (
                 <>
                   <div className="user-menu-divider" role="separator" />
-                  <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={() => { setShowAddAdmin(true); setUserMenuOpen(false); }}>
+                  <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={openAddAdminFromUserMenu}>
                     <span className="user-menu-item-icon">➕</span> 添加管理员
                   </button>
                 </>
@@ -2121,38 +2275,41 @@ function AppContent() {
         </div>
       </header>
 
-      {showAddAdmin && <Suspense fallback={null}><AddAdminDialog onClose={() => setShowAddAdmin(false)} /></Suspense>}
-      {showSettings && (
-        <Suspense fallback={null}><SettingsDialog
-          onClose={() => setShowSettings(false)}
-          onPhotosRestored={fetchPhotos}
-          canInstall={canInstall}
-          isStandalone={isStandalone}
-          installOutcome={pwaInstall.outcome}
-          initialTab={settingsInitialTab}
-          initialFocusTarget={settingsFocusTarget}
-          initialFocusItemId={settingsFocusItemId}
-          onInstallApp={() => void handleInstallApp()}
-          restoreFocusTo={settingsRestoreFocusRef.current}
-          onMaintenanceStateChange={handleMaintenanceStateChange}
-          onTrashMutationStateChange={handleTrashMutationStateChange}
-        /></Suspense>
+      {showAddAdmin && (
+        <AuxiliaryLazyBoundary label="管理员设置">
+          <Suspense fallback={null}><AddAdminDialog onClose={() => setShowAddAdmin(false)} /></Suspense>
+        </AuxiliaryLazyBoundary>
       )}
-      {inviteToken && <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>}
+      {showSettings && (
+        <AuxiliaryLazyBoundary label="设置">
+          <Suspense fallback={null}><SettingsDialog
+            onClose={() => setShowSettings(false)}
+            onPhotosRestored={fetchPhotos}
+            canInstall={canInstall}
+            isStandalone={isStandalone}
+            installOutcome={pwaInstall.outcome}
+            initialTab={settingsInitialTab}
+            initialFocusTarget={settingsFocusTarget}
+            initialFocusItemId={settingsFocusItemId}
+            onInstallApp={(trigger) => void handleInstallApp(trigger, true)}
+            restoreFocusTo={settingsRestoreFocusRef.current}
+            onMaintenanceStateChange={handleMaintenanceStateChange}
+            onTrashMutationStateChange={handleTrashMutationStateChange}
+          /></Suspense>
+        </AuxiliaryLazyBoundary>
+      )}
+      {inviteToken && (
+        <AuxiliaryLazyBoundary label="邀请">
+          <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>
+        </AuxiliaryLazyBoundary>
+      )}
       {showInstallGuide && (
-        <div className="dialog-overlay" onClick={() => setShowInstallGuide(false)}>
-          <div className="add-admin-dialog install-guide-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="add-admin-header">
-              <span>安装使用指引</span>
-              <button type="button" className="dialog-close-btn" onClick={() => setShowInstallGuide(false)} aria-label="关闭安装使用指引">✕</button>
-            </div>
-            <p className="add-admin-hint">{isStandalone ? "当前已是 App 模式" : "可同时作为网站和 App 使用"}</p>
-            <ol className="install-guide-list">
-              {installGuideText.map((item) => <li key={item}>{item}</li>)}
-            </ol>
-            <p className="install-guide-note">提示：上传或下载过程中，请不要刷新页面或关闭应用窗口。</p>
-          </div>
-        </div>
+        <InstallGuideDialog
+          instructions={installGuideText}
+          isStandalone={isStandalone}
+          onClose={() => setShowInstallGuide(false)}
+          restoreFocusTo={installGuideRestoreFocusRef.current}
+        />
       )}
 
       <main className="app-main" data-workspace-policy={PHOTO_WORKSPACE_POLICY_MARKER}>
@@ -2204,52 +2361,55 @@ function AppContent() {
                   <div className="transfer-banner-body">
                     <span className="transfer-banner-text">
                       {uploadPaused
+                        && (uploadProgress.activeCount > 0 || uploadProgress.queuedCount > 0)
                         ? uploadProgress.activeCount > 0
-                          ? `已暂停，${uploadProgress.activeCount} 个仍在上传 (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
-                          : `已暂停 (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
+                          ? `已暂停，${uploadProgress.activeCount} 个仍在上传 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
+                          : `已暂停 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
                         : uploadProgress.currentFile
-                          ? `上传中 ${uploadProgress.currentFile}${uploadProgress.activeCount > 1 ? ` 等 ${uploadProgress.activeCount} 个` : ""} (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
-                          : `上传完成 (${uploadProgress.filesTotal}/${uploadProgress.filesTotal})`}
+                          ? `上传中 ${uploadProgress.currentFile}${uploadProgress.activeCount > 1 ? ` 等 ${uploadProgress.activeCount} 个` : ""} (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
+                          : uploadProgress.failedCount > 0
+                            ? `成功 ${uploadProgress.succeededCount} / 失败 ${uploadProgress.failedCount}`
+                            : uploadProgress.cancelledCount > 0
+                              ? `成功 ${uploadProgress.succeededCount} / 已取消 ${uploadProgress.cancelledCount}`
+                              : uploadProgress.filesSettled === uploadProgress.filesTotal
+                                ? `上传完成 (${uploadProgress.succeededCount}/${uploadProgress.filesTotal})`
+                                : `准备上传 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`}
                     </span>
                     {uploadTotalSize && (
                       <span className="transfer-banner-size">
-                        {(uploadProgress.bytesLoaded / 1024 / 1024).toFixed(1)} / {(uploadProgress.bytesTotal / 1024 / 1024).toFixed(1)} MB
+                        已传输 {(uploadProgress.transferredBytes / 1024 / 1024).toFixed(1)} / 本批 {(uploadProgress.bytesTotal / 1024 / 1024).toFixed(1)} MB
                         {uploadSpeed ? <span className="transfer-banner-speed"> · {uploadSpeed}</span> : null}
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="transfer-banner-pause"
-                    onClick={handleToggleUploadPause}
-                    aria-label={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
-                    title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
-                  >
-                    {uploadPaused ? (
-                      /* Play triangle */
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
-                        <polygon points="3,1 13,7 3,13" />
-                      </svg>
-                    ) : (
-                      /* Pause two bars */
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
-                        <rect x="2" y="1" width="4" height="12" rx="1" />
-                        <rect x="8" y="1" width="4" height="12" rx="1" />
-                      </svg>
-                    )}
-                  </button>
+                  {uploadProgress.activeCount > 0 || uploadProgress.queuedCount > 0 ? (
+                    <button
+                      type="button"
+                      className="transfer-banner-pause"
+                      onClick={handleToggleUploadPause}
+                      aria-label={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
+                      title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
+                    >
+                      {uploadPaused ? (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                          <polygon points="3,1 13,7 3,13" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                          <rect x="2" y="1" width="4" height="12" rx="1" />
+                          <rect x="8" y="1" width="4" height="12" rx="1" />
+                        </svg>
+                      )}
+                    </button>
+                  ) : null}
                   <span className="transfer-banner-pct">
-                    {Math.round((uploadProgress.bytesTotal === 0
-                      ? uploadProgress.filesDone / uploadProgress.filesTotal
-                      : uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%
+                    {getUploadProgressPercent(uploadProgress)}%
                   </span>
                 </div>
                 <div className="transfer-banner-track">
                   <div
                     className="transfer-banner-fill"
-                    style={{ width: `${Math.round((uploadProgress.bytesTotal === 0
-                      ? uploadProgress.filesDone / uploadProgress.filesTotal
-                      : uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%` }}
+                    style={{ width: `${getUploadProgressPercent(uploadProgress)}%` }}
                   />
                 </div>
               </>
@@ -2323,14 +2483,19 @@ function AppContent() {
           </div>
         )}
 
+        <DeploymentRecoveryNotice />
+
         {!isStandalone && !installBannerDismissed && (
           <div className="pwa-install-banner">
             <span>{installBannerText}</span>
             <div className="pwa-install-actions">
               {canInstall ? (
-                <button onClick={() => void handleInstallApp()}>立即安装</button>
+                <button onClick={(event) => void handleInstallApp(event.currentTarget)}>立即安装</button>
               ) : (
-                <button onClick={() => setShowInstallGuide(true)}>查看安装指引</button>
+                <button onClick={(event) => {
+                  installGuideRestoreFocusRef.current = event.currentTarget;
+                  setShowInstallGuide(true);
+                }}>查看安装指引</button>
               )}
               <button className="pwa-install-later" onClick={dismissInstallBanner}>稍后</button>
             </div>
@@ -2348,53 +2513,42 @@ function AppContent() {
           <div className="view-tabs-scroll-area">
           <div className={`view-tabs-fade view-tabs-fade--left${viewTabsShowLeft ? " is-visible" : ""}`} />
           <div className={`view-tabs-fade view-tabs-fade--right${viewTabsShowRight ? " is-visible" : ""}`} />
-          <div className="view-tabs" ref={viewTabsRef} onScroll={() => {
+          <div
+            className="view-tabs"
+            ref={viewTabsRef}
+            role="tablist"
+            aria-label="工作区主视图"
+            onScroll={() => {
             const node = viewTabsRef.current;
             if (!node) return;
             setViewTabsShowLeft(node.scrollLeft > 8);
             setViewTabsShowRight(node.scrollLeft + node.clientWidth < node.scrollWidth - 8);
-          }}>
-          <button
-            className={`view-tab${activeTab === "timeline" ? " active" : ""}`}
-            onClick={(e) => { switchTab("timeline"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
+          }}
           >
-            <span>🕐 时间线</span>
-            <span className="view-tab-count">{filteredPhotos.length}</span>
-            {activeFiltersCount > 0 && <span className="view-tab-filter-dot" />}
-          </button>
-          <button
-            className={`view-tab${activeTab === "folder" ? " active" : ""}`}
-            onClick={(e) => { switchTab("folder"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
-          >
-            <span>📁 文件夹</span>
-            <span className="view-tab-count">{folderCount}</span>
-          </button>
-          <button
-            className={`view-tab${activeTab === "moments" ? " active" : ""}`}
-            onClick={(e) => { switchTab("moments"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
-          >
-            <span>⭐ 重要片段</span>
-            <span className="view-tab-count">{momentsDisplayCount ?? Math.min(importantPhotos.length, 20)}</span>
-          </button>
-          <button
-            className={`view-tab${activeTab === "map" ? " active" : ""}`}
-            onClick={(e) => { switchTab("map"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
-          >
-            <span>🗺️ 记忆地图</span>
-            <span className="view-tab-count">{photos.filter((p) => p.gpsLat).length || ""}</span>
-          </button>
-          <button
-            className={`view-tab${activeTab === "capsule" ? " active" : ""}`}
-            onClick={(e) => { switchTab("capsule"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
-          >
-            <span>💌 时光胶囊</span>
-          </button>
-          <button
-            className={`view-tab${activeTab === "story" ? " active" : ""}`}
-            onClick={(e) => { switchTab("story"); if (viewTabsRef.current) scrollTabToCenter(e.currentTarget, viewTabsRef.current); }}
-          >
-            <span>🎬 自动故事</span>
-          </button>
+            {WORKSPACE_TAB_ORDER.map((tab) => {
+              const { label, icon, count, filterActive } = workspaceTabDetails[tab];
+              return (
+                <button
+                  type="button"
+                  key={tab}
+                  id={workspaceTabId(tab)}
+                  className={`view-tab${activeTab === tab ? " active" : ""}`}
+                  role="tab"
+                  aria-label={label}
+                  aria-selected={activeTab === tab}
+                  aria-controls={workspaceTabPanelId(tab)}
+                  tabIndex={activeTab === tab ? 0 : -1}
+                  onClick={() => activateWorkspaceTab(tab)}
+                  onKeyDown={(event) => handleWorkspaceTabKeyDown(event, tab)}
+                >
+                  <span aria-hidden="true">{icon} {label}</span>
+                  {count !== null && (
+                    <span aria-hidden="true" className="view-tab-count">{count}</span>
+                  )}
+                  {filterActive && <span aria-hidden="true" className="view-tab-filter-dot" />}
+                </button>
+              );
+            })}
           </div>
           </div>
           {activeTab === "timeline" && (
@@ -2514,31 +2668,24 @@ function AppContent() {
               />
             )}
 
-            <ErrorBoundary label="main">
-            {loading ? (
-          <div className="loading">
-            <div className="loading-spinner" />
-            <span>加载中…</span>
-          </div>
-        ) : loadError ? (
-          <div className="load-error">
-            <p>加载照片失败</p>
-            <button className="retry-btn" onClick={() => void fetchPhotos()}>重试</button>
-          </div>
-        ) : photos.length === 0 ? (
-          <div className="empty-gallery">
-            <div className="empty-gallery-icon">📷</div>
-            <p className="empty-gallery-title">还没有照片</p>
-            <p className="empty-gallery-sub">前往文件夹视图，开始上传你的第一张照片吧</p>
-            <div className="empty-gallery-actions">
-              <button className="empty-gallery-btn" onClick={() => switchTab("folder")}>去上传照片</button>
-            </div>
-          </div>
-        ) : (
-          <>
             {/* ── Timeline panel ── kept mounted so thumbnail imgLoaded state and browser-cached
                 images survive tab switches. Only hidden via CSS, never unmounted. */}
-            <div style={{ display: activeTab === "timeline" ? "" : "none" }}>
+            <div
+              role="tabpanel"
+              id={workspaceTabPanelId("timeline")}
+              aria-labelledby={workspaceTabId("timeline")}
+              tabIndex={activeTab === "timeline" ? 0 : -1}
+              hidden={activeTab !== "timeline"}
+            >
+              {workspaceUnavailable
+                ? (activeTab === "timeline" ? renderWorkspaceStatus() : null)
+                : (
+              <ErrorBoundary
+                key={`timeline:${currentGroupId || "personal"}`}
+                label="时间线"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               {activeTab === "timeline" && filteredPhotos.length === 0 ? (
                 <div className="empty-gallery empty-gallery--actionable">
                   <div className="empty-gallery-icon">🔎</div>
@@ -2595,11 +2742,27 @@ function AppContent() {
                   </Suspense>
                 </>
               )}
+              </ErrorBoundary>
+                )}
             </div>
 
             {/* ── Moments panel ── mounted on first visit, then kept mounted */}
-            {(momentsMounted || activeTab === "moments") && (
-            <div style={{ display: activeTab === "moments" ? "" : "none" }}>
+            <div
+              role="tabpanel"
+              id={workspaceTabPanelId("moments")}
+              aria-labelledby={workspaceTabId("moments")}
+              tabIndex={activeTab === "moments" ? 0 : -1}
+              hidden={activeTab !== "moments"}
+            >
+              {workspaceUnavailable
+                ? (activeTab === "moments" ? renderWorkspaceStatus() : null)
+                : (momentsMounted || activeTab === "moments") ? (
+              <ErrorBoundary
+                key={`moments:${currentGroupId || "personal"}`}
+                label="重要片段"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
                 <PhotoGallery
                   photos={importantPhotos}
@@ -2626,12 +2789,27 @@ function AppContent() {
                   gridSize={gridSize}
                 />
               </Suspense>
+              </ErrorBoundary>
+                ) : null}
             </div>
-            )}
 
             {/* ── Folder panel ── mounted on first visit, then kept mounted */}
-            {(folderMounted || activeTab === "folder") && (
-            <div style={{ display: activeTab === "folder" ? "" : "none" }}>
+            <div
+              role="tabpanel"
+              id={workspaceTabPanelId("folder")}
+              aria-labelledby={workspaceTabId("folder")}
+              tabIndex={activeTab === "folder" ? 0 : -1}
+              hidden={activeTab !== "folder"}
+            >
+              {workspaceUnavailable
+                ? (activeTab === "folder" ? renderWorkspaceStatus() : null)
+                : (folderMounted || activeTab === "folder") ? (
+              <ErrorBoundary
+                key={`folder:${currentGroupId || "personal"}`}
+                label="文件夹"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               <Suspense fallback={null}><FolderView
                 key={currentGroupId || "personal"}
                 photos={photos}
@@ -2656,39 +2834,87 @@ function AppContent() {
                 currentGroupId={currentGroupId || undefined}
                 contextKey={currentGroupId || "personal"}
               /></Suspense>
+              </ErrorBoundary>
+                ) : null}
             </div>
-            )}
 
             {/* ── Map / Capsule / Story: lazy-conditional (heavier bundles, visited less often) */}
-            {activeTab === "map" && resolvedPhotoWorkspaceId === null && (
-              <div className="loading"><div className="loading-spinner" /><span>正在确认照片空间…</span></div>
-            )}
-            {activeTab === "map" && resolvedPhotoWorkspaceId !== null && (
-              <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
-                <MemoryMap
-                  photos={photos}
-                  groupId={resolvedPhotoWorkspaceId}
-                  photosGroupId={photosGroupId}
-                  onViewPhoto={jumpToTimelinePhoto}
-                  onGpsUpdate={(name, lat, lon) =>
-                    mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
-                  }
-                />
-              </Suspense>
-            )}
-            {activeTab === "capsule" && user && (
-              <Suspense fallback={null}>
-                <TimeCapsule photos={photos} userId={user.id} onViewPhoto={jumpToTimelinePhoto} />
-              </Suspense>
-            )}
-            {activeTab === "story" && (
-              <Suspense fallback={null}>
-                <AutoStory photos={photos} />
-              </Suspense>
-            )}
-          </>
-        )}
-            </ErrorBoundary>
+            <div
+              role="tabpanel"
+              id={workspaceTabPanelId("map")}
+              aria-labelledby={workspaceTabId("map")}
+              tabIndex={activeTab === "map" ? 0 : -1}
+              hidden={activeTab !== "map"}
+            >
+              {workspaceUnavailable
+                ? (activeTab === "map" ? renderWorkspaceStatus() : null)
+                : activeTab === "map" && resolvedPhotoWorkspaceId !== null ? (
+                  <ErrorBoundary
+                    key={`map:${currentGroupId || "personal"}`}
+                    label="记忆地图"
+                    recovery
+                    onError={reportLazyBoundaryFailure}
+                  >
+                  <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
+                      <MemoryMap
+                        photos={photos}
+                        groupId={resolvedPhotoWorkspaceId}
+                        photosGroupId={photosGroupId}
+                        onViewPhoto={jumpToTimelinePhoto}
+                        onGpsUpdate={(name, lat, lon) =>
+                          mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
+                        }
+                      />
+                  </Suspense>
+                  </ErrorBoundary>
+                ) : activeTab === "map" ? (
+                  <div className="loading"><div className="loading-spinner" /><span>正在确认照片空间…</span></div>
+                ) : null}
+            </div>
+            <div
+              role="tabpanel"
+              id={workspaceTabPanelId("capsule")}
+              aria-labelledby={workspaceTabId("capsule")}
+              tabIndex={activeTab === "capsule" ? 0 : -1}
+              hidden={activeTab !== "capsule"}
+            >
+              {workspaceUnavailable
+                ? (activeTab === "capsule" ? renderWorkspaceStatus() : null)
+                : activeTab === "capsule" && user ? (
+                  <ErrorBoundary
+                    key={`capsule:${currentGroupId || "personal"}`}
+                    label="时光胶囊"
+                    recovery
+                    onError={reportLazyBoundaryFailure}
+                  >
+                  <Suspense fallback={null}>
+                    <TimeCapsule photos={photos} userId={user.id} onViewPhoto={jumpToTimelinePhoto} />
+                  </Suspense>
+                  </ErrorBoundary>
+                ) : null}
+            </div>
+            <div
+              role="tabpanel"
+              id={workspaceTabPanelId("story")}
+              aria-labelledby={workspaceTabId("story")}
+              tabIndex={activeTab === "story" ? 0 : -1}
+              hidden={activeTab !== "story"}
+            >
+              {workspaceUnavailable
+                ? (activeTab === "story" ? renderWorkspaceStatus() : null)
+                : activeTab === "story" ? (
+                  <ErrorBoundary
+                    key={`story:${currentGroupId || "personal"}`}
+                    label="自动故事"
+                    recovery
+                    onError={reportLazyBoundaryFailure}
+                  >
+                  <Suspense fallback={null}>
+                    <AutoStory photos={photos} />
+                  </Suspense>
+                  </ErrorBoundary>
+                ) : null}
+            </div>
           </div>
 
           <WorkspaceSidebar
@@ -2730,7 +2956,11 @@ function AppContent() {
           aria-label="返回顶部"
         >顶部</button>
       )}
-      {showWhatsNewPopup && !showSettings && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}
+      {showWhatsNewPopup && !showSettings && (
+        <AuxiliaryLazyBoundary label="版本更新">
+          <Suspense fallback={null}><WhatsNewPopup /></Suspense>
+        </AuxiliaryLazyBoundary>
+      )}
     </div>
   );
 }

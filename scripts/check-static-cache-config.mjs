@@ -66,6 +66,13 @@ function checkViteConfigModule() {
   if (!source.includes("import.meta.url") || /\b__dirname\b/.test(source)) {
     fail(viteConfig, "ESM config must resolve paths from import.meta.url");
   }
+  if (
+    !source.includes('registerType: "prompt"')
+    || !source.includes("skipWaiting: false")
+    || !source.includes("clientsClaim: false")
+  ) {
+    fail(viteConfig, "PWA updates must wait for the shared transfer-safe activation path");
+  }
 }
 
 function checkAuthenticatedStyleBoundary() {
@@ -289,8 +296,8 @@ function checkHashedAssets(configPath) {
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
-  if (statSync(entryScripts[0]).size > 28_250) {
-    fail(configPath, "built login entry script must stay below 28.25 kB");
+  if (statSync(entryScripts[0]).size > 36_000) {
+    fail(configPath, "built login entry script must stay below 36 kB");
   }
   if (!pwaInstallEntryScript.includes("安装应用")) {
     fail(configPath, "deferred signed-out entry must expose the install application action");
@@ -301,6 +308,12 @@ function checkHashedAssets(configPath) {
   ]) {
     if (!builtJavaScript.includes(marker)) {
       fail(configPath, `built workspace assets are missing media policy marker: ${marker}`);
+    }
+    if (
+      !entryScript.includes("vite:preloadError")
+      || !entryScript.includes("cf_deployment_recovery_v1")
+    ) {
+      fail(configPath, "login entry must carry pre-React stale chunk recovery");
     }
   }
   for (const workspaceMarker of [
@@ -353,6 +366,12 @@ function checkHashedAssets(configPath) {
   }
   if (!serviceWorker.includes("app-code-v1")) {
     fail(configPath, "service worker must cache deferred app chunks after first use");
+  }
+  if (serviceWorker.includes(".clientsClaim()")) {
+    fail(configPath, "service worker must not activate or claim clients outside the update gate");
+  }
+  if (!serviceWorker.includes("SKIP_WAITING")) {
+    fail(configPath, "service worker must support explicit waiting-worker activation");
   }
 }
 

@@ -100,7 +100,7 @@ export function validateFolderRenameInput(
   siblingLabels: readonly string[],
 ): FolderRenameValidation {
   const oldSegments = oldFolder.split("/");
-  const oldLabel = oldSegments.at(-1) ?? "";
+  const oldLabel = oldSegments[oldSegments.length - 1] ?? "";
   const normalizedOldLabel = oldLabel.normalize("NFC");
   const newLabel = newLabelInput.trim().normalize("NFC");
   if (!newLabel) return { ok: false, error: "请输入新的文件夹名称" };

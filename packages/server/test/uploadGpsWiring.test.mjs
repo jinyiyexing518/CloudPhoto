@@ -32,8 +32,9 @@ test("server fallback, Blob metadata, upload response, and refreshed list share 
   assert.match(upload, /\.\.\.uploadGpsMetadata\(resolvedGps\)/);
   assert.match(upload, /const gps = readGpsMetadata\(metadata\)/);
   assert.match(upload, /\.\.\.\(gps \?\? \{\}\)/);
-  assert.match(list, /gpsLat: getMeta\(blob\.metadata, "gpsLat"\)/);
-  assert.match(list, /gpsLon: getMeta\(blob\.metadata, "gpsLon"\)/);
+  assert.match(list, /const gps = readGpsMetadata\(blob\.metadata\)/);
+  assert.match(list, /gpsLat: gps\?\.gpsLat/);
+  assert.match(list, /gpsLon: gps\?\.gpsLon/);
 });
 
 test("personal and group authorization failures return before Blob fallback work", async () => {
@@ -47,32 +48,31 @@ test("personal and group authorization failures return before Blob fallback work
   assert.ok(exifIndex > blobIndex);
 });
 
-test("maintenance reconciles videos, deleted blobs, and images with no new EXIF without downloading them", async () => {
+test("maintenance skips videos and deleted blobs before bounded EXIF reads", async () => {
   const backfill = await source("packages/server/src/functions/photos/backfillPhotoMetadata.ts");
-  assert.doesNotMatch(backfill, /if \(!ALLOWED_IMAGE_MIME\.has\(mime\)\) continue/);
-  assert.match(backfill, /isDeleted \|\| !isImage \|\| \(!needsTakenAt && !needsGps\)/);
-  assert.match(backfill, /sync: \(\) => syncPhotoLocationFromBlob\(blockBlobClient, blob\.name, scope\)/);
+  assert.match(backfill, /isDeleted[\s\S]*!isRecoverableImageMime\(contentType\)/);
+  assert.match(backfill, /syncLocation: \(signal\) => syncPhotoLocationFromBlob/);
   assert.ok(
-    backfill.indexOf("if (isDeleted || !isImage") < backfill.indexOf("downloadToBuffer()"),
-    "reconciliation-only states must branch before original downloads",
+    backfill.indexOf("isDeleted") < backfill.indexOf("downloadToBuffer("),
+    "excluded states must branch before bounded original reads",
   );
 });
 
-test("maintenance records a versioned scan so no-EXIF originals are not downloaded repeatedly", async () => {
-  const backfill = await source("packages/server/src/functions/photos/backfillPhotoMetadata.ts");
-  assert.match(backfill, /const METADATA_SCAN_VERSION = "1"/);
-  assert.match(backfill, /!needsMetadataScan/);
-  assert.match(backfill, /setMeta\(latestMetadata, "metadataScanVersion", METADATA_SCAN_VERSION\)/);
-  assert.match(backfill, /conditions: \{ ifMatch: props\.etag \}/);
+test("maintenance records a bumped GPS scan marker without rescanning valid pairs", async () => {
+  const recovery = await source("packages/server/src/functions/photos/photoMetadataRecovery.ts");
+  assert.match(recovery, /GPS_SCAN_VERSION = "2"/);
+  assert.match(recovery, /existingGps === null/);
+  assert.match(recovery, /gpsScanVersion"\) !== GPS_SCAN_VERSION/);
+  assert.match(recovery, /setMetadataValue\(latestMetadata, "gpsScanVersion", GPS_SCAN_VERSION\)/);
 });
 
-test("maintenance uses the pre-download source ETag and never retries stale EXIF onto a replaced blob", async () => {
+test("maintenance uses bounded conditional ranges and the same source ETag for its only write", async () => {
   const backfill = await source("packages/server/src/functions/photos/backfillPhotoMetadata.ts");
-  const sourceProperties = backfill.indexOf("const props = await blockBlobClient.getProperties()");
-  const download = backfill.indexOf("const buf = await blockBlobClient.downloadToBuffer()", sourceProperties);
-  const conditionalWrite = backfill.indexOf("conditions: { ifMatch: props.etag }", download);
-  assert.ok(sourceProperties >= 0 && download > sourceProperties && conditionalWrite > download);
-  assert.doesNotMatch(backfill, /isPreconditionFailed\(error\).*continue/s);
+  const download = backfill.indexOf("downloadToBuffer(");
+  const conditionalRead = backfill.indexOf("conditions: { ifMatch: etag }", download);
+  const conditionalWrite = backfill.indexOf("conditions: { ifMatch: sourceEtag }", conditionalRead);
+  assert.ok(download >= 0 && conditionalRead > download && conditionalWrite > conditionalRead);
+  assert.doesNotMatch(backfill, /downloadToBuffer\(\s*\)/);
 });
 
 test("the GPS-pending upload warning is only returned when valid GPS exists", async () => {

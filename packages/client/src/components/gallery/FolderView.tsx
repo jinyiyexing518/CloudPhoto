@@ -25,17 +25,11 @@ import {
   fallbackMediaSource,
   getPreferredMediaUrl,
   preloadImageWithFallback,
-  promoteSuccessfulMediaUrl,
 } from "../../services/mediaRoute";
 import {
-  VideoPlaybackSession,
-  claimVideoThumbnailCapture,
-  createVideoPlaybackSession,
-  fallbackVideoPlaybackSession,
   getVideoPlaybackRenderState,
-  markVideoPlaybackPlayable,
-  restartVideoPlaybackSession,
 } from "../../services/videoPlaybackSession";
+import { useResilientVideoPlayback } from "../../services/useResilientVideoPlayback";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
@@ -43,6 +37,7 @@ import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
 import { usePhotoLocationAddress } from "./usePhotoLocationAddress";
 import { type VoiceTransferState } from "../../transfer/voiceTransferState";
+import { type UploadAggregateProgress } from "../../transfer/uploadQueue";
 import {
   runBatchMutationBoundary,
   type BatchMutationEvent,
@@ -273,6 +268,11 @@ function FolderCard({
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+type FolderUploadProgress = UploadAggregateProgress & {
+  folder: string;
+  currentFile?: string;
+};
+
 interface Props {
   photos: Photo[];
   onDelete: (name: string) => void;
@@ -282,7 +282,7 @@ interface Props {
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
+  uploadProgress: FolderUploadProgress | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onBatchDelete?: (names: string[]) => Promise<void>;
   onRenameFolder?: (oldFolder: string, newFolder: string) => Promise<void>;
@@ -350,6 +350,9 @@ export default function FolderView({
   const [folderShareHours, setFolderShareHours] = useState("24");
   const [sharingFolder, setSharingFolder] = useState(false);
   const [showShareFolderDialog, setShowShareFolderDialog] = useState(false);
+  const shareFolderLayerRef = useRef<HTMLDivElement | null>(null);
+  const shareFolderDialogRef = useRef<HTMLDivElement | null>(null);
+  const shareFirstOptionRef = useRef<HTMLButtonElement | null>(null);
   // Mark as hydrated immediately — state is already initialized from localStorage above.
   const hydratedContextRef = useRef<string | null>(contextKey);
   const historyHydratedRef = useRef(false);
@@ -359,6 +362,20 @@ export default function FolderView({
   const mutationBusy = batchMutationBusy || folderRenameActive;
   const batchMutationGate = useRef<BatchMutationGate>({ current: null }).current;
   const mountedRef = useRef(true);
+
+  const closeShareFolderDialog = useCallback(() => {
+    if (sharingFolder || mutationBusy) return false;
+    setShowShareFolderDialog(false);
+    return true;
+  }, [mutationBusy, sharingFolder]);
+
+  useModalFocusBoundary({
+    active: showShareFolderDialog && currentPath !== null,
+    layerRef: shareFolderLayerRef,
+    containerRef: shareFolderDialogRef,
+    initialFocusRef: shareFirstOptionRef,
+    onEscape: () => closeShareFolderDialog(),
+  });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -668,20 +685,29 @@ export default function FolderView({
         )}
       </div>
 
-      {showShareFolderDialog && currentPath !== null && (
-        <div className="dialog-overlay" onClick={() => !sharingFolder && setShowShareFolderDialog(false)}>
-          <div className="share-folder-dialog" onClick={(e) => e.stopPropagation()}>
+      {showShareFolderDialog && currentPath !== null && createPortal(
+        <div ref={shareFolderLayerRef} className="dialog-overlay" data-modal-layer onClick={closeShareFolderDialog}>
+          <div
+            ref={shareFolderDialogRef}
+            className="share-folder-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-folder-dialog-title"
+            aria-describedby="share-folder-dialog-description"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="add-admin-header">
-              <span>分享当前文件夹</span>
+              <span id="share-folder-dialog-title">分享当前文件夹</span>
               <button
                 type="button"
                 className="dialog-close-btn"
-                onClick={() => setShowShareFolderDialog(false)}
+                onClick={closeShareFolderDialog}
                 disabled={sharingFolder || mutationBusy}
                 aria-label="关闭文件夹分享"
               >✕</button>
             </div>
-            <p className="add-admin-hint">选择这个文件夹分享链接的有效期。</p>
+            <p id="share-folder-dialog-description" className="add-admin-hint">选择这个文件夹分享链接的有效期。</p>
             <div className="share-folder-summary">
               <span className="share-folder-label">当前文件夹</span>
               <strong>{currentPath === "" ? "未分类" : currentPath}</strong>
@@ -698,6 +724,7 @@ export default function FolderView({
                   const active = folderShareHours === option.value;
                   return (
                     <button
+                      ref={option.value === "1" ? shareFirstOptionRef : undefined}
                       key={option.value}
                       type="button"
                       className={`share-folder-option${active ? " active" : ""}`}
@@ -713,13 +740,14 @@ export default function FolderView({
               </div>
             </div>
             <div className="confirm-actions">
-              <button className="confirm-cancel-btn" onClick={() => setShowShareFolderDialog(false)} disabled={sharingFolder}>取消</button>
+              <button className="confirm-cancel-btn" onClick={closeShareFolderDialog} disabled={sharingFolder || mutationBusy}>取消</button>
               <button className="folder-share-btn" onClick={() => void handleShareCurrentFolder()} disabled={sharingFolder || mutationBusy}>
                 {sharingFolder ? "创建中…" : "确认分享"}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Root view: folder cards */}
@@ -819,7 +847,7 @@ interface ContentProps {
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
   onToggleFavorite: (name: string, favorite: boolean) => Promise<boolean>;
   onUploadToFolder: (files: FileList, folder: string, subject?: string) => Promise<void>;
-  uploadProgress: { bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null;
+  uploadProgress: FolderUploadProgress | null;
   onMovePhoto: (name: string, toFolder: string) => Promise<boolean>;
   onRenameSubFolder?: (subName: string, newSubName: string) => void;
   onDeleteSubFolder?: (sub: string) => void;
@@ -885,29 +913,57 @@ function FolderContent({
   const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
-  const [videoSession, setVideoSession] = useState<VideoPlaybackSession | null>(null);
-  const videoSessionIdRef = useRef(0);
-  const videoElementRef = useRef<HTMLVideoElement>(null);
-  const videoPlayableSessionRef = useRef<string | null>(null);
-  const videoFallbackSessionRef = useRef<string | null>(null);
-  const videoCaptureSessionRef = useRef<string | null>(null);
+  const quickMoveLayerRef = useRef<HTMLDivElement | null>(null);
+  const quickMoveDialogRef = useRef<HTMLDivElement | null>(null);
+  const quickMoveSelectRef = useRef<HTMLSelectElement | null>(null);
+  const {
+    session: videoSession,
+    videoRef,
+    buffering: videoBuffering,
+    error: videoError,
+    eventHandlers: videoEventHandlers,
+    openVideo,
+    closeVideo,
+    retryVideo,
+  } = useResilientVideoPlayback({
+    onPlayable: ({
+      photoName,
+      video,
+      shouldCaptureThumbnail,
+    }) => {
+      if (
+        !shouldCaptureThumbnail
+        || selectedPhoto?.name !== photoName
+        || selectedPhoto.thumbnailUrl
+      ) {
+        return;
+      }
+      void persistVideoPlaybackThumbnail(photoName, video).then((thumbnailUrl) => {
+        if (!thumbnailUrl) return;
+        onThumbnailUpdate?.(photoName, thumbnailUrl);
+        setSelectedPhoto((current) => current?.name === photoName
+          ? { ...current, thumbnailUrl }
+          : current);
+      });
+    },
+  });
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
 
   const openVideoPlaybackSession = useCallback((photo: Photo) => {
     if (!photo.contentType?.startsWith("video/")) {
-      setVideoSession(null);
+      closeVideo();
       return;
     }
-    const session = createVideoPlaybackSession({
+    openVideo({
       photoName: photo.name,
       originalUrl: photo.url,
-      sessionId: ++videoSessionIdRef.current,
       needsThumbnailCapture: !photo.thumbnailUrl,
     });
-    videoPlayableSessionRef.current = null;
-    videoFallbackSessionRef.current = null;
-    setVideoSession(session);
-  }, []);
+  }, [closeVideo, openVideo]);
+
+  useEffect(() => {
+    if (!selectedPhoto) closeVideo();
+  }, [closeVideo, selectedPhoto]);
 
   useEffect(() => {
     if (!selectedPhoto || selectedPhoto.contentType?.startsWith("video/")) return;
@@ -938,8 +994,6 @@ function FolderContent({
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
-  const [videoBuffering, setVideoBuffering] = useState(false);
-  const [videoError, setVideoError] = useState(false);
   const [sharing, setSharing] = useState(false);
   // Progressive GIF loading in viewer: show thumbnail immediately, upgrade to full GIF silently
   const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
@@ -949,6 +1003,7 @@ function FolderContent({
   const [movingTo, setMovingTo] = useState(MOVE_UNSELECTED);
   const [quickMovePhoto, setQuickMovePhoto] = useState<Photo | null>(null);
   const [quickMoveTo, setQuickMoveTo] = useState(MOVE_UNSELECTED);
+  const [quickMoveBusy, setQuickMoveBusy] = useState(false);
   const [showVoicePanel, setShowVoicePanel] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "recording" | "uploading">("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -1071,8 +1126,6 @@ function FolderContent({
     setVoiceError(null);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
-    setVideoBuffering(false);
-    setVideoError(false);
     setModalImageLoaded(false);
     setGifViewerSrc("");
   }, [openVideoPlaybackSession, trackPhotoView]);
@@ -1111,7 +1164,12 @@ function FolderContent({
     setSelectedPhoto(null);
     setShowOriginalPreview(false);
   }, []);
-
+  const closeQuickMoveDialog = useCallback(() => {
+    if (quickMoveBusy) return false;
+    setQuickMovePhoto(null);
+    setQuickMoveTo(MOVE_UNSELECTED);
+    return true;
+  }, [quickMoveBusy]);
   const onModalKeyDown = useCallback((event: KeyboardEvent) => {
     if (isModalShortcutTarget(event.target)) return;
     if (event.key === "ArrowLeft" && selectedIdx !== null && selectedIdx > 0) {
@@ -1135,6 +1193,14 @@ function FolderContent({
       return true;
     },
     onKeyDown: onModalKeyDown,
+  });
+
+  useModalFocusBoundary({
+    active: quickMovePhoto !== null,
+    layerRef: quickMoveLayerRef,
+    containerRef: quickMoveDialogRef,
+    initialFocusRef: quickMoveSelectRef,
+    onEscape: () => closeQuickMoveDialog(),
   });
 
   useModalFocusBoundary({
@@ -1264,8 +1330,6 @@ function FolderContent({
     setShowSharePanel(false);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
-    setVideoBuffering(false);
-    setVideoError(false);
     setGifViewerSrc("");
   };
 
@@ -1446,14 +1510,25 @@ function FolderContent({
   };
 
   const handleQuickMove = async () => {
-    if (!quickMovePhoto) return;
+    if (!quickMovePhoto || quickMoveBusy) return;
     const target = resolveMoveTarget(quickMoveTo);
     if (!target) return;
-    const ok = await onMovePhoto(quickMovePhoto.name, target);
-    if (ok) {
-      showToast(`已移动到「${target || UNCATEGORIZED}」`, "success");
-      setQuickMovePhoto(null);
-      setQuickMoveTo(MOVE_UNSELECTED);
+    const photoName = quickMovePhoto.name;
+    setQuickMoveBusy(true);
+    try {
+      const ok = await onMovePhoto(photoName, target);
+      if (!mountedRef.current) return;
+      if (ok) {
+        showToast(`已移动到「${target || UNCATEGORIZED}」`, "success");
+        setQuickMovePhoto(null);
+        setQuickMoveTo(MOVE_UNSELECTED);
+      }
+    } catch (error) {
+      if (mountedRef.current) {
+        showToast(error instanceof Error ? error.message : "移动照片失败", "error");
+      }
+    } finally {
+      if (mountedRef.current) setQuickMoveBusy(false);
     }
   };
 
@@ -1556,7 +1631,7 @@ function FolderContent({
                 disabled={anyUploading || batchMutationBusy}
               >
                 {isMyUpload && uploadProgress
-                  ? `⏳ ${uploadProgress.filesDone}/${uploadProgress.filesTotal}`
+                  ? `⏳ ${uploadProgress.filesSettled}/${uploadProgress.filesTotal}`
                   : "+ 添加原图"}
               </button>
             </>
@@ -1633,7 +1708,7 @@ function FolderContent({
             {isMyUpload && uploadProgress ? (
               <>
                 <span className="folder-upload-icon">⏳</span>
-                <span className="folder-upload-label">{uploadProgress.filesDone}/{uploadProgress.filesTotal}</span>
+                <span className="folder-upload-label">{uploadProgress.filesSettled}/{uploadProgress.filesTotal}</span>
               </>
             ) : (
               <>
@@ -1711,7 +1786,7 @@ function FolderContent({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
                   {selectedVideoRender && <video
-                    ref={videoElementRef}
+                    ref={videoRef}
                     key={selectedVideoRender.key}
                     crossOrigin="anonymous"
                     src={selectedVideoRender.source}
@@ -1720,67 +1795,7 @@ function FolderContent({
                     controls
                     playsInline
                     preload="auto"
-                    onPlay={() => {
-                      setVideoError(false);
-                      setVideoBuffering(true);
-                    }}
-                    onLoadedData={(event) => {
-                      if (selectedVideoRender.session.fallbackAttempted) {
-                        promoteSuccessfulMediaUrl(selectedVideoRender.source);
-                      }
-                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
-                      const activeSession = markVideoPlaybackPlayable(selectedVideoRender.session);
-                      const capture = claimVideoThumbnailCapture(activeSession);
-                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
-                        ? capture.session
-                        : current);
-                      const photoName = selectedPhoto.name;
-                      if (
-                        capture.shouldCapture
-                        && !selectedPhoto.thumbnailUrl
-                        && videoCaptureSessionRef.current !== activeSession.key
-                      ) {
-                        videoCaptureSessionRef.current = activeSession.key;
-                        void persistVideoPlaybackThumbnail(photoName, event.currentTarget)
-                          .then((thumbnailUrl) => {
-                            if (!thumbnailUrl) return;
-                            onThumbnailUpdate?.(photoName, thumbnailUrl);
-                            setSelectedPhoto((current) => current?.name === photoName
-                              ? { ...current, thumbnailUrl }
-                              : current);
-                          });
-                      }
-                    }}
-                    onPlaying={() => {
-                      setVideoBuffering(false);
-                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
-                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
-                        ? markVideoPlaybackPlayable(current)
-                        : current);
-                    }}
-                    onWaiting={() => setVideoBuffering(true)}
-                    onError={(event) => {
-                      const activeSession = videoPlayableSessionRef.current === selectedVideoRender.session.key
-                        ? markVideoPlaybackPlayable(selectedVideoRender.session)
-                        : selectedVideoRender.session;
-                      const fallback = videoFallbackSessionRef.current === selectedVideoRender.session.key
-                        ? null
-                        : fallbackVideoPlaybackSession(
-                            activeSession,
-                            event.currentTarget.currentSrc || event.currentTarget.src,
-                          );
-                      if (fallback) {
-                        videoFallbackSessionRef.current = selectedVideoRender.session.key;
-                        setVideoSession(fallback);
-                        setVideoError(false);
-                        setVideoBuffering(true);
-                        event.currentTarget.src = fallback.source;
-                        event.currentTarget.load();
-                      } else {
-                        setVideoBuffering(false);
-                        setVideoError(true);
-                      }
-                    }}
+                    {...videoEventHandlers}
                   />}
                   {videoBuffering && !videoError && (
                     <div className="modal-video-spinner">
@@ -1794,19 +1809,7 @@ function FolderContent({
                       <span style={{ fontSize: 13 }}>视频加载失败</span>
                       <button
                         style={{ marginTop: 4, padding: "4px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13 }}
-                        onClick={() => {
-                          if (!videoSession) return;
-                          const restarted = restartVideoPlaybackSession(videoSession);
-                          videoPlayableSessionRef.current = null;
-                          videoFallbackSessionRef.current = null;
-                          setVideoSession(restarted);
-                          setVideoError(false);
-                          setVideoBuffering(true);
-                          if (videoElementRef.current) {
-                            videoElementRef.current.src = restarted.source;
-                            videoElementRef.current.load();
-                          }
-                        }}
+                        onClick={retryVideo}
                       >重试</button>
                     </div>
                   )}
@@ -2261,15 +2264,26 @@ function FolderContent({
         document.body,
       )}
 
-      {quickMovePhoto && (
-        <div className="confirm-overlay" onClick={() => { setQuickMovePhoto(null); setQuickMoveTo(MOVE_UNSELECTED); }}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <p className="confirm-title">移动照片</p>
-            <p className="confirm-filename">{displayName(quickMovePhoto)}</p>
+      {quickMovePhoto && createPortal(
+        <div ref={quickMoveLayerRef} className="confirm-overlay" data-modal-layer onClick={closeQuickMoveDialog}>
+          <div
+            ref={quickMoveDialogRef}
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-move-dialog-title"
+            aria-describedby="quick-move-dialog-description"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p id="quick-move-dialog-title" className="confirm-title">移动照片</p>
+            <p id="quick-move-dialog-description" className="confirm-filename">{displayName(quickMovePhoto)}</p>
             <select
+              ref={quickMoveSelectRef}
               className="modal-move-select quick-move-select"
               value={quickMoveTo}
               onChange={(e) => setQuickMoveTo(e.target.value)}
+              disabled={quickMoveBusy}
             >
               <option value={MOVE_UNSELECTED} disabled>— 选择目标文件夹 —</option>
               <option value={MOVE_CREATE}>+ 新建文件夹…</option>
@@ -2279,11 +2293,14 @@ function FolderContent({
               ))}
             </select>
             <div className="confirm-actions">
-              <button className="confirm-cancel-btn" onClick={() => { setQuickMovePhoto(null); setQuickMoveTo(MOVE_UNSELECTED); }}>取消</button>
-              <button className="confirm-delete-btn" disabled={quickMoveTo === MOVE_UNSELECTED} onClick={() => void handleQuickMove()}>移动</button>
+              <button className="confirm-cancel-btn" onClick={closeQuickMoveDialog} disabled={quickMoveBusy}>取消</button>
+              <button className="confirm-delete-btn" disabled={quickMoveBusy || quickMoveTo === MOVE_UNSELECTED} onClick={() => void handleQuickMove()}>
+                {quickMoveBusy ? "移动中…" : "移动"}
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

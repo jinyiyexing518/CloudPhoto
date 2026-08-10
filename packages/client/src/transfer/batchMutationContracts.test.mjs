@@ -53,10 +53,11 @@ test("authenticated app aggregates all three sources into tab, group, unload, an
   assert.match(app, /batchMutationActive=\{batchMutationStates\.moments !== null\}/);
   assert.match(app, /batchMutationActive=\{batchMutationStates\.folder !== null\}/);
   assert.match(app, /const transferring =[\s\S]*activeBatchMutation !== null/);
-  assert.match(app, /const switchTab = \(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
+  assert.match(app, /const switchTab = useCallback\(\(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
   assert.match(app, /<GroupSwitcher[\s\S]*disabled=\{transferring\}/);
   assert.match(app, /window\.addEventListener\("beforeunload", onBeforeUnload\)/);
-  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow, \{ transferring \}\)/);
+  assert.match(app, /setDangerousOperationActivity\(\s*"authenticated-app",\s*transferring/);
+  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow\)/);
   assert.match(app, /batchMutationActiveRef\.current = activeBatchMutation !== null/);
   assert.match(app, /const fetchPhotos = useCallback\(async \(\) => \{\s*if \(batchMutationActiveRef\.current\) return;/);
   assert.match(app, /e\.key === "r"[\s\S]*blockIfTransferring\(\)[\s\S]*fetchPhotos\(\)/);
@@ -84,7 +85,12 @@ test("batch operations expose semantic busy and disabled state for conflicting c
   assert.match(folder, /确认移动[\s\S]*disabled=\{batchMutationBusy\}/);
   assert.match(folder, /title="上传原图到当前文件夹"[\s\S]*disabled=\{anyUploading \|\| batchMutationBusy\}/);
   assert.match(gallery, /<BatchOperationsBar[\s\S]*busy=\{batchMutationBusy\}/);
-  assert.match(gallery, /className="moments-card"[\s\S]*tabIndex=\{batchMutationBusy \? -1 : 0\}[\s\S]*aria-disabled=\{batchMutationBusy \|\| undefined\}[\s\S]*if \(batchMutationBusy\) return;/);
+  const momentsStart = gallery.indexOf("{momentCards.map(");
+  const momentsEnd = gallery.indexOf("            })}", momentsStart);
+  assert.ok(momentsStart >= 0 && momentsEnd > momentsStart);
+  const momentsMarkup = gallery.slice(momentsStart, momentsEnd);
+  assert.match(momentsMarkup, /<PhotoCard[\s\S]*selected=\{selectMode[\s\S]*onSelect=\{selectMode[\s\S]*interactionDisabled=\{batchMutationBusy\}/);
+  assert.doesNotMatch(momentsMarkup, /className="moments-card"[\s\S]{0,160}(?:role="button"|tabIndex=|onClick=)/);
   assert.match(gallery, /className="date-group-select-all"[\s\S]*disabled=\{batchMutationBusy\}/);
   assert.match(gallery, /if \(!selectMode \|\| selectedIdx !== null \|\| batchMutationBusy\) return;/);
   assert.match(gallery, /interactionDisabled=\{batchMutationBusy\}/);

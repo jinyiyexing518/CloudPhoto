@@ -491,6 +491,11 @@ body {
   box-shadow: none;
 }
 
+.view-tab:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: -3px;
+}
+
 .view-tab.active {
   color: #0f172a;
   font-weight: 700;
@@ -1317,6 +1322,12 @@ body {
   gap: 6px;
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.capsule-photo-sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin-top: 96px;
 }
 .capsule-photo-thumb {
   aspect-ratio: 1;
@@ -1568,19 +1579,54 @@ body {
   top: 12px;
   left: 16px;
   right: 16px;
-  display: flex;
-  gap: 3px;
   z-index: 3;
 }
-.story-progress-seg {
-  flex: 1;
-  height: 3px;
+.story-progress-scrubber {
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  padding: 8px 0;
+  box-sizing: border-box;
+  border-radius: 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-clip: content-box !important;
   background: rgba(255,255,255,0.35);
-  border-radius: 3px;
   cursor: pointer;
+  outline: none;
 }
-.story-progress-seg.done { background: rgba(255,255,255,0.9); }
-.story-progress-seg.active { background: #fff; }
+.story-progress-scrubber::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: transparent;
+}
+.story-progress-scrubber::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  -webkit-appearance: none;
+  background: #0078d4;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.45);
+}
+.story-progress-scrubber::-moz-range-track {
+  height: 4px;
+  border-radius: 4px;
+  background: transparent;
+}
+.story-progress-scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #0078d4;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.45);
+}
+.story-progress-scrubber:focus-visible {
+  box-shadow: 0 0 0 3px rgba(0,120,212,0.65);
+}
 .story-player-controls {
   position: absolute;
   bottom: 16px;
@@ -2504,41 +2550,49 @@ body {
 .folder-card-count { font-size: 0.75rem; color: #888; }
 
 .folder-card { position: relative; }
-.folder-card-rename-btn {
+.folder-card-rename-btn,
+.folder-card-delete-btn {
   position: absolute;
   top: 6px;
-  right: 6px;
+  z-index: 2;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   cursor: pointer;
+  touch-action: manipulation;
   font-size: 0.85rem;
   opacity: 0;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: 0;
+  border-radius: 8px;
   transition: opacity 0.15s, background 0.15s;
 }
+.folder-card-rename-btn { right: 6px; }
 .folder-card:hover .folder-card-rename-btn { opacity: 1; }
-.folder-card-rename-btn:focus-visible { opacity: 1; }
 .folder-card-rename-btn:hover { background: #e5e7eb; }
 
 /* Folder delete button */
 .folder-card-delete-btn {
-  position: absolute;
-  top: 6px;
-  right: 34px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  opacity: 0;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: opacity 0.15s, background 0.15s;
+  right: 54px;
   line-height: 1;
 }
 .folder-card:hover .folder-card-delete-btn { opacity: 1; }
-.folder-card-delete-btn:focus-visible { opacity: 1; }
+.folder-card-rename-btn:focus-visible,
+.folder-card-delete-btn:focus-visible {
+  opacity: 1;
+  outline: 3px solid #005a9e;
+  outline-offset: 2px;
+}
 .folder-card-delete-btn:hover { background: rgba(220, 38, 38, 0.12); }
+@media (hover: none), (pointer: coarse) {
+  .folder-card-rename-btn,
+  .folder-card-delete-btn {
+    opacity: 1;
+  }
+}
 .folder-card-rename-input {
   width: 90%;
   font-size: 0.85rem;
@@ -2906,7 +2960,6 @@ body {
   border-radius: 16px;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, #f8fbff 100%);
-  cursor: pointer;
   transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
 }
 
@@ -2927,20 +2980,26 @@ body {
   padding: 3px 8px;
   font-size: 0.72rem;
   font-weight: 700;
+  pointer-events: none;
 }
 
-.moments-thumb {
-  width: 100%;
-  height: 182px;
-  object-fit: cover;
-  display: block;
+.moments-card > .photo-card {
+  border-radius: 0;
+  box-shadow: none;
 }
 
-/* wrapper that gives position:relative for MediaThumb's video badge */
-.media-thumb-wrap {
-  position: relative;
-  display: block;
-  overflow: hidden;
+.moments-card > .photo-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.moments-card > .photo-card .photo-name,
+.moments-card > .photo-card .photo-meta {
+  display: none;
+}
+
+.moments-card > .photo-card .photo-info {
+  justify-content: flex-end;
 }
 
 .moments-card-body {
@@ -3165,7 +3224,7 @@ body {
   border-radius: 8px;
   padding: 7px 14px;
   font-size: 0.88rem;
-  color: #0078d4;
+  color: #0067b8;
   cursor: pointer;
   font-weight: 500;
   transition: background 0.15s;
@@ -3174,7 +3233,7 @@ body {
 
 .group-switcher-btn:hover { background: #dbeafe; }
 .group-switcher-btn:focus-visible {
-  outline: 2px solid #0078d4;
+  outline: 2px solid #0067b8;
   outline-offset: 2px;
 }
 
@@ -3221,7 +3280,7 @@ body {
   outline-offset: -2px;
   background: #eff6ff;
 }
-.group-dropdown-item.active { background: #f0f7ff; color: #0078d4; font-weight: 600; }
+.group-dropdown-item.active { background: #f0f7ff; color: #0067b8; font-weight: 600; }
 
 .group-dropdown-row {
   display: flex;
@@ -3229,7 +3288,7 @@ body {
 }
 .group-dropdown-row.active .group-dropdown-label {
   background: #f0f7ff;
-  color: #0078d4;
+  color: #0067b8;
   font-weight: 600;
 }
 
@@ -3264,7 +3323,7 @@ body {
   border: none;
   cursor: pointer;
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: #64748b;
   padding: 2px 4px;
   line-height: 1;
   margin-left: auto;
@@ -3280,14 +3339,14 @@ body {
 }
 
 .group-dropdown-create {
-  color: #0078d4 !important;
+  color: #0067b8 !important;
   font-weight: 500;
 }
 
 .group-dropdown-loading {
   padding: 10px 14px;
   font-size: 0.82rem;
-  color: #9ca3af;
+  color: #64748b;
 }
 
 .group-dropdown-error {
@@ -4225,9 +4284,29 @@ body {
   position: relative;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   background: #f3f4f6;
   flex-shrink: 0;
+}
+
+.photo-card-primary {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 0;
+  border-radius: 12px 12px 0 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.photo-card-primary:disabled { cursor: default; }
+.photo-card-primary:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: -4px;
 }
 
 .photo-thumbnail img,
@@ -4263,6 +4342,7 @@ body {
     radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.18) 0 18%, transparent 19%),
     linear-gradient(145deg, #374151, #111827);
 }
+.video-thumb-placeholder { pointer-events: none; }
 
 .video-thumb-placeholder-icon {
   font-size: 1.35rem;
@@ -4280,6 +4360,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
@@ -4290,6 +4371,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  min-width: 0;
 }
 
 .delete-btn {
@@ -4336,6 +4418,26 @@ body {
   flex-shrink: 0;
   padding: 2px 4px;
   line-height: 1;
+}
+
+.move-btn,
+.favorite-btn,
+.delete-btn {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  touch-action: manipulation;
+}
+
+.move-btn:focus-visible,
+.favorite-btn:focus-visible,
+.delete-btn:focus-visible {
+  outline: 3px solid #005a9e;
+  outline-offset: 2px;
 }
 
 .favorite-btn:hover {
@@ -4771,6 +4873,7 @@ body {
 /* Container that centers the large play button */
 .gif-play-center {
   position: absolute;
+  z-index: 2;
   inset: 0;
   display: flex;
   align-items: center;
@@ -4824,10 +4927,11 @@ body {
 /* Small circular pause button, bottom-right — invisible until hover */
 .gif-pause-corner-btn {
   position: absolute;
+  z-index: 2;
   bottom: 8px;
   right: 8px;
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.52);
   border: 1.5px solid rgba(255, 255, 255, 0.6);
@@ -4843,13 +4947,24 @@ body {
   padding: 0;
 }
 
-.photo-thumbnail:hover .gif-pause-corner-btn {
+.photo-card:hover .gif-pause-corner-btn {
   opacity: 1;
+}
+.gif-pause-corner-btn:focus-visible {
+  opacity: 1;
+  outline: 3px solid #fff;
+  outline-offset: 2px;
 }
 
 .gif-pause-corner-btn:hover {
   background: rgba(0, 0, 0, 0.78);
   transform: scale(1.12);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .gif-pause-corner-btn {
+    opacity: 1;
+  }
 }
 
 /* GIF badge inside the review modal */
@@ -7250,6 +7365,7 @@ body {
   z-index: 2;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+  pointer-events: none;
 }
 .photo-select-badge--on {
   background: #0078d4;
@@ -7464,6 +7580,24 @@ body {
 .error-boundary-detail { font-size: 12px; color: #9ca3af; margin: 0; max-width: 320px; word-break: break-word; }
 .error-boundary-retry { padding: 7px 18px; background: #0078d4; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; margin-top: 4px; }
 .error-boundary-retry:hover { background: #005a9e; }
+
+.deployment-recovery-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px;
+  padding: 12px 16px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  color: #78350f;
+  background: #fffbeb;
+}
+.deployment-recovery-notice > div:first-child { display: grid; gap: 3px; }
+.deployment-recovery-actions { display: flex; gap: 8px; }
+.deployment-recovery-actions button { padding: 7px 12px; border: 0; border-radius: 7px; color: #fff; background: #b45309; cursor: pointer; }
+.deployment-recovery-actions button:disabled { color: #92400e; background: #fde68a; cursor: not-allowed; }
+.deployment-recovery-actions .deployment-recovery-later { color: #78350f; background: transparent; }
 
 /* ── Active filter chips ─────────────────────────────────────── */
 .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
@@ -8127,11 +8261,12 @@ body {
 .shortcuts-help-dialog {
   background: #fff;
   border-radius: 16px;
-  width: min(400px, 92vw);
+  width: min(400px, 100%);
+  max-height: calc(100dvh - 32px);
   padding: 0;
   box-shadow: 0 20px 60px rgba(0,0,0,0.2);
   animation: slideUp 0.14s ease;
-  overflow: hidden;
+  overflow-y: auto;
 }
 .shortcuts-help-header {
   display: flex;
@@ -8142,6 +8277,12 @@ body {
   font-size: 1rem;
   font-weight: 700;
   color: #0f172a;
+}
+.shortcuts-help-description {
+  margin: 0;
+  padding: 12px 20px 4px;
+  font-size: 0.82rem;
+  color: #64748b;
 }
 .shortcuts-list {
   list-style: none;

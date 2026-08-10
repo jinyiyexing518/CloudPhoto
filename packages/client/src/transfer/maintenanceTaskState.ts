@@ -9,6 +9,13 @@ export interface MaintenanceTaskState {
   changed: number;
   skipped: number;
   failed: number;
+  candidates: number;
+  estimatedBytes: number;
+  bytesRead: number;
+  recovered: number;
+  cleanedInvalid: number;
+  trulyMissing: number;
+  skippedBudget: number;
   hasMore: boolean;
   phase: MaintenanceTaskPhase;
   message?: string;
@@ -23,6 +30,13 @@ export type MaintenanceTaskEvent =
     changed: number;
     skipped: number;
     failed: number;
+    candidates?: number;
+    estimatedBytes?: number;
+    bytesRead?: number;
+    recovered?: number;
+    cleanedInvalid?: number;
+    trulyMissing?: number;
+    skippedBudget?: number;
     hasMore: boolean;
   }
   | { type: "complete"; operationId: string }
@@ -56,6 +70,13 @@ export function createMaintenanceTask(
     changed: 0,
     skipped: 0,
     failed: 0,
+    candidates: 0,
+    estimatedBytes: 0,
+    bytesRead: 0,
+    recovered: 0,
+    cleanedInvalid: 0,
+    trulyMissing: 0,
+    skippedBudget: 0,
     hasMore: true,
     phase: "running",
   };
@@ -86,6 +107,13 @@ export function reduceMaintenanceTaskEvent(
     changed: event.changed,
     skipped: event.skipped,
     failed: event.failed,
+    candidates: event.candidates ?? state.candidates,
+    estimatedBytes: event.estimatedBytes ?? state.estimatedBytes,
+    bytesRead: event.bytesRead ?? state.bytesRead,
+    recovered: event.recovered ?? state.recovered,
+    cleanedInvalid: event.cleanedInvalid ?? state.cleanedInvalid,
+    trulyMissing: event.trulyMissing ?? state.trulyMissing,
+    skippedBudget: event.skippedBudget ?? state.skippedBudget,
     hasMore: event.hasMore,
   };
 }
@@ -120,6 +148,12 @@ export function getMaintenanceTaskLabel(kind: MaintenanceTaskKind): string {
 }
 
 export function getMaintenanceBannerText(state: MaintenanceTaskState): string {
+  if (state.kind === "metadata") {
+    const bytes = state.bytesRead < 1024 * 1024
+      ? `${Math.ceil(state.bytesRead / 1024)} KiB`
+      : `${(state.bytesRead / (1024 * 1024)).toFixed(1)} MiB`;
+    return `${LABELS[state.kind]}：候选 ${state.candidates} 张，恢复 ${state.recovered} 张，确认缺失 ${state.trulyMissing} 张，清理无效 ${state.cleanedInvalid} 张，预算跳过 ${state.skippedBudget} 张，读取 ${bytes}，失败 ${state.failed} 张`;
+  }
   const changedLabel = state.kind === "thumbnails" ? "生成" : "更新";
   const skipped = state.kind === "thumbnails" ? `，跳过 ${state.skipped} 张` : "";
   return `${LABELS[state.kind]}：已处理 ${state.processed} 张，${changedLabel} ${state.changed} 张${skipped}，失败 ${state.failed} 张`;

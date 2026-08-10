@@ -73,10 +73,11 @@ test("authenticated shell owns token-safe rename lifecycle, workspace abort, and
   assert.match(app, /workspaceChanged[\s\S]*await fetchPhotosRef\.current\(\)/);
   assert.match(app, /catch \(e\)[\s\S]*phase: "reconciling"[\s\S]*await fetchPhotosRef\.current\(\)[\s\S]*throw e/);
   assert.match(app, /const transferring =[\s\S]*folderRenameOperation !== null/);
-  assert.match(app, /const switchTab = \(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
+  assert.match(app, /const switchTab = useCallback\(\(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
   assert.match(app, /<GroupSwitcher[\s\S]*disabled=\{transferring\}/);
   assert.match(app, /window\.addEventListener\("beforeunload", onBeforeUnload\)/);
-  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow, \{ transferring \}\)/);
+  assert.match(app, /setDangerousOperationActivity\([\s\S]*"authenticated-app",[\s\S]*transferring/);
+  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow\)/);
   assert.match(app, /folderRenameActive=\{folderRenameOperation !== null\}/);
   assert.match(app, /const openSettingsTab =[\s\S]*if \(folderRenameGate\.current\)[\s\S]*return;/);
   assert.match(app, /const openSettingsFromUserMenu =[\s\S]*if \(folderRenameGate\.current\)[\s\S]*return;/);
