@@ -50,5 +50,8 @@ jobs:
       - name: Test smoke checks
         run: node --test scripts/production-smoke.test.mjs
 
+      - name: Verify security header contracts
+        run: yarn test:security
+
       - name: Check production
         run: node scripts/production-smoke.mjs

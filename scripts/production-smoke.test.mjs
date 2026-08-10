@@ -46,6 +46,7 @@ const SECURE_HOMEPAGE_HEADERS = {
   "content-type": "text/html",
   "content-security-policy": "frame-ancestors 'self'",
   "referrer-policy": "same-origin",
+  "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
   "x-content-type-options": "nosniff",
   "x-frame-options": "SAMEORIGIN",
 };
@@ -188,6 +189,75 @@ test("rejects a homepage without the anti-framing security baseline", async () =
       expectedError,
     );
   }
+});
+
+test("requires canonical HSTS on direct and proxied frontend entries", async () => {
+  const checks = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+  });
+  const primaryHomepage = checks.find(
+    ({ target, name }) => target === "primary" && name === "homepage",
+  );
+  const azureHomepage = checks.find(
+    ({ target, name }) => target === "azure" && name === "homepage",
+  );
+  assert(primaryHomepage);
+  assert(azureHomepage);
+
+  for (const value of [
+    "",
+    "max-age=10886400; includeSubDomains; preload",
+    "max-age=31536000; includeSubDomains",
+    "max-age=31536000; preload",
+    "max-age=10886400; includeSubDomains; preload, max-age=31536000; includeSubDomains; preload",
+  ]) {
+    const headers = { ...SECURE_HOMEPAGE_HEADERS };
+    if (value) {
+      headers["strict-transport-security"] = value;
+    } else {
+      delete headers["strict-transport-security"];
+    }
+    await assert.rejects(
+      primaryHomepage.validate(new Response(INSTALLABLE_HOME_HTML, { headers })),
+      /Strict-Transport-Security/,
+    );
+  }
+
+  await assert.doesNotReject(
+    primaryHomepage.validate(new Response(INSTALLABLE_HOME_HTML, {
+      headers: {
+        ...SECURE_HOMEPAGE_HEADERS,
+        "strict-transport-security": [
+          "max-age=31536000; includeSubDomains; preload",
+          "max-age=31536000; includeSubDomains",
+        ].join(", "),
+      },
+    })),
+  );
+  await assert.rejects(
+    primaryHomepage.validate(new Response(INSTALLABLE_HOME_HTML, {
+      headers: {
+        ...SECURE_HOMEPAGE_HEADERS,
+        "strict-transport-security": [
+          "max-age=31536000; includeSubDomains; preload",
+          "max-age=0",
+        ].join(", "),
+      },
+    })),
+    /Strict-Transport-Security/,
+  );
+  await assert.rejects(
+    azureHomepage.validate(new Response(INSTALLABLE_HOME_HTML, {
+      headers: {
+        ...SECURE_HOMEPAGE_HEADERS,
+        "strict-transport-security": [
+          "max-age=31536000; includeSubDomains; preload",
+          "max-age=31536000; includeSubDomains; preload",
+        ].join(", "),
+      },
+    })),
+    /Strict-Transport-Security/,
+  );
 });
 
 test("rejects a homepage without standard and Apple mobile capability metadata", async () => {

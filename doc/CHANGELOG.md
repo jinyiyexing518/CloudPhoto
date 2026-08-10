@@ -1,5 +1,13 @@
 # 更新日志
 
+### 2026-08-11 — 统一生产 HSTS 与入口文档
+
+**安全修复**
+- **🔒 Canonical HSTS** — SWA 与 Nginx 模板统一为 `max-age=31536000; includeSubDomains; preload`；前端代理隐藏上游重复安全头，static/security 契约锁定模板，smoke 要求 SWA 唯一 canonical 且代理首值 canonical
+- **🌐 DNS 入口真实性** — 文档按权威 DNS 实测区分当前 apex/www 入口与尚未配置的 cn/global/智能 DNS，避免把 NXDOMAIN 主机声明为已上线
+
+---
+
 ### 2026-08-10 — 移动端布局稳定性与 PWA 兼容
 
 **Bug 修复**

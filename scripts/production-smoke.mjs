@@ -12,6 +12,8 @@ const DEFAULT_AZURE_API_BASE_URL =
 const ATTEMPTS = 8;
 const RETRY_DELAY_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 10_000;
+const CANONICAL_HSTS = "max-age=31536000; includeSubDomains; preload";
+const LEGACY_VM_HSTS = "max-age=31536000; includeSubDomains";
 
 function joinUrl(baseUrl, path) {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
@@ -24,7 +26,7 @@ function headerValues(response, name) {
     .filter(Boolean);
 }
 
-async function validateHomepage(response) {
+async function validateHomepage(response, { allowTrailingHstsDrift = false } = {}) {
   const body = await response.text();
   if (!response.ok) {
     throw new Error(`expected 2xx, received ${response.status}`);
@@ -50,12 +52,36 @@ async function validateHomepage(response) {
   if (!headerValues(response, "referrer-policy").includes("same-origin")) {
     throw new Error("homepage is missing Referrer-Policy: same-origin");
   }
+  const hstsValues = (response.headers.get("strict-transport-security") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (
+    hstsValues.length === 0
+    || hstsValues[0] !== CANONICAL_HSTS
+    || (allowTrailingHstsDrift
+      ? hstsValues.slice(1).some(
+        (value) => value !== CANONICAL_HSTS && value !== LEGACY_VM_HSTS
+      )
+      : (
+      hstsValues.length !== 1 || hstsValues.some((value) => value !== CANONICAL_HSTS)
+      ))
+  ) {
+    throw new Error(
+      `homepage first effective Strict-Transport-Security must be "${CANONICAL_HSTS}"`
+    );
+  }
   if (!/<meta name=["']mobile-web-app-capable["'] content=["']yes["']\s*\/?>/i.test(body)) {
     throw new Error("homepage is missing mobile-web-app-capable: yes");
   }
+
   if (!/<meta name=["']apple-mobile-web-app-capable["'] content=["']yes["']\s*\/?>/i.test(body)) {
     throw new Error("homepage is missing apple-mobile-web-app-capable: yes");
   }
+}
+
+function validateProxyHomepage(response) {
+  return validateHomepage(response, { allowTrailingHstsDrift: true });
 }
 
 async function validateManifest(response) {
@@ -192,7 +218,7 @@ export function createChecks(env = process.env) {
       target: "primary",
       name: "homepage",
       url: env.PRODUCTION_HOME_URL ?? new URL("/", primaryBaseUrl).href,
-      validate: validateHomepage,
+      validate: validateProxyHomepage,
     },
     {
       target: "primary",

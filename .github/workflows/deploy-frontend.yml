@@ -8,7 +8,10 @@ on:
       - "packages/algorithm/package.json"
       - "packages/algorithm/tsconfig.json"
       - "packages/client/**"
+      - "infra/nginx.conf"
+      - "package.json"
       - "scripts/check-static-cache-config.mjs"
+      - "scripts/security-headers.test.mjs"
       - ".github/workflows/deploy-frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened, closed]
@@ -52,6 +55,9 @@ jobs:
 
       - name: Verify static cache contract
         run: yarn check:static-cache packages/client/public/staticwebapp.config.json packages/client/dist/staticwebapp.config.json
+
+      - name: Verify security header contracts
+        run: yarn test:security
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1

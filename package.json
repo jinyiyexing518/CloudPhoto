@@ -26,6 +26,7 @@
     "test:pwa-install": "node --test packages/client/src/pwa/installPrompt.test.mjs",
     "test:pwa-update": "node --test packages/client/src/pwa/updatePolicy.test.mjs packages/client/src/pwa/deploymentRecovery.test.mjs",
     "test:workflow-contracts": "node --test scripts/workflow-runtime-contracts.test.mjs && node scripts/check-workflow-runtime-contracts.mjs",
+    "test:security": "node --test scripts/security-headers.test.mjs",
     "change": "node scripts/create-change.mjs",
     "changes:collect": "node scripts/collect-changes.mjs",
     "test:production-smoke": "node --test scripts/production-smoke.test.mjs",

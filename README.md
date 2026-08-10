@@ -60,7 +60,7 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 详细部署步骤见 [DEPLOYMENT.md](doc/DEPLOYMENT.md)。
 
-本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境下，`cloudphotos.top` / `cn.cloudphotos.top` 优先走同源 `/api`；`www` 会探测当前智能 DNS 落点，确认响应来自 Nginx 时走同源 `/api`，直达 SWA 时走 Azure Functions；其他全球入口优先直连 Azure Functions。只读请求和登录/刷新等可安全重试的请求在线路网络或网关故障时双向回退；照片列表、动态视频、回收站和地理搜索等高成本读取不会仅因 5 秒内未返回响应头就向同一后端重放。非幂等写请求不会在发送后自动重放，避免重复上传或修改。
+本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境当前已部署的 `cloudphotos.top` 与 `www.cloudphotos.top` 都解析到 Nginx，优先走同源 `/api`；SWA 默认域名直达 Azure Functions。`cn.cloudphotos.top`、`global.cloudphotos.top` 与 `www` 智能 DNS 分流仍是规划配置，启用前不能作为可用入口。只读请求和登录/刷新等可安全重试的请求在线路网络或网关故障时双向回退；照片列表、动态视频、回收站和地理搜索等高成本读取不会仅因 5 秒内未返回响应头就向同一后端重放。非幂等写请求不会在发送后自动重放，避免重复上传或修改。
 
 上传使用网络感知的加权并发：4G/快网预算 3，未知网络或 3G 预算 2，`saveData`/2G 预算 1；图片权重 1，视频或大文件权重 2，因此快网最多同时 3 张图片或 1 个视频 + 1 张图片，未知网络仍可并发 2 张小图。暂停只冻结新任务，已开始的 XHR 继续完成；批次进度只把成功文件计为完整大小，进行中、失败和取消项保留真实已上传字节。重试及线路回退的实际线传输单调累计并单独用于速度采样，不会把进度重置误算为负速度或把失败补成整文件。仅网络错误、超时、408/425/429/5xx 使用稳定 `uploadId` 重试，并遵守 `Retry-After` 与 60 秒上限的指数 full jitter；其余 4xx 立即显式失败。批次结束会在刷新照片库期间保留传输守卫，并明确显示成功、失败和取消数量；旧暂停状态不会覆盖 settled 结果，最终通知始终同时报告成功与失败数，并在存在时报告取消数。
 
@@ -72,9 +72,24 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutable`，短于 2 小时 SAS；Nginx CORS 仅回显 `cloudphotos.top` 受信域和实际 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`，不会接受任意 `*.azurestaticapps.net`。
 
+SWA 与 Nginx 模板统一使用 `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`。静态契约强制两端配置统一；生产 smoke 要求 SWA 直连值唯一且严格 canonical，并要求 Nginx 入口的第一个 effective HSTS 严格 canonical。Nginx 前端代理模板隐藏 SWA 上游的 HSTS、X-Content-Type-Options 与 X-Frame-Options，再由本地统一发出。仓库中的 Nginx 模板不会自动热加载到 VM，必须按部署文档手动应用后，线上尾部旧值与重复头才会消失；发布期间首值已 canonical 但尾部仍有旧本地值属于不阻断浏览器策略的基础设施 drift，不能宣称已完成 VM 热加载。
+
 ### 全球与中国大陆入口
 
-客户端回退只能处理 API/媒体故障；如果 HTML 入口本身在某个地区不可达，必须在 DNS 层分流。推荐部署以下记录（先在 SWA/Nginx 配置对应自定义域名和证书）：
+#### 当前已部署（2026-08-11 权威 DNS 实测）
+
+| 主机名 | 当前权威解析 | 状态 |
+|---|---|---|
+| `cloudphotos.top` | `A 20.195.27.151` | Nginx 生产入口 |
+| `www.cloudphotos.top` | `A 20.195.27.151` | Nginx 生产入口 |
+| `cn.cloudphotos.top` | `NXDOMAIN` | 未部署 |
+| `global.cloudphotos.top` | `NXDOMAIN` | 未部署 |
+
+以上结果来自权威服务器 `dns23.hichina.com`。生产 smoke 只检查实际可用的 `cloudphotos.top` 与 SWA 默认域名，不宣称 `cn`、`global` 或智能 DNS 已上线。
+
+#### 规划 / 需 DNS 提供商配置
+
+客户端回退只能处理 API/媒体故障；如果 HTML 入口本身在某个地区不可达，必须在 DNS 层分流。以下仅为规划记录，需先在 SWA/Nginx 配置对应自定义域名和证书，再由 DNS 提供商实施：
 
 | 主机名 | DNS 记录 | 用途 |
 |---|---|---|
@@ -83,7 +98,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 | `www.cloudphotos.top`（中国大陆线路） | `CNAME cn.cloudphotos.top` | 智能 DNS 大陆解析 |
 | `www.cloudphotos.top`（境外线路） | `CNAME global.cloudphotos.top` | 智能 DNS 境外解析 |
 
-`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，返回 `cloudphoto-proxy` 供智能 DNS 与客户端识别；SWA 同一路径提供 `cloudphoto-frontend` JSON 兜底。旧 Nginx 尚未热重载时可能把该 frontend JSON 继续反代给 `www`，客户端会同时检查同源响应的 Nginx `Server` 标识，避免把仍可用的 `/api` 错判为跨域直连。定时线上 smoke 会校验入口标识并分别检查两套 API。`www` 同时落到两个平台时必须使用可自动续签的 DNS-01 插件签发证书，避免 HTTP-01 校验被地域解析到另一端；`infra/setup.sh` 会拒绝缺少 DNS 插件参数或不可续签的 `--manual` 模式。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
+`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，返回 `cloudphoto-proxy` 供未来智能 DNS 与客户端识别；SWA 同一路径提供 `cloudphoto-frontend` JSON 兜底。旧 Nginx 尚未热重载时可能把该 frontend JSON 继续反代给 `www`，客户端会同时检查同源响应的 Nginx `Server` 标识，避免把仍可用的 `/api` 错判为跨域直连。定时线上 smoke 会校验入口标识并分别检查两套 API。`www` 同时落到两个平台时必须使用可自动续签的 DNS-01 插件签发证书，避免 HTTP-01 校验被地域解析到另一端；`infra/setup.sh` 会拒绝缺少 DNS 插件参数或不可续签的 `--manual` 模式。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
 
 ---
 

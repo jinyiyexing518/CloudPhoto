@@ -20,6 +20,7 @@ const immutableCache = "public, max-age=31536000, immutable";
 const frontendSecurityHeaders = {
   "Content-Security-Policy": "frame-ancestors 'self'",
   "Referrer-Policy": "same-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "SAMEORIGIN",
 };

@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-canonical-production-hsts",
+  "date": "2026-08-11",
+  "icon": "🔒",
+  "title": "统一生产 HSTS 安全策略",
+  "type": "fix",
+  "desc": "SWA 与 Nginx 统一使用一年期含 preload 的 HSTS，并阻止前端代理重复透传安全头。",
+  "details": "静态契约强制 SWA 与 Nginx 模板使用 canonical 值；生产 smoke 要求 SWA 直连唯一 canonical，并要求代理入口首个 effective HSTS canonical。VM 未热加载时的尾部旧值明确记录为基础设施 drift，不虚称重复已消除。文档同时区分已部署入口与尚待 DNS 提供商配置的规划入口。",
+  "seq": 1786406400000
+}
