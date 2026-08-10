@@ -271,6 +271,14 @@ function checkHashedAssets(configPath) {
     || !retentionPolicy.bootstrapGenerationAssets
     || typeof retentionPolicy.bootstrapGenerationAssets !== "object"
     || Array.isArray(retentionPolicy.bootstrapGenerationAssets)
+    || retentionPolicy.bootstrapSourceManifest?.status !== 200
+    || retentionPolicy.bootstrapSourceManifest?.contentType !== "text/html"
+    || !/^[a-f0-9]{64}$/.test(
+      retentionPolicy.bootstrapSourceManifest?.normalizedSha256 ?? ""
+    )
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(
+      retentionPolicy.bootstrapSourceManifest?.expiresAt ?? ""
+    )
   ) {
     fail(configPath, "deployment bootstrap generations must declare exact migration assets");
   }

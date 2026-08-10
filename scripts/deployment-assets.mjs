@@ -9,6 +9,7 @@ import {
   readdir,
   rm,
   stat,
+  symlink,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -79,6 +80,19 @@ function assertConfig(config) {
     throw new Error("Deployment retention revokedGenerationIds must be an array");
   }
   for (const id of config.revokedGenerationIds) assertGenerationId(id);
+  if (config.bootstrapSourceManifest !== undefined && (
+    config.bootstrapSourceManifest.status !== 200
+    || config.bootstrapSourceManifest.contentType !== "text/html"
+    || typeof config.bootstrapSourceManifest.normalizedSha256 !== "string"
+    || !/^[a-f0-9]{64}$/.test(config.bootstrapSourceManifest.normalizedSha256)
+    || typeof config.bootstrapSourceManifest.expiresAt !== "string"
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(
+      config.bootstrapSourceManifest.expiresAt,
+    )
+    || !Number.isFinite(Date.parse(config.bootstrapSourceManifest.expiresAt))
+  )) {
+    throw new Error("Deployment retention bootstrap source manifest pin is invalid");
+  }
 }
 
 export function validateDeploymentManifest(manifest) {
@@ -325,8 +339,20 @@ async function buildBootstrapGeneration(ref, requiredAssetPaths) {
   await rm(worktree, { recursive: true, force: true });
   try {
     run("git", ["worktree", "add", "--detach", worktree, ref], root);
-    run("yarn", ["install", "--frozen-lockfile"], worktree);
-    run("yarn", ["workspace", "cloudphoto-client", "build"], worktree);
+    const installedDependencies = join(root, "node_modules");
+    if (!(await stat(installedDependencies).catch(() => null))?.isDirectory()) {
+      throw new Error("Bootstrap generation requires the workflow-installed node_modules");
+    }
+    await symlink(
+      installedDependencies,
+      join(worktree, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    run(
+      "yarn",
+      ["--cwd", join(worktree, "packages", "client"), "vite", "build"],
+      worktree,
+    );
     const id = spawnSync("git", ["rev-parse", "HEAD"], {
       cwd: worktree,
       encoding: "utf8",
@@ -349,6 +375,9 @@ async function buildBootstrapGeneration(ref, requiredAssetPaths) {
 async function removeBootstrapWorktree(worktree, preserveOriginalError = false) {
   if (!await stat(worktree).catch(() => null)) return;
   try {
+    await unlink(join(worktree, "node_modules")).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
     run("git", ["worktree", "remove", "--force", worktree], root);
   } catch (cleanupError) {
     await rm(worktree, { recursive: true, force: true });
@@ -360,14 +389,57 @@ async function removeBootstrapWorktree(worktree, preserveOriginalError = false) 
   }
 }
 
-async function loadPreviousDeployment(source, bootstrapRefs, bootstrapGenerationAssets) {
+function mediaType(value) {
+  return value?.split(";", 1)[0].trim().toLowerCase() ?? "";
+}
+
+export function normalizedBootstrapHtmlDigest(body) {
+  let html;
+  try {
+    html = new TextDecoder("utf-8", { fatal: true }).decode(body);
+  } catch {
+    return null;
+  }
+  const entryJs = /\/assets\/index-[A-Za-z0-9_-]{8,}\.js/g;
+  const entryCss = /\/assets\/index-[A-Za-z0-9_-]{8,}\.css/g;
+  if ([...html.matchAll(entryJs)].length !== 1 || [...html.matchAll(entryCss)].length !== 1) {
+    return null;
+  }
+  const normalized = html
+    .replace(entryJs, "/assets/index-<hash>.js")
+    .replace(entryCss, "/assets/index-<hash>.css");
+  return digest(Buffer.from(normalized, "utf8"));
+}
+
+export function matchesBootstrapSourceResponse(
+  { status, contentType, body },
+  expected,
+  now = Date.now(),
+) {
+  if (!expected) return false;
+  return (
+    status === expected.status
+    && mediaType(contentType) === expected.contentType
+    && now < Date.parse(expected.expiresAt)
+    && normalizedBootstrapHtmlDigest(body) === expected.normalizedSha256
+  );
+}
+
+async function loadPreviousDeployment(
+  source,
+  bootstrapRefs,
+  bootstrapGenerationAssets,
+  bootstrapSourceManifest,
+) {
   const manifestUrl = new URL(`/${MANIFEST_NAME}?retention=${Date.now()}`, source);
   const response = await fetch(manifestUrl, {
     cache: "no-store",
     headers: { "User-Agent": "cloudphoto-deployment-retention/1.0" },
   });
-  if (response.status === 200) {
-    const manifest = validateDeploymentManifest(await response.json());
+  const body = Buffer.from(await response.arrayBuffer());
+  const contentType = response.headers.get("content-type");
+  if (response.status === 200 && mediaType(contentType) === "application/json") {
+    const manifest = validateDeploymentManifest(JSON.parse(body.toString("utf8")));
     return {
       fetchAsset: async (asset) => {
         const assetResponse = await fetch(new URL(`/${asset.path}`, source), {
@@ -386,9 +458,18 @@ async function loadPreviousDeployment(source, bootstrapRefs, bootstrapGeneration
       source: "live-manifest",
     };
   }
-  if (response.status !== 404) {
+  if (!matchesBootstrapSourceResponse(
+    {
+      status: response.status,
+      contentType,
+      body,
+    },
+    bootstrapSourceManifest,
+  )) {
     throw new Error(
-      `Previous deployment manifest returned ${response.status}; refusing to shrink the compatibility window`,
+      `Previous deployment manifest returned unpinned ${response.status} ${
+        mediaType(contentType) || "unknown content type"
+      }; refusing to shrink the compatibility window`,
     );
   }
 
@@ -468,10 +549,14 @@ async function main() {
   ) {
     throw new Error("Deployment retention bootstrapGenerationAssets must be an object");
   }
+  if (!policy.bootstrapSourceManifest) {
+    throw new Error("Deployment retention bootstrapSourceManifest must pin the migration source");
+  }
   const previous = await loadPreviousDeployment(
     source,
     policy.bootstrapGenerationRefs,
     policy.bootstrapGenerationAssets,
+    policy.bootstrapSourceManifest,
   );
   try {
     const manifest = await mergeDeploymentAssets({

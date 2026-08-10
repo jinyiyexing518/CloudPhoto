@@ -88,7 +88,6 @@ const deployWorkflows = [
   ".github/workflows/deploy-backend.yml",
   frontendWorkflow,
 ];
-const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const retentionCommand =
   'node scripts/deployment-assets.mjs --dist packages/client/dist --generation "$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --source https://brave-sand-053b07a00.7.azurestaticapps.net --policy packages/client/deployment-retention.json';
 const browserContractCommand =
@@ -545,10 +544,7 @@ export function checkWorkflowRuntimeContracts(workflows) {
   const healthPolicy = healthWorkflow
     ? inspectWorkflow(healthWorkflow.text, healthWorkflow.path)
     : null;
-  const frontend = workflows.find((workflow) => workflow.path === frontendWorkflow);
-  const frontendPolicy = frontend
-    ? inspectWorkflow(frontend.text, frontend.path)
-    : null;
+  const frontendPolicy = inspectedFrontend;
   const deployPushPaths = Object.fromEntries(
     deployWorkflows.map((path) => {
       const workflow = workflows.find((candidate) => candidate.path === path);

@@ -9,5 +9,11 @@
       "assets/AuthenticatedApp-BkGhvsE_.css"
     ]
   },
+  "bootstrapSourceManifest": {
+    "status": 200,
+    "contentType": "text/html",
+    "normalizedSha256": "c791270cc8ce1c60ccd672dc8f6ea52406a6755c41d8c14c2e0215a99affb91a",
+    "expiresAt": "2026-09-30T00:00:00Z"
+  },
   "revokedGenerationIds": []
 }

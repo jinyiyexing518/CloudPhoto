@@ -248,7 +248,83 @@ test("repository retention policy is finite and includes the stranded pre-recove
       "assets/AuthenticatedApp-BkGhvsE_.css",
     ],
   });
+  assert.deepEqual(policy.bootstrapSourceManifest, {
+    status: 200,
+    contentType: "text/html",
+    normalizedSha256: "c791270cc8ce1c60ccd672dc8f6ea52406a6755c41d8c14c2e0215a99affb91a",
+    expiresAt: "2026-09-30T00:00:00Z",
+  });
   assert.ok(Array.isArray(policy.revokedGenerationIds));
+});
+
+test("bootstrap accepts only the pinned pre-migration HTML fallback before expiry", async () => {
+  const {
+    matchesBootstrapSourceResponse,
+    normalizedBootstrapHtmlDigest,
+  } = await import("./deployment-assets.mjs");
+  const body = Buffer.from(
+    '<!doctype html><title>old shell</title><script src="/assets/index-oldhash1.js"></script><link href="/assets/index-oldhash1.css">',
+  );
+  const expected = {
+    status: 200,
+    contentType: "text/html",
+    normalizedSha256: normalizedBootstrapHtmlDigest(body),
+    expiresAt: "2026-09-30T00:00:00Z",
+  };
+  const response = {
+    status: 200,
+    contentType: "text/html; charset=utf-8",
+    body,
+  };
+
+  assert.equal(
+    matchesBootstrapSourceResponse(response, expected, Date.parse("2026-08-11T00:00:00Z")),
+    true,
+  );
+  assert.equal(
+    matchesBootstrapSourceResponse(
+      {
+        ...response,
+        body: Buffer.from(
+          '<!doctype html><title>old shell</title><script src="/assets/index-newhash1.js"></script><link href="/assets/index-newhash1.css">',
+        ),
+      },
+      expected,
+      Date.parse("2026-08-11T00:00:00Z"),
+    ),
+    true,
+  );
+  assert.equal(
+    matchesBootstrapSourceResponse(
+      {
+        ...response,
+        body: Buffer.from(
+          '<!doctype html><title>changed</title><script src="/assets/index-newhash1.js"></script><link href="/assets/index-newhash1.css">',
+        ),
+      },
+      expected,
+      Date.parse("2026-08-11T00:00:00Z"),
+    ),
+    false,
+  );
+  assert.equal(
+    normalizedBootstrapHtmlDigest(Buffer.concat([body, Buffer.from(
+      '<script src="/assets/index-second001.js"></script>',
+    )])),
+    null,
+  );
+  assert.equal(
+    matchesBootstrapSourceResponse(
+      { ...response, status: 404, contentType: "application/json" },
+      expected,
+      Date.parse("2026-08-11T00:00:00Z"),
+    ),
+    false,
+  );
+  assert.equal(
+    matchesBootstrapSourceResponse(response, expected, Date.parse(expected.expiresAt)),
+    false,
+  );
 });
 
 test("bootstrap migration publishes only exact policy assets from a reproducible build", async () => {
