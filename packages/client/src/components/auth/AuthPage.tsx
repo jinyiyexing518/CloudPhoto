@@ -24,11 +24,7 @@ const loadRegisterForm = () => {
 const RegisterForm = lazy(loadRegisterForm);
 const PwaInstallEntry = lazy(() =>
   import("../../pwa/PwaInstallEntry").catch(() => ({
-    default: () => (
-      <div className="auth-install-guide">
-        请从浏览器菜单安装 CloudPhoto；iOS Safari 请使用“分享 → 添加到主屏幕”。
-      </div>
-    ),
+    default: () => <p>浏览器菜单安装；iOS：分享 → 添加到主屏幕。</p>,
   }))
 );
 
