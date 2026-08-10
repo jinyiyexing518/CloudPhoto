@@ -14,6 +14,15 @@ const MENU_WIDTH = 180;
 const MENU_VERTICAL_PADDING = 8;
 const MENU_ITEM_HEIGHT = 44;
 
+type OpenPhotoWindow = (url: string, target: string, features: string) => Window | null;
+
+export function openPhotoOriginal(
+  url: string,
+  openWindow: OpenPhotoWindow = window.open.bind(window),
+): Window | null {
+  return openWindow(url, "_blank", "noopener,noreferrer");
+}
+
 export function getPhotoContextMenuPosition({
   clientX,
   clientY,

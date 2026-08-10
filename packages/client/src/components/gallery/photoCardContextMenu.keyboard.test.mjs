@@ -16,6 +16,7 @@ const policyModuleUrl = `data:text/javascript;base64,${Buffer.from(compiledPolic
 const {
   getNextPhotoContextMenuIndex,
   getPhotoContextMenuPosition,
+  openPhotoOriginal,
 } = await import(policyModuleUrl);
 
 test("photo card exposes its context menu from keyboard and anchors zero-coordinate events", () => {
@@ -67,6 +68,20 @@ test("photo context menu uses native menuitem buttons without nested interactive
   assert.match(card, /<li role="none"[\s\S]*<button[\s\S]*role="menuitem"/);
   assert.doesNotMatch(card, /<li[^>]+onClick=/);
   assert.doesNotMatch(card, /className="photo-ctx-item"[\s\S]{0,120}<button/);
+});
+
+test("opening the original photo isolates the app opener and referrer", () => {
+  const calls = [];
+  openPhotoOriginal("https://storage.example/photo.jpg?sig=secret", (...args) => {
+    calls.push(args);
+    return null;
+  });
+  assert.deepEqual(calls, [[
+    "https://storage.example/photo.jpg?sig=secret",
+    "_blank",
+    "noopener,noreferrer",
+  ]]);
+  assert.match(card, /run:\s*\(\) => openPhotoOriginal\(photo\.url\)/);
 });
 
 test("photo context menu owns focus, complete navigation, and connected-only restoration", () => {

@@ -18,6 +18,7 @@ import {
 import {
   getNextPhotoContextMenuIndex,
   getPhotoContextMenuPosition,
+  openPhotoOriginal,
   type PhotoContextMenuNavigationKey,
 } from "./photoCardContextMenu";
 import { formatPhotoDate } from "../../utils/dateFormat";
@@ -252,7 +253,7 @@ function PhotoCard({
       key: "original",
       icon: "⬇",
       label: "打开原图",
-      run: () => window.open(photo.url, "_blank", "noopener,noreferrer"),
+      run: () => openPhotoOriginal(photo.url),
     },
     ...(onMoveRequest ? [{
       key: "move",
