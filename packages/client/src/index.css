@@ -237,7 +237,7 @@ body {
 
 .auth-tab {
   flex: 1;
-  min-height: 39px;
+  min-height: 44px;
   background: transparent;
   border: none;
   border-radius: 8px;
@@ -306,7 +306,7 @@ body {
 .auth-page .auth-field > input,
 .auth-page .auth-password input {
   width: 100%;
-  min-height: 43px;
+  min-height: 44px;
   border-color: #cbd5e1;
   border-radius: 10px;
   padding: 10px 12px;
@@ -343,7 +343,7 @@ body {
   top: 50%;
   right: 7px;
   min-width: 44px;
-  min-height: 32px;
+  min-height: 44px;
   transform: translateY(-50%);
   border: none;
   border-radius: 7px;
@@ -415,7 +415,7 @@ body {
 
 .auth-install-button {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid #bfdbfe;
   border-radius: 10px;
   background: #eff6ff;
@@ -487,6 +487,11 @@ body {
       max(14px, env(safe-area-inset-right, 0px))
       max(14px, env(safe-area-inset-bottom, 0px))
       max(14px, env(safe-area-inset-left, 0px));
+  }
+
+  .auth-page::before,
+  .auth-page::after {
+    display: none;
   }
 
   .auth-shell {
