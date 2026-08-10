@@ -17,7 +17,15 @@ import {
   backfillPhotoMetadata,
   backfillThumbnails,
 } from "../../services/photoApi";
-import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } from "../../services/share/shareLinksStore";
+import {
+  captureRecentShareLinksContext,
+  clearRecentShareLinks,
+  isRecentShareLinksContextCurrent,
+  listRecentShareLinks,
+  removeRecentShareLink,
+  type RecentShareLinksContext,
+} from "../../services/share/shareLinksStore";
+import { registerPrivateLocalDataReset } from "../../services/privateLocalDataLifecycle";
 import { copyText } from "../../services/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
@@ -355,10 +363,18 @@ export default function SettingsDialog({
   }, []);
 
   const [shareLinksVersion, setShareLinksVersion] = useState(0);
+  useEffect(
+    () => registerPrivateLocalDataReset(() => setShareLinksVersion((version) => version + 1)),
+    [],
+  );
+  const shareLinksContext = useMemo(
+    () => captureRecentShareLinksContext(),
+    [shareLinksVersion],
+  );
   const shareLinks = useMemo(() => {
-    const links = listRecentShareLinks();
+    const links = listRecentShareLinks(shareLinksContext);
     return Array.isArray(links) ? links : [];
-  }, [shareLinksVersion]);
+  }, [shareLinksContext]);
 
   const loadManagedShareLinks = useCallback(async () => {
     setManagedLoading(true);
@@ -479,8 +495,13 @@ export default function SettingsDialog({
 
   const refreshShareLinks = () => setShareLinksVersion((v) => v + 1);
 
-  const copyShareLink = async (url: string) => {
-    const copied = await copyText(url);
+  const copyShareLink = async (
+    url: string,
+    context?: RecentShareLinksContext | null,
+  ) => {
+    const isCurrent = () => !context || isRecentShareLinksContextCurrent(context);
+    const copied = await copyText(url, isCurrent);
+    if (!isCurrent()) return;
     if (copied) {
       showToast("链接已复制", "success");
     } else {
@@ -817,7 +838,7 @@ export default function SettingsDialog({
                       type="button"
                       className="settings-share-clear"
                       onClick={() => {
-                        clearRecentShareLinks();
+                        if (!clearRecentShareLinks(shareLinksContext)) return;
                         refreshShareLinks();
                         showToast("已清空本地分享记录", "success");
                       }}
@@ -838,12 +859,21 @@ export default function SettingsDialog({
                           <div className="settings-share-expire">到期：{new Date(item.expiresAt).toLocaleString()}</div>
                         </div>
                         <div className="settings-share-actions">
-                          <button type="button" onClick={() => void copyShareLink(item.url)}>复制</button>
-                          <button type="button" onClick={() => window.open(item.url, "_blank", "noopener,noreferrer")}>打开</button>
+                          <button type="button" onClick={() => void copyShareLink(item.url, shareLinksContext)}>复制</button>
                           <button
                             type="button"
                             onClick={() => {
-                              removeRecentShareLink(item.id);
+                              if (isRecentShareLinksContextCurrent(shareLinksContext)) {
+                                window.open(item.url, "_blank", "noopener,noreferrer");
+                              }
+                            }}
+                          >
+                            打开
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!removeRecentShareLink(shareLinksContext, item.id)) return;
                               refreshShareLinks();
                             }}
                           >

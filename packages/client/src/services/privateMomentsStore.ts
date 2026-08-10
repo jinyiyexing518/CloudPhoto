@@ -1,11 +1,15 @@
 import {
-  registerPrivatePhotoCacheReset,
   registerPrivatePhotoCacheWrite,
 } from "./privatePhotoCacheLifecycle.ts";
+import {
+  capturePrivateLocalDataContext,
+  isPrivateLocalDataStorageContextCurrent,
+  privateLocalDataStorageKey,
+  registerPrivateLocalDataReset,
+  type PrivateLocalDataContext,
+} from "./privateLocalDataLifecycle.ts";
 
 export const PRIVATE_MOMENTS_MAX_BYTES = 256 * 1024;
-const PRIVATE_LOCAL_DATA_PREFIX = "cloudphoto_private_data_v1:";
-const PRIVATE_CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
 const PRIVATE_DIAGNOSTICS_MAX_BYTES = 4 * 1024;
 const PRIVATE_MOMENTS_MAX_ENTRIES = 500;
 const PRIVATE_MOMENTS_MAX_VIEWERS = 100;
@@ -13,7 +17,6 @@ const PRIVATE_MOMENTS_MAX_DAYS = 400;
 const PRIVATE_MOMENTS_MAX_COUNTER = 1_000_000_000;
 const PRIVATE_MOMENTS_MAX_PHOTO_NAME = 1024;
 const PRIVATE_MOMENTS_MAX_VIEWER_NAME = 80;
-let privateMomentsGeneration = 0;
 
 export type PrivateMomentsStatus =
   | "unknown"
@@ -38,9 +41,7 @@ export interface PrivateMomentsDiagnostics {
   updatedAt?: string;
 }
 
-export interface PrivateMomentsContext {
-  authScope: string;
-  generation: number;
+export interface PrivateMomentsContext extends PrivateLocalDataContext {
   workspaceId: string;
 }
 
@@ -51,9 +52,7 @@ const memoryInsights = new Map<string, Record<string, PrivateMomentInsight>>();
 const persistedInsightValues = new Map<string, string | null>();
 const insightListeners = new Map<string, Set<PrivateMomentsListener>>();
 const localWriteChains = new Map<string, Promise<boolean>>();
-registerPrivatePhotoCacheReset((scopeReset) => {
-  if (!scopeReset) return;
-  privateMomentsGeneration += 1;
+registerPrivateLocalDataReset(() => {
   memoryInsights.clear();
   persistedInsightValues.clear();
   for (const listeners of insightListeners.values()) {
@@ -143,17 +142,11 @@ function normalizeWorkspaceId(workspaceId: string | null): string | null {
 export function capturePrivateMomentsContext(
   workspaceId: string | null,
 ): PrivateMomentsContext | null {
-  let authScope: string | null = null;
-  try {
-    authScope = localStorage.getItem(PRIVATE_CACHE_OWNER_KEY);
-  } catch {
-    return null;
-  }
+  const context = capturePrivateLocalDataContext();
   const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-  if (!authScope || !normalizedWorkspaceId) return null;
+  if (!context || !normalizedWorkspaceId) return null;
   return {
-    authScope,
-    generation: privateMomentsGeneration,
+    ...context,
     workspaceId: normalizedWorkspaceId,
   };
 }
@@ -161,19 +154,14 @@ export function capturePrivateMomentsContext(
 export function isPrivateMomentsContextCurrent(
   context: PrivateMomentsContext | null,
 ): context is PrivateMomentsContext {
-  if (!context || context.generation !== privateMomentsGeneration) return false;
-  try {
-    return localStorage.getItem(PRIVATE_CACHE_OWNER_KEY) === context.authScope;
-  } catch {
-    return false;
-  }
+  return isPrivateLocalDataStorageContextCurrent(context);
 }
 
 export function privateMomentsStorageKey(
   kind: PrivateMomentsDataKind,
   context: PrivateMomentsContext,
 ): string {
-  return `${PRIVATE_LOCAL_DATA_PREFIX}${encodeURIComponent(context.authScope)}:${encodeURIComponent(context.workspaceId)}:${kind}`;
+  return privateLocalDataStorageKey(context, context.workspaceId, kind);
 }
 
 function removeInvalidStorage(key: string): void {

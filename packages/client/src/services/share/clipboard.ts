@@ -34,7 +34,11 @@ function legacyCopy(text: string): boolean {
   return copied;
 }
 
-export async function copyText(text: string): Promise<boolean> {
+export async function copyText(
+  text: string,
+  canCopy: () => boolean = () => true,
+): Promise<boolean> {
+  if (!canCopy()) return false;
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -44,5 +48,5 @@ export async function copyText(text: string): Promise<boolean> {
     // Fall through to legacy copy method.
   }
 
-  return legacyCopy(text);
+  return canCopy() ? legacyCopy(text) : false;
 }

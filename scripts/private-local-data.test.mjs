@@ -55,6 +55,7 @@ globalThis.window = {
 
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
+const shareStore = await import("../packages/client/src/services/share/shareLinksStore.ts");
 
 const insight = {
   photoName: "private/photo.jpg",
@@ -67,10 +68,55 @@ const insight = {
 
 localStorage.setItem("cloudphoto_moments_insights_v1", JSON.stringify({ [insight.photoName]: insight }));
 localStorage.setItem("cloudphoto_moments_diagnostics_v1", JSON.stringify({ status: "local-only" }));
+localStorage.setItem("cf_recent_share_links", JSON.stringify([{
+  id: "legacy-share",
+  photoName: "private/legacy.jpg",
+  displayName: "legacy",
+  url: "https://example.test/share?token=legacy-public-token",
+  expiresAt: "2026-08-12T12:00:00.000Z",
+  createdAt: "2026-08-10T12:00:00.000Z",
+}]));
+for (const [key, value] of [
+  ["cf_grid_size", "lg"],
+  ["fab-pos", JSON.stringify({ x: 10, y: 20 })],
+  ["cf_install_banner_dismissed", "1"],
+  ["cf_tab_account-a", "folders"],
+  ["cf_path_group-a", "private-folder"],
+  ["cf_xf_group-a", JSON.stringify(["private-folder"])],
+]) {
+  localStorage.setItem(key, value);
+}
 await lifecycle.preparePrivatePhotoCachesForScope("account-a:viewer");
 assert.equal(values.has("cloudphoto_moments_insights_v1"), false, "legacy insights must be deleted, not adopted");
 assert.equal(values.has("cloudphoto_moments_diagnostics_v1"), false, "legacy diagnostics must be deleted, not adopted");
+assert.equal(values.has("cf_recent_share_links"), false, "legacy share links must be deleted, not adopted");
 assert.deepEqual(momentsStore.readPrivateMomentInsights("personal"), {}, "unowned legacy data must stay unreadable");
+assert.deepEqual(shareStore.listRecentShareLinks(), [], "unowned legacy share tokens must stay unreadable");
+for (const key of [
+  "cf_grid_size",
+  "fab-pos",
+  "cf_install_banner_dismissed",
+  "cf_tab_account-a",
+  "cf_path_group-a",
+  "cf_xf_group-a",
+]) {
+  assert(values.has(key), `${key} must remain outside private-data cleanup`);
+}
+
+const shareInput = {
+  photoName: "private/photo.jpg",
+  displayName: "private photo",
+  url: "https://example.test/share?token=account-a-public-token",
+  expiresAt: "2099-08-12T12:00:00.000Z",
+};
+const accountAShareContext = shareStore.captureRecentShareLinksContext();
+assert(accountAShareContext, "an authenticated scope must create a recent-share write context");
+assert.equal(
+  shareStore.addRecentShareLink(accountAShareContext, shareInput),
+  true,
+  "the current account may persist its own recent public share link",
+);
+assert.equal(shareStore.listRecentShareLinks().length, 1);
 
 const accountAWrite = momentsStore.capturePrivateMomentsContext("personal");
 assert(accountAWrite, "an authenticated scope must create a write context");
@@ -215,20 +261,36 @@ assert.equal(
 );
 unsubscribeRebase();
 const staleContext = momentsStore.capturePrivateMomentsContext("personal");
+const staleShareContext = shareStore.captureRecentShareLinksContext();
 const switchPromise = lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
 assert.equal(resetCount, 1, "account/role switches must synchronously clear in-memory consumers");
 assert.deepEqual(momentsStore.readPrivateMomentInsights("personal"), {}, "old moments must be unreadable before auth UI updates");
+assert.deepEqual(shareStore.listRecentShareLinks(), [], "old share links must be unreadable before auth UI updates");
 assert.equal(
   await momentsStore.writePrivateMomentInsights(staleContext, { [insight.photoName]: insight }),
   false,
   "a stale in-flight write must be rejected by owner/generation fencing",
 );
+assert.equal(
+  shareStore.addRecentShareLink(staleShareContext, {
+    ...shareInput,
+    url: "https://example.test/share?token=stale-public-token",
+  }),
+  false,
+  "a stale share response must not persist after an account or role switch",
+);
 assert.equal(values.has("cloudphoto_moments_insights_v1"), false, "stale writes must not recreate legacy keys");
+assert.equal(values.has("cf_recent_share_links"), false, "stale share writes must not recreate the legacy key");
+assert(
+  ![...values.values()].some((value) => value.includes("account-a-public-token") || value.includes("stale-public-token")),
+  "public share tokens must not survive an account switch",
+);
 await switchPromise;
 unregisterReset();
 
 const accountBContext = momentsStore.capturePrivateMomentsContext("personal");
 assert(accountBContext);
+assert.deepEqual(shareStore.listRecentShareLinks(), [], "the next account must not see the previous account's recent links");
 const oversizedName = "x".repeat(momentsStore.PRIVATE_MOMENTS_MAX_BYTES);
 assert.equal(
   await momentsStore.writePrivateMomentInsights(accountBContext, {
@@ -273,10 +335,70 @@ assert.equal(
 assert.equal(values.has(raceDiagnosticsKey), false, "stale diagnostics writes must also be rolled back");
 await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
 
+const shareRaceContext = shareStore.captureRecentShareLinksContext();
+const shareRaceKey = shareStore.privateShareLinksStorageKey(shareRaceContext);
+afterSetItem = () => localStorage.removeItem("cloudphoto_private_cache_owner_v1");
+assert.equal(
+  shareStore.addRecentShareLink(shareRaceContext, {
+    ...shareInput,
+    url: "https://example.test/share?token=cross-tab-public-token",
+  }),
+  false,
+  "a cross-tab owner change during setItem must reject a share-link write",
+);
+assert.equal(values.has(shareRaceKey), false, "a rejected cross-tab share write must be rolled back");
+await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
+
+const invalidShareContext = shareStore.captureRecentShareLinksContext();
+const invalidShareKey = shareStore.privateShareLinksStorageKey(invalidShareContext);
+localStorage.setItem(invalidShareKey, "{broken");
+assert.deepEqual(shareStore.listRecentShareLinks(), [], "malformed recent-share JSON must fail closed");
+assert.equal(values.has(invalidShareKey), false, "malformed recent-share JSON must be removed");
+assert.equal(
+  shareStore.addRecentShareLink(invalidShareContext, {
+    ...shareInput,
+    displayName: "x".repeat(shareStore.RECENT_SHARE_LINKS_MAX_BYTES),
+  }),
+  false,
+  "oversized recent-share entries must be rejected",
+);
+
+const storageSetItem = localStorage.setItem;
+localStorage.setItem = function setItemWithBlockedOwner(key, value) {
+  if (key === "cloudphoto_private_cache_owner_v1") {
+    throw new DOMException("Storage blocked", "SecurityError");
+  }
+  return storageSetItem.call(this, key, value);
+};
+await lifecycle.preparePrivatePhotoCachesForScope("account-c:viewer");
+const storageBlockedContext = shareStore.captureRecentShareLinksContext();
+assert(
+  shareStore.isRecentShareLinksContextCurrent(storageBlockedContext),
+  "authenticated share responses must remain generation-fenced when local persistence is unavailable",
+);
+assert.equal(
+  shareStore.addRecentShareLink(storageBlockedContext, shareInput),
+  false,
+  "blocked local persistence must not create an unowned recent-share record",
+);
+localStorage.setItem = storageSetItem;
+await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
+
 await lifecycle.clearPrivatePhotoCaches();
 assert.deepEqual(momentsStore.readPrivateMomentInsights("personal"), {}, "logout/401 must delete scoped moments");
+assert.deepEqual(shareStore.listRecentShareLinks(), [], "logout/401 must delete scoped recent share links");
 assert.equal(availableCacheNames.has("photo-media-v1"), false, "logout must still remove private media");
 assert.equal(availableCacheNames.has("workbox-precache-v2"), true, "logout must preserve the private app shell");
+for (const key of [
+  "cf_grid_size",
+  "fab-pos",
+  "cf_install_banner_dismissed",
+  "cf_tab_account-a",
+  "cf_path_group-a",
+  "cf_xf_group-a",
+]) {
+  assert(values.has(key), `${key} must survive logout private-data cleanup`);
+}
 
 const auth = await read("packages/client/src/contexts/AuthContext.tsx");
 const logoutStart = auth.indexOf("const logout = useCallback");
@@ -312,6 +434,8 @@ assert(
 );
 
 const gallery = await read("packages/client/src/components/gallery/PhotoGallery.tsx");
+const folderView = await read("packages/client/src/components/gallery/FolderView.tsx");
+const clipboard = await read("packages/client/src/services/share/clipboard.ts");
 const app = await read("packages/client/src/AuthenticatedApp.tsx");
 const settings = await read("packages/client/src/components/settings/SettingsDialog.tsx");
 for (const [label, source] of [["gallery", gallery], ["home", app], ["settings", settings]]) {
@@ -322,3 +446,35 @@ assert(gallery.includes("registerPrivatePhotoCacheReset"), "PhotoGallery must cl
 assert(gallery.includes("await localWrite;"), "server reconciliation must wait for its matching local delta");
 assert(app.includes("readPrivateMomentsDiagnostics"), "home diagnostics must use the scoped helper");
 assert(settings.includes("readPrivateMomentsDiagnostics"), "Settings diagnostics must use the scoped helper");
+assert(!settings.includes('"cf_recent_share_links"'), "Settings must not read the global legacy share-link key");
+assert(settings.includes("registerPrivateLocalDataReset"), "Settings must clear local share state on cross-tab auth reset");
+for (const [label, source] of [["gallery", gallery], ["folder", folderView]]) {
+  const captureIndex = source.indexOf("captureRecentShareLinksContext()");
+  const createIndex = source.indexOf("await createPhotoShareLink", captureIndex);
+  assert(captureIndex >= 0 && createIndex > captureIndex, `${label} must fence share writes before awaiting the server`);
+  const responseFenceIndex = source.indexOf("isRecentShareLinksContextCurrent(shareContext)", createIndex);
+  const copyIndex = source.indexOf("await copyText", createIndex);
+  const postCopyFenceIndex = source.indexOf("isRecentShareLinksContextCurrent(shareContext)", responseFenceIndex + 1);
+  assert(
+    responseFenceIndex > createIndex
+    && copyIndex > responseFenceIndex
+    && postCopyFenceIndex > copyIndex,
+    `${label} must reject stale share responses before and after asynchronous clipboard access`,
+  );
+  assert(source.includes("addRecentShareLink(shareContext,"), `${label} must write through its captured private-data context`);
+}
+assert(
+  folderView.includes("`cf_path_${contextKey}`") && folderView.includes("`cf_xf_${contextKey}`"),
+  "folder path and empty-folder keys must retain their existing workspace context",
+);
+assert(
+  clipboard.includes("return canCopy() ? legacyCopy(text) : false"),
+  "legacy clipboard fallback must revalidate the private-data generation",
+);
+assert(
+  settings.includes("copyShareLink(item.url, shareLinksContext)")
+  && settings.includes("isRecentShareLinksContextCurrent(shareLinksContext)")
+  && settings.includes("removeRecentShareLink(shareLinksContext, item.id)")
+  && settings.includes("clearRecentShareLinks(shareLinksContext)"),
+  "every Settings action on a local share must stay bound to the context that rendered it",
+);

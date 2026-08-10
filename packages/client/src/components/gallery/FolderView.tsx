@@ -18,7 +18,11 @@ import {
   getViewerSrc,
 } from "../../services/photoApi";
 import { GALLERY_EAGER_MEDIA_COUNT } from "@cloudphoto/algorithm";
-import { addRecentShareLink } from "../../services/share/shareLinksStore";
+import {
+  addRecentShareLink,
+  captureRecentShareLinksContext,
+  isRecentShareLinksContextCurrent,
+} from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
 import {
   fallbackMediaSource,
@@ -611,15 +615,21 @@ export default function FolderView({
 
   const handleShareCurrentFolder = async () => {
     if (currentPath === null) return;
+    const shareContext = captureRecentShareLinksContext();
     const hours = Math.max(1, Math.min(168, Number.parseInt(folderShareHours, 10) || 24));
     setSharingFolder(true);
     try {
       const { url, expiresAt } = await createFolderShareLink(currentPath, currentGroupId || undefined, hours);
-      const copied = await copyText(url);
+      if (!isRecentShareLinksContextCurrent(shareContext)) return;
+      const copied = await copyText(
+        url,
+        () => isRecentShareLinksContextCurrent(shareContext),
+      );
+      if (!isRecentShareLinksContextCurrent(shareContext)) return;
       if (!copied) {
         window.prompt("复制分享链接", url);
       }
-      addRecentShareLink({
+      addRecentShareLink(shareContext, {
         photoName: `folder:${currentGroupId ?? "personal"}:${currentPath}`,
         displayName: currentPath === "" ? "未分类" : `文件夹：${currentPath}`,
         url,
@@ -1431,16 +1441,22 @@ function FolderContent({
 
   const handleShare = async () => {
     if (!selectedPhoto) return;
+    const shareContext = captureRecentShareLinksContext();
     const hours = Math.max(1, Math.min(168, Number.parseInt(shareHours, 10) || 24));
     setSharing(true);
     try {
       const { url, directUrl, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
+      if (!isRecentShareLinksContextCurrent(shareContext)) return;
       const finalUrl = directUrl ?? url;
-      const copied = await copyText(finalUrl);
+      const copied = await copyText(
+        finalUrl,
+        () => isRecentShareLinksContextCurrent(shareContext),
+      );
+      if (!isRecentShareLinksContextCurrent(shareContext)) return;
       if (!copied) {
         window.prompt("复制分享链接", finalUrl);
       }
-      addRecentShareLink({
+      addRecentShareLink(shareContext, {
         photoName: selectedPhoto.name,
         displayName: displayName(selectedPhoto),
         url: finalUrl,

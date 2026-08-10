@@ -6,15 +6,21 @@ const PRIVATE_LOCAL_DATA_PREFIX = "cloudphoto_private_data_v1:";
 const LEGACY_PRIVATE_LOCAL_KEYS = [
   "cloudphoto_moments_insights_v1",
   "cloudphoto_moments_diagnostics_v1",
+  "cf_recent_share_links",
 ] as const;
 
 let cacheGeneration = 0;
+let activePrivateCacheOwner: string | null = null;
 let cleanupChain: Promise<void> = Promise.resolve();
 const activePersistentWrites = new Set<Promise<void>>();
 const resetListeners = new Set<(scopeReset: boolean) => void>();
 
 export function getPrivatePhotoCacheGeneration(): number {
   return cacheGeneration;
+}
+
+export function getPrivatePhotoCacheOwner(): string | null {
+  return activePrivateCacheOwner;
 }
 
 export function waitForPrivatePhotoCacheCleanup(): Promise<void> {
@@ -51,6 +57,7 @@ function removePrivateLocalData(clearOwner: boolean): void {
 
 function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean): Promise<void> {
   cacheGeneration += 1;
+  if (clearOwner) activePrivateCacheOwner = null;
   for (const reset of resetListeners) reset(clearOwner);
   if (clearOwner) removePrivateLocalData(true);
 
@@ -97,6 +104,7 @@ export async function preparePrivatePhotoCachesForScope(authScope: string): Prom
   const expectedGeneration = cacheGeneration;
   await pendingCleanup;
   if (expectedGeneration !== cacheGeneration) return;
+  activePrivateCacheOwner = authScope;
   try {
     localStorage.setItem(CACHE_OWNER_KEY, authScope);
   } catch {

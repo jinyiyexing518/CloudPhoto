@@ -19,7 +19,11 @@ import {
   getViewerSrc,
 } from "../../services/photoApi";
 import { DEFAULT_PAGE_SIZE, GALLERY_EAGER_MEDIA_COUNT, SCROLL_SENTINEL_MARGIN } from "@cloudphoto/algorithm";
-import { addRecentShareLink } from "../../services/share/shareLinksStore";
+import {
+  addRecentShareLink,
+  captureRecentShareLinksContext,
+  isRecentShareLinksContextCurrent,
+} from "../../services/share/shareLinksStore";
 import { copyText } from "../../services/share/clipboard";
 import {
   fallbackMediaSource,
@@ -1194,17 +1198,23 @@ function PhotoGallery({
 
   const handleShare = async () => {
     if (!selectedPhoto) return;
+    const shareContext = captureRecentShareLinksContext();
     const hours = Math.max(1, Math.min(168, Number.parseInt(shareHours, 10) || 24));
     setSharing(true);
     try {
       const { url, directUrl, expiresAt } = await createPhotoShareLink(selectedPhoto.name, hours);
+      if (!isRecentShareLinksContextCurrent(shareContext)) return;
       const finalUrl = directUrl ?? url;
-      const copied = await copyText(finalUrl);
+      const copied = await copyText(
+        finalUrl,
+        () => isRecentShareLinksContextCurrent(shareContext),
+      );
+      if (!isRecentShareLinksContextCurrent(shareContext)) return;
       if (!copied) {
         window.prompt("复制分享链接", finalUrl);
       }
       const displayName = selectedPhoto.originalName || (() => { const b = selectedPhoto.name.split("/").pop() ?? selectedPhoto.name; return b.replace(/^\d+-/, ""); })();
-      addRecentShareLink({
+      addRecentShareLink(shareContext, {
         photoName: selectedPhoto.name,
         displayName,
         url: finalUrl,
