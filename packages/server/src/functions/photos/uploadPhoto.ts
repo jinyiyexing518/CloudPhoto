@@ -14,6 +14,12 @@ import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
 import type { BlockBlobClient } from "@azure/storage-blob";
 import { expectedPhotoDerivativeNames } from "./photoDerivatives";
+import {
+  getUploadAdmissionWeight,
+  resolveUploadLengthReservation,
+  uploadAdmission,
+  validateBufferedUploadLength,
+} from "./uploadAdmission";
 import exifr from "exifr";
 // sharp is loaded lazily via require() so a missing/incompatible native binary
 // does not crash the entire function app on startup (would break login, etc.).
@@ -47,6 +53,20 @@ const ALLOWED_AUDIO_MIME = new Set([
 const ALLOWED_UPLOAD_MIME = new Set([...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME, ...ALLOWED_AUDIO_MIME]);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;   // 20 MB
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;  // 200 MB
+
+function uploadTooLargeResponse(
+  isVideoUpload: boolean,
+  isAudioUpload: boolean,
+): HttpResponseInit {
+  const limit = isVideoUpload ? "200 MB" : "20 MB";
+  return {
+    status: 413,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      error: `文件过大，${isVideoUpload ? "视频" : isAudioUpload ? "音频" : "图片"}最大支持 ${limit}`,
+    }),
+  };
+}
 
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
@@ -179,6 +199,27 @@ app.http("uploadPhoto", {
       if (!ALLOWED_UPLOAD_MIME.has(mimeType)) {
         return { status: 415, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "只支持图片和视频文件 (JPEG, PNG, WebP, MP4, MOV 等)" }) };
       }
+      const isVideoUpload = ALLOWED_VIDEO_MIME.has(mimeType);
+      const isAudioUpload = ALLOWED_AUDIO_MIME.has(mimeType);
+      const maxBytes = isVideoUpload ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+      const lengthReservation = resolveUploadLengthReservation(
+       request.headers.get("content-length"),
+       maxBytes,
+      );
+      if (lengthReservation.kind === "too-large") {
+       return uploadTooLargeResponse(isVideoUpload, isAudioUpload);
+      }
+      if (lengthReservation.kind === "invalid") {
+       return {
+         status: lengthReservation.reason === "missing" ? 411 : 400,
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({
+           error: lengthReservation.reason === "missing"
+             ? "Content-Length is required"
+             : "Invalid Content-Length",
+         }),
+       };
+      }
       const uploadedBy = request.query.get("uploadedBy") ?? "unknown";
       const subject = request.query.get("subject") ?? "";
       const folder = request.query.get("folder") ?? "";
@@ -230,19 +271,46 @@ app.http("uploadPhoto", {
       if (rawUploadId && await blockBlobClient.exists()) {
         return buildUploadResponse(blockBlobClient, blobName, safeFolderPath, groupId, scope, context);
       }
-      const arrayBuffer = await request.arrayBuffer();
-      const isVideoUpload = ALLOWED_VIDEO_MIME.has(mimeType);
-      const isAudioUpload = ALLOWED_AUDIO_MIME.has(mimeType);
-      const maxBytes = isVideoUpload ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
-      if (arrayBuffer.byteLength > maxBytes) {
-        const limit = isVideoUpload ? "200 MB" : "20 MB";
-        return { status: 413, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: `文件过大，${isVideoUpload ? "视频" : isAudioUpload ? "音频" : "图片"}最大支持 ${limit}` }) };
+      const admission = uploadAdmission.tryAcquire(
+        payload.userId,
+        getUploadAdmissionWeight(isVideoUpload, lengthReservation.reservationBytes),
+        lengthReservation.reservationBytes,
+      );
+      if (!admission.accepted) {
+        return {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(admission.retryAfterSeconds),
+            "Access-Control-Expose-Headers": "Retry-After",
+          },
+          body: JSON.stringify({ error: "上传繁忙，请稍后重试" }),
+        };
       }
+      try {
+        const arrayBuffer = await request.arrayBuffer();
+        if (!validateBufferedUploadLength(
+          arrayBuffer.byteLength,
+          maxBytes,
+          lengthReservation.declaredBytes ?? undefined,
+        )) {
+          if (
+            lengthReservation.declaredBytes !== null
+            && arrayBuffer.byteLength !== lengthReservation.declaredBytes
+          ) {
+            return {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Content-Length does not match the request body" }),
+            };
+          }
+          return uploadTooLargeResponse(isVideoUpload, isAudioUpload);
+        }
 
-      // Azure Blob metadata only allows ASCII — base64-encode all free-text fields
-      const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
-      const buf = Buffer.from(arrayBuffer);
-      const isAnimated = !isVideoUpload && !isAudioUpload && detectAnimated(buf, mimeType);
+        // Azure Blob metadata only allows ASCII — base64-encode all free-text fields
+        const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
+        const buf = Buffer.from(arrayBuffer);
+        const isAnimated = !isVideoUpload && !isAudioUpload && detectAnimated(buf, mimeType);
 
       // Server-side GPS extraction: try to read EXIF if client didn't provide coordinates
       let resolvedLat = gpsLat;
@@ -390,7 +458,10 @@ app.http("uploadPhoto", {
         }
       }
 
-      return buildUploadResponse(blockBlobClient, blobName, safeFolderPath, groupId, scope, context);
+        return buildUploadResponse(blockBlobClient, blobName, safeFolderPath, groupId, scope, context);
+      } finally {
+        admission.lease.release();
+      }
     } catch (error) {
       context.error("Upload error:", error);
       return {

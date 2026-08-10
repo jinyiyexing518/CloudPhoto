@@ -21,6 +21,10 @@ import {
 } from "./http";
 import type { Photo } from "./photoApi";
 import { getPreferredMediaUrl, routeMediaUrls } from "./mediaRoute";
+import {
+  parseRetryAfterMs,
+  UploadRequestError,
+} from "./uploadRetry";
 
 const VIDEO_THUMB_WIDTH = 400;
 const VIDEO_THUMB_QUALITY = 0.75;
@@ -176,35 +180,47 @@ export async function uploadPhotoWithProgress(
         if (xhr.status >= 200 && xhr.status < 300) {
           cleanup();
           try { resolve(proxyPhoto(JSON.parse(xhr.responseText) as Photo)); }
-          catch { reject(new Error(`上传失败: ${file.name}`)); }
+          catch {
+            reject(new UploadRequestError(`上传失败: ${file.name}`, {
+              kind: "response",
+              status: xhr.status,
+            }));
+          }
         } else if (xhr.status === 401) {
           cleanup();
           try {
             await recoverFromUnauthorized(requestToken, signal);
-            reject(new Error("登录状态已更新，请手动重试上传"));
+            reject(new UploadRequestError("登录状态已更新，请手动重试上传", {
+              kind: "http",
+              status: xhr.status,
+            }));
           } catch (error) {
             reject(error);
           }
         } else {
           cleanup();
+          let message = `上传失败: ${file.name}`;
           try {
             const msg = JSON.parse(xhr.responseText) as { error?: string };
-            reject(new Error(msg.error ?? `上传失败: ${file.name}`));
-          } catch {
-            reject(new Error(`上传失败: ${file.name}`));
-          }
+            message = msg.error ?? message;
+          } catch { /* Keep the status-backed fallback message. */ }
+          reject(new UploadRequestError(message, {
+            kind: "http",
+            status: xhr.status,
+            retryAfterMs: parseRetryAfterMs(xhr.getResponseHeader("retry-after")),
+          }));
         }
       });
 
       xhr.addEventListener("error", () => {
         if (fallbackToDirect()) return;
         cleanup();
-        reject(new Error("网络错误"));
+        reject(new UploadRequestError("网络错误", { kind: "network" }));
       });
       xhr.addEventListener("timeout", () => {
         if (fallbackToDirect()) return;
         cleanup();
-        reject(new Error(`上传超时: ${file.name}`));
+        reject(new UploadRequestError(`上传超时: ${file.name}`, { kind: "timeout" }));
       });
       xhr.timeout = 600_000; // 10 min for large videos
 

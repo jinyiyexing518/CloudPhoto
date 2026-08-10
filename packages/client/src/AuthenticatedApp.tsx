@@ -74,6 +74,17 @@ import {
   type FolderRenameGate,
   type FolderRenameOperation,
 } from "./transfer/folderRenameState";
+import {
+  aggregateUploadProgress,
+  getUploadConcurrencyPolicy,
+  runWeightedUploadQueue,
+} from "./transfer/uploadQueue";
+import {
+  computeUploadRetryDelayMs,
+  isRetryableUploadError,
+  type UploadRequestError,
+  waitForUploadRetry,
+} from "./services/uploadRetry";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -394,7 +405,16 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ bytesLoaded: number; bytesTotal: number; filesDone: number; filesTotal: number; folder: string; currentFile?: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    bytesLoaded: number;
+    bytesTotal: number;
+    filesDone: number;
+    filesTotal: number;
+    activeCount: number;
+    queuedCount: number;
+    folder: string;
+    currentFile?: string;
+  } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [voiceTransferStates, setVoiceTransferStates] = useState(createInitialVoiceTransferStates);
@@ -437,7 +457,7 @@ function AppContent() {
   const [uploadPaused, setUploadPaused] = useState(false);
   const [uploadSpeed, setUploadSpeed] = useState("");
   const pausedRef = useRef(false);
-  const resumeCallbackRef = useRef<(() => void) | null>(null);
+  const uploadResumeWaitersRef = useRef(new Set<() => void>());
   const uploadBatchRef = useRef<{
     controller: AbortController;
     workspaceId: string;
@@ -1357,10 +1377,8 @@ function AppContent() {
       || (error instanceof DOMException && error.name === "AbortError")
       || batchController.signal.aborted
     );
-    const waitForRetry = (delayMs: number | null): Promise<void> => new Promise((resolve, reject) => {
-      let timerId: ReturnType<typeof setTimeout> | null = null;
+    const waitForNetwork = (): Promise<void> => new Promise((resolve, reject) => {
       const cleanup = () => {
-        if (timerId) clearTimeout(timerId);
         window.removeEventListener("online", complete);
         batchController.signal.removeEventListener("abort", abort);
       };
@@ -1377,121 +1395,138 @@ function AppContent() {
         return;
       }
       batchController.signal.addEventListener("abort", abort, { once: true });
-      if (delayMs === null) {
-        if (navigator.onLine) complete();
-        else window.addEventListener("online", complete, { once: true });
-      } else {
-        timerId = setTimeout(complete, delayMs);
-      }
+      if (navigator.onLine) complete();
+      else window.addEventListener("online", complete, { once: true });
     });
-    const waitForResume = (): Promise<void> => new Promise((resolve, reject) => {
-      const cleanup = () => batchController.signal.removeEventListener("abort", abort);
+    const waitForResume = (signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+      const resume = () => {
+        cleanup();
+        resolve();
+      };
+      const cleanup = () => {
+        signal?.removeEventListener("abort", abort);
+        uploadResumeWaitersRef.current.delete(resume);
+      };
       const abort = () => {
         cleanup();
-        resumeCallbackRef.current = null;
         reject(batchAbortReason());
       };
-      if (batchController.signal.aborted) {
+      if (signal?.aborted) {
         abort();
         return;
       }
-      batchController.signal.addEventListener("abort", abort, { once: true });
-      resumeCallbackRef.current = () => {
-        cleanup();
-        resumeCallbackRef.current = null;
-        resolve();
-      };
+      signal?.addEventListener("abort", abort, { once: true });
+      uploadResumeWaitersRef.current.add(resume);
     });
-    let batchCancelled = false;
     try {
-    const bytesTotal = valid.reduce((sum, f) => sum + f.size, 0);
-    const totalMB = (bytesTotal / (1024 * 1024)).toFixed(1);
-    setUploadTotalSize(`${valid.length} 个 · ${totalMB} MB`);
-    setUploadProgress({ bytesLoaded: 0, bytesTotal, filesDone: 0, filesTotal: valid.length, folder, currentFile: valid[0]?.name });
+      const bytesTotal = valid.reduce((sum, file) => sum + file.size, 0);
+      const totalMB = (bytesTotal / (1024 * 1024)).toFixed(1);
+      const connection = (navigator as Navigator & {
+        connection?: { effectiveType?: string; saveData?: boolean };
+      }).connection;
+      const policy = getUploadConcurrencyPolicy(connection);
+      const uploadIds = new Map(valid.map((file) => [file, crypto.randomUUID()]));
+      setUploadTotalSize(`${valid.length} 个 · ${totalMB} MB`);
+      setUploadProgress({
+        bytesLoaded: 0,
+        bytesTotal,
+        filesDone: 0,
+        filesTotal: valid.length,
+        activeCount: 0,
+        queuedCount: valid.length,
+        folder,
+      });
+      speedRef.current = { ts: Date.now(), bytes: 0, ema: 0 };
+      pausedRef.current = false;
+      setUploadPaused(false);
+      setUploadSpeed("");
 
-    // Reset speed tracking and pause state for this batch
-    speedRef.current = { ts: Date.now(), bytes: 0, ema: 0 };
-    pausedRef.current = false;
-    setUploadPaused(false);
-    setUploadSpeed("");
+      const result = await runWeightedUploadQueue({
+        files: valid,
+        policy,
+        signal: batchController.signal,
+        isPaused: () => pausedRef.current,
+        waitForResume,
+        onChange: (queueItems) => {
+          if (currentGroupIdRef.current !== uploadWorkspaceId) {
+          if (!batchController.signal.aborted) {
+            batchController.abort(new UploadWorkspaceChangedError());
+          }
+          return;
+          }
+          const progress = aggregateUploadProgress(queueItems);
+          const now = Date.now();
+          const elapsed = (now - speedRef.current.ts) / 1000;
+          if (elapsed >= 0.5) {
+          const byteDelta = progress.bytesLoaded - speedRef.current.bytes;
+          if (byteDelta >= 0) {
+            const rawBps = byteDelta / elapsed;
+            speedRef.current.ema = speedRef.current.ema === 0
+              ? rawBps
+              : speedRef.current.ema * 0.7 + rawBps * 0.3;
+            setUploadSpeed(formatSpeed(speedRef.current.ema));
+          } else {
+            speedRef.current.ema = 0;
+          }
+          speedRef.current.ts = now;
+          speedRef.current.bytes = progress.bytesLoaded;
+          }
+          setUploadProgress({
+          ...progress,
+          folder,
+          currentFile: progress.activeFiles[0],
+          });
+        },
+        worker: async (queueItem, controls) => {
+          const uploadFile = queueItem.file;
+          const uploadId = uploadIds.get(uploadFile);
+          if (!uploadId) throw new Error(`Missing upload id for ${uploadFile.name}`);
+          if (currentGroupIdRef.current !== uploadWorkspaceId) {
+          batchController.abort(new UploadWorkspaceChangedError());
+          }
+          if (batchController.signal.aborted) throw batchAbortReason();
 
-    const failed: string[] = [];
-    let completedBytes = 0;
-    for (let i = 0; i < valid.length; i++) {
-      if (currentGroupIdRef.current !== uploadWorkspaceId) {
-        batchController.abort(new UploadWorkspaceChangedError());
-      }
-      if (batchController.signal.aborted) {
-        batchCancelled = true;
-        break;
-      }
-      // ── Pause gate: wait here until resumed ──────────────────────────────
-      if (pausedRef.current) {
-        try {
-          await waitForResume();
-        } catch {
-          batchCancelled = true;
-          break;
-        }
-      }
-
-      setUploadProgress({ bytesLoaded: completedBytes, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
-      const fileBase = completedBytes;
-      const uploadId = crypto.randomUUID();
-      try {
-        const videoThumbnailPromise = valid[i].type.startsWith("video/")
-          ? extractVideoThumbnail(valid[i]).catch(() => null)
+          const videoThumbnailPromise = uploadFile.type.startsWith("video/")
+          ? extractVideoThumbnail(uploadFile).catch(() => null)
           : Promise.resolve<Blob | null>(null);
 
-        // Extract GPS from EXIF (images) or MP4/MOV container (videos)
-        let gpsLat: string | undefined;
-        let gpsLon: string | undefined;
-        let videoTakenAt: string | undefined;
-        if (valid[i].type.startsWith("image/")) {
+          let gpsLat: string | undefined;
+          let gpsLon: string | undefined;
+          let videoTakenAt: string | undefined;
+          if (uploadFile.type.startsWith("image/")) {
           try {
             const exifrLib = await import("exifr");
-            const gps = await exifrLib.gps(valid[i]);
+            const gps = await exifrLib.gps(uploadFile);
             if (gps?.latitude != null && gps?.longitude != null
                 && isFinite(gps.latitude) && isFinite(gps.longitude)) {
               gpsLat = String(gps.latitude);
               gpsLon = String(gps.longitude);
             }
           } catch { /* EXIF extraction is best-effort */ }
-        } else if (valid[i].type.startsWith("video/")) {
+          } else if (uploadFile.type.startsWith("video/")) {
           try {
-            const meta = await extractVideoMetadata(valid[i]);
+            const meta = await extractVideoMetadata(uploadFile);
             gpsLat = meta.gpsLat;
             gpsLon = meta.gpsLon;
             videoTakenAt = meta.takenAt;
-          } catch { /* best-effort */ }
-        }
+          } catch { /* Video metadata extraction is best-effort. */ }
+          }
+          if (batchController.signal.aborted) throw batchAbortReason();
 
-        // ── Upload with retry (up to 3 attempts, auto-waits for network) ──
-        let lastErr: unknown;
-        for (let attempt = 0; attempt < 3; attempt++) {
+          let uploadedPhoto: Photo | undefined;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+          controls.markUploading();
           try {
-            const uploadedPhoto = await uploadPhotoWithProgress(
-              valid[i],
+            uploadedPhoto = await uploadPhotoWithProgress(
+              uploadFile,
               (loaded) => {
-                // Speed tracking (EMA, update every 500 ms)
-                const now = Date.now();
-                const elapsed = (now - speedRef.current.ts) / 1000;
-                if (elapsed >= 0.5) {
-                  const totalLoaded = fileBase + loaded;
-                  const rawBps = (totalLoaded - speedRef.current.bytes) / elapsed;
-                  speedRef.current.ema = speedRef.current.ema === 0 ? rawBps : speedRef.current.ema * 0.7 + rawBps * 0.3;
-                  speedRef.current.ts = now;
-                  speedRef.current.bytes = totalLoaded;
-                  if (currentGroupIdRef.current === uploadWorkspaceId) {
-                    setUploadSpeed(formatSpeed(speedRef.current.ema));
+                if (currentGroupIdRef.current !== uploadWorkspaceId) {
+                  if (!batchController.signal.aborted) {
+                    batchController.abort(new UploadWorkspaceChangedError());
                   }
+                  return;
                 }
-                if (
-                  !batchController.signal.aborted
-                  && currentGroupIdRef.current === uploadWorkspaceId
-                ) {
-                  setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
-                }
+                controls.setLoaded(loaded);
               },
               uploadDisplayName,
               subject || undefined,
@@ -1503,124 +1538,122 @@ function AppContent() {
               videoTakenAt,
               uploadId,
             );
-            const uploadedVideoNeedsThumbnail = valid[i].type.startsWith("video/");
-            if (uploadedVideoNeedsThumbnail) {
-              markVideoThumbnailPersistencePending(uploadedPhoto.name, true);
+            break;
+          } catch (error) {
+            if (isBatchCancellation(error)) throw error;
+            if (attempt >= 2 || !isRetryableUploadError(error)) throw error;
+            if (!navigator.onLine) {
+              setUploadSpeed("等待网络…");
+              await waitForNetwork();
+              setUploadSpeed("");
             }
-            // Immediately add the uploaded photo so the folder view refreshes live
-            if (
-              !batchController.signal.aborted
-              && currentGroupIdRef.current === uploadWorkspaceId
-            ) {
-              mutatePhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
-            }
+            const retryAfterMs = (error as UploadRequestError).retryAfterMs;
+            const delayMs = computeUploadRetryDelayMs(attempt, retryAfterMs);
+            await waitForUploadRetry(delayMs, batchController.signal);
+          }
+          }
+          if (!uploadedPhoto) throw new Error(`Upload did not complete: ${uploadFile.name}`);
+          const uploadedVideoNeedsThumbnail = uploadFile.type.startsWith("video/");
+          if (uploadedVideoNeedsThumbnail) {
+            markVideoThumbnailPersistencePending(uploadedPhoto.name, true);
+          }
 
-            // The local frame was prepared while the original uploaded. Persist it
-            // only after the server has created the original blob.
-            if (uploadedVideoNeedsThumbnail) {
-              void (async () => {
-                let persistedThumbnailUrl: string | null = null;
-                try {
-                  const thumb = await videoThumbnailPromise;
-                  if (!thumb) return;
-                  if (
-                    uploadAuthGeneration !== getAuthGeneration()
-                    || currentGroupIdRef.current !== uploadWorkspaceId
-                  ) return;
-                  const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumb);
-                  persistedThumbnailUrl = thumbnailUrl;
-                  if (
-                    thumbnailUrl
-                    && uploadAuthGeneration === getAuthGeneration()
-                    && currentGroupIdRef.current === uploadWorkspaceId
-                  ) {
-                    mutatePhotos(prev => prev.map(p =>
-                      p.name === uploadedPhoto.name
-                        ? {
-                            ...p,
-                            thumbnailUrl: selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl),
-                          }
-                        : p,
-                    ));
-                  }
-                } finally {
-                  markVideoThumbnailPersistencePending(
-                    uploadedPhoto.name,
-                    false,
-                    persistedThumbnailUrl ?? undefined,
-                  );
+          if (
+          !batchController.signal.aborted
+          && currentGroupIdRef.current === uploadWorkspaceId
+          ) {
+          mutatePhotos((previous) => (
+            previous.some((photo) => photo.name === uploadedPhoto.name)
+              ? previous
+              : [...previous, uploadedPhoto]
+          ));
+          }
+
+          if (uploadedVideoNeedsThumbnail) {
+            let persistedThumbnailUrl: string | null = null;
+            try {
+              const thumbnail = await videoThumbnailPromise;
+              if (
+                thumbnail
+                && uploadAuthGeneration === getAuthGeneration()
+                && currentGroupIdRef.current === uploadWorkspaceId
+                && !batchController.signal.aborted
+              ) {
+                const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumbnail);
+                persistedThumbnailUrl = thumbnailUrl;
+                if (
+                  thumbnailUrl
+                  && uploadAuthGeneration === getAuthGeneration()
+                  && currentGroupIdRef.current === uploadWorkspaceId
+                ) {
+                  mutatePhotos((previous) => previous.map((p) => (
+                    p.name === uploadedPhoto.name
+                      ? {
+                          ...p,
+                          thumbnailUrl: selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl),
+                        }
+                      : p
+                  )));
                 }
-              })().catch(() => { /* best-effort */ });
-            }
-
-            lastErr = undefined;
-            break; // success — exit retry loop
-          } catch (e) {
-            lastErr = e;
-            if (isBatchCancellation(e)) break;
-            if (attempt < 2) {
-              if (!navigator.onLine) {
-                // Wait until network comes back before retrying
-                setUploadSpeed("等待网络…");
-                await waitForRetry(null);
-                setUploadSpeed("");
-              } else {
-                // Brief back-off between retries
-                await waitForRetry(3000 * (attempt + 1));
               }
+            } finally {
+              markVideoThumbnailPersistencePending(
+                uploadedPhoto.name,
+                false,
+                persistedThumbnailUrl ?? undefined,
+              );
             }
           }
-        }
-        if (lastErr) throw lastErr;
+        },
+      });
 
-        completedBytes += valid[i].size;
-      } catch (error) {
-        if (isBatchCancellation(error)) {
-          batchCancelled = true;
-          break;
+      if (currentGroupIdRef.current !== uploadWorkspaceId && !batchController.signal.aborted) {
+        batchController.abort(new UploadWorkspaceChangedError());
+      }
+      if (batchController.signal.aborted || result.cancelled.length > 0) {
+        if (ownsUploadBatch()) {
+          setUploadProgress(null);
+          setUploadTotalSize(null);
+          setUploadSpeed("");
+          setUploadPaused(false);
+          pausedRef.current = false;
         }
-        failed.push(valid[i].name);
-        completedBytes += valid[i].size;
-      }
-    }
-    if (currentGroupIdRef.current !== uploadWorkspaceId) {
-      batchController.abort(new UploadWorkspaceChangedError());
-      batchCancelled = true;
-    }
-    if (batchCancelled) {
-      if (ownsUploadBatch()) {
-        setUploadProgress(null);
-        setUploadTotalSize(null);
-        setUploadSpeed("");
-        setUploadPaused(false);
-        pausedRef.current = false;
-      }
-      const reason = batchAbortReason();
-      showToast(
-        reason instanceof UploadWorkspaceChangedError
+        const reason = batchAbortReason();
+        showToast(
+          reason instanceof UploadWorkspaceChangedError
           ? reason.message
           : "登录状态已变更，上传已停止",
-        "error",
-      );
-      return;
-    }
-    setUploadProgress({ bytesLoaded: bytesTotal, bytesTotal, filesDone: valid.length, filesTotal: valid.length, folder });
-    await fetchPhotos();
-    setUploadProgress(null);
-    setUploadTotalSize(null);
-    setUploadSpeed("");
-    setUploadPaused(false);
-    pausedRef.current = false;
-    if (failed.length > 0) {
-      showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
-    } else {
-      const hasVideo = valid.some((f) => VIDEO_TYPES.has(f.type));
-      showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
-    }
+          "error",
+        );
+        return;
+      }
+
+      setUploadProgress({
+        bytesLoaded: bytesTotal,
+        bytesTotal,
+        filesDone: valid.length,
+        filesTotal: valid.length,
+        activeCount: 0,
+        queuedCount: 0,
+        folder,
+      });
+      await fetchPhotos();
+      setUploadProgress(null);
+      setUploadTotalSize(null);
+      setUploadSpeed("");
+      setUploadPaused(false);
+      pausedRef.current = false;
+      const failed = result.failed.map((item) => item.file.name);
+      if (failed.length > 0) {
+        showToast(`上传失败 (${failed.length}/${valid.length}): ${failed.join(", ")}`, "error");
+      } else {
+        const hasVideo = valid.some((file) => VIDEO_TYPES.has(file.type));
+        showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
+      }
     } finally {
       unsubscribeAuth();
       if (ownsUploadBatch()) {
-        resumeCallbackRef.current = null;
+        uploadResumeWaitersRef.current.clear();
         uploadBatchRef.current = null;
       }
     }
@@ -1632,10 +1665,8 @@ function AppContent() {
     const next = !pausedRef.current;
     pausedRef.current = next;
     setUploadPaused(next);
-    if (!next && resumeCallbackRef.current) {
-      // Unblock the pause gate in the upload loop
-      resumeCallbackRef.current();
-      resumeCallbackRef.current = null;
+    if (!next) {
+      for (const resume of [...uploadResumeWaitersRef.current]) resume();
     }
   };
 
@@ -2122,9 +2153,11 @@ function AppContent() {
                   <div className="transfer-banner-body">
                     <span className="transfer-banner-text">
                       {uploadPaused
-                        ? `已暂停 (${uploadProgress.filesDone + 1}/${uploadProgress.filesTotal})`
+                        ? uploadProgress.activeCount > 0
+                          ? `已暂停，${uploadProgress.activeCount} 个仍在上传 (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
+                          : `已暂停 (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
                         : uploadProgress.currentFile
-                          ? `上传中 ${uploadProgress.currentFile} (${uploadProgress.filesDone + 1}/${uploadProgress.filesTotal})`
+                          ? `上传中 ${uploadProgress.currentFile}${uploadProgress.activeCount > 1 ? ` 等 ${uploadProgress.activeCount} 个` : ""} (${uploadProgress.filesDone}/${uploadProgress.filesTotal})`
                           : `上传完成 (${uploadProgress.filesTotal}/${uploadProgress.filesTotal})`}
                     </span>
                     {uploadTotalSize && (
@@ -2155,13 +2188,17 @@ function AppContent() {
                     )}
                   </button>
                   <span className="transfer-banner-pct">
-                    {Math.round((uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%
+                    {Math.round((uploadProgress.bytesTotal === 0
+                      ? uploadProgress.filesDone / uploadProgress.filesTotal
+                      : uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%
                   </span>
                 </div>
                 <div className="transfer-banner-track">
                   <div
                     className="transfer-banner-fill"
-                    style={{ width: `${Math.round((uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%` }}
+                    style={{ width: `${Math.round((uploadProgress.bytesTotal === 0
+                      ? uploadProgress.filesDone / uploadProgress.filesTotal
+                      : uploadProgress.bytesLoaded / uploadProgress.bytesTotal) * 100)}%` }}
                   />
                 </div>
               </>

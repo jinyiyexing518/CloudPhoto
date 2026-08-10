@@ -19,6 +19,21 @@
 - 前端 Vite 配置使用 `.mts` ESM 入口并从 `import.meta.url` 解析源码别名；构建后的静态契约会拒绝旧 `.ts` 配置或 CommonJS `__dirname` 回归
 - 共享算法触发面严格限定为 `packages/algorithm/src/**`、`package.json` 和 `tsconfig.json`；README 等不会改变部署产物的文件不触发生产重建
 
+### 上传内存与并发边界
+
+`uploadPhoto` 在 `request.arrayBuffer()` 前检查 `Content-Length`，声明超出图片 20 MiB / 视频 200 MiB 时立即返回 413，缺失返回 411、非法返回 400；读取后再次校验真实字节数不超限且与声明一致。每个 Node Function 实例内有一个异常安全的加权准入器：
+
+| 边界 | 权重 | 声明字节 |
+|---|---:|---:|
+| 单实例 | 3 | 256 MiB |
+| 单用户/实例 | 3 | 220 MiB |
+
+图片权重 1，视频或大文件权重 2。准入 lease 覆盖正文缓冲、Blob 写入、EXIF 与图片 thumbnail/preview 生成，所有返回和异常路径都在 `finally` 释放；活跃用户项归零即删除，状态表另有 1024 项硬上限。拒绝响应为 `429`，同时返回并跨域暴露 `Retry-After: 3`。
+
+这是**单实例内存保护**，不是跨实例/分布式限流。当前没有给 `host.json` 增加全站 `maxConcurrentRequests`：该设置会同时影响认证、列表和下载票据等轻请求，而现有负载没有支持统一阈值的实测证据。若后续要调整平台 HTTP concurrency，必须先依据 Application Insights 的实例内存、请求并发和 429 数据单独评估。
+
+客户端 4G 预算 3、未知/3G 预算 2、`saveData`/2G 预算 1；仅网络错误、408/425/429/5xx 自动重试，并读取上述 `Retry-After`。原文件下载路径不受此准入影响，仍由浏览器拿附件 SAS 后直连 Blob。
+
 ### 所需 GitHub Secrets
 
 | Secret | 说明 |

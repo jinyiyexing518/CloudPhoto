@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-upload-throughput-backpressure",
+    "date": "2026-08-10",
+    "icon": "⬆️",
+    "title": "优化批量上传吞吐与内存背压",
+    "type": "improvement",
+    "desc": "快网小图可同时上传 3 张，弱网自动收紧；繁忙或不可重试错误会更准确地等待或失败。",
+    "details": "客户端按网络状态使用加权预算：4G 最多 3 张图片或 1 个视频加 1 张图片，未知/3G 最多 2 张小图，省流/2G 串行；暂停只冻结新任务，进度聚合所有活跃文件。XHR 现在携带状态码与 Retry-After，仅网络、408/425/429/5xx 使用稳定 uploadId 和 bounded exponential full jitter 重试。服务端在缓冲前检查 Content-Length，缺失/非法立即拒绝，并以单实例 3 权重/256 MiB、单用户 3 权重/220 MiB 的异常安全 lease 保护正文和图片派生处理；这是单实例保护而非分布式限流。原文件下载继续通过 SAS 直连 Blob，已登录 Header 不恢复安装入口。",
+    "seq": 1786377600000
+  },
+  {
     "id": "2026-08-10-folder-rename-safety",
     "date": "2026-08-10",
     "icon": "🔧",

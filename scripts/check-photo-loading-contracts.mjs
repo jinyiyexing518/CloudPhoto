@@ -258,8 +258,8 @@ requireText(app, "currentGroupIdRef.current === uploadWorkspaceId", "workspace-b
 requireText(app, "已有上传任务正在进行，请等待完成后再试", "single active upload batch");
 requireText(app, "const ownsUploadBatch", "upload batch state ownership");
 requireText(app, "selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl)", "non-regressing video thumbnail SAS");
-requireText(app, "const uploadId = crypto.randomUUID()", "stable per-file upload idempotency key");
-requireText(app, "if (isBatchCancellation(e)) break;", "non-retryable auth cancellation");
+requireText(app, "const uploadIds = new Map", "stable per-file upload idempotency keys");
+requireText(app, "if (isBatchCancellation(error)) throw error;", "non-retryable auth cancellation");
 requireText(photoApi, "canPublishPhotoList({", "stale list write guard");
 requireText(photoApi, "MEDIA_URL_REUSE_MIN_MS", "fresh SAS reuse threshold");
 requireText(photoApi, "previousExpiry >= nextExpiry", "non-regressing SAS reuse");
