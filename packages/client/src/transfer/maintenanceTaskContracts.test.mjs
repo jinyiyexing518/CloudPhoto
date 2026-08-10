@@ -50,7 +50,8 @@ test("authenticated app folds maintenance into tab, group, unload, PWA, and bann
   assert.match(app, /const switchTab = \(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
   assert.match(app, /<GroupSwitcher[\s\S]*disabled=\{transferring\}/);
   assert.match(app, /window\.addEventListener\("beforeunload", onBeforeUnload\)/);
-  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow, \{ transferring \}\)/);
+  assert.match(app, /setDangerousOperationActivity\(\s*"authenticated-app",\s*transferring/);
+  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow\)/);
   assert.match(app, /getMaintenanceGuardMessage\(maintenanceTask\)/);
   assert.match(app, /getMaintenanceBannerText\(maintenanceTask\)/);
   assert.match(maintenanceState, /state\.processed/);

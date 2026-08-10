@@ -5,8 +5,10 @@ import {
   activatePwaUpdate,
   isPwaUpdateReady,
   markPwaUpdateReady,
+  preparePwaUpdateForRefresh,
   PWA_UPDATE_READY_EVENT,
 } from "./updatePolicy.ts";
+import { setDangerousOperationActivity } from "./dangerousOperationGate.ts";
 
 class FakePwaWindow extends EventTarget {}
 
@@ -21,29 +23,52 @@ test("persists update-ready state even when the event fired before listeners mou
 test("activates service worker only on explicit user path", async () => {
   const fakeWindow = new FakePwaWindow();
   const calls = [];
-  fakeWindow.__CF_UPDATE_SW__ = async (reloadPage) => {
-    calls.push(reloadPage);
+  fakeWindow.__CF_SW_REGISTRATION__ = {
+    update: async () => {
+      calls.push("update");
+    },
+    installing: null,
+    waiting: null,
+  };
+  fakeWindow.__CF_HARD_REFRESH__ = () => {
+    calls.push("refresh");
   };
 
-  assert.equal(
-    await activatePwaUpdate(fakeWindow, { transferring: true }),
-    "blocked-transferring",
-  );
+  setDangerousOperationActivity("test", true, "uploading");
+  assert.equal(await activatePwaUpdate(fakeWindow), "blocked-transferring");
   assert.deepEqual(calls, []);
 
-  assert.equal(
-    await activatePwaUpdate(fakeWindow, { transferring: false }),
-    "updated",
-  );
-  assert.deepEqual(calls, [true]);
+  setDangerousOperationActivity("test", false, "");
+  assert.equal(await activatePwaUpdate(fakeWindow), "updated");
+  assert.deepEqual(calls, ["update", "refresh"]);
 });
 
 test("returns missing-updater when updater is unavailable", async () => {
   const fakeWindow = new FakePwaWindow();
-  assert.equal(
-    await activatePwaUpdate(fakeWindow, { transferring: false }),
-    "missing-updater",
-  );
+  assert.equal(await activatePwaUpdate(fakeWindow), "missing-updater");
+});
+
+test("updates and explicitly activates a waiting worker before refresh", async () => {
+  const fakeWindow = new FakePwaWindow();
+  const serviceWorkerContainer = new EventTarget();
+  const messages = [];
+  const waitingWorker = {
+    postMessage(message) {
+      messages.push(message);
+      queueMicrotask(() => {
+        serviceWorkerContainer.dispatchEvent(new Event("controllerchange"));
+      });
+    },
+  };
+  fakeWindow.__CF_SW_CONTAINER__ = serviceWorkerContainer;
+  fakeWindow.__CF_SW_REGISTRATION__ = {
+    update: async () => fakeWindow.__CF_SW_REGISTRATION__,
+    installing: null,
+    waiting: waitingWorker,
+  };
+
+  assert.equal(await preparePwaUpdateForRefresh(fakeWindow), "ready");
+  assert.deepEqual(messages, [{ type: "SKIP_WAITING" }]);
 });
 
 test("broadcasts update-ready event", () => {
@@ -64,11 +89,13 @@ test("main.tsx onNeedRefresh contract: no immediate activation or reload", () =>
   assert.match(source, /onNeedRefresh\(\)\s*\{[\s\S]*dispatchEvent\(new Event\(PWA_UPDATE_READY_EVENT\)\)/);
   assert.doesNotMatch(source, /onNeedRefresh\(\)\s*\{[\s\S]*updateSW\(true\)/);
   assert.doesNotMatch(source, /onNeedRefresh\(\)\s*\{[\s\S]*location\.reload/);
+  assert.match(source, /onNeedReload\(\)\s*\{[\s\S]*__CF_PWA_UPDATE_READY__\s*=\s*true/);
 });
 
 test("authenticated update action contract: no fallback reload", () => {
   const source = readFileSync(new URL("../AuthenticatedApp.tsx", import.meta.url), "utf8");
   assert.match(source, /activatePwaUpdate\(/);
+  assert.match(source, /setDangerousOperationActivity\(/);
   assert.match(source, /disabled=\{transferring\}/);
   assert.match(source, /传输完成后更新/);
   assert.doesNotMatch(source, /handleRefreshToUpdate[\s\S]*window\.location\.reload/);

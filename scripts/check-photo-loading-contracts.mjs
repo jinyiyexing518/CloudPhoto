@@ -13,6 +13,7 @@ const requireText = (source, text, label) => {
 
 const authGate = read("packages/client/src/App.tsx");
 const app = read("packages/client/src/AuthenticatedApp.tsx");
+const deploymentRecovery = read("packages/client/src/pwa/deploymentRecovery.ts");
 const authPage = read("packages/client/src/components/auth/AuthPage.tsx");
 const registerForm = read("packages/client/src/components/auth/RegisterForm.tsx");
 const auth = read("packages/client/src/contexts/AuthContext.tsx");
@@ -98,7 +99,8 @@ requireText(app, "setTimeout(runWhenCurrent, 0);", "whats-new idle fallback");
 requireText(app, "if (loading || showSettings) return;", "whats-new loading and Settings gate");
 requireText(app, "setShowWhatsNewPopup(false);", "whats-new loading reset");
 requireText(app, "if (whatsNewMountRequest.current !== requestId) return;", "whats-new stale task guard");
-requireText(app, "{showWhatsNewPopup && !showSettings && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}", "whats-new lazy modal-safe mount");
+requireText(app, '<AuxiliaryLazyBoundary label="版本更新">', "whats-new isolated lazy boundary");
+requireText(app, "<Suspense fallback={null}><WhatsNewPopup /></Suspense>", "whats-new lazy modal-safe mount");
 assert(
   !authGate.includes("function AppContent()"),
   "the authenticated workspace must not ship in the login entry bundle",
@@ -122,7 +124,14 @@ requireText(registerForm, "handleRegister", "deferred registration submission");
 requireText(registerForm, "hidden={!active}", "persistent registration state");
 requireText(authGate, "if (getToken()) void loadAuthenticatedApp();", "restored-session workspace preload");
 requireText(authGate, "onAuthIntent", "interactive-auth workspace preload");
-requireText(authGate, "window.location.reload();", "workspace chunk recovery");
+requireText(authGate, "reportLazyBoundaryFailure", "workspace chunk recovery");
+requireText(authGate, "recovery", "workspace recovery action");
+requireText(deploymentRecovery, '"vite:preloadError"', "pre-React chunk recovery event");
+requireText(deploymentRecovery, "requestDeploymentRefresh", "bounded manual recovery action");
+assert(
+  !authGate.includes("window.location.reload"),
+  "workspace recovery must not bypass the shared update and transfer gate",
+);
 assert.equal(
   (authPage.match(/onAuthIntent\?\.\(\);/g) ?? []).length,
   1,

@@ -135,6 +135,6 @@ test("deferred WhatsNew cannot overlap Settings or steal its focus", () => {
   assert.match(appSource, /if \(loading \|\| showSettings\) return;/);
   assert.match(
     appSource,
-    /\{showWhatsNewPopup && !showSettings && <Suspense fallback=\{null\}><WhatsNewPopup \/><\/Suspense>\}/,
+    /\{showWhatsNewPopup && !showSettings && \([\s\S]*<AuxiliaryLazyBoundary label="版本更新">[\s\S]*<Suspense fallback=\{null\}><WhatsNewPopup \/><\/Suspense>/,
   );
 });

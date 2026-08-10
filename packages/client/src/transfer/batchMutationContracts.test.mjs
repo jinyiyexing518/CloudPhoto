@@ -56,7 +56,8 @@ test("authenticated app aggregates all three sources into tab, group, unload, an
   assert.match(app, /const switchTab = \(tab: ViewTab\) => \{[\s\S]*blockIfTransferring\(\)/);
   assert.match(app, /<GroupSwitcher[\s\S]*disabled=\{transferring\}/);
   assert.match(app, /window\.addEventListener\("beforeunload", onBeforeUnload\)/);
-  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow, \{ transferring \}\)/);
+  assert.match(app, /setDangerousOperationActivity\(\s*"authenticated-app",\s*transferring/);
+  assert.match(app, /activatePwaUpdate\(window as PwaUpdateBrowserWindow\)/);
   assert.match(app, /batchMutationActiveRef\.current = activeBatchMutation !== null/);
   assert.match(app, /const fetchPhotos = useCallback\(async \(\) => \{\s*if \(batchMutationActiveRef\.current\) return;/);
   assert.match(app, /e\.key === "r"[\s\S]*blockIfTransferring\(\)[\s\S]*fetchPhotos\(\)/);

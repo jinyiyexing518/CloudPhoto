@@ -23,7 +23,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
       injectRegister: false,
       includeAssets: [
         "favicon.svg",
@@ -66,7 +66,7 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        clientsClaim: true,
+        clientsClaim: false,
         globPatterns: [
           "index.html",
           "assets/index-*.{js,css}",
@@ -75,7 +75,7 @@ export default defineConfig({
           "assets/workbox-window*.js",
         ],
         navigateFallback: "/index.html",
-        skipWaiting: true,
+        skipWaiting: false,
         runtimeCaching: [
           {
             urlPattern: ({ url, request, sameOrigin }) =>

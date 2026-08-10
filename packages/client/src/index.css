@@ -705,3 +705,46 @@ body {
 .error-boundary-retry:hover {
   background: #005a9e;
 }
+
+.deployment-recovery-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px;
+  padding: 12px 16px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  color: #78350f;
+  background: #fffbeb;
+}
+
+.deployment-recovery-notice > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.deployment-recovery-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.deployment-recovery-actions button {
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: #b45309;
+  cursor: pointer;
+}
+
+.deployment-recovery-actions button:disabled {
+  color: #92400e;
+  background: #fde68a;
+  cursor: not-allowed;
+}
+
+.deployment-recovery-actions .deployment-recovery-later {
+  color: #78350f;
+  background: transparent;
+}

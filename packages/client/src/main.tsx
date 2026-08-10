@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { installDeploymentRecovery } from "./pwa/deploymentRecovery";
 
 const PWA_UPDATE_READY_EVENT = "cloudphoto-pwa-update-ready";
 const PWA_OFFLINE_READY_EVENT = "cloudphoto-pwa-offline-ready";
@@ -11,7 +12,14 @@ const installWindow = window as Window & {
   __CF_PWA_INSTALLED__?: boolean;
   __CF_PWA_UPDATE_READY__?: boolean;
   __CF_UPDATE_SW__?: (reloadPage?: boolean) => Promise<void>;
+  __CF_SW_REGISTRATION__?: ServiceWorkerRegistration;
+  __CF_SW_CONTAINER__?: ServiceWorkerContainer;
 };
+if ("serviceWorker" in navigator) {
+  installWindow.__CF_SW_CONTAINER__ = navigator.serviceWorker;
+}
+installDeploymentRecovery(installWindow);
+
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
   installWindow.__CF_PWA__ = event;
@@ -33,6 +41,7 @@ const registerPwa = async () => {
     immediate: true,
     onRegisteredSW(_, registration) {
       if (!registration) return;
+      installWindow.__CF_SW_REGISTRATION__ = registration;
       const checkForUpdates = () => { void registration.update(); };
       checkForUpdates();
       // Poll for updates — only check frequently in PWA mode; browsers rely on page reload
@@ -45,6 +54,10 @@ const registerPwa = async () => {
       window.addEventListener("online", checkForUpdates);
     },
     onNeedRefresh() {
+      installWindow.__CF_PWA_UPDATE_READY__ = true;
+      window.dispatchEvent(new Event(PWA_UPDATE_READY_EVENT));
+    },
+    onNeedReload() {
       installWindow.__CF_PWA_UPDATE_READY__ = true;
       window.dispatchEvent(new Event(PWA_UPDATE_READY_EVENT));
     },

@@ -3,6 +3,7 @@ import AuthPage from "./components/auth/AuthPage";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastProvider } from "./contexts/ToastContext";
+import { reportLazyBoundaryFailure } from "./pwa/deploymentRecovery";
 import { getToken } from "./services/http";
 
 let authenticatedAppPromise: Promise<typeof import("./AuthenticatedApp")> | undefined;
@@ -28,32 +29,28 @@ function AppSplash() {
   );
 }
 
-function WorkspaceLoadError() {
-  return (
-    <div className="error-boundary-card" role="alert">
-      <div className="error-boundary-icon">⚠️</div>
-      <p className="error-boundary-title">照片空间加载失败</p>
-      <p className="error-boundary-detail">应用可能已有新版本，请刷新后重试。</p>
-      <button
-        className="error-boundary-retry"
-        onClick={() => { window.location.reload(); }}
-      >
-        刷新重试
-      </button>
-    </div>
-  );
-}
-
 function App() {
   const { user, loading } = useAuth();
 
   if (loading) return <AppSplash />;
   if (!user) {
-    return <AuthPage onAuthIntent={() => { void loadAuthenticatedApp(); }} />;
+    return (
+      <ErrorBoundary
+        label="登录与注册"
+        recovery
+        onError={reportLazyBoundaryFailure}
+      >
+        <AuthPage onAuthIntent={() => { void loadAuthenticatedApp(); }} />
+      </ErrorBoundary>
+    );
   }
 
   return (
-    <ErrorBoundary fallback={<WorkspaceLoadError />}>
+    <ErrorBoundary
+      label="照片空间"
+      recovery
+      onError={reportLazyBoundaryFailure}
+    >
       <Suspense fallback={<AppSplash />}>
         <AuthenticatedApp />
       </Suspense>

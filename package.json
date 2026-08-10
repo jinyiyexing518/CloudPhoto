@@ -20,6 +20,7 @@
     "test:header-accessibility": "node --test packages/client/src/components/shared/menuKeyboard.test.mjs packages/client/src/components/groups/HeaderMenusAccessibility.test.mjs packages/client/src/components/auth/UserMenuDialogsAccessibility.test.mjs",
     "test:whats-new-accessibility": "node --test packages/client/src/components/whats-new/WhatsNewPopup.test.mjs",
     "test:pwa-install": "node --test packages/client/src/pwa/installPrompt.test.mjs",
+    "test:pwa-update": "node --test packages/client/src/pwa/updatePolicy.test.mjs packages/client/src/pwa/deploymentRecovery.test.mjs",
     "test:workflow-contracts": "node --test scripts/workflow-runtime-contracts.test.mjs && node scripts/check-workflow-runtime-contracts.mjs",
     "change": "node scripts/create-change.mjs",
     "changes:collect": "node scripts/collect-changes.mjs",

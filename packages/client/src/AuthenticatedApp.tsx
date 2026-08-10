@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense, type ReactNode } from "react";
 import "./authenticated.css";
 import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
@@ -25,6 +25,7 @@ import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { focusMenuItem, handleMenuKeyDown } from "./components/shared/menuKeyboard";
 import ShortcutsHelpDialog from "./components/auth/ShortcutsHelpDialog";
 import InstallGuideDialog from "./components/auth/InstallGuideDialog";
+import DeploymentRecoveryNotice from "./components/shared/DeploymentRecoveryNotice";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
 import { usePwaInstall } from "./pwa/usePwaInstall";
 import {
@@ -34,6 +35,12 @@ import {
   PWA_UPDATE_READY_EVENT,
   type PwaUpdateBrowserWindow,
 } from "./pwa/updatePolicy";
+import {
+  consumeDeploymentRecoveryIntent,
+  reportLazyBoundaryFailure,
+  setDeploymentRecoveryIntentProvider,
+} from "./pwa/deploymentRecovery";
+import { setDangerousOperationActivity } from "./pwa/dangerousOperationGate";
 import {
   createInitialVoiceTransferStates,
   getActiveVoiceTransferState,
@@ -103,6 +110,7 @@ const WHATS_NEW_IDLE_TIMEOUT_MS = 2_000;
 const USER_MENU_TRIGGER_ID = "user-menu-trigger";
 const USER_MENU_ID = "user-menu";
 let folderRenameSequence = 0;
+const deploymentRecoveryIntent = consumeDeploymentRecoveryIntent();
 
 function scheduleIdleMount(task: () => void) {
   let idleTaskHandle: number | null = null;
@@ -116,6 +124,7 @@ function scheduleIdleMount(task: () => void) {
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
     }
+
     task();
   };
 
@@ -135,6 +144,14 @@ function scheduleIdleMount(task: () => void) {
     }
     if (timeoutHandle) clearTimeout(timeoutHandle);
   };
+}
+
+function AuxiliaryLazyBoundary({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <ErrorBoundary label={label} recovery onError={reportLazyBoundaryFailure}>
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 class UploadWorkspaceChangedError extends Error {
@@ -419,8 +436,18 @@ function AppContent() {
   // Persist active tab per user across refreshes
   const tabKey = `cf_tab_${user?.username ?? "guest"}`;
   const [activeTab, setActiveTab] = useState<ViewTab>(() => {
+    if (deploymentRecoveryIntent?.activeTab) {
+      return deploymentRecoveryIntent.activeTab as ViewTab;
+    }
     const stored = localStorage.getItem(tabKey);
-    if (stored === "folder" || stored === "timeline" || stored === "moments") return stored;
+    if (
+      stored === "folder"
+      || stored === "timeline"
+      || stored === "moments"
+      || stored === "map"
+      || stored === "capsule"
+      || stored === "story"
+    ) return stored;
     return "timeline";
   });
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -559,6 +586,20 @@ function AppContent() {
   transferringRef.current = transferring;
   transferGuardMessageRef.current = transferGuardMessage;
   activeTabRef.current = activeTab;
+  useLayoutEffect(() => {
+    setDangerousOperationActivity(
+      "authenticated-app",
+      transferring,
+      transferGuardMessage,
+    );
+  }, [transferGuardMessage, transferring]);
+  useEffect(() => () => {
+    setDangerousOperationActivity("authenticated-app", false, "");
+  }, []);
+  useLayoutEffect(() => {
+    setDeploymentRecoveryIntentProvider(() => ({ activeTab }));
+    return () => setDeploymentRecoveryIntentProvider(null);
+  }, [activeTab]);
   const blockIfTransferring = useCallback(() => {
     if (!transferring) return false;
     showToast(transferGuardMessage, "info");
@@ -1818,8 +1859,8 @@ function AppContent() {
     const operation = createFolderRenameOperation(
       operationId,
       workspaceId,
-      oldFolder.split("/").at(-1) ?? oldFolder,
-      newFolder.split("/").at(-1) ?? newFolder,
+      oldFolder.split("/").slice(-1)[0] ?? oldFolder,
+      newFolder.split("/").slice(-1)[0] ?? newFolder,
     );
     if (!beginFolderRename(folderRenameGate, operation, controller)) {
       throw new Error("已有文件夹重命名正在进行，请等待完成");
@@ -1887,7 +1928,7 @@ function AppContent() {
   };
 
   const handleRefreshToUpdate = async () => {
-    const result = await activatePwaUpdate(window as PwaUpdateBrowserWindow, { transferring });
+    const result = await activatePwaUpdate(window as PwaUpdateBrowserWindow);
     if (result === "blocked-transferring") {
       showToast("传输进行中，请在传输完成后更新", "info");
       return;
@@ -2125,24 +2166,34 @@ function AppContent() {
         </div>
       </header>
 
-      {showAddAdmin && <Suspense fallback={null}><AddAdminDialog onClose={() => setShowAddAdmin(false)} /></Suspense>}
-      {showSettings && (
-        <Suspense fallback={null}><SettingsDialog
-          onClose={() => setShowSettings(false)}
-          onPhotosRestored={fetchPhotos}
-          canInstall={canInstall}
-          isStandalone={isStandalone}
-          installOutcome={pwaInstall.outcome}
-          initialTab={settingsInitialTab}
-          initialFocusTarget={settingsFocusTarget}
-          initialFocusItemId={settingsFocusItemId}
-          onInstallApp={() => void handleInstallApp()}
-          restoreFocusTo={settingsRestoreFocusRef.current}
-          onMaintenanceStateChange={handleMaintenanceStateChange}
-          onTrashMutationStateChange={handleTrashMutationStateChange}
-        /></Suspense>
+      {showAddAdmin && (
+        <AuxiliaryLazyBoundary label="管理员设置">
+          <Suspense fallback={null}><AddAdminDialog onClose={() => setShowAddAdmin(false)} /></Suspense>
+        </AuxiliaryLazyBoundary>
       )}
-      {inviteToken && <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>}
+      {showSettings && (
+        <AuxiliaryLazyBoundary label="设置">
+          <Suspense fallback={null}><SettingsDialog
+            onClose={() => setShowSettings(false)}
+            onPhotosRestored={fetchPhotos}
+            canInstall={canInstall}
+            isStandalone={isStandalone}
+            installOutcome={pwaInstall.outcome}
+            initialTab={settingsInitialTab}
+            initialFocusTarget={settingsFocusTarget}
+            initialFocusItemId={settingsFocusItemId}
+            onInstallApp={() => void handleInstallApp()}
+            restoreFocusTo={settingsRestoreFocusRef.current}
+            onMaintenanceStateChange={handleMaintenanceStateChange}
+            onTrashMutationStateChange={handleTrashMutationStateChange}
+          /></Suspense>
+        </AuxiliaryLazyBoundary>
+      )}
+      {inviteToken && (
+        <AuxiliaryLazyBoundary label="邀请">
+          <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>
+        </AuxiliaryLazyBoundary>
+      )}
       {showInstallGuide && (
         <InstallGuideDialog
           instructions={installGuideText}
@@ -2320,6 +2371,8 @@ function AppContent() {
             </div>
           </div>
         )}
+
+        <DeploymentRecoveryNotice />
 
         {!isStandalone && !installBannerDismissed && (
           <div className="pwa-install-banner">
@@ -2512,7 +2565,6 @@ function AppContent() {
               />
             )}
 
-            <ErrorBoundary label="main">
             {loading ? (
           <div className="loading">
             <div className="loading-spinner" />
@@ -2537,6 +2589,12 @@ function AppContent() {
             {/* ── Timeline panel ── kept mounted so thumbnail imgLoaded state and browser-cached
                 images survive tab switches. Only hidden via CSS, never unmounted. */}
             <div style={{ display: activeTab === "timeline" ? "" : "none" }}>
+              <ErrorBoundary
+                key={`timeline:${currentGroupId || "personal"}`}
+                label="时间线"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               {activeTab === "timeline" && filteredPhotos.length === 0 ? (
                 <div className="empty-gallery empty-gallery--actionable">
                   <div className="empty-gallery-icon">🔎</div>
@@ -2593,11 +2651,18 @@ function AppContent() {
                   </Suspense>
                 </>
               )}
+              </ErrorBoundary>
             </div>
 
             {/* ── Moments panel ── mounted on first visit, then kept mounted */}
             {(momentsMounted || activeTab === "moments") && (
             <div style={{ display: activeTab === "moments" ? "" : "none" }}>
+              <ErrorBoundary
+                key={`moments:${currentGroupId || "personal"}`}
+                label="重要片段"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
                 <PhotoGallery
                   photos={importantPhotos}
@@ -2624,12 +2689,19 @@ function AppContent() {
                   gridSize={gridSize}
                 />
               </Suspense>
+              </ErrorBoundary>
             </div>
             )}
 
             {/* ── Folder panel ── mounted on first visit, then kept mounted */}
             {(folderMounted || activeTab === "folder") && (
             <div style={{ display: activeTab === "folder" ? "" : "none" }}>
+              <ErrorBoundary
+                key={`folder:${currentGroupId || "personal"}`}
+                label="文件夹"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               <Suspense fallback={null}><FolderView
                 key={currentGroupId || "personal"}
                 photos={photos}
@@ -2654,6 +2726,7 @@ function AppContent() {
                 currentGroupId={currentGroupId || undefined}
                 contextKey={currentGroupId || "personal"}
               /></Suspense>
+              </ErrorBoundary>
             </div>
             )}
 
@@ -2662,6 +2735,12 @@ function AppContent() {
               <div className="loading"><div className="loading-spinner" /><span>正在确认照片空间…</span></div>
             )}
             {activeTab === "map" && resolvedPhotoWorkspaceId !== null && (
+              <ErrorBoundary
+                key={`map:${currentGroupId || "personal"}`}
+                label="记忆地图"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
                 <MemoryMap
                   photos={photos}
@@ -2673,20 +2752,34 @@ function AppContent() {
                   }
                 />
               </Suspense>
+              </ErrorBoundary>
             )}
             {activeTab === "capsule" && user && (
+              <ErrorBoundary
+                key={`capsule:${currentGroupId || "personal"}`}
+                label="时光胶囊"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               <Suspense fallback={null}>
                 <TimeCapsule photos={photos} userId={user.id} onViewPhoto={jumpToTimelinePhoto} />
               </Suspense>
+              </ErrorBoundary>
             )}
             {activeTab === "story" && (
+              <ErrorBoundary
+                key={`story:${currentGroupId || "personal"}`}
+                label="自动故事"
+                recovery
+                onError={reportLazyBoundaryFailure}
+              >
               <Suspense fallback={null}>
                 <AutoStory photos={photos} />
               </Suspense>
+              </ErrorBoundary>
             )}
           </>
         )}
-            </ErrorBoundary>
           </div>
 
           <WorkspaceSidebar
@@ -2728,7 +2821,11 @@ function AppContent() {
           aria-label="返回顶部"
         >顶部</button>
       )}
-      {showWhatsNewPopup && !showSettings && <Suspense fallback={null}><WhatsNewPopup /></Suspense>}
+      {showWhatsNewPopup && !showSettings && (
+        <AuxiliaryLazyBoundary label="版本更新">
+          <Suspense fallback={null}><WhatsNewPopup /></Suspense>
+        </AuxiliaryLazyBoundary>
+      )}
     </div>
   );
 }
