@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   Photo,
   updatePhotoSubject,
@@ -55,6 +56,8 @@ import {
   getFolderGroupLabel,
   getFolderOpenLabel,
 } from "./folderCardAccessibility";
+import { isModalShortcutTarget } from "../shared/modalFocus";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 let folderBatchMutationSequence = 0;
 
@@ -876,6 +879,12 @@ function FolderContent({
   // Modal state
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const viewerLayerRef = useRef<HTMLDivElement | null>(null);
+  const viewerDialogRef = useRef<HTMLDivElement | null>(null);
+  const viewerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
+  const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
+  const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
   const [videoSession, setVideoSession] = useState<VideoPlaybackSession | null>(null);
   const videoSessionIdRef = useRef(0);
   const videoElementRef = useRef<HTMLVideoElement>(null);
@@ -1098,17 +1107,47 @@ function FolderContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
-  // Keyboard navigation when modal is open
-  useEffect(() => {
-    if (selectedIdx === null) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setSelectedIdx(null); setSelectedPhoto(null); }
-      if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1, directPhotos);
-      if (e.key === "ArrowRight" && selectedIdx < directPhotos.length - 1) navigateToPhoto(selectedIdx + 1, directPhotos);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [selectedIdx, directPhotos, navigateToPhoto]);
+  const closeViewer = useCallback(() => {
+    setSelectedIdx(null);
+    setSelectedPhoto(null);
+    setShowOriginalPreview(false);
+  }, []);
+
+  const onModalKeyDown = useCallback((event: KeyboardEvent) => {
+    if (isModalShortcutTarget(event.target)) return;
+    if (event.key === "ArrowLeft" && selectedIdx !== null && selectedIdx > 0) {
+      event.preventDefault();
+      navigateToPhoto(selectedIdx - 1, directPhotos);
+    }
+    if (event.key === "ArrowRight" && selectedIdx !== null && selectedIdx < directPhotos.length - 1) {
+      event.preventDefault();
+      navigateToPhoto(selectedIdx + 1, directPhotos);
+    }
+  }, [directPhotos, navigateToPhoto, selectedIdx]);
+
+  useModalFocusBoundary({
+    active: selectedPhoto !== null,
+    layerRef: viewerLayerRef,
+    containerRef: viewerDialogRef,
+    initialFocusRef: viewerCloseButtonRef,
+    onEscape: (event) => {
+      if (isModalShortcutTarget(event.target)) return false;
+      closeViewer();
+      return true;
+    },
+    onKeyDown: onModalKeyDown,
+  });
+
+  useModalFocusBoundary({
+    active: showOriginalPreview && selectedPhoto !== null,
+    layerRef: originalPreviewLayerRef,
+    containerRef: originalPreviewDialogRef,
+    initialFocusRef: originalPreviewCloseRef,
+    onEscape: () => {
+      setShowOriginalPreview(false);
+      return true;
+    },
+  });
 
   // Reverse geocode GPS coordinates to human-readable address
   useEffect(() => {
@@ -1638,9 +1677,17 @@ function FolderContent({
       )}
 
       {/* ── Modal ── */}
-      {selectedPhoto && (
-        <div className="modal-overlay" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      {selectedPhoto && createPortal(
+        <div ref={viewerLayerRef} className="modal-overlay" data-modal-layer onClick={closeViewer}>
+          <div
+            ref={viewerDialogRef}
+            className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`照片详情：${displayName(selectedPhoto)}`}
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
           <div className="modal-image-pane"
               onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
               onTouchEnd={(e) => {
@@ -1889,9 +1936,10 @@ function FolderContent({
               )}
             </div>
             <button
+              ref={viewerCloseButtonRef}
               type="button"
               className="modal-close"
-              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}
+              onClick={closeViewer}
               aria-label="关闭照片详情"
               title="关闭 (Esc)"
             >✕</button>
@@ -2195,13 +2243,22 @@ function FolderContent({
               </div>
             </div>
             </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {selectedPhoto && showOriginalPreview && (
-        <div className="modal-preview-overlay" onClick={() => setShowOriginalPreview(false)}>
-          <div className="modal-preview-content" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="modal-close" onClick={() => setShowOriginalPreview(false)} aria-label="关闭原图预览">✕</button>
+      {selectedPhoto && showOriginalPreview && createPortal(
+        <div ref={originalPreviewLayerRef} className="modal-preview-overlay" data-modal-layer onClick={() => setShowOriginalPreview(false)}>
+          <div
+            ref={originalPreviewDialogRef}
+            className="modal-preview-content"
+            role="dialog"
+            aria-modal="true"
+            aria-label="原图预览"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button ref={originalPreviewCloseRef} type="button" className="modal-close" onClick={() => setShowOriginalPreview(false)} aria-label="关闭原图预览">✕</button>
             <a className="modal-preview-open" href={getPreferredMediaUrl(selectedPhoto.url)} target="_blank" rel="noreferrer">
               在新窗口打开原图
             </a>
@@ -2214,7 +2271,8 @@ function FolderContent({
               }}
             />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {quickMovePhoto && (

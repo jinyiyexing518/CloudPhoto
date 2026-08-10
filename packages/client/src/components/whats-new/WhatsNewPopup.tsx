@@ -4,8 +4,10 @@ import { fetchChangelogs, type ChangelogEntry } from "../../services/photoApi";
 import {
   clearModalTimers,
   focusElement,
+  hasActiveModalLayer,
   handleModalKeyDown,
   restoreFocus,
+  subscribeModalStack,
   type ModalTimerHandles,
 } from "../shared/modalFocus";
 
@@ -173,6 +175,16 @@ export default function WhatsNewPopup() {
     }, 300);
   }, []);
 
+  useEffect(() => {
+    const hideBehindSharedModal = () => {
+      if (!hasActiveModalLayer()) return;
+      clearModalTimers(timerHandles.current);
+      setVisible(false);
+    };
+    hideBehindSharedModal();
+    return subscribeModalStack(hideBehindSharedModal);
+  }, []);
+
   // 用户点击弹窗内容 → 立刻恢复、等待手动关闭
   const handlePopupClick = () => pinPopup();
   const handlePopupFocus = useCallback(() => {
@@ -195,7 +207,7 @@ export default function WhatsNewPopup() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const popup = popupRef.current;
-      if (!popup) return;
+      if (!popup || hasActiveModalLayer()) return;
       if (
         event.key !== "Escape"
         && event.key !== "Tab"

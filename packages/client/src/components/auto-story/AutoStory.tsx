@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { fallbackMediaSource } from "../../services/mediaRoute";
 import { BLANK_GIF, selectGridMediaSources } from "@cloudphoto/algorithm";
 import MediaThumb from "../shared/MediaThumb";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 interface Props {
   photos: Photo[];
@@ -12,8 +13,12 @@ interface Props {
 type TransitionStyle = "fade" | "slide" | "zoom";
 
 export default function AutoStory({ photos }: Props) {
+  const storyLayerRef = useRef<HTMLDivElement | null>(null);
+  const storyDialogRef = useRef<HTMLDivElement | null>(null);
+  const storyCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [transition, setTransition] = useState<TransitionStyle>("fade");
   const [intervalSec, setIntervalSec] = useState(4);
@@ -58,29 +63,44 @@ export default function AutoStory({ photos }: Props) {
 
   // Auto-advance
   useEffect(() => {
-    if (!playing || storyPhotos.length < 2) return;
+    if (!playing || paused || storyPhotos.length < 2) return;
     const id = setInterval(next, intervalSec * 1000);
     return () => clearInterval(id);
-  }, [playing, next, intervalSec, storyPhotos.length]);
-
-  // Keyboard controls
-  useEffect(() => {
-    if (!playing) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
-      if (e.key === "ArrowRight") { e.preventDefault(); next(); }
-      if (e.key === "Escape") { e.preventDefault(); setPlaying(false); }
-      if (e.key === " ") { e.preventDefault(); /* toggle handled by button */ }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [playing, prev, next]);
+  }, [intervalSec, next, paused, playing, storyPhotos.length]);
 
   const currentPhoto = storyPhotos[currentIndex];
   const currentPhotoIsVideo = currentPhoto?.contentType.startsWith("video/") ?? false;
   const currentDerivativeSources = currentPhoto ? selectGridMediaSources(currentPhoto) : [];
   const currentPreviewSources = [...currentDerivativeSources].reverse();
   const currentPhotoPoster = currentDerivativeSources[0];
+
+  const closeStoryPlayer = useCallback(() => {
+    setPlaying(false);
+    setPaused(false);
+  }, []);
+
+  const onStoryKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      prev();
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      next();
+    }
+  }, [next, prev]);
+
+  useModalFocusBoundary({
+    active: playing && currentPhoto !== undefined,
+    layerRef: storyLayerRef,
+    containerRef: storyDialogRef,
+    initialFocusRef: storyCloseButtonRef,
+    onEscape: () => {
+      closeStoryPlayer();
+      return true;
+    },
+    onKeyDown: onStoryKeyDown,
+  });
 
   return (
     <div className="story-wrap">
@@ -137,7 +157,7 @@ export default function AutoStory({ photos }: Props) {
 
         <button
           className="story-play-btn"
-          onClick={() => { setCurrentIndex(0); setPlaying(true); }}
+          onClick={() => { setCurrentIndex(0); setPaused(false); setPlaying(true); }}
           disabled={storyPhotos.length === 0}
         >
           ▶ 开始播放（{storyPhotos.length} 张）
@@ -166,7 +186,18 @@ export default function AutoStory({ photos }: Props) {
 
       {/* Full-screen player */}
       {playing && currentPhoto && createPortal(
-        <div className={`story-player story-player--${transition}`}>
+        <div
+          ref={(element) => {
+            storyLayerRef.current = element;
+            storyDialogRef.current = element;
+          }}
+          className={`story-player story-player--${transition}`}
+          data-modal-layer
+          role="dialog"
+          aria-modal="true"
+          aria-label="自动故事播放器"
+          tabIndex={-1}
+        >
           {/* Background blur layer */}
           <div
             className="story-player-bg"
@@ -224,15 +255,16 @@ export default function AutoStory({ photos }: Props) {
             <button
               type="button"
               className="story-ctrl-btn story-ctrl-pause"
-              onClick={() => setPlaying((v) => !v)}
-              aria-label={playing ? "暂停播放" : "继续播放"}
+              onClick={() => setPaused((value) => !value)}
+              aria-label={paused ? "继续播放" : "暂停播放"}
               title="暂停/继续"
-            >{playing ? "⏸" : "▶"}</button>
+            >{paused ? "▶" : "⏸"}</button>
             <button type="button" className="story-ctrl-btn" onClick={next} aria-label="下一张" title="下一张">›</button>
             <button
               type="button"
+              ref={storyCloseButtonRef}
               className="story-ctrl-btn story-ctrl-close"
-              onClick={() => setPlaying(false)}
+              onClick={closeStoryPlayer}
               aria-label="关闭自动故事"
               title="关闭 (Esc)"
             >✕</button>

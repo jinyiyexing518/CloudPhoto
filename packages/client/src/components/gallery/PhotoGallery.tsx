@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
+import { createPortal } from "react-dom";
 import MediaThumb from "../shared/MediaThumb";
 import {
   Photo,
@@ -52,6 +53,8 @@ import {
   type BatchMutationKind,
   type BatchMutationResult,
 } from "../../transfer/batchMutationState";
+import { isModalShortcutTarget } from "../shared/modalFocus";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 let photoGalleryBatchMutationSequence = 0;
 
@@ -337,6 +340,15 @@ function PhotoGallery({
 }: Props) {
   const showToast = useToast();
   const focusCardRef = useRef<HTMLDivElement | null>(null);
+  const viewerLayerRef = useRef<HTMLDivElement | null>(null);
+  const viewerDialogRef = useRef<HTMLDivElement | null>(null);
+  const viewerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
+  const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
+  const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
+  const shortcutHelpLayerRef = useRef<HTMLDivElement | null>(null);
+  const shortcutHelpDialogRef = useRef<HTMLDivElement | null>(null);
+  const shortcutHelpCloseRef = useRef<HTMLButtonElement | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [videoSession, setVideoSession] = useState<VideoPlaybackSession | null>(null);
@@ -869,15 +881,25 @@ function PhotoGallery({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPhoto?.url, selectedPhoto?.thumbnailUrl, selectedPhoto?.contentType, selectedPhoto?.isAnimated]);
 
-  // Keyboard navigation when modal is open
-  useEffect(() => {
-    if (selectedIdx === null) return;
-    const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).matches("input,textarea")) return;
-      if (e.key === "Escape") { setSelectedIdx(null); setSelectedPhoto(null); }
-      if (e.key === "ArrowLeft" && selectedIdx > 0) navigateToPhoto(selectedIdx - 1);
-      if (e.key === "ArrowRight" && selectedIdx < modalPhotos.length - 1) navigateToPhoto(selectedIdx + 1);
-      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey) {
+  const closeViewer = useCallback(() => {
+    setSelectedIdx(null);
+    setSelectedPhoto(null);
+    setShowOriginalPreview(false);
+    setShowShortcutHelp(false);
+    setIsFullscreen(false);
+  }, []);
+
+  const onModalKeyDown = useCallback((event: KeyboardEvent) => {
+      if (isModalShortcutTarget(event.target)) return;
+      if (event.key === "ArrowLeft" && selectedIdx !== null && selectedIdx > 0) {
+        event.preventDefault();
+        navigateToPhoto(selectedIdx - 1);
+      }
+      if (event.key === "ArrowRight" && selectedIdx !== null && selectedIdx < modalPhotos.length - 1) {
+        event.preventDefault();
+        navigateToPhoto(selectedIdx + 1);
+      }
+      if ((event.key === "f" || event.key === "F") && !event.ctrlKey && !event.metaKey) {
         if (selectedPhoto) {
           const next = !selectedPhoto.favorite;
           void onToggleFavorite(selectedPhoto.name, next).then((ok) => {
@@ -885,28 +907,65 @@ function PhotoGallery({
           });
         }
       }
-      if (e.key === "Delete" && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (event.key === "Delete" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         if (selectedPhoto) {
           const displayName = selectedPhoto.originalName || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
           if (window.confirm(`确认删除照片：${displayName}？`)) {
             onDelete(selectedPhoto.name);
-            setSelectedIdx(null);
-            setSelectedPhoto(null);
+            closeViewer();
           }
         }
       }
-      if ((e.key === "d" || e.key === "D") && !e.ctrlKey && !e.metaKey && selectedPhoto) {
+      if ((event.key === "d" || event.key === "D") && !event.ctrlKey && !event.metaKey && selectedPhoto) {
         const filename = selectedPhoto.originalName
           || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
         void downloadPhotoApi(selectedPhoto.name, filename);
       }
-      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+      if (event.key === "?" || (event.key === "/" && event.shiftKey)) {
         setShowShortcutHelp((v) => !v);
       }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [selectedIdx, modalPhotos.length, navigateToPhoto, selectedPhoto, onToggleFavorite, onDelete]);
+  }, [closeViewer, modalPhotos.length, navigateToPhoto, onDelete, onToggleFavorite, selectedIdx, selectedPhoto]);
+
+  useModalFocusBoundary({
+    active: selectedPhoto !== null,
+    layerRef: viewerLayerRef,
+    containerRef: viewerDialogRef,
+    initialFocusRef: viewerCloseButtonRef,
+    onEscape: (event) => {
+      if (isModalShortcutTarget(event.target)) return false;
+      closeViewer();
+      return true;
+    },
+    onKeyDown: onModalKeyDown,
+  });
+
+  useModalFocusBoundary({
+    active: showOriginalPreview && selectedPhoto !== null,
+    layerRef: originalPreviewLayerRef,
+    containerRef: originalPreviewDialogRef,
+    initialFocusRef: originalPreviewCloseRef,
+    onEscape: () => {
+      setShowOriginalPreview(false);
+      return true;
+    },
+  });
+
+  useModalFocusBoundary({
+    active: showShortcutHelp,
+    layerRef: shortcutHelpLayerRef,
+    containerRef: shortcutHelpDialogRef,
+    initialFocusRef: shortcutHelpCloseRef,
+    onEscape: () => {
+      setShowShortcutHelp(false);
+      return true;
+    },
+    onKeyDown: (event) => {
+      if (event.key === "?" || (event.key === "/" && event.shiftKey)) {
+        event.preventDefault();
+        setShowShortcutHelp(false);
+      }
+    },
+  });
 
   // Ctrl+A to select all photos in batch mode (when modal is closed)
   useEffect(() => {
@@ -1519,19 +1578,27 @@ function PhotoGallery({
         </div>
       )}
 
-      {selectedPhoto && (
+      {selectedPhoto && createPortal(
         <div
+          ref={viewerLayerRef}
           className="modal-overlay"
-          onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}
+          data-modal-layer
+          onClick={closeViewer}
         >
           <div
+            ref={viewerDialogRef}
             className={`modal-content${isFullscreen ? " modal-content--fullscreen" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`照片详情：${selectedPhoto.originalName || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "")}`}
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
           >
             <button
+              ref={viewerCloseButtonRef}
               type="button"
               className="modal-close"
-              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); setIsFullscreen(false); }}
+              onClick={closeViewer}
               aria-label="关闭照片详情"
             >
               ✕
@@ -2125,13 +2192,22 @@ function PhotoGallery({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {selectedPhoto && showOriginalPreview && (
-        <div className="modal-preview-overlay" onClick={() => setShowOriginalPreview(false)}>
-          <div className="modal-preview-content" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="modal-close" onClick={() => setShowOriginalPreview(false)} aria-label="关闭原图预览">✕</button>
+      {selectedPhoto && showOriginalPreview && createPortal(
+        <div ref={originalPreviewLayerRef} className="modal-preview-overlay" data-modal-layer onClick={() => setShowOriginalPreview(false)}>
+          <div
+            ref={originalPreviewDialogRef}
+            className="modal-preview-content"
+            role="dialog"
+            aria-modal="true"
+            aria-label="原图预览"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button ref={originalPreviewCloseRef} type="button" className="modal-close" onClick={() => setShowOriginalPreview(false)} aria-label="关闭原图预览">✕</button>
             <a className="modal-preview-open" href={getPreferredMediaUrl(selectedPhoto.url)} target="_blank" rel="noreferrer">
               在新窗口打开原图
             </a>
@@ -2144,15 +2220,24 @@ function PhotoGallery({
               }}
             />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Keyboard shortcut help overlay */}
-      {showShortcutHelp && (
-        <div className="shortcut-help-overlay" onClick={() => setShowShortcutHelp(false)}>
-          <div className="shortcut-help-panel" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="modal-close" onClick={() => setShowShortcutHelp(false)} aria-label="关闭键盘快捷键">✕</button>
-            <h3 className="shortcut-help-title">键盘快捷键</h3>
+      {showShortcutHelp && createPortal(
+        <div ref={shortcutHelpLayerRef} className="shortcut-help-overlay" data-modal-layer onClick={() => setShowShortcutHelp(false)}>
+          <div
+            ref={shortcutHelpDialogRef}
+            className="shortcut-help-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="viewer-shortcut-help-title"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button ref={shortcutHelpCloseRef} type="button" className="modal-close" onClick={() => setShowShortcutHelp(false)} aria-label="关闭键盘快捷键">✕</button>
+            <h3 id="viewer-shortcut-help-title" className="shortcut-help-title">键盘快捷键</h3>
             <table className="shortcut-help-table">
               <tbody>
                 <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>切换上/下一张</td></tr>
@@ -2165,7 +2250,8 @@ function PhotoGallery({
               </tbody>
             </table>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
     </>

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useModalFocusBoundary } from "./useModalFocusBoundary";
 
 interface Props {
   /** Currently stored ISO datetime string, e.g. "2024-06-03T14:30:00" */
@@ -14,6 +15,9 @@ interface Props {
  * Renders two focused inputs (date + time) for a cleaner UX than datetime-local.
  */
 export default function PhotoTimeEditDialog({ currentIso, saving, onSave, onClose }: Props) {
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
   const initial = currentIso ? currentIso.slice(0, 16) : "";
   const [dateVal, setDateVal] = useState(initial.slice(0, 10));
   const [timeVal, setTimeVal] = useState(initial.slice(11) || "12:00");
@@ -30,11 +34,31 @@ export default function PhotoTimeEditDialog({ currentIso, saving, onSave, onClos
     onSave(iso);
   };
 
+  useModalFocusBoundary({
+    active: true,
+    layerRef,
+    containerRef: dialogRef,
+    initialFocusRef: dateInputRef,
+    onEscape: () => {
+      if (saving) return false;
+      onClose();
+      return true;
+    },
+  });
+
   return createPortal(
-    <div className="confirm-overlay" onClick={onClose}>
-      <div className="time-edit-dialog" onClick={(e) => e.stopPropagation()}>
+    <div ref={layerRef} className="confirm-overlay" data-modal-layer onClick={onClose}>
+      <div
+        ref={dialogRef}
+        className="time-edit-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="photo-time-edit-title"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="time-edit-header">
-          <span className="time-edit-title">修改拍摄时间</span>
+          <span id="photo-time-edit-title" className="time-edit-title">修改拍摄时间</span>
           <button type="button" className="time-edit-close" onClick={onClose} disabled={saving} aria-label="关闭拍摄时间编辑">✕</button>
         </div>
 
@@ -55,12 +79,12 @@ export default function PhotoTimeEditDialog({ currentIso, saving, onSave, onClos
           <label className="time-edit-field">
             <span className="time-edit-label">日期</span>
             <input
+              ref={dateInputRef}
               type="date"
               className="time-edit-input"
               value={dateVal}
               onChange={(e) => setDateVal(e.target.value)}
               disabled={saving}
-              autoFocus
             />
           </label>
           <label className="time-edit-field">

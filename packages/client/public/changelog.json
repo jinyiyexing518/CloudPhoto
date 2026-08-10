@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-viewer-modal-focus-isolation",
+    "date": "2026-08-10",
+    "icon": "⌨️",
+    "title": "修复照片查看器焦点与背景快捷键穿透",
+    "type": "fix",
+    "desc": "照片查看器、时光胶囊与自动故事播放器现在具备完整对话框语义、动态焦点循环与背景隔离。",
+    "details": "时间线/文件夹查看器、时光胶囊创建/查看和自动故事播放器统一通过共享 stacked modal boundary 管理初始焦点、Tab/Shift+Tab、Escape 和所有背景快捷键隔离；活动层之外的 #root、父弹窗及迟到 portal 会 inert + aria-hidden，并隐藏同层迟到模态。原图预览和拍摄时间编辑作为独立子层，关闭后只向仍连接的父层控件恢复焦点；重命名、分享、移动、位置编辑和最多 60 个胶囊照片按钮继续按当前动态控件循环。照片/故事左右切换、帮助快捷键、播放暂停、桌面/移动端全屏、滑动和原生媒体控制保持不变；自动故事只加载 2048 preview 或 thumbnail，不会被动请求 original/video。已登录 Header 无安装按钮约束保持不变。",
+    "seq": 1786378000000
+  },
+  {
     "id": "2026-08-10-folder-card-keyboard-navigation",
     "date": "2026-08-10",
     "icon": "⌨️",

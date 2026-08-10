@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import MediaThumb from "../shared/MediaThumb";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 interface Capsule {
   id: string;
@@ -34,6 +35,12 @@ function saveCapsules(userId: string, capsules: Capsule[]) {
 }
 
 export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
+  const createLayerRef = useRef<HTMLDivElement | null>(null);
+  const createDialogRef = useRef<HTMLDivElement | null>(null);
+  const capsuleTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const viewLayerRef = useRef<HTMLDivElement | null>(null);
+  const viewDialogRef = useRef<HTMLDivElement | null>(null);
+  const viewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const [capsules, setCapsules] = useState<Capsule[]>(() => loadCapsules(userId));
   const [showCreate, setShowCreate] = useState(false);
   const [openedCapsuleId, setOpenedCapsuleId] = useState<string | null>(null);
@@ -94,6 +101,36 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
 
   const unlocked = capsules.filter((c) => c.unlockDate <= today);
   const locked = capsules.filter((c) => c.unlockDate > today);
+
+  const closeCreateDialog = useCallback(() => {
+    setShowCreate(false);
+  }, []);
+
+  const closeViewDialog = useCallback(() => {
+    setOpenedCapsuleId(null);
+  }, []);
+
+  useModalFocusBoundary({
+    active: showCreate,
+    layerRef: createLayerRef,
+    containerRef: createDialogRef,
+    initialFocusRef: capsuleTitleInputRef,
+    onEscape: () => {
+      closeCreateDialog();
+      return true;
+    },
+  });
+
+  useModalFocusBoundary({
+    active: openedCapsule !== undefined,
+    layerRef: viewLayerRef,
+    containerRef: viewDialogRef,
+    initialFocusRef: viewCloseButtonRef,
+    onEscape: () => {
+      closeViewDialog();
+      return true;
+    },
+  });
 
   return (
     <div className="capsule-wrap">
@@ -188,23 +225,34 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
 
       {/* Create capsule dialog */}
       {showCreate && createPortal(
-        <div className="capsule-dialog-overlay" onClick={() => setShowCreate(false)}>
-          <div className="capsule-dialog" onClick={(e) => e.stopPropagation()}>
+        <div ref={createLayerRef} className="capsule-dialog-overlay" data-modal-layer onClick={closeCreateDialog}>
+          <div
+            ref={createDialogRef}
+            className="capsule-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="capsule-create-title"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="capsule-dialog-header">
-              <span>💌 新建时光胶囊</span>
-              <button type="button" className="dialog-close-btn" onClick={() => setShowCreate(false)} aria-label="关闭新建时光胶囊">✕</button>
+              <span id="capsule-create-title">💌 新建时光胶囊</span>
+              <button type="button" className="dialog-close-btn" onClick={closeCreateDialog} aria-label="关闭新建时光胶囊">✕</button>
             </div>
             <div className="capsule-dialog-body">
-              <label className="capsule-label">胶囊名称</label>
+              <label className="capsule-label" htmlFor="capsule-title-input">胶囊名称</label>
               <input
+                ref={capsuleTitleInputRef}
+                id="capsule-title-input"
                 className="capsule-input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="给这个胶囊起个名字…"
                 maxLength={40}
               />
-              <label className="capsule-label">解锁日期</label>
+              <label className="capsule-label" htmlFor="capsule-unlock-date">解锁日期</label>
               <input
+                id="capsule-unlock-date"
                 className="capsule-input"
                 type="date"
                 value={unlockDate}
@@ -255,7 +303,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
               </div>
             </div>
             <div className="capsule-dialog-footer">
-              <button className="capsule-cancel-btn" onClick={() => setShowCreate(false)}>取消</button>
+              <button className="capsule-cancel-btn" onClick={closeCreateDialog}>取消</button>
               <button
                 className="capsule-confirm-btn"
                 onClick={handleCreate}
@@ -269,11 +317,19 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
 
       {/* View opened capsule */}
       {openedCapsule && createPortal(
-        <div className="capsule-view-overlay" onClick={() => setOpenedCapsuleId(null)}>
-          <div className="capsule-view-dialog" onClick={(e) => e.stopPropagation()}>
+        <div ref={viewLayerRef} className="capsule-view-overlay" data-modal-layer onClick={closeViewDialog}>
+          <div
+            ref={viewDialogRef}
+            className="capsule-view-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="capsule-view-title"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="capsule-view-header">
-              <span>🎁 {openedCapsule.title}</span>
-              <button type="button" className="dialog-close-btn" onClick={() => setOpenedCapsuleId(null)} aria-label="关闭时光胶囊">✕</button>
+              <span id="capsule-view-title">🎁 {openedCapsule.title}</span>
+              <button ref={viewCloseButtonRef} type="button" className="dialog-close-btn" onClick={closeViewDialog} aria-label="关闭时光胶囊">✕</button>
             </div>
             <p className="capsule-view-meta">
               创建于 {openedCapsule.createdAt} · 解锁于 {openedCapsule.unlockDate} · {openedCapsule.photoNames.length} 张照片

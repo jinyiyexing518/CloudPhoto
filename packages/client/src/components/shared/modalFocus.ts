@@ -20,8 +20,35 @@ interface TabEvent {
 }
 
 interface FocusContainer extends FocusTarget {
+  contains?: (target: Node | null) => boolean;
   querySelectorAll: (selectors: string) => ArrayLike<HTMLElement>;
 }
+
+interface ModalIsolationElement {
+  inert: boolean;
+  hidden: boolean;
+  getAttribute: (name: string) => string | null;
+  setAttribute: (name: string, value: string) => void;
+  removeAttribute: (name: string) => void;
+  matches?: (selector: string) => boolean;
+  querySelector?: (selector: string) => unknown;
+}
+
+interface ModalIsolationDocument {
+  body: {
+    children: ArrayLike<unknown>;
+  };
+}
+
+interface ModalLayerSnapshot {
+  inert: boolean;
+  hidden: boolean;
+  ariaHidden: string | null;
+}
+
+const modalLayers: ModalIsolationElement[] = [];
+const isolationSnapshots = new Map<ModalIsolationElement, ModalLayerSnapshot>();
+const modalStackListeners = new Set<() => void>();
 
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
@@ -29,6 +56,8 @@ const FOCUSABLE_SELECTOR = [
   "input:not([disabled])",
   "select:not([disabled])",
   "textarea:not([disabled])",
+  "audio[controls]",
+  "video[controls]",
   '[contenteditable="true"]',
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
@@ -53,6 +82,95 @@ export function focusElement(element: FocusTarget | null): boolean {
 
 export function restoreFocus(element: FocusTarget | null): boolean {
   return focusElement(element);
+}
+
+export function isModalShortcutTarget(target: EventTarget | null): boolean {
+  return Boolean((target as HTMLElement | null)?.closest?.(
+    "input,textarea,select,audio[controls],video[controls],[contenteditable]:not([contenteditable=\"false\"])",
+  ));
+}
+
+function restoreModalIsolation(): void {
+  for (const [element, snapshot] of isolationSnapshots) {
+    element.inert = snapshot.inert;
+    element.hidden = snapshot.hidden;
+    if (snapshot.ariaHidden === null) element.removeAttribute("aria-hidden");
+    else element.setAttribute("aria-hidden", snapshot.ariaHidden);
+  }
+  isolationSnapshots.clear();
+}
+
+function applyModalIsolation(documentRoot: ModalIsolationDocument): void {
+  restoreModalIsolation();
+  const activeLayer = modalLayers[modalLayers.length - 1];
+  if (!activeLayer) return;
+
+  for (const candidate of Array.from(documentRoot.body.children)) {
+    const child = candidate as ModalIsolationElement;
+    if (
+      typeof child?.getAttribute !== "function"
+      || typeof child.setAttribute !== "function"
+      || typeof child.removeAttribute !== "function"
+    ) continue;
+    if (child === activeLayer) continue;
+    isolationSnapshots.set(child, {
+      inert: child.inert,
+      hidden: child.hidden,
+      ariaHidden: child.getAttribute("aria-hidden"),
+    });
+    child.inert = true;
+    child.setAttribute("aria-hidden", "true");
+    if (
+      child.matches?.('[aria-modal="true"]')
+      || child.querySelector?.('[aria-modal="true"]')
+    ) child.hidden = true;
+  }
+}
+
+export function refreshModalIsolation(
+  documentRoot: ModalIsolationDocument = document,
+): void {
+  applyModalIsolation(documentRoot);
+}
+
+export function activateModalLayer(
+  layer: ModalIsolationElement,
+  documentRoot: ModalIsolationDocument = document,
+): void {
+  const existingIndex = modalLayers.indexOf(layer);
+  if (existingIndex >= 0) modalLayers.splice(existingIndex, 1);
+  modalLayers.push(layer);
+  applyModalIsolation(documentRoot);
+  for (const listener of modalStackListeners) listener();
+}
+
+export function deactivateModalLayer(
+  layer: ModalIsolationElement,
+  documentRoot: ModalIsolationDocument = document,
+): void {
+  const index = modalLayers.lastIndexOf(layer);
+  if (index >= 0) modalLayers.splice(index, 1);
+  applyModalIsolation(documentRoot);
+  for (const listener of modalStackListeners) listener();
+}
+
+export function isTopModalLayer(layer: ModalIsolationElement | null): boolean {
+  return Boolean(layer && modalLayers[modalLayers.length - 1] === layer);
+}
+
+export function hasActiveModalLayer(): boolean {
+  return modalLayers.length > 0;
+}
+
+export function subscribeModalStack(listener: () => void): () => void {
+  modalStackListeners.add(listener);
+  return () => modalStackListeners.delete(listener);
+}
+
+export function resetModalLayerStackForTests(): void {
+  restoreModalIsolation();
+  modalLayers.length = 0;
+  modalStackListeners.clear();
 }
 
 export function trapTabKey(
