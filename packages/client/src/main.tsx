@@ -9,9 +9,8 @@ const isStandaloneMode = () =>
 
 const registerPwa = async () => {
   if (!("serviceWorker" in navigator)) return;
-  // Register SW unconditionally — non-PWA browsers benefit from /media/ caching
-  // (Service Worker caches images keyed by path, ignoring SAS token query params).
-  // `skipWaiting + clientsClaim` in Workbox config ensures app code is always fresh.
+  // Browser and installed sessions share the same small app-shell precache.
+  // Feature chunks and authorization-bound media are cached only after first use.
   const { registerSW } = await import("virtual:pwa-register");
   let refreshTriggered = false;
   const updateSW = registerSW({

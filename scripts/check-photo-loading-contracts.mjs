@@ -48,6 +48,18 @@ requireText(app, "refreshIfStale();", "visibility gate");
 requireText(app, "if (!isCurrent()) return;", "superseded revision guard");
 requireText(app, 'showToast("加载照片失败，请检查网络或服务器状态", "error")', "stale refresh error");
 requireText(app, '(momentsMounted || activeTab === "moments")', "deferred Moments mount");
+assert(
+  !app.includes('import PhotoGallery from "./components/gallery/PhotoGallery";'),
+  "PhotoGallery must not ship in the unauthenticated entry bundle",
+);
+requireText(
+  app,
+  'const loadPhotoGallery = () => import("./components/gallery/PhotoGallery")',
+  "deferred gallery import",
+);
+requireText(app, "const PhotoGallery = lazy(loadPhotoGallery);", "lazy gallery component");
+requireText(app, "if (user) void loadPhotoGallery();", "authenticated gallery preload");
+requireText(app, "正在加载照片视图…", "gallery chunk loading state");
 
 // Private list/media cache constraints and account cleanup.
 requireText(listCache, "const CACHE_MAX_ENTRIES = 24", "cache bound");
@@ -148,6 +160,21 @@ requireText(vite, '!request.headers.has("range")', "Range exclusion");
 requireText(vite, "cacheableResponse: { statuses: [200] }", "opaque exclusion");
 assert(!vite.includes("statuses: [0, 200]"), "opaque status 0 must not be cached");
 requireText(vite, 'cacheName: "photo-media-v1"', "private media cache name");
+assert(
+  !vite.includes('globPatterns: ["**/*.{js,css,html,ico,png,svg,json}"]'),
+  "deferred feature chunks must not be downloaded by the install-time precache",
+);
+for (const pattern of [
+  '"index.html"',
+  '"assets/index-*.{js,css}"',
+  '"assets/react-vendor-*.js"',
+  '"assets/virtual_pwa-register-*.js"',
+  '"assets/workbox-window*.js"',
+]) {
+  requireText(vite, pattern, "minimal app-shell precache");
+}
+requireText(vite, 'cacheName: "app-code-v1"', "on-demand app chunk cache");
+requireText(vite, 'url.pathname.startsWith("/assets/")', "on-demand app chunk route");
 requireText(vite, "matchOptions: { ignoreSearch: false }", "account-safe SAS cache key");
 requireText(vite, "maxAgeSeconds: 60 * 60", "SAS-bounded Workbox freshness");
 assert(!vite.includes("ignoreSearch: true"), "private media cache must retain SAS authorization");

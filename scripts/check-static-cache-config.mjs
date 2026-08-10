@@ -165,6 +165,25 @@ function checkHashedAssets(configPath) {
       fail(configPath, `asset is not content-hashed: ${relative(dirname(configPath), asset)}`);
     }
   }
+  const galleryChunks = assets.filter((asset) =>
+    /^PhotoGallery-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (galleryChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred PhotoGallery chunk");
+  }
+  const serviceWorkerPath = join(dirname(configPath), "sw.js");
+  let serviceWorker;
+  try {
+    serviceWorker = readFileSync(serviceWorkerPath, "utf8");
+  } catch (error) {
+    fail(configPath, `cannot inspect built service worker: ${error.message}`);
+  }
+  if (serviceWorker.includes(`assets/${basename(galleryChunks[0])}`)) {
+    fail(configPath, "deferred PhotoGallery chunk must not be downloaded by the precache");
+  }
+  if (!serviceWorker.includes("app-code-v1")) {
+    fail(configPath, "service worker must cache deferred app chunks after first use");
+  }
 }
 
 checkViteConfigModule();

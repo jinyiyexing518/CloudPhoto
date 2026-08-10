@@ -66,10 +66,32 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,json}"],
+        globPatterns: [
+          "index.html",
+          "assets/index-*.{js,css}",
+          "assets/react-vendor-*.js",
+          "assets/virtual_pwa-register-*.js",
+          "assets/workbox-window*.js",
+        ],
         navigateFallback: "/index.html",
         skipWaiting: true,
         runtimeCaching: [
+          {
+            urlPattern: ({ url, request, sameOrigin }) =>
+              sameOrigin &&
+              request.method === "GET" &&
+              url.pathname.startsWith("/assets/"),
+            handler: "CacheFirst" as const,
+            options: {
+              cacheName: "app-code-v1",
+              expiration: {
+                maxEntries: 80,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+                purgeOnQuotaError: true,
+              },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
           {
             urlPattern: /\/api\/.*$/i,
             handler: "NetworkOnly",

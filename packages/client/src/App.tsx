@@ -3,7 +3,8 @@ import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgres
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
-import PhotoGallery from "./components/gallery/PhotoGallery";
+const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
+const PhotoGallery = lazy(loadPhotoGallery);
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
 import { FilterState, emptyFilter, GridSize } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
@@ -2026,26 +2027,28 @@ function AppContent() {
                     </div>
                   )}
                   <OnThisDayCard photos={photos} onJumpToPhoto={jumpToTimelinePhoto} />
-                  <PhotoGallery
-                    photos={filteredPhotos}
-                    onDelete={handleDelete}
-                    onBatchDelete={handleBatchDeleteWithProgress}
-                    onSubjectUpdate={handleSubjectUpdate}
-                    onTakenAtUpdate={handleTakenAtUpdate}
-                    onGpsUpdate={handleGpsUpdate}
-                    onRenamePhoto={handleRenamePhoto}
-                    onToggleFavorite={handleToggleFavorite}
-                    onMovePhoto={handleMovePhoto}
-                    onDownloadStateChange={setDownloading}
-                    onShareCreated={handleMomentShareCreated}
-                    userName={user?.displayName}
-                    showImportantMoments={false}
-                    reverseOrder={photoSortAsc}
-                    sortKey={photoSortKey}
-                    gridSize={gridSize}
-                    focusPhotoName={timelineFocusPhotoName ?? undefined}
-                    focusRequestKey={timelineFocusRequestKey}
-                  />
+                  <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
+                    <PhotoGallery
+                      photos={filteredPhotos}
+                      onDelete={handleDelete}
+                      onBatchDelete={handleBatchDeleteWithProgress}
+                      onSubjectUpdate={handleSubjectUpdate}
+                      onTakenAtUpdate={handleTakenAtUpdate}
+                      onGpsUpdate={handleGpsUpdate}
+                      onRenamePhoto={handleRenamePhoto}
+                      onToggleFavorite={handleToggleFavorite}
+                      onMovePhoto={handleMovePhoto}
+                      onDownloadStateChange={setDownloading}
+                      onShareCreated={handleMomentShareCreated}
+                      userName={user?.displayName}
+                      showImportantMoments={false}
+                      reverseOrder={photoSortAsc}
+                      sortKey={photoSortKey}
+                      gridSize={gridSize}
+                      focusPhotoName={timelineFocusPhotoName ?? undefined}
+                      focusRequestKey={timelineFocusRequestKey}
+                    />
+                  </Suspense>
                 </>
               )}
             </div>
@@ -2053,26 +2056,28 @@ function AppContent() {
             {/* ── Moments panel ── mounted on first visit, then kept mounted */}
             {(momentsMounted || activeTab === "moments") && (
             <div style={{ display: activeTab === "moments" ? "" : "none" }}>
-              <PhotoGallery
-                photos={importantPhotos}
-                onDelete={handleDelete}
-                onBatchDelete={handleBatchDeleteWithProgress}
-                onSubjectUpdate={handleSubjectUpdate}
-                onTakenAtUpdate={handleTakenAtUpdate}
-                onGpsUpdate={handleGpsUpdate}
-                onRenamePhoto={handleRenamePhoto}
-                onToggleFavorite={handleToggleFavorite}
-                onMovePhoto={handleMovePhoto}
-                onDownloadStateChange={setDownloading}
-                onShareCreated={handleMomentShareCreated}
-                userName={user?.displayName}
-                showMemoryHighlights={false}
-                showImportantMoments={false}
-                momentsMode
-                momentsShareViews={momentsShareViews}
-                onMomentsCountChange={setMomentsDisplayCount}
-                gridSize={gridSize}
-              />
+              <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
+                <PhotoGallery
+                  photos={importantPhotos}
+                  onDelete={handleDelete}
+                  onBatchDelete={handleBatchDeleteWithProgress}
+                  onSubjectUpdate={handleSubjectUpdate}
+                  onTakenAtUpdate={handleTakenAtUpdate}
+                  onGpsUpdate={handleGpsUpdate}
+                  onRenamePhoto={handleRenamePhoto}
+                  onToggleFavorite={handleToggleFavorite}
+                  onMovePhoto={handleMovePhoto}
+                  onDownloadStateChange={setDownloading}
+                  onShareCreated={handleMomentShareCreated}
+                  userName={user?.displayName}
+                  showMemoryHighlights={false}
+                  showImportantMoments={false}
+                  momentsMode
+                  momentsShareViews={momentsShareViews}
+                  onMomentsCountChange={setMomentsDisplayCount}
+                  gridSize={gridSize}
+                />
+              </Suspense>
             </div>
             )}
 
@@ -2175,6 +2180,10 @@ function AppContent() {
 
 function App() {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (user) void loadPhotoGallery();
+  }, [user]);
 
   if (loading) {
     return (
