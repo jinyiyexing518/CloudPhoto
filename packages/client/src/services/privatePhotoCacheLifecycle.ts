@@ -56,18 +56,6 @@ function removePrivateLocalData(clearOwner: boolean): void {
   }
 }
 
-async function purgePrivateWorkboxExpirationMetadata(
-  databaseFactory: IDBFactory | undefined = typeof indexedDB === "undefined" ? undefined : indexedDB,
-  cacheNames: readonly string[],
-): Promise<void> {
-  try {
-    const metadata = await import("./idb.ts");
-    await metadata.purge(databaseFactory, cacheNames);
-  } catch {
-    console.warn("IDB purge fail");
-  }
-}
-
 function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean): Promise<void> {
   cacheGeneration += 1;
   if (clearOwner) activePrivateCacheOwner = null;
@@ -80,7 +68,15 @@ function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean):
       if (typeof window !== "undefined" && "caches" in window) {
         await Promise.allSettled(cacheNames.map((name) => window.caches.delete(name)));
       }
-      await purgePrivateWorkboxExpirationMetadata(undefined, cacheNames);
+      try {
+        const metadata = await import("./idb.ts");
+        await metadata.purge(
+          typeof indexedDB === "undefined" ? undefined : indexedDB,
+          cacheNames,
+        );
+      } catch {
+        console.warn("IDB purge fail");
+      }
     }
   };
   cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
