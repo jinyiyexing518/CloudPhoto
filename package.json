@@ -23,6 +23,7 @@
     "test:header-accessibility": "node --test packages/client/src/components/shared/menuKeyboard.test.mjs packages/client/src/components/groups/HeaderAutoHide.test.mjs packages/client/src/components/groups/HeaderMenusAccessibility.test.mjs packages/client/src/components/auth/UserMenuDialogsAccessibility.test.mjs",
     "test:auth-validation": "node --test packages/client/src/components/auth/nativeValidation.test.mjs",
     "test:auth-layout": "node --test scripts/auth-layout-contracts.test.mjs",
+    "test:auth-layout-cdp": "node scripts/auth-layout-cdp.mjs",
     "test:whats-new-accessibility": "node --test packages/client/src/components/whats-new/WhatsNewPopup.test.mjs",
     "test:pwa-install": "node --test packages/client/src/pwa/installPrompt.test.mjs",
     "test:pwa-update": "node --test packages/client/src/pwa/updatePolicy.test.mjs packages/client/src/pwa/deploymentRecovery.test.mjs",
