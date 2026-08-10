@@ -164,6 +164,7 @@
 - **动态跳到主要内容入口** — 首个键盘焦点可直接跳过 Header 与六视图页签并进入当前 active panel；目标随页签同步，焦点时才显示，侧栏/模态层打开时退出后台 Tab 序列，320/390px 与 200% zoom 根级横向溢出为 **0**
 - **记忆地图完整键盘路径** — 22px 视觉标记保留地理锚点但交互命中区扩为 **44×44**；照片名语义、Tab/Enter/Space、详情/编辑 stacked modal、保存 pending 与 connected-only 回焦形成闭环。位置搜索使用真实 44px 按钮、方向键/Enter/Escape、polite live status 和 request/auth generation 围栏，清空、关闭、卸载或切空间后迟到结果为 **0 次覆盖**
 - **Header 菜单与嵌套弹窗焦点链** — 空间切换和用户菜单统一支持方向键、Home/End、Escape、Tab 与 disabled skip；触发器获焦、菜单或子弹窗活跃时会 reveal 并锁定自动隐藏 Header。群组、安装、快捷键和管理员子弹窗共享 stacked modal boundary，pending 期间不可提前关闭且只向仍连接且可见的触发器恢复
+- **侧栏 modal 与辅助技术隔离** — 关闭 drawer 保留过渡但以原生 inert + aria-hidden 从 Tab/辅助树移除；打开后聚焦关闭、动态循环 Tab、Escape/遮罩关闭并回到真实 FAB。设置等子层共享同一 modal stack，320/390px 与 200% zoom 仍在视口内
 
 ---
 
