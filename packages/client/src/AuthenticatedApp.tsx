@@ -64,6 +64,16 @@ import {
   type TrashMutationEvent,
   type TrashMutationState,
 } from "./transfer/trashMutationState";
+import {
+  abortFolderRenameForWorkspaceDrift,
+  beginFolderRename,
+  createFolderRenameOperation,
+  finishFolderRename,
+  reduceFolderRenameEvent,
+  FolderRenameWorkspaceChangedError,
+  type FolderRenameGate,
+  type FolderRenameOperation,
+} from "./transfer/folderRenameState";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -73,6 +83,7 @@ const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPag
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
 const WHATS_NEW_IDLE_TIMEOUT_MS = 2_000;
+let folderRenameSequence = 0;
 
 function scheduleIdleMount(task: () => void) {
   let idleTaskHandle: number | null = null;
@@ -382,6 +393,7 @@ function AppContent() {
   const [batchMutationStates, setBatchMutationStates] = useState(createInitialBatchMutationStates);
   const [maintenanceTask, setMaintenanceTask] = useState<MaintenanceTaskState | null>(null);
   const [trashMutation, setTrashMutation] = useState<TrashMutationState | null>(null);
+  const [folderRenameOperation, setFolderRenameOperation] = useState<FolderRenameOperation | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const [momentsDisplayCount, setMomentsDisplayCount] = useState<number | null>(null);
@@ -421,6 +433,7 @@ function AppContent() {
     controller: AbortController;
     workspaceId: string;
   } | null>(null);
+  const folderRenameGate = useRef<FolderRenameGate>({ current: null }).current;
   const speedRef = useRef<{ ts: number; bytes: number; ema: number }>({ ts: 0, bytes: 0, ema: 0 });
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
@@ -439,7 +452,8 @@ function AppContent() {
     || voiceTransferState !== "idle"
     || activeBatchMutation !== null
     || isTrashMutationActive(trashMutation)
-    || isMaintenanceTaskActive(maintenanceTask);
+    || isMaintenanceTaskActive(maintenanceTask)
+    || folderRenameOperation !== null;
 
   const handleVoiceStateChange = useCallback((source: VoiceTransferSource, state: VoiceTransferState) => {
     setVoiceTransferStates((current) => setVoiceTransferState(current, source, state));
@@ -487,6 +501,8 @@ function AppContent() {
         ? getMaintenanceGuardMessage(maintenanceTask)
         : activeBatchMutation
         ? `${getBatchMutationLabel(activeBatchMutation.kind)}进行中（${activeBatchMutation.done}/${activeBatchMutation.total}），请勿离开当前页面`
+        : folderRenameOperation
+          ? `正在重命名文件夹 ${folderRenameOperation.oldLabel} → ${folderRenameOperation.newLabel}，请勿离开当前页面`
         : "传输进行中，请稍候";
   const transferringRef = useRef(false);
   const transferGuardMessageRef = useRef(transferGuardMessage);
@@ -517,9 +533,26 @@ function AppContent() {
     }
   }, [currentGroupId]);
 
+  useEffect(() => {
+    const workspaceId = currentGroupId || "personal";
+    if (abortFolderRenameForWorkspaceDrift(folderRenameGate, workspaceId)) {
+      const operationId = folderRenameGate.current?.operationId;
+      if (operationId) {
+        setFolderRenameOperation((current) => reduceFolderRenameEvent(current, {
+          type: "phase",
+          operationId,
+          phase: "reconciling",
+        }));
+      }
+    }
+  }, [currentGroupId, folderRenameGate]);
+
   useEffect(() => () => {
     uploadBatchRef.current?.controller.abort(
       new DOMException("页面已关闭，上传已停止", "AbortError"),
+    );
+    folderRenameGate.current?.controller.abort(
+      new DOMException("页面已关闭，已停止等待文件夹重命名结果", "AbortError"),
     );
   }, []);
 
@@ -889,6 +922,8 @@ function AppContent() {
       }
     }
   }, [currentGroupId, photoCacheScope, showToast]);
+  const fetchPhotosRef = useRef(fetchPhotos);
+  fetchPhotosRef.current = fetchPhotos;
 
   useEffect(() => {
     void fetchPhotos();
@@ -1671,13 +1706,64 @@ function AppContent() {
   };
 
   const handleRenameFolder = async (oldFolder: string, newFolder: string) => {
+    if (transferring) {
+      throw new Error(transferGuardMessage);
+    }
+    const workspaceId = currentGroupId || "personal";
+    const operationId = `folder-rename-${Date.now()}-${++folderRenameSequence}`;
+    const controller = new AbortController();
+    const operation = createFolderRenameOperation(
+      operationId,
+      workspaceId,
+      oldFolder.split("/").at(-1) ?? oldFolder,
+      newFolder.split("/").at(-1) ?? newFolder,
+    );
+    if (!beginFolderRename(folderRenameGate, operation, controller)) {
+      throw new Error("已有文件夹重命名正在进行，请等待完成");
+    }
+    setFolderRenameOperation((current) => reduceFolderRenameEvent(current, {
+      type: "start",
+      operation,
+    }));
+
     try {
-      const res = await renameFolderApi(oldFolder, newFolder, currentGroupId || undefined);
-      showToast(`文件夹已重命名（${res.renamed} 张照片已更新）`, "success");
+      const res = await renameFolderApi(
+        oldFolder,
+        newFolder,
+        currentGroupId || undefined,
+        controller.signal,
+      );
+      if ((currentGroupIdRef.current || "personal") !== workspaceId) {
+        throw new FolderRenameWorkspaceChangedError();
+      }
+      setFolderRenameOperation((current) => reduceFolderRenameEvent(current, {
+        type: "phase",
+        operationId,
+        phase: "reconciling",
+      }));
       await fetchPhotos();
+      if ((currentGroupIdRef.current || "personal") !== workspaceId) {
+        throw new FolderRenameWorkspaceChangedError();
+      }
+      showToast(`文件夹已重命名（${res.renamed} 个媒体文件已更新）`, "success");
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "重命名失败", "error");
-      throw e; // Let FolderView know it failed
+      const workspaceChanged = (currentGroupIdRef.current || "personal") !== workspaceId
+        || controller.signal.reason instanceof FolderRenameWorkspaceChangedError
+        || e instanceof FolderRenameWorkspaceChangedError;
+      setFolderRenameOperation((current) => reduceFolderRenameEvent(current, {
+        type: "phase",
+        operationId,
+        phase: "reconciling",
+      }));
+      await fetchPhotosRef.current();
+      if (workspaceChanged) throw new FolderRenameWorkspaceChangedError();
+      throw e;
+    } finally {
+      finishFolderRename(folderRenameGate, operationId);
+      setFolderRenameOperation((current) => reduceFolderRenameEvent(current, {
+        type: "finish",
+        operationId,
+      }));
     }
   };
 
@@ -1720,6 +1806,10 @@ function AppContent() {
   };
 
   const openSettingsTab = (tab: SettingsEntryTab, focusTarget: SettingsFocusTarget = "overview", focusItemId?: string) => {
+    if (folderRenameGate.current) {
+      showToast(transferGuardMessageRef.current, "info");
+      return;
+    }
     settingsRestoreFocusRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -1730,6 +1820,10 @@ function AppContent() {
   };
 
   const openSettingsFromUserMenu = () => {
+    if (folderRenameGate.current) {
+      showToast(transferGuardMessageRef.current, "info");
+      return;
+    }
     settingsRestoreFocusRef.current = userAvatarButtonRef.current;
     setShowSettings(true);
     setUserMenuOpen(false);
@@ -1885,7 +1979,7 @@ function AppContent() {
                   {user?.role === "admin" && <span className="role-badge">Admin</span>}
                 </div>
               </div>
-              <button className="user-menu-item" onClick={openSettingsFromUserMenu}>
+              <button className="user-menu-item" onClick={openSettingsFromUserMenu} disabled={folderRenameOperation !== null}>
                 <span className="user-menu-item-icon">⚙️</span> 设置
               </button>
               <button
@@ -2083,6 +2177,14 @@ function AppContent() {
                   />
                 </div>
               </>
+            ) : folderRenameOperation ? (
+              <div className="transfer-banner-row">
+                <span className="transfer-banner-icon">📁</span>
+                <span className="transfer-banner-text">
+                  正在重命名文件夹 {folderRenameOperation.oldLabel} → {folderRenameOperation.newLabel}
+                  {folderRenameOperation.phase === "reconciling" ? "，正在重新对账" : ""}
+                </span>
+              </div>
             ) : downloading ? (
               <div className="transfer-banner-row">
                 <span className="transfer-banner-icon">⬇️</span>
@@ -2430,6 +2532,7 @@ function AppContent() {
                 onVoiceStateChange={handleFolderVoiceStateChange}
                 onBatchMutationChange={handleFolderBatchMutationChange}
                 batchMutationActive={batchMutationStates.folder !== null}
+                folderRenameActive={folderRenameOperation !== null}
                 onShareCreated={handleMomentShareCreated}
                 onThumbnailUpdate={handleThumbnailUpdate}
                 userName={user?.displayName}

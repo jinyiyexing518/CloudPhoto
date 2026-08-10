@@ -89,8 +89,9 @@ test("batch operations expose semantic busy and disabled state for conflicting c
   assert.match(gallery, /if \(!selectMode \|\| selectedIdx !== null \|\| batchMutationBusy\) return;/);
   assert.match(gallery, /interactionDisabled=\{batchMutationBusy\}/);
   assert.match(folder, /interactionDisabled=\{batchMutationBusy\}/);
-  assert.match(folder, /onRename=\{onRenameSubFolder && !batchMutationBusy/);
-  assert.match(folder, /onDelete=\{onDeleteSubFolder && !batchMutationBusy/);
+  assert.match(folder, /onRename=\{onRenameSubFolder \?/);
+  assert.match(folder, /onDelete=\{onDeleteSubFolder \?/);
+  assert.match(folder, /interactionDisabled=\{batchMutationBusy\}/);
   assert.match(folder, /onDrop=\{batchMutationBusy \? undefined/);
   assert.match(card, /aria-disabled=\{interactionDisabled \|\| undefined\}/);
   assert.match(card, /if \(interactionDisabled\) return;/);

@@ -615,6 +615,7 @@ export async function renameFolderApi(
   oldFolder: string,
   newFolder: string,
   groupId?: string,
+  signal?: AbortSignal,
 ): Promise<{ renamed: number }> {
   const response = await fetchWithTimeout(
     `${API_BASE}/photos/folder`,
@@ -622,8 +623,9 @@ export async function renameFolderApi(
       method: "PATCH",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ oldFolder, newFolder, groupId }),
+      signal,
     },
-    60_000,
+    220_000,
   );
   if (!response.ok) throw new Error(await parseApiError(response, "重命名文件夹失败"));
   return response.json() as Promise<{ renamed: number }>;

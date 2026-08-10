@@ -7,6 +7,11 @@ import {
 import { getBlobServiceClient, containerName, generateSasUrl } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import {
+  FolderRenameError,
+  planFolderRename,
+  renameFolderBlobs,
+} from "./renameFolderSafety";
 
 app.http("renameFolder", {
   methods: ["PATCH"],
@@ -30,17 +35,9 @@ app.http("renameFolder", {
 
       if (!oldFolder || newFolder === undefined || newFolder === null)
         return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "oldFolder and newFolder are required" }) };
-      if (oldFolder === newFolder)
+      const plan = planFolderRename(oldFolder, newFolder);
+      if (plan.unchanged)
         return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ renamed: 0 }) };
-
-      // Sanitise each segment of the new folder name
-      const safeNew = newFolder
-        .split("/")
-        .map((seg) => seg.replace(/[\\\0<>"|?*:]/g, "_").trim())
-        .filter(Boolean)
-        .join("/");
-      if (!safeNew)
-        return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Invalid newFolder" }) };
 
       // Determine scope and authorise
       let scope: string;
@@ -53,40 +50,40 @@ app.http("renameFolder", {
         scope = `personal/${payload.userId}`;
       }
 
-      const oldPrefix = `${scope}/${oldFolder}/`;
-      const newPrefix = `${scope}/${safeNew}/`;
+      const oldPrefix = `${scope}/${plan.oldFolder}/`;
+      const newPrefix = `${scope}/${plan.newFolder}/`;
 
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
 
-      // Collect all blobs under the old folder prefix
-      const blobs: string[] = [];
-      for await (const item of containerClient.listBlobsFlat({ prefix: oldPrefix })) {
-        blobs.push(item.name);
-      }
-
-      if (blobs.length === 0)
-        return { status: 404, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Folder not found or already empty" }) };
-
-      // Copy each blob to its new name, then delete the original
-      let renamed = 0;
-      for (const blobName of blobs) {
-        const newBlobName = newPrefix + blobName.slice(oldPrefix.length);
-        const sourceBlob = containerClient.getBlockBlobClient(blobName);
-        const destBlob = containerClient.getBlockBlobClient(newBlobName);
-        const sourceSasUrl = await generateSasUrl(blobName, 1);
-        const copyPoller = await destBlob.beginCopyFromURL(sourceSasUrl);
-        await copyPoller.pollUntilDone();
-        await sourceBlob.deleteIfExists();
-        renamed++;
-      }
+      const result = await renameFolderBlobs({
+        container: containerClient,
+        oldPrefix,
+        newPrefix,
+        generateSourceUrl: (blobName) => generateSasUrl(blobName, 2),
+        context,
+      });
 
       return {
         status: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ renamed, oldFolder, newFolder: safeNew }),
+        body: JSON.stringify({
+          renamed: result.renamed,
+          oldFolder: plan.oldFolder,
+          newFolder: plan.newFolder,
+        }),
       };
     } catch (error) {
+      if (error instanceof FolderRenameError) {
+        if (error.status >= 500) {
+          context.error("Rename folder safety error:", error);
+        }
+        return {
+          status: error.status,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: error.message, ...error.details }),
+        };
+      }
       context.error("Rename folder error:", error);
       return {
         status: 500,

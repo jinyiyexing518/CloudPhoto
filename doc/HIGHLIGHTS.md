@@ -109,6 +109,7 @@
 - **IP 滑动窗口限流** — 登录 10/分、注册 5/分、刷新 20/分；超限 `429 + Retry-After: 60`
 - **OIDC 无密码 CI/CD** — GitHub Actions 通过 Azure Federated Credential 认证，无长期密码
 - **用户委托 SAS** — Blob 访问凭证由 Managed Identity 签发（无账户密钥），2h 有效期，最小权限
+- **文件夹重命名无覆盖事务** — 路径策略只接受规范相对路径与同 parent 末段改名，同时保留历史 Unicode source key；完整源/目标预检后，Azure Copy Blob 使用 destination `ifNoneMatch=*` 与 source ETag 原子拒绝竞态覆盖/旧版本搬移。copy 后复核 inventory，删除每个源前短租约锁住并验证目标 copyId + final ETag，源删除也受预检 ETag 保护；失败只清理仍可证明归属本操作的目标，保证每个媒体至少一份
 
 ---
 
@@ -135,6 +136,7 @@
 - **回收站 mutation 串行化** — 单张、全部和文件夹级恢复/永久删除共用同步 gate 与稳定快照 runner；单项失败继续处理，Abort 不计失败，停止后不启动下一项并重新加载远端状态
 - **回收站不可逆操作保护** — 所有桌面、文件夹、卡片和移动端固定入口在任务期间真实 disabled；设置关闭、维护任务、空间漂移、卸载、Tab/群组切换、beforeunload 与 PWA 更新共用活动判定，停止状态保留部分完成/失败统计
 - **更新与传输互斥** — 上传/下载/批量删除/回收站 mutation/语音备注录制或上传/批量 mutation/历史维护任务期间，PWA「立即更新」按钮禁用；同一全局守卫同步阻止切 Tab、切群组、beforeunload，并在横幅显示准确类型与累计进度
+- **文件夹重命名 operation 边界** — operationId/workspaceId/token-safe reducer 与同步 ref gate 防双击和 stale finally；FolderCard 根层/递归层及批量、上传、移动、删除入口真实 disabled。空间漂移 AbortSignal 只停止客户端等待；成功、失败或超时均通过当前 workspace 的最新 callback 强制远端对账；横幅显示 `A → B` 而不虚构服务端百分比
 - **PWA** — Service Worker + Manifest，可安装到桌面/手机
 - **14 个键盘快捷键** + 快捷键速查表；交互控件与模态层具备背景快捷键安全边界
 - **图标控件无障碍语义** — 关闭、清空、导航、播放、收藏与编辑按钮具备明确 ARIA 名称，状态型控件同步暴露 pressed 状态

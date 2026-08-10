@@ -49,6 +49,7 @@ import {
   type BatchMutationKind,
   type BatchMutationResult,
 } from "../../transfer/batchMutationState";
+import { validateFolderRenameInput } from "../../transfer/folderRenameState";
 
 let folderBatchMutationSequence = 0;
 
@@ -139,6 +140,7 @@ function FolderCard({
   onRename,
   onDelete,
   hasSubFolders = false,
+  interactionDisabled = false,
 }: {
   name: string;
   count: number;
@@ -147,6 +149,7 @@ function FolderCard({
   onRename?: (newName: string) => void;
   onDelete?: () => void;
   hasSubFolders?: boolean;
+  interactionDisabled?: boolean;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -154,6 +157,7 @@ function FolderCard({
   const dragCount = useRef(0);
 
   const confirmRename = () => {
+    if (interactionDisabled) return;
     const trimmed = editVal.trim();
     if (trimmed && trimmed !== name && onRename) onRename(trimmed);
     setEditing(false);
@@ -162,15 +166,26 @@ function FolderCard({
   return (
     <div
       className={`folder-card${dragOver ? " folder-card--dragover" : ""}`}
-      onClick={() => { if (!editing) onClick(); }}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-      onDragEnter={(e) => { e.preventDefault(); dragCount.current++; setDragOver(true); }}
+      aria-disabled={interactionDisabled || undefined}
+      onClick={() => { if (!editing && !interactionDisabled) onClick(); }}
+      onDragOver={(e) => {
+        if (interactionDisabled) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }}
+      onDragEnter={(e) => {
+        if (interactionDisabled) return;
+        e.preventDefault();
+        dragCount.current++;
+        setDragOver(true);
+      }}
       onDragLeave={() => { dragCount.current--; if (dragCount.current === 0) setDragOver(false); }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();
         dragCount.current = 0;
         setDragOver(false);
+        if (interactionDisabled) return;
         const photoName = e.dataTransfer.getData("photoName");
         const fromFolder = e.dataTransfer.getData("fromFolder");
         if (photoName && onDrop) onDrop(photoName, fromFolder);
@@ -190,6 +205,7 @@ function FolderCard({
           onBlur={confirmRename}
           onClick={(e) => e.stopPropagation()}
           maxLength={60}
+          disabled={interactionDisabled}
         />
       ) : (
         <div className="folder-card-name">{name || UNCATEGORIZED}</div>
@@ -201,7 +217,13 @@ function FolderCard({
           className="folder-card-rename-btn"
           aria-label={`重命名文件夹${name || UNCATEGORIZED}`}
           title="重命名文件夹"
-          onClick={(e) => { e.stopPropagation(); setEditVal(name); setEditing(true); }}
+          disabled={interactionDisabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (interactionDisabled) return;
+            setEditVal(name);
+            setEditing(true);
+          }}
         >
           ✏️
         </button>
@@ -212,7 +234,11 @@ function FolderCard({
           className="folder-card-delete-btn"
           aria-label={`删除文件夹${name || UNCATEGORIZED}`}
           title="删除文件夹（照片移入回收站）"
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          disabled={interactionDisabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!interactionDisabled) onDelete();
+          }}
         >
           🗑️
         </button>
@@ -240,6 +266,7 @@ interface Props {
   onVoiceStateChange?: (state: VoiceTransferState) => void;
   onBatchMutationChange?: (event: BatchMutationEvent) => void;
   batchMutationActive?: boolean;
+  folderRenameActive?: boolean;
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
@@ -267,6 +294,7 @@ export default function FolderView({
   onVoiceStateChange,
   onBatchMutationChange,
   batchMutationActive = false,
+  folderRenameActive = false,
   onShareCreated,
   onThumbnailUpdate,
   userName,
@@ -304,6 +332,7 @@ export default function FolderView({
   const applyingPopstateRef = useRef(false);
   const [localBatchMutationBusy, setLocalBatchMutationBusy] = useState(false);
   const batchMutationBusy = localBatchMutationBusy || batchMutationActive;
+  const mutationBusy = batchMutationBusy || folderRenameActive;
   const batchMutationGate = useRef<BatchMutationGate>({ current: null }).current;
   const mountedRef = useRef(true);
 
@@ -426,6 +455,7 @@ export default function FolderView({
   }
 
   const createFolder = () => {
+    if (mutationBusy) return;
     const name = newFolderName.trim();
     if (!name) return;
     if (name.includes("/")) { showToast("文件夹名不能包含 /", "error"); return; }
@@ -438,9 +468,14 @@ export default function FolderView({
   };
 
   const handleRenameFolder = async (oldName: string, newName: string) => {
-    if (!newName.trim() || newName === oldName) return;
+    if (mutationBusy) return;
     const oldFull = fullFolderPath(oldName);
-    const newFull = fullFolderPath(newName.trim());
+    const validation = validateFolderRenameInput(oldFull, newName, displaySubFolders);
+    if (!validation.ok) {
+      showToast(validation.error, "error");
+      return;
+    }
+    const newFull = validation.newFolder;
     // Update localStorage path if we're currently inside (or below) the renamed folder
     try {
       await onRenameFolder?.(oldFull, newFull);
@@ -462,6 +497,7 @@ export default function FolderView({
   };
 
   const handleDeleteFolder = async (folderName: string) => {
+    if (mutationBusy) return;
     const fullPath = fullFolderPath(folderName);
     const photosInFolder = photos.filter((p) => {
       const f = p.folder?.trim() ?? "";
@@ -520,6 +556,7 @@ export default function FolderView({
   });
 
   const moveByDragWithToast = async (photoName: string, fromFolder: string, toFolder: string) => {
+    if (mutationBusy) return;
     if (fromFolder === toFolder) return;
     const ok = await onMovePhoto(photoName, toFolder);
     if (ok) {
@@ -588,17 +625,18 @@ export default function FolderView({
                 if (e.key === "Escape") setCreatingFolder(false);
               }}
               maxLength={60}
+              disabled={mutationBusy}
             />
-            <button className="folder-create-confirm" onClick={createFolder}>确认</button>
+            <button className="folder-create-confirm" onClick={createFolder} disabled={mutationBusy}>确认</button>
             <button className="folder-create-cancel" onClick={() => setCreatingFolder(false)}>取消</button>
           </div>
         ) : (
           <>
-            <button className="folder-new-btn" onClick={() => setCreatingFolder(true)}>
+            <button className="folder-new-btn" onClick={() => setCreatingFolder(true)} disabled={mutationBusy}>
               {currentPath === null ? "+ 新建文件夹" : "+ 新建子文件夹"}
             </button>
             {currentPath !== null && (
-              <button className="folder-share-btn" onClick={() => setShowShareFolderDialog(true)} disabled={sharingFolder}>
+              <button className="folder-share-btn" onClick={() => setShowShareFolderDialog(true)} disabled={sharingFolder || mutationBusy}>
                 {sharingFolder ? "创建中…" : "🔗 分享当前文件夹"}
               </button>
             )}
@@ -615,7 +653,7 @@ export default function FolderView({
                 type="button"
                 className="dialog-close-btn"
                 onClick={() => setShowShareFolderDialog(false)}
-                disabled={sharingFolder}
+                disabled={sharingFolder || mutationBusy}
                 aria-label="关闭文件夹分享"
               >✕</button>
             </div>
@@ -641,7 +679,7 @@ export default function FolderView({
                       className={`share-folder-option${active ? " active" : ""}`}
                       aria-pressed={active}
                       onClick={() => setFolderShareHours(option.value)}
-                      disabled={sharingFolder}
+                      disabled={sharingFolder || mutationBusy}
                     >
                       <span className="share-folder-option-title">{option.label}</span>
                       <span className="share-folder-option-hint">{option.hint}</span>
@@ -652,7 +690,7 @@ export default function FolderView({
             </div>
             <div className="confirm-actions">
               <button className="confirm-cancel-btn" onClick={() => setShowShareFolderDialog(false)} disabled={sharingFolder}>取消</button>
-              <button className="folder-share-btn" onClick={() => void handleShareCurrentFolder()} disabled={sharingFolder}>
+              <button className="folder-share-btn" onClick={() => void handleShareCurrentFolder()} disabled={sharingFolder || mutationBusy}>
                 {sharingFolder ? "创建中…" : "确认分享"}
               </button>
             </div>
@@ -672,6 +710,7 @@ export default function FolderView({
                 void moveByDragWithToast(photoName, fromFolder, "");
               }}
               hasSubFolders={false}
+              interactionDisabled={mutationBusy}
             />
           )}
           {displaySubFolders.map((name) => (
@@ -680,12 +719,13 @@ export default function FolderView({
               name={name}
               count={countPhotosUnder(photos, name)}
               onClick={() => navigateTo(name)}
-              onDrop={batchMutationBusy ? undefined : (photoName, fromFolder) => {
+              onDrop={mutationBusy ? undefined : (photoName, fromFolder) => {
                 void moveByDragWithToast(photoName, fromFolder, name);
               }}
-              onRename={onRenameFolder && !batchMutationBusy ? (newName) => void handleRenameFolder(name, newName) : undefined}
-              onDelete={batchMutationBusy ? undefined : () => void handleDeleteFolder(name)}
+              onRename={onRenameFolder ? (newName) => void handleRenameFolder(name, newName) : undefined}
+              onDelete={() => void handleDeleteFolder(name)}
               hasSubFolders={getImmediateSubFolders(photos, extraFolders, name).length > 0}
+              interactionDisabled={mutationBusy}
             />
           ))}
           {!hasUncategorized && displaySubFolders.length === 0 && (
@@ -719,13 +759,13 @@ export default function FolderView({
           onUploadToFolder={onUploadToFolder}
           uploadProgress={uploadProgress}
           onMovePhoto={onMovePhoto}
-          onRenameSubFolder={onRenameFolder && !batchMutationBusy ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
-          onDeleteSubFolder={batchMutationBusy ? undefined : (sub) => handleDeleteFolder(sub)}
+          onRenameSubFolder={onRenameFolder ? (sub, newSub) => void handleRenameFolder(sub, newSub) : undefined}
+          onDeleteSubFolder={(sub) => handleDeleteFolder(sub)}
           onBatchDelete={onBatchDelete}
           onDownloadStateChange={onDownloadStateChange}
           onVoiceStateChange={onVoiceStateChange}
           onBatchMutationChange={handleBatchMutationEvent}
-          batchMutationBusy={batchMutationBusy}
+          batchMutationBusy={mutationBusy}
           batchMutationGate={batchMutationGate}
           onShareCreated={onShareCreated}
           onThumbnailUpdate={onThumbnailUpdate}
@@ -1489,9 +1529,10 @@ function FolderContent({
               count={countPhotos(sub)}
               onClick={() => onNavigate(sub)}
               onDrop={batchMutationBusy ? undefined : (photoName, fromFolder) => onDropToSubFolder(photoName, fromFolder, sub)}
-              onRename={onRenameSubFolder && !batchMutationBusy ? (newSub) => onRenameSubFolder(sub, newSub) : undefined}
-              onDelete={onDeleteSubFolder && !batchMutationBusy ? () => onDeleteSubFolder(sub) : undefined}
+              onRename={onRenameSubFolder ? (newSub) => onRenameSubFolder(sub, newSub) : undefined}
+              onDelete={onDeleteSubFolder ? () => onDeleteSubFolder(sub) : undefined}
               hasSubFolders={getImmediateSubFolders(allPhotos, allExtraFolders, subFullPath).length > 0}
+              interactionDisabled={batchMutationBusy}
             />
           );
         })}
