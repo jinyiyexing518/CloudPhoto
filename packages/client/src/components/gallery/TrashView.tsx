@@ -385,6 +385,7 @@ export default function TrashView({ groupId, onRestored, onMutationStateChange, 
                     <div key={photo.name} className="trash-card">
                       <div className="trash-card-thumb">
                         <MediaThumb
+                          blobName={photo.name}
                           url={photo.url}
                           thumbnailUrl={photo.thumbnailUrl}
                           previewUrl={photo.previewUrl}

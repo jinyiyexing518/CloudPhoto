@@ -21,6 +21,12 @@ import {
   type VideoPlaybackSession,
   type VideoPlaybackStatus,
 } from "./videoPlaybackSession";
+import { persistVideoPlaybackThumbnail } from "./uploadApi";
+import {
+  markVideoCoverRepaired,
+  videoPlaybackCoverFrameInformation,
+} from "./videoCoverRepair";
+import { canInspectPlaybackVideoCover } from "./videoCoverRepairPolicy";
 
 interface OpenVideoPlayback {
   photoName: string;
@@ -28,15 +34,13 @@ interface OpenVideoPlayback {
   needsThumbnailCapture: boolean;
 }
 
-interface VideoPlayableEvent {
+interface VideoThumbnailCapturedEvent {
   photoName: string;
-  session: VideoPlaybackSession;
-  video: HTMLVideoElement;
-  shouldCaptureThumbnail: boolean;
+  thumbnailUrl: string;
 }
 
 interface UseResilientVideoPlaybackOptions {
-  onPlayable?(event: VideoPlayableEvent): void;
+  onThumbnailCaptured?(event: VideoThumbnailCapturedEvent): void;
 }
 
 type VideoEventHandlers = Pick<
@@ -68,7 +72,7 @@ export interface ResilientVideoPlayback {
 }
 
 export function useResilientVideoPlayback({
-  onPlayable,
+  onThumbnailCaptured,
 }: UseResilientVideoPlaybackOptions = {}): ResilientVideoPlayback {
   const [session, setSessionState] = useState<VideoPlaybackSession | null>(null);
   const [status, setStatus] = useState<VideoPlaybackStatus>("idle");
@@ -76,8 +80,8 @@ export function useResilientVideoPlayback({
   const videoRef = useRef<HTMLVideoElement>(null);
   const sessionIdRef = useRef(0);
   const requestTokenRef = useRef(0);
-  const onPlayableRef = useRef(onPlayable);
-  onPlayableRef.current = onPlayable;
+  const onThumbnailCapturedRef = useRef(onThumbnailCaptured);
+  onThumbnailCapturedRef.current = onThumbnailCaptured;
 
   const setSession = (next: VideoPlaybackSession) => {
     sessionRef.current = next;
@@ -151,6 +155,41 @@ export function useResilientVideoPlayback({
   const eventHandlers = useMemo<VideoEventHandlers>(() => {
     if (!session) return {};
     const key = session.key;
+    const maybeCaptureThumbnail = (video: HTMLVideoElement) => {
+      const current = sessionRef.current;
+      if (!current || current.key !== key) return;
+      if (!canInspectPlaybackVideoCover({
+        needsCapture: current.needsThumbnailCapture,
+        captureAttempted: current.thumbnailCaptureAttempted,
+        canCapture: canCaptureVideoPlaybackThumbnail(current.source),
+        currentTime: video.currentTime,
+      })) {
+        return;
+      }
+      const information = videoPlaybackCoverFrameInformation(video);
+      if (!information || information.lowInformation) return;
+      const capture = claimVideoThumbnailCapture(current, true);
+      if (!capture.shouldCapture) return;
+      setSession(capture.session);
+      const requestToken = requestTokenRef.current;
+      void persistVideoPlaybackThumbnail(current.photoName, video).then((thumbnailUrl) => {
+        if (!thumbnailUrl) return;
+        markVideoCoverRepaired(current.photoName);
+        const active = sessionRef.current;
+        if (
+          requestToken !== requestTokenRef.current
+          || !active
+          || active.key !== key
+          || active.photoName !== current.photoName
+        ) {
+          return;
+        }
+        onThumbnailCapturedRef.current?.({
+          photoName: current.photoName,
+          thumbnailUrl,
+        });
+      });
+    };
     return {
       onPlay: (event) => controller.onPlay(key, event.currentTarget),
       onLoadedMetadata: (event) => {
@@ -162,22 +201,17 @@ export function useResilientVideoPlayback({
         const current = sessionRef.current;
         if (!current || current.key !== key) return;
         if (current.fallbackAttempted) promoteSuccessfulMediaUrl(current.source);
-        const capture = claimVideoThumbnailCapture(
-          current,
-          canCaptureVideoPlaybackThumbnail(current.source),
-        );
-        if (capture.session !== current) setSession(capture.session);
-        onPlayableRef.current?.({
-          photoName: current.photoName,
-          session: capture.session,
-          video,
-          shouldCaptureThumbnail: capture.shouldCapture,
-        });
       },
-      onPlaying: (event) => controller.onPlaying(key, event.currentTarget),
+      onPlaying: (event) => {
+        controller.onPlaying(key, event.currentTarget);
+        maybeCaptureThumbnail(event.currentTarget);
+      },
       onWaiting: (event) => controller.onWaiting(key, event.currentTarget),
       onStalled: (event) => controller.onStalled(key, event.currentTarget),
-      onTimeUpdate: (event) => controller.onTimeUpdate(key, event.currentTarget),
+      onTimeUpdate: (event) => {
+        controller.onTimeUpdate(key, event.currentTarget);
+        maybeCaptureThumbnail(event.currentTarget);
+      },
       onCanPlay: (event) => controller.onCanPlay(key, event.currentTarget),
       onPause: (event) => controller.onPause(key, event.currentTarget),
       onSeeking: (event) => controller.onSeeking(key, event.currentTarget),

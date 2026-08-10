@@ -2,6 +2,7 @@ export const VIDEO_COVER_REPAIR_MAX_FILE_BYTES = 48 * 1024 * 1024;
 export const VIDEO_COVER_REPAIR_SESSION_BUDGET_BYTES = 160 * 1024 * 1024;
 export const VIDEO_COVER_REPAIR_MAX_ATTEMPTS = 2;
 export const VIDEO_COVER_REPAIR_RETRY_BACKOFF_MS = 30_000;
+export const VIDEO_PLAYBACK_COVER_MIN_TIME_SECONDS = 0.1;
 
 export interface VideoCoverRepairNetworkSnapshot {
   online: boolean;
@@ -46,6 +47,65 @@ export interface VideoCoverFrameInformation {
   meanLuminance: number;
   luminanceDeviation: number;
   dynamicRange: number;
+}
+
+export class VideoCoverBrokenRegistry {
+  private readonly entries = new Set<string>();
+
+  private key(scope: string | number, blobName: string): string {
+    return `${scope}:${blobName}`;
+  }
+
+  mark(scope: string | number, blobName: string): void {
+    this.entries.add(this.key(scope, blobName));
+  }
+
+  has(scope: string | number, blobName: string): boolean {
+    return this.entries.has(this.key(scope, blobName));
+  }
+
+  clear(scope: string | number, blobName: string): void {
+    this.entries.delete(this.key(scope, blobName));
+  }
+
+  reset(): void {
+    this.entries.clear();
+  }
+}
+
+export function needsPlaybackVideoCoverCapture(
+  hasDerivative: boolean,
+  knownBroken: boolean,
+): boolean {
+  return !hasDerivative || knownBroken;
+}
+
+export function isPhotoBlobInWorkspace(
+  blobName: string,
+  groupId: string | null,
+): boolean {
+  if (groupId === null) return false;
+  return groupId
+    ? blobName.startsWith(`groups/${groupId}/`)
+    : blobName.startsWith("personal/");
+}
+
+export function canInspectPlaybackVideoCover({
+  needsCapture,
+  captureAttempted,
+  canCapture,
+  currentTime,
+}: {
+  needsCapture: boolean;
+  captureAttempted: boolean;
+  canCapture: boolean;
+  currentTime: number;
+}): boolean {
+  return needsCapture
+    && !captureAttempted
+    && canCapture
+    && Number.isFinite(currentTime)
+    && currentTime >= VIDEO_PLAYBACK_COVER_MIN_TIME_SECONDS;
 }
 
 export function videoCoverFrameInformation(

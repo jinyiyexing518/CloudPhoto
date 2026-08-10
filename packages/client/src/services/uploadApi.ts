@@ -294,6 +294,13 @@ const videoThumbnailWrites = new Map<string, Promise<string | null>>();
 const videoThumbnailPersistenceListeners = new Set<
   (blobName: string, pending: boolean, thumbnailUrl?: string) => void
 >();
+const videoThumbnailResultListeners = new Set<
+  (blobName: string, thumbnailUrl: string) => void
+>();
+
+function videoThumbnailPersistenceKey(blobName: string): string {
+  return `${getAuthGeneration()}:${blobName}`;
+}
 
 export function markVideoThumbnailPersistencePending(
   blobName: string,
@@ -316,6 +323,13 @@ export function subscribeToVideoThumbnailPersistence(
 ): () => void {
   videoThumbnailPersistenceListeners.add(listener);
   return () => videoThumbnailPersistenceListeners.delete(listener);
+}
+
+export function subscribeToVideoThumbnailResults(
+  listener: (blobName: string, thumbnailUrl: string) => void,
+): () => void {
+  videoThumbnailResultListeners.add(listener);
+  return () => videoThumbnailResultListeners.delete(listener);
 }
 
 export async function extractVideoElementThumbnail(
@@ -350,27 +364,30 @@ export async function persistVideoPlaybackThumbnail(
   blobName: string,
   video: HTMLVideoElement,
 ): Promise<string | null> {
+  const authGeneration = getAuthGeneration();
+  const persistenceKey = videoThumbnailPersistenceKey(blobName);
   if (
-    persistedPlaybackThumbnails.has(blobName)
+    persistedPlaybackThumbnails.has(persistenceKey)
     || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
     || video.videoWidth <= 0
     || video.videoHeight <= 0
   ) {
     return null;
   }
-  persistedPlaybackThumbnails.add(blobName);
+  persistedPlaybackThumbnails.add(persistenceKey);
   let persisted = false;
 
   try {
     const thumbnail = await extractVideoElementThumbnail(video);
-    if (!thumbnail) return null;
+    if (!thumbnail || authGeneration !== getAuthGeneration()) return null;
     const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail);
+    if (authGeneration !== getAuthGeneration()) return null;
     persisted = Boolean(thumbnailUrl);
     return thumbnailUrl;
   } catch {
     return null;
   } finally {
-    if (!persisted) persistedPlaybackThumbnails.delete(blobName);
+    if (!persisted) persistedPlaybackThumbnails.delete(persistenceKey);
   }
 }
 
@@ -382,7 +399,9 @@ export async function setVideoThumbnail(
   blobName: string,
   thumbnail: Blob,
 ): Promise<string | null> {
-  const existing = videoThumbnailWrites.get(blobName);
+  const authGeneration = getAuthGeneration();
+  const persistenceKey = videoThumbnailPersistenceKey(blobName);
+  const existing = videoThumbnailWrites.get(persistenceKey);
   if (existing) return existing;
   const write = (async () => {
     try {
@@ -398,17 +417,26 @@ export async function setVideoThumbnail(
       );
       if (!res.ok) return null;
       const json = await res.json() as { thumbnailUrl?: string };
-      return json.thumbnailUrl ? getPreferredMediaUrl(json.thumbnailUrl) : null;
+      if (authGeneration !== getAuthGeneration()) return null;
+      const thumbnailUrl = json.thumbnailUrl
+        ? getPreferredMediaUrl(json.thumbnailUrl)
+        : null;
+      if (thumbnailUrl) {
+        for (const listener of videoThumbnailResultListeners) {
+          listener(blobName, thumbnailUrl);
+        }
+      }
+      return thumbnailUrl;
     } catch {
       return null;
     }
   })();
-  videoThumbnailWrites.set(blobName, write);
+  videoThumbnailWrites.set(persistenceKey, write);
   try {
     return await write;
   } finally {
-    if (videoThumbnailWrites.get(blobName) === write) {
-      videoThumbnailWrites.delete(blobName);
+    if (videoThumbnailWrites.get(persistenceKey) === write) {
+      videoThumbnailWrites.delete(persistenceKey);
     }
   }
 }

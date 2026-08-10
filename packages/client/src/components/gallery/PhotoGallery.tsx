@@ -17,7 +17,6 @@ import {
   updatePhotoGps,
   fetchMotionVideoBlob,
   getViewerSrc,
-  persistVideoPlaybackThumbnail,
 } from "../../services/photoApi";
 import { DEFAULT_PAGE_SIZE, GALLERY_EAGER_MEDIA_COUNT, SCROLL_SENTINEL_MARGIN } from "@cloudphoto/algorithm";
 import { addRecentShareLink } from "../../services/share/shareLinksStore";
@@ -33,6 +32,8 @@ import {
   getVideoPlaybackRenderState,
 } from "../../services/videoPlaybackSession";
 import { useResilientVideoPlayback } from "../../services/useResilientVideoPlayback";
+import { isVideoCoverKnownBroken } from "../../services/videoCoverRepair";
+import { needsPlaybackVideoCoverCapture } from "../../services/videoCoverRepairPolicy";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import {
@@ -322,25 +323,15 @@ function PhotoGallery({
     closeVideo,
     retryVideo,
   } = useResilientVideoPlayback({
-    onPlayable: ({
+    onThumbnailCaptured: ({
       photoName,
-      video,
-      shouldCaptureThumbnail,
+      thumbnailUrl,
     }) => {
-      if (
-        !shouldCaptureThumbnail
-        || selectedPhoto?.name !== photoName
-        || selectedPhoto.thumbnailUrl
-      ) {
-        return;
-      }
-      void persistVideoPlaybackThumbnail(photoName, video).then((thumbnailUrl) => {
-        if (!thumbnailUrl) return;
-        onThumbnailUpdate?.(photoName, thumbnailUrl);
-        setSelectedPhoto((current) => current?.name === photoName
-          ? { ...current, thumbnailUrl }
-          : current);
-      });
+      if (selectedPhoto?.name !== photoName) return;
+      onThumbnailUpdate?.(photoName, thumbnailUrl);
+      setSelectedPhoto((current) => current?.name === photoName
+        ? { ...current, thumbnailUrl }
+        : current);
     },
   });
   const [editingSubject, setEditingSubject] = useState(false);
@@ -383,7 +374,10 @@ function PhotoGallery({
     openVideo({
       photoName: photo.name,
       originalUrl: photo.url,
-      needsThumbnailCapture: !photo.thumbnailUrl,
+      needsThumbnailCapture: needsPlaybackVideoCoverCapture(
+        Boolean(photo.thumbnailUrl),
+        isVideoCoverKnownBroken(photo.name),
+      ),
     });
   }, [closeVideo, openVideo]);
 

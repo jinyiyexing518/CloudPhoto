@@ -62,6 +62,7 @@ export default function OnThisDayCard({ photos, onJumpToPhoto }: Props) {
               title={`${yrsAgo} 年前 · ${p.originalName ?? p.name}`}
             >
               <MediaThumb
+                blobName={p.name}
                 url={p.url}
                 thumbnailUrl={p.thumbnailUrl}
                 previewUrl={p.previewUrl}

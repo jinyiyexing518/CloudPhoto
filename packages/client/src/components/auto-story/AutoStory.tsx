@@ -212,6 +212,7 @@ export default function AutoStory({ photos }: Props) {
         {storyPhotos.slice(0, 12).map((p, i) => (
           <div key={p.name} className="story-preview-thumb">
             <MediaThumb
+              blobName={p.name}
               url={p.url}
               thumbnailUrl={p.thumbnailUrl}
               previewUrl={p.previewUrl}
@@ -251,6 +252,7 @@ export default function AutoStory({ photos }: Props) {
           <div className={`story-player-img-wrap ${animClass}`} key={currentIndex}>
             {currentPhotoIsVideo ? (
               <MediaThumb
+                blobName={currentPhoto.name}
                 url={currentPhoto.url}
                 thumbnailUrl={currentPhoto.thumbnailUrl}
                 previewUrl={currentPhoto.previewUrl}

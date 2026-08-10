@@ -13,9 +13,11 @@ import {
   isVideoThumbnailPersistencePending,
   setVideoThumbnail,
   subscribeToVideoThumbnailPersistence,
+  subscribeToVideoThumbnailResults,
 } from "./uploadApi";
 import {
   VideoCoverRepairQueue,
+  VideoCoverBrokenRegistry,
   videoCoverFrameInformation,
   videoCoverRepairCandidateTimes,
   type VideoCoverRepairRequest,
@@ -25,6 +27,7 @@ import {
 const VIDEO_COVER_REPAIR_TIMEOUT_MS = 25_000;
 const VIDEO_COVER_REPAIR_IDLE_TIMEOUT_MS = 2_000;
 const VIDEO_COVER_ANALYSIS_SIZE = 32;
+const videoCoverBrokenRegistry = new VideoCoverBrokenRegistry();
 
 interface NetworkInformationLike extends EventTarget {
   effectiveType?: string;
@@ -73,6 +76,25 @@ export function isLowInformationVideoCoverImage(
 ): boolean | null {
   const pixels = framePixels(image, image.naturalWidth, image.naturalHeight);
   return pixels ? videoCoverFrameInformation(pixels).lowInformation : null;
+}
+
+export function videoPlaybackCoverFrameInformation(
+  video: HTMLVideoElement,
+) {
+  const pixels = framePixels(video, video.videoWidth, video.videoHeight);
+  return pixels ? videoCoverFrameInformation(pixels) : null;
+}
+
+export function markVideoCoverBroken(blobName: string): void {
+  videoCoverBrokenRegistry.mark(getAuthGeneration(), blobName);
+}
+
+export function isVideoCoverKnownBroken(blobName: string): boolean {
+  return videoCoverBrokenRegistry.has(getAuthGeneration(), blobName);
+}
+
+export function markVideoCoverRepaired(blobName: string): void {
+  videoCoverBrokenRegistry.clear(getAuthGeneration(), blobName);
 }
 
 function waitForVideoFrame(
@@ -229,11 +251,21 @@ if (typeof window !== "undefined") {
   window.addEventListener("online", handleNetworkChange);
   window.addEventListener("offline", handleNetworkChange);
   networkInformation()?.addEventListener("change", handleNetworkChange);
-  subscribeToAuthChanges(() => videoCoverRepairQueue.reset());
+  subscribeToAuthChanges(() => {
+    videoCoverRepairQueue.reset();
+    videoCoverBrokenRegistry.reset();
+  });
   subscribeToVideoThumbnailPersistence((blobName, pending, thumbnailUrl) => {
     if (pending) return;
-    if (thumbnailUrl) videoCoverRepairQueue.externalSucceeded(blobName, thumbnailUrl);
+    if (thumbnailUrl) {
+      markVideoCoverRepaired(blobName);
+      videoCoverRepairQueue.externalSucceeded(blobName, thumbnailUrl);
+    }
     else videoCoverRepairQueue.dependencyChanged(blobName);
+  });
+  subscribeToVideoThumbnailResults((blobName, thumbnailUrl) => {
+    markVideoCoverRepaired(blobName);
+    videoCoverRepairQueue.externalSucceeded(blobName, thumbnailUrl);
   });
 }
 
@@ -248,6 +280,10 @@ export function useVideoCoverRepair(photo: Photo) {
   const targetRef = useRef<HTMLDivElement>(null);
   const subscriptionRef = useRef<ReturnType<typeof videoCoverRepairQueue.subscribe> | null>(null);
   const [state, setState] = useState<VideoCoverRepairState>(INITIAL_REPAIR_STATE);
+
+  useEffect(() => {
+    if (state.thumbnailUrl) markVideoCoverRepaired(photo.name);
+  }, [photo.name, state.thumbnailUrl]);
 
   useEffect(() => {
     setState(INITIAL_REPAIR_STATE);
@@ -324,8 +360,9 @@ export function useVideoCoverRepair(photo: Photo) {
   ]);
 
   const markDerivativeBroken = useCallback(() => {
+    markVideoCoverBroken(photo.name);
     subscriptionRef.current?.markDerivativeBroken();
-  }, []);
+  }, [photo.name]);
 
   return { targetRef, state, markDerivativeBroken };
 }

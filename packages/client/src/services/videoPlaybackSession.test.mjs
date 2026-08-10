@@ -431,8 +431,9 @@ test("cross-origin direct fallback does not require storage CORS", async () => {
   assert.match(hook, /canCaptureVideoPlaybackThumbnail\(current\.source\)/);
   assert.match(
     hook,
-    /claimVideoThumbnailCapture\(\s*current,\s*canCaptureVideoPlaybackThumbnail\(current\.source\)/,
+    /canInspectPlaybackVideoCover\(\{[\s\S]*?canCapture:\s*canCaptureVideoPlaybackThumbnail\(current\.source\)/,
   );
+  assert.match(hook, /claimVideoThumbnailCapture\(current,\s*true\)/);
 });
 
 test("video route probe accepts only 206 and cancels every response body", async () => {

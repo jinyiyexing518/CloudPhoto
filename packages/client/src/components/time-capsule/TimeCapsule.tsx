@@ -325,6 +325,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
                     {thumbs.map((p) => (
                       <MediaThumb
                         key={p.name}
+                        blobName={p.name}
                         url={p.url}
                         thumbnailUrl={p.thumbnailUrl}
                         previewUrl={p.previewUrl}
@@ -487,6 +488,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
                       }}
                     >
                       <MediaThumb
+                        blobName={p.name}
                         url={p.url}
                         thumbnailUrl={p.thumbnailUrl}
                         previewUrl={p.previewUrl}
@@ -549,6 +551,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
                   title={p.originalName ?? p.name}
                 >
                   <MediaThumb
+                    blobName={p.name}
                     url={p.url}
                     thumbnailUrl={p.thumbnailUrl}
                     previewUrl={p.previewUrl}

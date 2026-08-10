@@ -311,7 +311,7 @@ for (const [name, source] of [["timeline playback", gallery], ["folder playback"
     `${name} key must not contain a mutable source or retry counter`,
   );
 }
-requireText(resilientVideoPlayback, "claimVideoThumbnailCapture", "shared first decoded frame capture");
+requireText(resilientVideoPlayback, "claimVideoThumbnailCapture", "shared informative playback frame capture");
 requireText(resilientVideoPlayback, "promoteSuccessfulMediaUrl", "successful playback route promotion");
 requireText(photoCard, "getPreferredMediaUrl", "current card media route");
 requireText(mediaThumb, "getPreferredMediaUrl", "current shared-thumbnail media route");
@@ -428,6 +428,7 @@ requireText(photoCard, "useVideoCoverRepair", "visible-card repair hook");
 requireText(photoCard, "markDerivativeBroken", "broken derivative repair transition");
 requireText(photoCard, "isLowInformationVideoCoverImage", "successful derivative content check");
 requireText(photoCard, "fallbackMediaSource(event.currentTarget, videoPosterSources)", "blank thumbnail preview fallback");
+requireText(mediaThumb, "markVideoCoverBroken(blobName)", "shared thumbnail broken-cover registry");
 requireText(photoCard, "onThumbnailUpdate?.(photo.name, repairedUrl)", "repair URL state publication");
 requireText(photoCard, "正在生成封面", "repair progress accessibility");
 requireText(photoCard, "打开视频后生成封面", "manual repair fallback");
@@ -439,6 +440,9 @@ requireText(videoCoverRepair, "isVideoThumbnailPersistencePending", "upload/repa
 requireText(videoCoverRepair, "dependencyChanged(blobName)", "upload reservation release");
 requireText(videoCoverRepair, "externalSucceeded(blobName, thumbnailUrl)", "successful upload queue publication");
 requireText(videoCoverRepair, "subscribeToAuthChanges", "auth-bound repair cancellation");
+requireText(videoCoverRepair, "videoCoverBrokenRegistry.reset()", "auth-bound broken-cover registry");
+requireText(videoCoverRepair, "videoPlaybackCoverFrameInformation", "existing viewer frame scoring");
+requireText(videoCoverRepair, "markVideoCoverRepaired", "successful registry cleanup");
 requireText(videoCoverRepair, 'window.addEventListener("offline"', "offline repair pause");
 requireText(videoCoverRepair, "fallbackMediaSource", "finite preferred/alternate media route");
 requireText(videoCoverRepair, 'video.preload = "metadata"', "metadata-first repair load");
@@ -452,29 +456,41 @@ requireText(videoCoverRepairPolicy, "VIDEO_COVER_REPAIR_MAX_FILE_BYTES", "per-vi
 requireText(videoCoverRepairPolicy, "VIDEO_COVER_REPAIR_SESSION_BUDGET_BYTES", "session repair budget");
 requireText(videoCoverRepairPolicy, "VIDEO_COVER_REPAIR_MAX_ATTEMPTS", "bounded repair retries");
 requireText(videoCoverRepairPolicy, "VideoCoverRepairQueue", "global repair dedupe queue");
+requireText(videoCoverRepairPolicy, "VideoCoverBrokenRegistry", "scoped broken-cover registry");
+requireText(videoCoverRepairPolicy, "needsPlaybackVideoCoverCapture", "missing-or-broken playback repair policy");
+requireText(videoCoverRepairPolicy, "VIDEO_PLAYBACK_COVER_MIN_TIME_SECONDS", "frame-zero capture exclusion");
 requireText(mediaThumb, "打开视频后生成封面", "secondary video fallback meaning");
 requireText(autoStory, "<MediaThumb", "story preview video fallback");
 requireText(autoStory, "currentPhotoIsVideo", "story player video fallback");
 requireText(onThisDay, "<MediaThumb", "on-this-day video fallback");
 for (const [name, source] of [["timeline playback", gallery], ["folder playback", folder]]) {
  requireText(source, 'preload="auto"', `${name} preloads the selected video body after explicit open`);
- requireText(source, "persistVideoPlaybackThumbnail", `${name} thumbnail persistence`);
  requireText(source, "getVideoPlaybackRenderState", `${name} separates mutable poster from frozen source`);
  requireText(source, "useResilientVideoPlayback", `${name} shared recovery hook`);
- requireText(source, "shouldCaptureThumbnail", `${name} captures at most once per View session`);
+ requireText(source, "isVideoCoverKnownBroken(photo.name)", `${name} repairs known-broken covers`);
+ requireText(source, "needsPlaybackVideoCoverCapture", `${name} shares missing-or-broken cover policy`);
+ requireText(source, "onThumbnailCaptured", `${name} publishes shared playback repair`);
  assert(!source.includes("fallbackVideoPlaybackSession"), `${name} must not duplicate route recovery`);
 }
 requireText(resilientVideoPlayback, "claimVideoThumbnailCapture", "shared playback thumbnail claim");
 requireText(resilientVideoPlayback, "canCaptureVideoPlaybackThumbnail", "route-safe playback thumbnail capture");
+requireText(resilientVideoPlayback, "videoPlaybackCoverFrameInformation", "low-information playback frame guard");
+requireText(resilientVideoPlayback, "persistVideoPlaybackThumbnail", "shared playback thumbnail persistence");
+assert(
+  !resilientVideoPlayback.includes('document.createElement("video")'),
+  "explicit playback repair must not create a second media element",
+);
 requireText(resilientVideoPlayback, "selectFastestVideoMediaRoute", "strict video route selection");
 requireText(videoPlayback, "VIDEO_STALL_WATCHDOG_MS = 4_000", "bounded playback stall watchdog");
 requireText(videoPlayback, "attemptedSources", "finite per-session route budget");
 requireText(videoPlayback, "pendingRestore", "position and playback-property restoration");
 requireText(uploadApi, "video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA", "already-loaded playback frame guard");
 requireText(uploadApi, "const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail)", "playback thumbnail endpoint reuse");
-requireText(uploadApi, "if (!persisted) persistedPlaybackThumbnails.delete(blobName)", "failed playback thumbnail retry");
-requireText(uploadApi, "videoThumbnailWrites.get(blobName)", "thumbnail endpoint write dedupe");
+requireText(uploadApi, "if (!persisted) persistedPlaybackThumbnails.delete(persistenceKey)", "failed playback thumbnail retry");
+requireText(uploadApi, "videoThumbnailWrites.get(persistenceKey)", "auth-scoped thumbnail endpoint write dedupe");
 requireText(uploadApi, "videoThumbnailPersistenceListeners", "thumbnail reservation subscribers");
+requireText(uploadApi, "videoThumbnailResultListeners", "thumbnail result subscribers");
+requireText(app, "subscribeToVideoThumbnailResults(handleThumbnailUpdate)", "stale-viewer thumbnail publication");
 requireText(app, "markVideoThumbnailPersistencePending(uploadedPhoto.name, true)", "upload-time repair reservation");
 requireText(app, "persistedThumbnailUrl ?? undefined", "upload-time repair release result");
 requireText(app, "onThumbnailUpdate={handleThumbnailUpdate}", "persisted playback thumbnail grid publication");

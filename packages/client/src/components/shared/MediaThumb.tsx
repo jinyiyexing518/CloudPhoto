@@ -17,11 +17,15 @@
  */
 import { useEffect, useState } from "react";
 import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
-import { isLowInformationVideoCoverImage } from "../../services/videoCoverRepair";
+import {
+  isLowInformationVideoCoverImage,
+  markVideoCoverBroken,
+} from "../../services/videoCoverRepair";
 import { GRID_MEDIA_POLICY_MARKER, selectGridMediaSources } from "@cloudphoto/algorithm";
 
 interface Props {
   url: string;
+  blobName?: string;
   thumbnailUrl?: string;
   previewUrl?: string;
   alt?: string;
@@ -33,6 +37,7 @@ interface Props {
 }
 
 export default function MediaThumb({
+  blobName,
   thumbnailUrl,
   previewUrl,
   alt = "",
@@ -118,6 +123,7 @@ export default function MediaThumb({
         fetchPriority={priority ? "high" : "auto"}
         onLoad={(event) => {
           if (isLowInformationVideoCoverImage(event.currentTarget) === true) {
+            if (blobName) markVideoCoverBroken(blobName);
             if (!fallbackMediaSource(event.currentTarget, imageSources)) {
               setVideoPosterFailed(true);
             }
@@ -125,6 +131,7 @@ export default function MediaThumb({
         }}
         onError={(event) => {
           if (!fallbackMediaSource(event.currentTarget, imageSources)) {
+            if (blobName) markVideoCoverBroken(blobName);
             setVideoPosterFailed(true);
           }
         }}

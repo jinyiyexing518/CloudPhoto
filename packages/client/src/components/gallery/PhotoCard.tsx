@@ -125,13 +125,13 @@ function PhotoCard({
     const el = videoThumbImgRef.current;
     if (useVideoThumb && el?.complete && el.naturalWidth > 0) {
       if (isLowInformationVideoCoverImage(el) === true) {
+        markDerivativeBroken();
         if (fallbackMediaSource(el, videoPosterSources)) {
           setImgLoaded(false);
           return;
         }
         setVideoThumbFailed(true);
         setImgLoaded(false);
-        markDerivativeBroken();
         return;
       }
       setImgLoaded(true);
@@ -404,22 +404,22 @@ function PhotoCard({
                 className={imgLoaded ? "img-loaded" : "img-loading"}
                 onLoad={(event) => {
                   if (isLowInformationVideoCoverImage(event.currentTarget) === true) {
+                    markDerivativeBroken();
                     if (fallbackMediaSource(event.currentTarget, videoPosterSources)) {
                       setImgLoaded(false);
                       return;
                     }
                     setVideoThumbFailed(true);
                     setImgLoaded(false);
-                    markDerivativeBroken();
                     return;
                   }
                   setImgLoaded(true);
                 }}
                 onError={(e) => {
                   if (!fallbackMediaSource(e.currentTarget, videoPosterSources)) {
+                    markDerivativeBroken();
                     setVideoThumbFailed(true);
                     setImgLoaded(false);
-                    markDerivativeBroken();
                   }
                 }}
               />

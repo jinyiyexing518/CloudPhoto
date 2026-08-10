@@ -512,7 +512,7 @@ export default function MemoryMap({
                     title={displayName(p)}
                     aria-label={`为照片 ${displayName(p)} 设置位置`}
                   >
-                    <MediaThumb url={p.url} thumbnailUrl={p.thumbnailUrl} previewUrl={p.previewUrl} contentType={p.contentType} alt="" className="memory-map-nogps-thumb" />
+                    <MediaThumb blobName={p.name} url={p.url} thumbnailUrl={p.thumbnailUrl} previewUrl={p.previewUrl} contentType={p.contentType} alt="" className="memory-map-nogps-thumb" />
                     <span className="memory-map-nogps-name">{displayName(p)}</span>
                     <span className="memory-map-nogps-badge">📍</span>
                   </button>
@@ -542,6 +542,7 @@ export default function MemoryMap({
             <button ref={detailCloseRef} type="button" className="memory-map-detail-close" onClick={closeDetail} aria-label="关闭照片位置详情">✕</button>
             {selected.photo ? (
               <MediaThumb
+                blobName={selected.photo.name}
                 url={selected.photo.url}
                 thumbnailUrl={selected.photo.thumbnailUrl}
                 previewUrl={selected.photo.previewUrl}
@@ -606,7 +607,7 @@ export default function MemoryMap({
             </div>
 
             <div id="map-gps-description" className="map-gps-photo-row">
-              <MediaThumb url={editPhoto.url} thumbnailUrl={editPhoto.thumbnailUrl} previewUrl={editPhoto.previewUrl} contentType={editPhoto.contentType} alt="" className="map-gps-photo-thumb" />
+              <MediaThumb blobName={editPhoto.name} url={editPhoto.url} thumbnailUrl={editPhoto.thumbnailUrl} previewUrl={editPhoto.previewUrl} contentType={editPhoto.contentType} alt="" className="map-gps-photo-thumb" />
               <span className="map-gps-photo-name">{displayName(editPhoto)}</span>
             </div>
 

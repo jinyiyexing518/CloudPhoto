@@ -13,10 +13,11 @@ import {
   type ReactNode,
 } from "react";
 import "./authenticated.css";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, subscribeToVideoThumbnailResults, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
+import { isPhotoBlobInWorkspace } from "./services/videoCoverRepairPolicy";
 import { hasOpenAriaModal, isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
 import {
   readPrivateMomentInsights,
@@ -383,6 +384,8 @@ function AppContent() {
     : privatePhotoListCacheKey(resolvedPhotoWorkspaceId, photoCacheScope);
   const currentGroupIdRef = useRef(currentGroupId);
   currentGroupIdRef.current = currentGroupId;
+  const resolvedPhotoWorkspaceIdRef = useRef(resolvedPhotoWorkspaceId);
+  resolvedPhotoWorkspaceIdRef.current = resolvedPhotoWorkspaceId;
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
@@ -566,6 +569,8 @@ function AppContent() {
     return isWorkspaceTab(stored) ? stored : "timeline";
   });
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
   const [photosGroupId, setPhotosGroupId] = useState<string | null>(resolvedPhotoWorkspaceId);
   const [loading, setLoading] = useState(true);
   const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
@@ -1979,12 +1984,19 @@ function AppContent() {
   };
 
   const handleThumbnailUpdate = useCallback((name: string, thumbnailUrl: string) => {
+    if (!isPhotoBlobInWorkspace(name, resolvedPhotoWorkspaceIdRef.current)) return;
+    if (!photosRef.current.some((photo) => photo.name === name)) return;
     mutatePhotos((previous) => previous.map((photo) =>
       photo.name === name
         ? { ...photo, thumbnailUrl: selectFresherMediaUrl(photo.thumbnailUrl, thumbnailUrl) }
         : photo
     ));
   }, [mutatePhotos]);
+
+  useEffect(
+    () => subscribeToVideoThumbnailResults(handleThumbnailUpdate),
+    [handleThumbnailUpdate],
+  );
 
   const handleMomentShareCreated = (photoName: string) => {
     setMomentsShareViews((prev) => ({
