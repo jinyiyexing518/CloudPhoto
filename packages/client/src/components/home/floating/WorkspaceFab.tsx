@@ -78,10 +78,11 @@ export default function WorkspaceFab({
     desktopTarget: React.RefObject<HTMLButtonElement>,
     restoreFocus: boolean,
   ) => {
+    const compact = window.matchMedia("(max-width: 480px)").matches;
     setCompactExpanded(false);
+    if (compact && !restoreFocus) compactToggleRef.current?.focus();
     action();
     if (restoreFocus) {
-      const compact = window.matchMedia("(max-width: 480px)").matches;
       requestAnimationFrame(() => {
         if (compact) compactToggleRef.current?.focus();
         else desktopTarget.current?.focus();

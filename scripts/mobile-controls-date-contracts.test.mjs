@@ -31,7 +31,9 @@ const timeCapsule = read(
 
 function cssBlock(selector, source = styles) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = source.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`));
+  const match = source.match(
+    new RegExp(`(?:^|\\n)\\s*${escaped}\\s*(?:,[^{]+)?\\{([^}]+)\\}`),
+  );
   assert(match, `missing CSS block for ${selector}`);
   return match[1];
 }
@@ -151,7 +153,7 @@ test("compact FAB covers common phones and remains bounded at 200% zoom", () => 
 
 test("compact FAB collapses after actions and outside interaction without losing keyboard behavior", () => {
   assert.match(workspaceFab, /const runCompactAction = useCallback/);
-  assert.match(workspaceFab, /setCompactExpanded\(false\);\s*action\(\);/);
+  assert.match(workspaceFab, /setCompactExpanded\(false\);[\s\S]*action\(\);/);
   assert.match(workspaceFab, /document\.addEventListener\("pointerdown"/);
   assert.match(workspaceFab, /document\.removeEventListener\("pointerdown"/);
   assert.match(workspaceFab, /if \(event\.key !== "Escape"\) return;/);
@@ -166,6 +168,7 @@ test("compact FAB collapses after actions and outside interaction without losing
   assert.match(workspaceFab, /onClick=\{openSidebarFromFab\}/);
   assert.match(workspaceFab, /runCompactAction\(onPrimaryChipClick, primaryChipRef, activeTab === "timeline"\)/);
   assert.match(workspaceFab, /runCompactAction\(onSecondaryChipClick, secondaryChipRef, activeTab === "timeline"\)/);
+  assert.match(workspaceFab, /if \(compact && !restoreFocus\) compactToggleRef\.current\?\.focus\(\);[\s\S]*action\(\)/);
   assert.doesNotMatch(workspaceFab, /compactWasExpanded/);
   assert.match(workspaceSidebar, /if \(isOpen\) closeButtonRef\.current\?\.focus\(\)/);
   assert.match(workspaceSidebar, /ref=\{closeButtonRef\}[^>]*workspace-sidebar-close/);
