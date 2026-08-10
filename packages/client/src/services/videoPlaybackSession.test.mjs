@@ -147,6 +147,19 @@ test("short waiting recovery and currentTime progress cancel the watchdog", () =
   }
 });
 
+test("waiting with optimistic readyState still recovers when time stops", () => {
+  const run = harness();
+  const video = media({ readyState: 4 });
+  run.controller.onPlay(run.session.key, video);
+  run.controller.onWaiting(run.session.key, video);
+  run.clock.flush();
+  assert.equal(
+    run.session.source,
+    "https://blob.test/large.mp4?sig=secret",
+    "readyState cannot overrule a waiting event with no timeline progress",
+  );
+});
+
 test("repeated waiting and stalled events keep the original watchdog deadline", () => {
   const run = harness();
   const video = media();
@@ -374,6 +387,31 @@ test("cross-origin direct fallback does not require storage CORS", async () => {
     ),
     undefined,
   );
+  assert.equal(
+    mediaRoute.canCaptureVideoPlaybackThumbnail(
+      "/media/large.mp4?sig=secret",
+      "https://cloudphotos.top",
+    ),
+    true,
+  );
+  assert.equal(
+    mediaRoute.canCaptureVideoPlaybackThumbnail(
+      "https://photostorage.blob.core.windows.net/photos/large.mp4?sig=secret",
+      "https://cloudphotos.top",
+    ),
+    false,
+  );
+
+  const playable = playback.markVideoPlaybackPlayable(session());
+  const skipped = playback.claimVideoThumbnailCapture(playable, false);
+  assert.equal(skipped.shouldCapture, false);
+  assert.equal(
+    skipped.session.thumbnailCaptureAttempted,
+    false,
+    "direct playback must not consume or attempt a tainted canvas capture",
+  );
+  const allowed = playback.claimVideoThumbnailCapture(playable, true);
+  assert.equal(allowed.shouldCapture, true);
 
   for (const relative of [
     "../components/gallery/PhotoGallery.tsx",
@@ -385,6 +423,16 @@ test("cross-origin direct fallback does not require storage CORS", async () => {
       /crossOrigin=\{videoPlaybackCrossOrigin\(selectedVideoRender\.source\)\}/,
     );
   }
+
+  const hook = await readFile(
+    new URL("./useResilientVideoPlayback.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(hook, /canCaptureVideoPlaybackThumbnail\(current\.source\)/);
+  assert.match(
+    hook,
+    /claimVideoThumbnailCapture\(\s*current,\s*canCaptureVideoPlaybackThumbnail\(current\.source\)/,
+  );
 });
 
 test("video route probe accepts only 206 and cancels every response body", async () => {
@@ -414,30 +462,86 @@ test("video route probe accepts only 206 and cancels every response body", async
   }
 });
 
-test("video route selection prefers the only route that proves Range support", async () => {
+test("video route selection probes proxy only and otherwise uses no-CORS direct", async () => {
   const mediaRoute = await importTypeScript("./mediaRoute.ts", (source) =>
     source.replaceAll("import.meta.env", "({})"));
   const originalFetch = globalThis.fetch;
-  const canceled = [];
-  globalThis.fetch = async (url, init) => ({
-    status: String(url).includes("cloudphotos.top/media") ? 206 : 200,
-    ok: true,
-    headers: new Headers({ "content-type": "video/mp4" }),
-    body: {
-      async cancel() {
-        canceled.push(String(url));
-      },
-    },
-  });
   try {
+    for (const [proxyStatus, expectedRoute] of [[206, "proxy"], [200, "direct"]]) {
+      const requested = [];
+      let canceled = 0;
+      globalThis.fetch = async (url, init) => {
+        requested.push(String(url));
+        assert.match(String(url), /cloudphotos\.top\/media/);
+        assert.equal(init.method, "GET");
+        return {
+          status: proxyStatus,
+          ok: true,
+          headers: new Headers({ "content-type": "video/mp4" }),
+          body: {
+            async cancel() {
+              canceled += 1;
+            },
+          },
+        };
+      };
+      assert.equal(
+        await mediaRoute.selectFastestVideoMediaRoute(
+          "https://photostorage.blob.core.windows.net/photos/large.mp4?sig=secret",
+        ),
+        expectedRoute,
+      );
+      assert.equal(requested.length, 1, "browser fetch must not probe the CORS-blocked Blob");
+      assert.equal(canceled, 1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("video route selection does not promote a cross-origin proxy", async () => {
+  const originalWindow = globalThis.window;
+  const originalLocalStorage = globalThis.localStorage;
+  const storage = {
+    getItem() {
+      return null;
+    },
+    removeItem() {},
+    setItem() {},
+  };
+  globalThis.window = {
+    location: {
+      hostname: "brave-sand-053b07a00.7.azurestaticapps.net",
+      origin: "https://brave-sand-053b07a00.7.azurestaticapps.net",
+    },
+  };
+  globalThis.localStorage = storage;
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return {
+      status: 206,
+      ok: true,
+      headers: new Headers({ "content-type": "video/mp4" }),
+      body: { async cancel() {} },
+    };
+  };
+  try {
+    const mediaRoute = await importTypeScript("./mediaRoute.ts", (source) =>
+      `${source.replaceAll("import.meta.env", "({})")}\n// swa-origin-contract`);
     assert.equal(
       await mediaRoute.selectFastestVideoMediaRoute(
         "https://photostorage.blob.core.windows.net/photos/large.mp4?sig=secret",
       ),
-      "proxy",
+      "direct",
     );
-    assert.equal(canceled.length, 2);
+    assert.equal(fetchCalls, 0, "cross-origin proxy must not be probed");
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    if (originalLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = originalLocalStorage;
   }
 });
