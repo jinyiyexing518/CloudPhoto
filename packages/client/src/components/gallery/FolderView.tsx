@@ -278,7 +278,7 @@ type FolderUploadProgress = UploadAggregateProgress & {
 
 interface Props {
   photos: Photo[];
-  onDelete: (name: string) => void;
+  onDelete: (name: string) => void | Promise<void>;
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onTakenAtUpdate?: (name: string, takenAt: string) => void;
@@ -843,7 +843,7 @@ interface ContentProps {
   onDropToSubFolder: (photoName: string, fromFolder: string, subFolderName: string) => void;
   countPhotos: (subFolderName: string) => number;
   allFolderPaths: string[];
-  onDelete: (name: string) => void;
+  onDelete: (name: string) => void | Promise<void>;
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onTakenAtUpdate?: (name: string, takenAt: string) => void;

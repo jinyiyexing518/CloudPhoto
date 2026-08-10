@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { BLANK_GIF, GRID_MEDIA_POLICY_MARKER, selectGridMediaSources } from "@cloudphoto/algorithm";
@@ -21,11 +21,12 @@ import {
   type PhotoContextMenuNavigationKey,
 } from "./photoCardContextMenu";
 import { formatPhotoDate } from "../../utils/dateFormat";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 interface Props {
   photo: Photo;
   onClick: () => void;
-  onDelete: () => void;
+  onDelete: () => void | Promise<void>;
   onMoveRequest?: () => void;
   onToggleFavorite?: (next: boolean) => void;
   /** When defined, card is in selection mode: clicking selects/deselects */
@@ -76,6 +77,7 @@ function PhotoCard({
   const videoPosterSrc = videoPosterSources[0];
 
   const [showConfirm, setShowConfirm] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   // GIF originals can be many MB. Keep the static thumbnail until the user
   // explicitly presses play instead of downloading every visible GIF.
@@ -86,7 +88,12 @@ function PhotoCard({
   const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
+  const confirmLayerRef = useRef<HTMLDivElement>(null);
+  const confirmDialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteDialogTriggerRef = useRef<HTMLElement | null>(null);
   const menuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const mountedRef = useRef(true);
   const publishedRepairUrlRef = useRef<string | null>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
   // Video cards render only server-persisted derivatives. Missing or broken
@@ -103,6 +110,13 @@ function PhotoCard({
   useEffect(() => {
     publishedRepairUrlRef.current = null;
   }, [photo.name]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // For video thumbnails served as <img>: if the image is already cached the browser
   // may fire onLoad synchronously before React attaches the handler, so we check
@@ -173,6 +187,8 @@ function PhotoCard({
   const groupLabel = getPhotoCardGroupLabel(labelInput);
   const primaryActionLabel = getPhotoPrimaryActionLabel(labelInput);
   const descriptionId = useId();
+  const deleteDialogTitleId = useId();
+  const deleteDialogDescriptionId = useId();
   const videoRepairStatus = videoRepairState.phase === "queued" || videoRepairState.phase === "repairing"
     ? "正在生成封面"
     : "打开视频后生成封面";
@@ -181,6 +197,32 @@ function PhotoCard({
     photo.createdBy ? `${descriptionId}-creator` : null,
     isVideo && !useVideoThumb ? `${descriptionId}-video-status` : null,
   ].filter(Boolean).join(" ");
+
+  const requestCloseDeleteDialog = useCallback(() => {
+    if (deletePending) return false;
+    setShowConfirm(false);
+    return true;
+  }, [deletePending]);
+
+  useModalFocusBoundary({
+    active: showConfirm,
+    layerRef: confirmLayerRef,
+    containerRef: confirmDialogRef,
+    initialFocusRef: cancelButtonRef,
+    restoreFocusTo: deleteDialogTriggerRef.current,
+    onEscape: requestCloseDeleteDialog,
+  });
+
+  const handleConfirmDelete = async () => {
+    if (deletePending) return;
+    setDeletePending(true);
+    try {
+      await onDelete();
+      if (mountedRef.current) setShowConfirm(false);
+    } finally {
+      if (mountedRef.current) setDeletePending(false);
+    }
+  };
 
   const restorePrimaryFocus = () => {
     if (primaryActionRef.current?.isConnected) {
@@ -223,7 +265,10 @@ function PhotoCard({
       icon: "🗑",
       label: "删除",
       danger: true,
-      run: () => setShowConfirm(true),
+      run: () => {
+        deleteDialogTriggerRef.current = primaryActionRef.current;
+        setShowConfirm(true);
+      },
     },
   ];
 
@@ -526,6 +571,7 @@ function PhotoCard({
                 title="删除照片"
                 onClick={(e) => {
                   e.stopPropagation();
+                  deleteDialogTriggerRef.current = e.currentTarget;
                   setShowConfirm(true);
                 }}
               >
@@ -538,27 +584,49 @@ function PhotoCard({
       </div>
 
       {showConfirm && createPortal(
-        <div className="confirm-overlay" onClick={() => setShowConfirm(false)}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <p className="confirm-title">删除照片？</p>
-            <p className="confirm-filename">{displayName}</p>
+        <div
+          ref={confirmLayerRef}
+          className="confirm-overlay"
+          data-modal-layer
+          onClick={requestCloseDeleteDialog}
+        >
+          <div
+            ref={confirmDialogRef}
+            className="confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={deleteDialogTitleId}
+            aria-describedby={deleteDialogDescriptionId}
+            aria-busy={deletePending || undefined}
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p id={deleteDialogTitleId} className="confirm-title">删除照片？</p>
+            <p id={deleteDialogDescriptionId} className="confirm-filename">
+              {displayName} · 此操作不可撤销
+            </p>
             <div className="confirm-actions">
-              <button className="confirm-cancel-btn" onClick={() => setShowConfirm(false)}>
+              <button
+                ref={cancelButtonRef}
+                type="button"
+                className="confirm-cancel-btn"
+                onClick={requestCloseDeleteDialog}
+                disabled={deletePending}
+              >
                 取消
               </button>
               <button
+                type="button"
                 className="confirm-delete-btn"
-                onClick={() => {
-                  setShowConfirm(false);
-                  onDelete();
-                }}
+                onClick={() => void handleConfirmDelete()}
+                disabled={deletePending}
               >
-                删除
+                {deletePending ? "删除中…" : "删除"}
               </button>
             </div>
           </div>
         </div>,
-        document.body
+        document.body,
       )}
 
       {ctxMenu && !interactionDisabled && !selectionMode && createPortal(

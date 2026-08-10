@@ -72,7 +72,7 @@ let photoGalleryBatchMutationSequence = 0;
 
 interface Props {
   photos: Photo[];
-  onDelete: (name: string) => void;
+  onDelete: (name: string) => void | Promise<void>;
   onSubjectUpdate: (name: string, subject: string) => void;
   onRenamePhoto: (name: string, newOriginalName: string) => void;
   onTakenAtUpdate?: (name: string, takenAt: string) => void;
