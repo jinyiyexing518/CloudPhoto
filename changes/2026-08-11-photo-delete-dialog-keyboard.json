@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-photo-delete-dialog-keyboard",
+  "date": "2026-08-11",
+  "icon": "🗑️",
+  "title": "补齐照片删除确认键盘边界",
+  "type": "fix",
+  "desc": "照片删除确认现在具备完整弹窗语义、键盘焦点约束和异步删除保护。",
+  "details": "共享 PhotoCard 的删除确认复用统一 modal focus boundary，提供具名 alertdialog、aria-modal 和不可撤销说明；打开后默认聚焦取消，Tab/Shift+Tab 留在弹窗内，Escape 或外部点击关闭。直接删除会恢复到仍连接的删除按钮，从操作菜单进入则恢复照片主按钮；删除请求进行中设置 aria-busy、禁用操作并阻止 Escape 和外部关闭，避免重复提交或误退。时间线、重要片段、文件夹、收藏/选择、拖放、查看器和 Header 安装入口约束保持不变。",
+  "seq": 1786407000000
+}
