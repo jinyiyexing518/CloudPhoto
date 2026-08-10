@@ -402,7 +402,7 @@ function AppContent() {
     return "timeline";
   });
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [photosGroupId, setPhotosGroupId] = useState(currentGroupId);
+  const [photosGroupId, setPhotosGroupId] = useState<string | null>(resolvedPhotoWorkspaceId);
   const [loading, setLoading] = useState(true);
   const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -884,8 +884,8 @@ function AppContent() {
     photoStateRevisionRef.current += 1;
     fetchAbortRef.current?.abort();
     setPhotos([]);
-    setPhotosGroupId(currentGroupId);
-  }, [currentGroupId, photoCacheScope]);
+    setPhotosGroupId(resolvedPhotoWorkspaceId);
+  }, [photoCacheScope, resolvedPhotoWorkspaceId]);
 
   useEffect(() => subscribeToPreferredMediaRoute(() => {
     setPhotos((current) => current.map(proxyPhoto));
@@ -907,7 +907,7 @@ function AppContent() {
     let hasStale = stale !== null && stale.length > 0;
     if (hasStale && isCurrent()) {
       setPhotos(stale!);
-      setPhotosGroupId(currentGroupId);
+      setPhotosGroupId(resolvedPhotoWorkspaceId);
       setLoading(false);
     } else {
       setLoading(true);
@@ -923,7 +923,7 @@ function AppContent() {
         hasStale = stale !== null && stale.length > 0;
         if (hasStale) {
           setPhotos(stale!);
-          setPhotosGroupId(currentGroupId);
+          setPhotosGroupId(resolvedPhotoWorkspaceId);
           setLoading(false);
         }
       }
@@ -935,7 +935,7 @@ function AppContent() {
       });
       if (!isCurrent()) return;
       setPhotos(data);
-      setPhotosGroupId(currentGroupId);
+      setPhotosGroupId(resolvedPhotoWorkspaceId);
       lastPhotoRefreshRef.current = Date.now();
       lastPhotoRefreshWorkspaceRef.current = resolvedPhotoWorkspaceKey;
     } catch (error) {
@@ -944,7 +944,7 @@ function AppContent() {
       if (controller.signal.aborted) return;
       if (isAuthorizationDriftError(error)) {
         setPhotos([]);
-        setPhotosGroupId(currentGroupId);
+        setPhotosGroupId(resolvedPhotoWorkspaceId);
         return;
       }
       // Always show the error — even when stale data is shown the user needs to
@@ -2618,11 +2618,14 @@ function AppContent() {
             )}
 
             {/* ── Map / Capsule / Story: lazy-conditional (heavier bundles, visited less often) */}
-            {activeTab === "map" && (
+            {activeTab === "map" && resolvedPhotoWorkspaceId === null && (
+              <div className="loading"><div className="loading-spinner" /><span>正在确认照片空间…</span></div>
+            )}
+            {activeTab === "map" && resolvedPhotoWorkspaceId !== null && (
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>加载地图…</span></div>}>
                 <MemoryMap
                   photos={photos}
-                  groupId={currentGroupId || ""}
+                  groupId={resolvedPhotoWorkspaceId}
                   photosGroupId={photosGroupId}
                   onViewPhoto={jumpToTimelinePhoto}
                   onGpsUpdate={(name, lat, lon) =>

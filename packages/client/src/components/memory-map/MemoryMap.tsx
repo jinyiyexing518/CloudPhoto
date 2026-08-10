@@ -37,7 +37,7 @@ function displayName(p: { name: string; originalName?: string }): string {
 interface Props {
   photos: Photo[];
   groupId?: string;
-  photosGroupId?: string;
+  photosGroupId?: string | null;
   onViewPhoto?: (name: string) => void;
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
 }

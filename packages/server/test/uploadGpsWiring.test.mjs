@@ -13,7 +13,7 @@ test("client EXIF coordinates flow into the upload query without dropping zero",
     source("packages/client/src/AuthenticatedApp.tsx"),
     source("packages/client/src/services/uploadApi.ts"),
   ]);
-  assert.match(app, /exifrLib\.gps\(valid\[i\]\)/);
+  assert.match(app, /exifrLib\.gps\((?:valid\[i\]|uploadFile)\)/);
   assert.match(app, /gpsLat = String\(gps\.latitude\)/);
   assert.match(app, /gpsLon = String\(gps\.longitude\)/);
   assert.match(app, /uploadPhotoWithProgress\([\s\S]*gpsLat,[\s\S]*gpsLon,/);

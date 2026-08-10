@@ -34,9 +34,14 @@ test("an unavailable address still renders the current photo coordinates", async
 });
 
 test("memory map renders Cosmos locations only for the workspace that produced them", async () => {
-  const memoryMap = await source("../memory-map/MemoryMap.tsx");
+  const [memoryMap, app] = await Promise.all([
+    source("../memory-map/MemoryMap.tsx"),
+    source("../../AuthenticatedApp.tsx"),
+  ]);
   assert.match(memoryMap, /cosmosLocationState\.workspace === groupId/);
   assert.match(memoryMap, /photosGroupId === groupId \? photos : \[\]/);
   assert.match(memoryMap, /setCosmosLocationState\(\{ workspace, locations \}\)/);
   assert.match(memoryMap, /controller\.abort\(new DOMException\("Workspace changed", "AbortError"\)\)/);
+  assert.match(app, /activeTab === "map" && resolvedPhotoWorkspaceId !== null/);
+  assert.match(app, /groupId=\{resolvedPhotoWorkspaceId\}/);
 });
