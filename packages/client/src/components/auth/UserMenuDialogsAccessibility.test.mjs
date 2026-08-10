@@ -33,8 +33,9 @@ test("user-menu dialogs restore through the connected avatar trigger", () => {
   );
   assert.match(
     authenticatedApp,
-    /closeUserMenu\(true\);\s*void handleInstallApp\(\)/,
+    /closeUserMenu\(true\);\s*void handleInstallApp\(userAvatarButtonRef\.current\)/,
   );
+  assert.match(authenticatedApp, /<InstallGuideDialog[\s\S]*restoreFocusTo=\{installGuideRestoreFocusRef\.current\}/);
 });
 
 test("add-admin uses the shared stacked boundary with protected dismissal", () => {

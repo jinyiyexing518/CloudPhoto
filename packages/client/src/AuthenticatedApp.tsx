@@ -1271,9 +1271,6 @@ function AppContent() {
       }
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        shortcutsRestoreFocusRef.current = document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
         setShowShortcutsHelp((v) => !v);
       }
       if (e.key === "1" && !e.ctrlKey && !e.metaKey && !e.altKey) {
