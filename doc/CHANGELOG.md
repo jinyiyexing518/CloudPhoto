@@ -12,6 +12,7 @@
 ### v1.9.0 — Algorithm Package · 流量优化深化 · 下载体验重构
 
 **Bug 修复**
+- **🎬 视频播放中途黑屏/无限加载** — 时间线与文件夹查看器复用同一恢复控制器；视频线路改用 2-byte Range/206 探测，播放态连续 4 秒无时间进展才有限换线，并在新线路 metadata 后恢复原位置、播放意图、静音、音量与倍速。暂停、seek、后台、结束和旧 viewer 事件不会误切；双线路失败会结束 spinner 并提供原位重试
 - **🎬 移动后视频封面与播放卡顿** — 移动过目录的视频会从同一次授权范围 Blob listing 中恢复仍然存在的历史封面，当前位置的标准 derivative 始终优先，且不增加逐项 HEAD 或原视频下载；打开视频时跳过下载票据预取并使用 `preload=auto`，首帧解码后立即补存缺失封面，同时原视频不再进入 Service Worker 的 CacheFirst 缓存
 - **🎬 视频封面缺失与播放中途重载** — 普通列表会直接识别同一次 Blob listing 中实际存在的 `_th_{original}.webp` / `_th_{original}-prev.webp`，不再依赖 original metadata；视频详情按每次 View 冻结 source 与稳定 key，线路探测、封面回写和列表刷新只更新 poster/grid，不重建播放器。仅当前 source 明确失败且尚未加载可播放帧时允许一次原元素 fallback，缺少 derivative 的网格仍保持 0 个原视频请求
 

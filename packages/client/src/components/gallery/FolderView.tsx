@@ -25,17 +25,11 @@ import {
   fallbackMediaSource,
   getPreferredMediaUrl,
   preloadImageWithFallback,
-  promoteSuccessfulMediaUrl,
 } from "../../services/mediaRoute";
 import {
-  VideoPlaybackSession,
-  claimVideoThumbnailCapture,
-  createVideoPlaybackSession,
-  fallbackVideoPlaybackSession,
   getVideoPlaybackRenderState,
-  markVideoPlaybackPlayable,
-  restartVideoPlaybackSession,
 } from "../../services/videoPlaybackSession";
+import { useResilientVideoPlayback } from "../../services/useResilientVideoPlayback";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
@@ -885,29 +879,54 @@ function FolderContent({
   const originalPreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewDialogRef = useRef<HTMLDivElement | null>(null);
   const originalPreviewCloseRef = useRef<HTMLButtonElement | null>(null);
-  const [videoSession, setVideoSession] = useState<VideoPlaybackSession | null>(null);
-  const videoSessionIdRef = useRef(0);
-  const videoElementRef = useRef<HTMLVideoElement>(null);
-  const videoPlayableSessionRef = useRef<string | null>(null);
-  const videoFallbackSessionRef = useRef<string | null>(null);
-  const videoCaptureSessionRef = useRef<string | null>(null);
+  const {
+    session: videoSession,
+    videoRef,
+    buffering: videoBuffering,
+    error: videoError,
+    eventHandlers: videoEventHandlers,
+    openVideo,
+    closeVideo,
+    retryVideo,
+  } = useResilientVideoPlayback({
+    onPlayable: ({
+      photoName,
+      video,
+      shouldCaptureThumbnail,
+    }) => {
+      if (
+        !shouldCaptureThumbnail
+        || selectedPhoto?.name !== photoName
+        || selectedPhoto.thumbnailUrl
+      ) {
+        return;
+      }
+      void persistVideoPlaybackThumbnail(photoName, video).then((thumbnailUrl) => {
+        if (!thumbnailUrl) return;
+        onThumbnailUpdate?.(photoName, thumbnailUrl);
+        setSelectedPhoto((current) => current?.name === photoName
+          ? { ...current, thumbnailUrl }
+          : current);
+      });
+    },
+  });
   const [modalImageLoaded, setModalImageLoaded] = useState(false);
 
   const openVideoPlaybackSession = useCallback((photo: Photo) => {
     if (!photo.contentType?.startsWith("video/")) {
-      setVideoSession(null);
+      closeVideo();
       return;
     }
-    const session = createVideoPlaybackSession({
+    openVideo({
       photoName: photo.name,
       originalUrl: photo.url,
-      sessionId: ++videoSessionIdRef.current,
       needsThumbnailCapture: !photo.thumbnailUrl,
     });
-    videoPlayableSessionRef.current = null;
-    videoFallbackSessionRef.current = null;
-    setVideoSession(session);
-  }, []);
+  }, [closeVideo, openVideo]);
+
+  useEffect(() => {
+    if (!selectedPhoto) closeVideo();
+  }, [closeVideo, selectedPhoto]);
 
   useEffect(() => {
     if (!selectedPhoto || selectedPhoto.contentType?.startsWith("video/")) return;
@@ -938,8 +957,6 @@ function FolderContent({
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionVideoLoading, setMotionVideoLoading] = useState(false);
-  const [videoBuffering, setVideoBuffering] = useState(false);
-  const [videoError, setVideoError] = useState(false);
   const [sharing, setSharing] = useState(false);
   // Progressive GIF loading in viewer: show thumbnail immediately, upgrade to full GIF silently
   const [gifViewerSrc, setGifViewerSrc] = useState<string>("");
@@ -1071,8 +1088,6 @@ function FolderContent({
     setVoiceError(null);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
-    setVideoBuffering(false);
-    setVideoError(false);
     setModalImageLoaded(false);
     setGifViewerSrc("");
   }, [openVideoPlaybackSession, trackPhotoView]);
@@ -1264,8 +1279,6 @@ function FolderContent({
     setShowSharePanel(false);
     setMotionVideoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setMotionVideoLoading(false);
-    setVideoBuffering(false);
-    setVideoError(false);
     setGifViewerSrc("");
   };
 
@@ -1711,7 +1724,7 @@ function FolderContent({
               {selectedPhoto.contentType?.startsWith("video/") ? (
                 <div className="modal-video-wrap">
                   {selectedVideoRender && <video
-                    ref={videoElementRef}
+                    ref={videoRef}
                     key={selectedVideoRender.key}
                     crossOrigin="anonymous"
                     src={selectedVideoRender.source}
@@ -1720,67 +1733,7 @@ function FolderContent({
                     controls
                     playsInline
                     preload="auto"
-                    onPlay={() => {
-                      setVideoError(false);
-                      setVideoBuffering(true);
-                    }}
-                    onLoadedData={(event) => {
-                      if (selectedVideoRender.session.fallbackAttempted) {
-                        promoteSuccessfulMediaUrl(selectedVideoRender.source);
-                      }
-                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
-                      const activeSession = markVideoPlaybackPlayable(selectedVideoRender.session);
-                      const capture = claimVideoThumbnailCapture(activeSession);
-                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
-                        ? capture.session
-                        : current);
-                      const photoName = selectedPhoto.name;
-                      if (
-                        capture.shouldCapture
-                        && !selectedPhoto.thumbnailUrl
-                        && videoCaptureSessionRef.current !== activeSession.key
-                      ) {
-                        videoCaptureSessionRef.current = activeSession.key;
-                        void persistVideoPlaybackThumbnail(photoName, event.currentTarget)
-                          .then((thumbnailUrl) => {
-                            if (!thumbnailUrl) return;
-                            onThumbnailUpdate?.(photoName, thumbnailUrl);
-                            setSelectedPhoto((current) => current?.name === photoName
-                              ? { ...current, thumbnailUrl }
-                              : current);
-                          });
-                      }
-                    }}
-                    onPlaying={() => {
-                      setVideoBuffering(false);
-                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
-                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
-                        ? markVideoPlaybackPlayable(current)
-                        : current);
-                    }}
-                    onWaiting={() => setVideoBuffering(true)}
-                    onError={(event) => {
-                      const activeSession = videoPlayableSessionRef.current === selectedVideoRender.session.key
-                        ? markVideoPlaybackPlayable(selectedVideoRender.session)
-                        : selectedVideoRender.session;
-                      const fallback = videoFallbackSessionRef.current === selectedVideoRender.session.key
-                        ? null
-                        : fallbackVideoPlaybackSession(
-                            activeSession,
-                            event.currentTarget.currentSrc || event.currentTarget.src,
-                          );
-                      if (fallback) {
-                        videoFallbackSessionRef.current = selectedVideoRender.session.key;
-                        setVideoSession(fallback);
-                        setVideoError(false);
-                        setVideoBuffering(true);
-                        event.currentTarget.src = fallback.source;
-                        event.currentTarget.load();
-                      } else {
-                        setVideoBuffering(false);
-                        setVideoError(true);
-                      }
-                    }}
+                    {...videoEventHandlers}
                   />}
                   {videoBuffering && !videoError && (
                     <div className="modal-video-spinner">
@@ -1794,19 +1747,7 @@ function FolderContent({
                       <span style={{ fontSize: 13 }}>视频加载失败</span>
                       <button
                         style={{ marginTop: 4, padding: "4px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13 }}
-                        onClick={() => {
-                          if (!videoSession) return;
-                          const restarted = restartVideoPlaybackSession(videoSession);
-                          videoPlayableSessionRef.current = null;
-                          videoFallbackSessionRef.current = null;
-                          setVideoSession(restarted);
-                          setVideoError(false);
-                          setVideoBuffering(true);
-                          if (videoElementRef.current) {
-                            videoElementRef.current.src = restarted.source;
-                            videoElementRef.current.load();
-                          }
-                        }}
+                        onClick={retryVideo}
                       >重试</button>
                     </div>
                   )}

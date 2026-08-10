@@ -29,6 +29,8 @@ const photoApi = read("packages/client/src/services/photoApi.ts");
 const maintenanceBackfillPaging = read("packages/client/src/services/maintenanceBackfillPaging.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
+const videoPlayback = read("packages/client/src/services/videoPlaybackSession.ts");
+const resilientVideoPlayback = read("packages/client/src/services/useResilientVideoPlayback.ts");
 const videoCoverRepair = read("packages/client/src/services/videoCoverRepair.ts");
 const videoCoverRepairPolicy = read("packages/client/src/services/videoCoverRepairPolicy.ts");
 const renderPolicy = read("packages/algorithm/src/render.ts");
@@ -280,31 +282,22 @@ for (const [name, source] of [["timeline playback", gallery], ["folder playback"
     !source.includes("subscribeToPreferredMediaRoute"),
     `${name} must freeze its media route when the View session opens`,
   );
-  requireText(source, "createVideoPlaybackSession", `${name} frozen playback session`);
-  requireText(source, "fallbackVideoPlaybackSession", `${name} one-shot source fallback`);
-  requireText(source, "markVideoPlaybackPlayable", `${name} playable-content fallback guard`);
-  requireText(source, "claimVideoThumbnailCapture", `${name} one-shot view-frame capture`);
-  requireText(source, "if (selectedVideoRender.session.fallbackAttempted)", `${name} fallback-only route promotion`);
-  requireText(source, "promoteSuccessfulMediaUrl(selectedVideoRender.source)", `${name} successful fallback route promotion`);
+  requireText(source, "useResilientVideoPlayback", `${name} shared playback session`);
+  requireText(source, "{...videoEventHandlers}", `${name} shared media event wiring`);
+  assert(!source.includes("fallbackVideoPlaybackSession"), `${name} must not own fallback state`);
   requireText(source, "key={selectedVideoRender.key}", `${name} stable video element key`);
   requireText(
     source,
     'if (!selectedPhoto || selectedPhoto.contentType?.startsWith("video/")) return;',
     `${name} video startup must not compete with download-ticket prefetch`,
   );
-  const loadedDataStart = source.indexOf("onLoadedData=");
-  const playingStart = source.indexOf("onPlaying=", loadedDataStart);
-  assert(loadedDataStart >= 0 && playingStart > loadedDataStart, `${name} loaded-data handler must exist`);
-  requireText(
-    source.slice(loadedDataStart, playingStart),
-    "claimVideoThumbnailCapture",
-    `${name} first decoded frame capture`,
-  );
   assert(
     !source.includes('key={`${selectedVideoUrl}:${videoRetryKey}`}'),
     `${name} key must not contain a mutable source or retry counter`,
   );
 }
+requireText(resilientVideoPlayback, "claimVideoThumbnailCapture", "shared first decoded frame capture");
+requireText(resilientVideoPlayback, "promoteSuccessfulMediaUrl", "successful playback route promotion");
 requireText(photoCard, "getPreferredMediaUrl", "current card media route");
 requireText(mediaThumb, "getPreferredMediaUrl", "current shared-thumbnail media route");
 requireText(renderPolicy, "selectGridMediaSources", "derivative-only grid policy");
@@ -452,9 +445,15 @@ for (const [name, source] of [["timeline playback", gallery], ["folder playback"
  requireText(source, 'preload="auto"', `${name} preloads the selected video body after explicit open`);
  requireText(source, "persistVideoPlaybackThumbnail", `${name} thumbnail persistence`);
  requireText(source, "getVideoPlaybackRenderState", `${name} separates mutable poster from frozen source`);
- requireText(source, "videoCaptureSessionRef.current !== activeSession.key", `${name} captures at most once per View session`);
- requireText(source, "!selectedPhoto.thumbnailUrl", `${name} captures only when the derivative is missing`);
+ requireText(source, "useResilientVideoPlayback", `${name} shared recovery hook`);
+ requireText(source, "shouldCaptureThumbnail", `${name} captures at most once per View session`);
+ assert(!source.includes("fallbackVideoPlaybackSession"), `${name} must not duplicate route recovery`);
 }
+requireText(resilientVideoPlayback, "claimVideoThumbnailCapture", "shared playback thumbnail claim");
+requireText(resilientVideoPlayback, "selectFastestVideoMediaRoute", "strict video route selection");
+requireText(videoPlayback, "VIDEO_STALL_WATCHDOG_MS = 4_000", "bounded playback stall watchdog");
+requireText(videoPlayback, "attemptedSources", "finite per-session route budget");
+requireText(videoPlayback, "pendingRestore", "position and playback-property restoration");
 requireText(uploadApi, "video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA", "already-loaded playback frame guard");
 requireText(uploadApi, "const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail)", "playback thumbnail endpoint reuse");
 requireText(uploadApi, "if (!persisted) persistedPlaybackThumbnails.delete(blobName)", "failed playback thumbnail retry");
@@ -466,6 +465,9 @@ requireText(app, "onThumbnailUpdate={handleThumbnailUpdate}", "persisted playbac
 
 // Route probes and fallback are finite, body-free, bounded, and cancel losers.
 requireText(media, 'method: "HEAD"', "body-free media probe");
+requireText(media, 'headers: { Range: "bytes=0-1" }', "video byte-range probe");
+requireText(media, "response.status === 206", "strict video partial-content validation");
+requireText(media, "await response.body?.cancel().catch(() => undefined)", "video probe body cancellation");
 requireText(media, "const ROUTE_PROBE_TIMEOUT_MS = 1_500", "probe timeout");
 requireText(media, "const MEDIA_ATTEMPT_TIMEOUT_MS = 10_000", "per-route media timeout");
 requireText(media, "const body = await response.arrayBuffer()", "media body timeout coverage");

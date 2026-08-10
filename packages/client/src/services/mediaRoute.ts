@@ -188,6 +188,10 @@ function mediaUrlForRoute(url: string, route: MediaRoute): string {
   return route === "proxy" ? toProxyMediaUrl(directUrl) : directUrl;
 }
 
+export function getMediaUrlForRoute(url: string, route: MediaRoute): string {
+  return mediaUrlForRoute(url, route);
+}
+
 export function getPreferredMediaUrl(url: string): string {
   return mediaUrlForRoute(url, preferredRoute);
 }
@@ -210,6 +214,30 @@ async function probeMediaUrl(url: string, signal: AbortSignal): Promise<void> {
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (!response.ok || contentType.includes("text/html")) {
     throw new Error(`Media probe failed with ${response.status}`);
+  }
+}
+
+type MediaProbeFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Pick<Response, "status" | "ok" | "headers" | "body">>;
+
+export async function probeVideoMediaUrl(
+  url: string,
+  signal: AbortSignal,
+  fetchImpl: MediaProbeFetch = fetch,
+): Promise<boolean> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers: { Range: "bytes=0-1" },
+    cache: "no-store",
+    signal,
+  });
+  try {
+    const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+    return response.status === 206 && !contentType.includes("text/html");
+  } finally {
+    await response.body?.cancel().catch(() => undefined);
   }
 }
 
@@ -239,6 +267,7 @@ export function selectFastestMediaRoute(sampleUrl: string | undefined): Promise<
   if (absoluteUrl(directUrl) === absoluteUrl(proxyUrl)) {
     return Promise.resolve(preferredRoute);
   }
+
   const cached = readCachedRoute();
   if (cached) {
     preferredRoute = cached;
@@ -270,6 +299,42 @@ export function selectFastestMediaRoute(sampleUrl: string | undefined): Promise<
     }
   })();
   return routeProbe;
+}
+
+export async function selectFastestVideoMediaRoute(
+  videoUrl: string,
+): Promise<MediaRoute> {
+  const directUrl = toDirectMediaUrl(videoUrl);
+  const proxyUrl = toProxyMediaUrl(directUrl);
+  if (absoluteUrl(directUrl) === absoluteUrl(proxyUrl)) return "direct";
+
+  const directController = new AbortController();
+  const proxyController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    directController.abort();
+    proxyController.abort();
+  }, ROUTE_PROBE_TIMEOUT_MS);
+  try {
+    const route = await firstSuccessfulProbe([
+      probeVideoMediaUrl(directUrl, directController.signal).then((valid) => {
+        if (!valid) throw new Error("Direct video route does not support Range");
+        return "direct" as const;
+      }),
+      probeVideoMediaUrl(proxyUrl, proxyController.signal).then((valid) => {
+        if (!valid) throw new Error("Proxy video route does not support Range");
+        return "proxy" as const;
+      }),
+    ]);
+    rememberRoute(route);
+    return route;
+  } catch {
+    // A route that cannot prove byte-range support must not be preferred for video.
+    return "direct";
+  } finally {
+    clearTimeout(timeoutId);
+    directController.abort();
+    proxyController.abort();
+  }
 }
 
 function mediaCandidates(urls: Array<string | undefined>): string[] {

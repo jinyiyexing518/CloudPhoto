@@ -10,10 +10,20 @@ export interface VideoPlaybackSession {
   source: string;
   initialSource: string;
   fallbackSource?: string;
+  attemptedSources: string[];
   hasPlayableContent: boolean;
   fallbackAttempted: boolean;
   needsThumbnailCapture: boolean;
   thumbnailCaptureAttempted: boolean;
+  restore?: VideoPlaybackSnapshot;
+}
+
+export interface VideoPlaybackSnapshot {
+  currentTime: number;
+  shouldResume: boolean;
+  muted: boolean;
+  volume: number;
+  playbackRate: number;
 }
 
 interface CreateVideoPlaybackSessionOptions {
@@ -21,6 +31,8 @@ interface CreateVideoPlaybackSessionOptions {
   originalUrl: string;
   sessionId: number;
   needsThumbnailCapture: boolean;
+  preferredSource?: string;
+  restore?: VideoPlaybackSnapshot;
 }
 
 function comparableUrl(url: string): string {
@@ -44,18 +56,22 @@ export function createVideoPlaybackSession({
   originalUrl,
   sessionId,
   needsThumbnailCapture,
+  preferredSource,
+  restore,
 }: CreateVideoPlaybackSessionOptions): VideoPlaybackSession {
-  const source = getPreferredMediaUrl(originalUrl);
+  const source = preferredSource ?? getPreferredMediaUrl(originalUrl);
   return {
     key: `${photoName}:view-${sessionId}`,
     photoName,
     source,
     initialSource: source,
     fallbackSource: alternateMediaUrl(originalUrl, source),
+    attemptedSources: [comparableUrl(source)],
     hasPlayableContent: false,
     fallbackAttempted: false,
     needsThumbnailCapture,
     thumbnailCaptureAttempted: false,
+    restore,
   };
 }
 
@@ -81,29 +97,38 @@ export function markVideoPlaybackPlayable(
 export function fallbackVideoPlaybackSession(
   session: VideoPlaybackSession,
   failedSource: string,
+  restore?: VideoPlaybackSnapshot,
 ): VideoPlaybackSession | null {
+  const fallbackSource = session.fallbackSource;
   if (
-    session.hasPlayableContent
-    || session.fallbackAttempted
-    || !session.fallbackSource
+    !fallbackSource
     || comparableUrl(failedSource) !== comparableUrl(session.source)
+    || session.attemptedSources.includes(comparableUrl(fallbackSource))
   ) {
     return null;
   }
   return {
     ...session,
-    source: session.fallbackSource,
+    source: fallbackSource,
+    attemptedSources: [...session.attemptedSources, comparableUrl(fallbackSource)],
     fallbackAttempted: true,
+    restore,
   };
 }
 
 export function restartVideoPlaybackSession(
   session: VideoPlaybackSession,
+  sessionId: number,
+  restore?: VideoPlaybackSnapshot,
 ): VideoPlaybackSession {
   return {
     ...session,
+    key: `${session.photoName}:view-${sessionId}`,
     source: session.initialSource,
+    attemptedSources: [comparableUrl(session.initialSource)],
     hasPlayableContent: false,
+    fallbackAttempted: false,
+    restore,
   };
 }
 
@@ -120,5 +145,301 @@ export function claimVideoThumbnailCapture(
   return {
     session: { ...session, thumbnailCaptureAttempted: true },
     shouldCapture: true,
+  };
+}
+
+export const VIDEO_STALL_WATCHDOG_MS = 4_000;
+const VIDEO_PROGRESS_EPSILON_SECONDS = 0.1;
+const HAVE_FUTURE_DATA = 3;
+
+export type VideoPlaybackStatus = "idle" | "buffering" | "error";
+
+export interface VideoPlaybackMedia {
+  currentSrc: string;
+  src: string;
+  currentTime: number;
+  duration: number;
+  paused: boolean;
+  ended: boolean;
+  seeking: boolean;
+  readyState: number;
+  muted: boolean;
+  volume: number;
+  playbackRate: number;
+  load(): void;
+  play(): Promise<void>;
+}
+
+interface CreateVideoPlaybackControllerOptions {
+  getSession(): VideoPlaybackSession | null;
+  setSession(session: VideoPlaybackSession): void;
+  onStatus(status: VideoPlaybackStatus): void;
+  setTimer(callback: () => void, timeoutMs: number): number;
+  clearTimer(timerId: number): void;
+  isVisible(): boolean;
+}
+
+export interface VideoPlaybackController {
+  activate(session: VideoPlaybackSession): void;
+  dispose(): void;
+  onPlay(sessionKey: string, media: VideoPlaybackMedia): void;
+  onLoadedData(sessionKey: string, media: VideoPlaybackMedia): void;
+  onPlaying(sessionKey: string, media: VideoPlaybackMedia): void;
+  onWaiting(sessionKey: string, media: VideoPlaybackMedia): void;
+  onStalled(sessionKey: string, media: VideoPlaybackMedia): void;
+  onTimeUpdate(sessionKey: string, media: VideoPlaybackMedia): void;
+  onCanPlay(sessionKey: string, media: VideoPlaybackMedia): void;
+  onPause(sessionKey: string, media: VideoPlaybackMedia): void;
+  onSeeking(sessionKey: string, media: VideoPlaybackMedia): void;
+  onSeeked(sessionKey: string, media: VideoPlaybackMedia): void;
+  onEnded(sessionKey: string, media: VideoPlaybackMedia): void;
+  onVisibilityChange(): void;
+  onError(sessionKey: string, media: VideoPlaybackMedia): boolean;
+  onLoadedMetadata(sessionKey: string, media: VideoPlaybackMedia): Promise<void>;
+  retry(sessionId: number, media: VideoPlaybackMedia): VideoPlaybackSession;
+}
+
+function finiteTime(value: number): number {
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+export function createVideoPlaybackController({
+  getSession,
+  setSession,
+  onStatus,
+  setTimer,
+  clearTimer,
+  isVisible,
+}: CreateVideoPlaybackControllerOptions): VideoPlaybackController {
+  let activeKey: string | null = null;
+  let watchdogId: number | null = null;
+  let watchdogGeneration = 0;
+  let watchdogStartTime = 0;
+  let playIntent = false;
+  let recovering = false;
+  let pendingRestore: VideoPlaybackSnapshot | null = null;
+  let lastSnapshot: VideoPlaybackSnapshot | null = null;
+  let currentStatus: VideoPlaybackStatus = "idle";
+
+  const emitStatus = (status: VideoPlaybackStatus) => {
+    currentStatus = status;
+    onStatus(status);
+  };
+
+  const isCurrent = (sessionKey: string): boolean => (
+    activeKey === sessionKey && getSession()?.key === sessionKey
+  );
+
+  const clearWatchdog = () => {
+    watchdogGeneration += 1;
+    if (watchdogId !== null) clearTimer(watchdogId);
+    watchdogId = null;
+  };
+
+  const snapshot = (media: VideoPlaybackMedia): VideoPlaybackSnapshot => {
+    const value = {
+      currentTime: finiteTime(media.currentTime),
+      shouldResume: playIntent || (!media.paused && !media.ended),
+      muted: media.muted,
+      volume: media.volume,
+      playbackRate: media.playbackRate,
+    };
+    lastSnapshot = value;
+    return value;
+  };
+
+  const canWatch = (media: VideoPlaybackMedia): boolean => (
+    playIntent
+    && !media.paused
+    && !media.ended
+    && !media.seeking
+    && media.readyState < HAVE_FUTURE_DATA
+    && isVisible()
+  );
+
+  const recover = (
+    sessionKey: string,
+    media: VideoPlaybackMedia,
+  ): boolean => {
+    if (!isCurrent(sessionKey)) return false;
+    const current = getSession();
+    if (
+      !current
+      || comparableUrl(media.currentSrc || media.src) !== comparableUrl(current.source)
+    ) {
+      return false;
+    }
+    clearWatchdog();
+    const restore = snapshot(media);
+    const fallback = fallbackVideoPlaybackSession(
+      current,
+      media.currentSrc || media.src,
+      restore,
+    );
+    if (!fallback) {
+      recovering = false;
+      emitStatus("error");
+      return false;
+    }
+    recovering = true;
+    pendingRestore = restore;
+    setSession(fallback);
+    emitStatus("buffering");
+    media.src = fallback.source;
+    media.load();
+    return true;
+  };
+
+  const armWatchdog = (sessionKey: string, media: VideoPlaybackMedia) => {
+    if (!isCurrent(sessionKey)) return;
+    clearWatchdog();
+    if (!canWatch(media)) {
+      emitStatus("idle");
+      return;
+    }
+    emitStatus("buffering");
+    watchdogStartTime = finiteTime(media.currentTime);
+    const generation = watchdogGeneration;
+    watchdogId = setTimer(() => {
+      watchdogId = null;
+      if (
+        generation !== watchdogGeneration
+        || !isCurrent(sessionKey)
+        || !canWatch(media)
+        || finiteTime(media.currentTime) > watchdogStartTime + VIDEO_PROGRESS_EPSILON_SECONDS
+      ) {
+        return;
+      }
+      recover(sessionKey, media);
+    }, VIDEO_STALL_WATCHDOG_MS);
+  };
+
+  return {
+    activate(session) {
+      clearWatchdog();
+      activeKey = session.key;
+      setSession(session);
+      recovering = Boolean(session.restore);
+      pendingRestore = session.restore ?? null;
+      lastSnapshot = session.restore ?? null;
+      playIntent = session.restore?.shouldResume ?? false;
+      emitStatus(session.restore ? "buffering" : "idle");
+    },
+    dispose() {
+      clearWatchdog();
+      activeKey = null;
+      recovering = false;
+      pendingRestore = null;
+      lastSnapshot = null;
+      playIntent = false;
+    },
+    onPlay(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      playIntent = true;
+      snapshot(media);
+      if (media.readyState < HAVE_FUTURE_DATA) emitStatus("buffering");
+    },
+    onLoadedData(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      snapshot(media);
+      const current = getSession();
+      if (current) setSession(markVideoPlaybackPlayable(current));
+      emitStatus("idle");
+    },
+    onPlaying(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      clearWatchdog();
+      recovering = false;
+      playIntent = true;
+      snapshot(media);
+      const current = getSession();
+      if (current) setSession(markVideoPlaybackPlayable(current));
+      emitStatus("idle");
+    },
+    onWaiting: armWatchdog,
+    onStalled: armWatchdog,
+    onTimeUpdate(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      const progressed = watchdogId !== null
+        && finiteTime(media.currentTime) > watchdogStartTime + VIDEO_PROGRESS_EPSILON_SECONDS;
+      snapshot(media);
+      if (progressed) {
+        clearWatchdog();
+        emitStatus("idle");
+      }
+    },
+    onCanPlay(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      clearWatchdog();
+      snapshot(media);
+      emitStatus("idle");
+    },
+    onPause(sessionKey, media) {
+      if (!isCurrent(sessionKey) || recovering) return;
+      playIntent = false;
+      snapshot(media);
+      clearWatchdog();
+      emitStatus("idle");
+    },
+    onSeeking(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      clearWatchdog();
+      snapshot(media);
+      emitStatus("idle");
+    },
+    onSeeked(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      clearWatchdog();
+      snapshot(media);
+    },
+    onEnded(sessionKey, media) {
+      if (!isCurrent(sessionKey)) return;
+      playIntent = false;
+      snapshot(media);
+      clearWatchdog();
+      emitStatus("idle");
+    },
+    onVisibilityChange() {
+      if (!isVisible()) {
+        clearWatchdog();
+        if (currentStatus === "buffering") emitStatus("idle");
+      }
+    },
+    onError: recover,
+    async onLoadedMetadata(sessionKey, media) {
+      if (!isCurrent(sessionKey) || !pendingRestore) return;
+      const restore = pendingRestore;
+      pendingRestore = null;
+      media.muted = restore.muted;
+      media.volume = restore.volume;
+      media.playbackRate = restore.playbackRate;
+      const duration = finiteTime(media.duration);
+      media.currentTime = duration > 0
+        ? Math.min(restore.currentTime, Math.max(0, duration - 0.05))
+        : restore.currentTime;
+      recovering = false;
+      if (!restore.shouldResume) {
+        playIntent = false;
+        emitStatus("idle");
+        return;
+      }
+      playIntent = true;
+      try {
+        await media.play();
+      } catch {
+        if (!isCurrent(sessionKey)) return;
+        playIntent = false;
+        emitStatus("idle");
+      }
+    },
+    retry(sessionId, media) {
+      const current = getSession();
+      if (!current) throw new Error("Cannot retry without an active video session");
+      const restore = lastSnapshot ?? snapshot(media);
+      const restarted = restartVideoPlaybackSession(current, sessionId, restore);
+      setSession(restarted);
+      this.activate(restarted);
+      return restarted;
+    },
   };
 }

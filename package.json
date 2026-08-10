@@ -13,6 +13,7 @@
     "check:static-cache": "node scripts/check-static-cache-config.mjs",
     "dev:client": "yarn workspace cloudphoto-client dev",
     "dev:server": "yarn workspace cloudphoto-server start",
+    "test:video-playback": "node --test packages/client/src/services/videoPlaybackSession.test.mjs",
     "test:photo-loading-contracts": "node packages/client/src/services/videoCoverRepairPolicy.test.mjs && node scripts/check-photo-loading-contracts.mjs",
     "test:mobile-layout-contracts": "node --test scripts/mobile-layout-contracts.test.mjs",
     "test:sidebar-filter-layout": "node --test scripts/sidebar-filter-layout-contracts.test.mjs",
