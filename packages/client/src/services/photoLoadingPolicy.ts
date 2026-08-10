@@ -56,6 +56,20 @@ export function isSafeReplayMethod(method: string): boolean {
   return ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
+const EXPENSIVE_API_READ_PATHS = new Set([
+  "/photos",
+  "/photos/locations",
+  "/photos/motion-video",
+  "/photos/trash",
+  "/geocode/search",
+]);
+
+export function shouldHedgeApiRequest(method: string, path: string): boolean {
+  const normalizedMethod = method.toUpperCase();
+  return isSafeReplayMethod(normalizedMethod)
+    && (normalizedMethod !== "GET" || !EXPENSIVE_API_READ_PATHS.has(path));
+}
+
 export const MEDIA_CACHEABLE_RESPONSE_STATUSES = [200] as const;
 
 export function isMediaRequestCacheEligible(input: {

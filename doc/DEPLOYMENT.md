@@ -51,8 +51,10 @@
 | 记录类型 | 主机记录 | 记录值 |
 |---------|---------|--------|
 | A | `@` | `20.195.27.151` |
-| A | `www` | `20.195.27.151` |
 | A | `cn` | `20.195.27.151` |
+| CNAME | `global` | `brave-sand-053b07a00.7.azurestaticapps.net` |
+| 智能 CNAME（中国大陆） | `www` | `cn.cloudphotos.top` |
+| 智能 CNAME（境外） | `www` | `global.cloudphotos.top` |
 
 > ⚠️ 需完成域名实名认证，否则 DNS 不生效（`.top` 等国际域名在阿里云均需实名）
 
@@ -75,19 +77,22 @@ scp -i /path/to/key.pem -r infra/ user@<VM_IP>:~/
 # 2. SSH 进 VM
 ssh -i /path/to/key.pem user@<VM_IP>
 
-# 3. 运行安装脚本（需 DNS 已生效：nslookup cloudphotos.top 8.8.8.8 返回 VM IP）
-sudo bash ~/infra/setup.sh cloudphotos.top
+# 3. 安装 DNS 提供商对应的 Certbot 插件，再把插件参数传给安装脚本。
+#    下列 PROVIDER/参数名是占位符，请按实际插件文档替换。
+sudo bash ~/infra/setup.sh cloudphotos.top \
+  --authenticator dns-PROVIDER \
+  --dns-PROVIDER-credentials /root/certbot-dns.ini
 ```
 
 `infra/setup.sh` 自动完成：
 1. 系统更新
 2. 安装 Nginx + Certbot
 3. 部署 HTTP-only 临时配置，启动 Nginx
-4. Let's Encrypt 申请 SSL 证书（`certonly --nginx`）
+4. 通过调用者提供的 DNS-01 插件申请包含 `www` 的 Let's Encrypt SSL 证书
 5. 部署完整反向代理配置（见 `infra/nginx.conf`）
 6. 启用 systemd certbot.timer 自动续签（每日两次检查）
 
-安装脚本会为裸域名、`www` 和 `cn` 同时申请证书 SAN；部署前必须确保三个 DNS 记录均能完成 ACME 校验。
+安装脚本会为裸域名、`www` 和 `cn` 同时申请证书 SAN。智能 DNS 会让 HTTP-01 随地区落到不同平台，因此脚本在进行系统修改前强制要求可自动续签的 DNS 插件参数，并拒绝 `--manual`。先按插件文档安装插件、创建权限仅限 DNS 验证的凭据文件，并将文件权限设为仅 root 可读；Certbot 会把插件配置保存在 renewal 配置中供 timer 后续续签。
 
 ### ⚠️ Nginx 配置变更必须手动部署到 VM
 

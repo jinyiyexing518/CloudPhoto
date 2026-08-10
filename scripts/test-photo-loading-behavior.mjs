@@ -125,6 +125,15 @@ assert.equal(policy.isSafeReplayMethod("GET"), true);
 for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
   assert.equal(policy.isSafeReplayMethod(method), false, `${method} must not replay`);
 }
+for (const path of ["/photos", "/photos/locations", "/photos/motion-video", "/photos/trash", "/geocode/search"]) {
+  assert.equal(
+    policy.shouldHedgeApiRequest("GET", path),
+    false,
+    `${path} must wait for failure before alternate-route replay`,
+  );
+}
+assert.equal(policy.shouldHedgeApiRequest("GET", "/auth/me"), true);
+assert.equal(policy.shouldHedgeApiRequest("POST", "/auth/login"), false);
 assert.deepEqual(
   [...policy.MEDIA_CACHEABLE_RESPONSE_STATUSES],
   [200],
@@ -367,6 +376,23 @@ const http = await import(httpUrl);
   const calls = [];
   globalThis.fetch = async (input) => {
     calls.push(String(input));
+    if (calls.length === 1) throw new TypeError("primary route offline");
+    return Response.json([]);
+  };
+  const response = await http.fetchWithTimeout(
+    "https://cloudphoto-api.azurewebsites.net/api/photos",
+    { method: "GET" },
+    1_000,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 2, "an expensive read must fail over after a real route failure");
+  await response.body?.cancel();
+}
+
+{
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
     return new Response("unavailable", { status: 503 });
   };
   const response = await http.fetchWithTimeout(
@@ -376,6 +402,25 @@ const http = await import(httpUrl);
   );
   assert.equal(response.status, 503);
   assert.equal(calls.length, 1, "unsafe route failures must not replay");
+  await response.body?.cancel();
+}
+
+{
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return new Response("<!doctype html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    });
+  };
+  const response = await http.fetchWithTimeout(
+    "https://www.cloudphotos.top/api/auth/login",
+    { method: "POST", body: "{}" },
+    1_000,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1, "an unsafe SPA-misroute response must not replay");
   await response.body?.cancel();
 }
 
@@ -553,6 +598,49 @@ const http = await import(httpUrl);
   assert.equal(calls.length, 2);
   assert(calls[0].includes("blob.core.windows.net"));
   assert(calls[1].includes("cloudphotos.top/media/"));
+
+  const timeoutCalls = [];
+  globalThis.fetch = (input, init) => {
+    timeoutCalls.push(String(input));
+    if (timeoutCalls.length === 1) {
+      return new Promise((_, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      });
+    }
+    return Promise.resolve(new Response("timeout-alternate", { status: 200 }));
+  };
+  const timeoutResponse = await mediaRoute.fetchMediaWithFallback(
+    "https://photostorage.blob.core.windows.net/photos/timeout.jpg?sig=old",
+    undefined,
+    5,
+  );
+  assert.equal(await timeoutResponse.text(), "timeout-alternate");
+  assert.equal(timeoutCalls.length, 2, "a stalled media route must advance after its own timeout");
+
+  const bodyTimeoutCalls = [];
+  globalThis.fetch = (input, init) => {
+    bodyTimeoutCalls.push(String(input));
+    if (bodyTimeoutCalls.length === 1) {
+      const body = new ReadableStream({
+        start(controller) {
+          init.signal.addEventListener(
+            "abort",
+            () => controller.error(init.signal.reason),
+            { once: true },
+          );
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200 }));
+    }
+    return Promise.resolve(new Response("body-timeout-alternate", { status: 200 }));
+  };
+  const bodyTimeoutResponse = await mediaRoute.fetchMediaWithFallback(
+    "https://photostorage.blob.core.windows.net/photos/body-timeout.jpg?sig=old",
+    undefined,
+    5,
+  );
+  assert.equal(await bodyTimeoutResponse.text(), "body-timeout-alternate");
+  assert.equal(bodyTimeoutCalls.length, 2, "a stalled media body must advance to the alternate");
 }
 
 const listCache = await importTypeScript(
@@ -693,9 +781,9 @@ assert(nginxSource.includes("add_header Accept-Ranges bytes always;"));
 
 console.log("photo-loading behavior: PASS");
 console.log("evidence auth-user-role-group-isolation=true stale-publish-blocked=true ordered-cache-writes=true");
-console.log("evidence slow-primary-survives=true fallback-wins=true caller-cancel=true unsafe-replay=false");
+console.log("evidence slow-primary-survives=true fallback-wins=true caller-cancel=true unsafe-replay=false expensive-read-hedge=false");
 console.log("evidence health-explicit-ttl-ms=300000 health-transient-ttl-ms=5000");
 console.log("evidence cold-list-miss=true persisted-first-paint=true focus-visibility-requests=1");
-console.log("evidence media-primary-fail-alternate-pass=true range-sw-cache=false opaque-cache=false");
+console.log("evidence media-primary-fail-alternate-pass=true media-route-timeout=true range-sw-cache=false opaque-cache=false");
 console.log("evidence private-cache-max-age-s=3600 public=false stale=false range-forwarded=true");
 console.log("evidence role-account-logout-private-cache-miss=true app-shell-preserved=true");

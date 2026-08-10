@@ -79,14 +79,14 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 | `www.cloudphotos.top`（中国大陆线路） | `CNAME cn.cloudphotos.top` | 智能 DNS 大陆解析 |
 | `www.cloudphotos.top`（境外线路） | `CNAME global.cloudphotos.top` | 智能 DNS 境外解析 |
 
-`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，可作为智能 DNS 健康检查。`www` 同时落到两个平台时应使用 DNS-01 签发证书，避免 HTTP-01 校验被地域解析到另一端。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
+`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，可作为智能 DNS 健康检查，定时线上 smoke 也会校验其 JSON 路由标识。`www` 同时落到两个平台时必须使用可自动续签的 DNS-01 插件签发证书，避免 HTTP-01 校验被地域解析到另一端；`infra/setup.sh` 会拒绝缺少 DNS 插件参数或不可续签的 `--manual` 模式。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
 
 ---
 
 ## 功能列表
 
 - **JWT 认证与自动刷新** — 2 小时访问令牌 + 30 天滚动刷新令牌；收到 401 时客户端静默刷新并重试原请求；并发 401 共享同一个刷新请求（互斥锁），注销/切号会中止并作废旧会话刷新，迟到的 401 不会退出新账号
-- **API 双向故障回退** — 大陆入口优先同源 `/api`，全球入口优先 Azure Functions；可安全重试的读取/认证请求在网络或网关故障时切换线路，非幂等写入不重复发送
+- **API 双向故障回退** — 大陆入口优先同源 `/api`，全球入口优先 Azure Functions；读取请求在网络或网关故障时切换线路，高成本读取仅在明确失败后换线，非幂等认证与写入请求不重复发送
 - **媒体自适应线路** — Blob 直连与 Nginx `/media` 通过轻量 `HEAD` 竞速选择，失败时自动换线；海外直连可显著降低 VM 出站流量
 - **用户隔离照片 SWR** — 最近非空照片列表按用户/群组持久化并限量保留；刷新先本地绘制再联网，注销/切号清除列表与私有媒体缓存
 - **认证限流** — 内存中按 IP 滑动窗口：登录 10 次/分，注册 5 次/分，刷新 20 次/分；超限返回 `429 + Retry-After: 60`

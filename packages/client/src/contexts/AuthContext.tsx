@@ -70,7 +70,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     getMeApi(controller.signal)
       .then(async (restoredUser) => {
         if (controller.signal.aborted || generation !== authSyncGeneration.current) return;
-        await preparePrivatePhotoCachesForScope(authCacheScope(restoredUser));
+        const restoredScope = authCacheScope(restoredUser);
+        if (getTokenAuthScope() !== restoredScope) {
+          logout();
+          return;
+        }
+        await preparePrivatePhotoCachesForScope(restoredScope);
         if (!controller.signal.aborted && generation === authSyncGeneration.current) {
           setUser(restoredUser);
         }
@@ -92,21 +97,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const saveAuth = useCallback(async (resp: AuthResponse): Promise<boolean> => {
     const previousUser = currentUserRef.current;
-    if (previousUser && authCacheScope(previousUser) !== authCacheScope(resp.user)) {
+    const nextScope = authCacheScope(resp.user);
+    if (getTokenAuthScope(resp.token) !== nextScope) {
+      logout();
+      return false;
+    }
+    if (previousUser && authCacheScope(previousUser) !== nextScope) {
       currentUserRef.current = null;
       setUser(null);
     }
     cancelAuthSync();
     saveStoredAuth(resp.token, resp.refreshToken);
     const generation = authSyncGeneration.current;
-    await preparePrivatePhotoCachesForScope(authCacheScope(resp.user));
+    await preparePrivatePhotoCachesForScope(nextScope);
     if (generation === authSyncGeneration.current && getToken() === resp.token) {
       currentUserRef.current = resp.user;
       setUser(resp.user);
       return true;
     }
     return false;
-  }, [cancelAuthSync]);
+  }, [cancelAuthSync, logout]);
 
   const login = useCallback(async (username: string, password: string) => {
     const resp = await loginApi(username, password);
@@ -128,12 +138,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       syncGeneration !== authSyncGeneration.current
       || authGeneration !== getAuthGeneration()
       || currentUserRef.current?.id !== expectedUser.id
-      || resp.user.id !== expectedUser.id
     ) {
       throw new Error("登录状态已变更，个人资料未应用");
     }
+    if (resp.user.id !== expectedUser.id) {
+      logout();
+      throw new Error("登录状态已变更，个人资料未应用");
+    }
     if (!await saveAuth(resp)) throw new Error("登录状态已变更，个人资料未应用");
-  }, [saveAuth]);
+  }, [logout, saveAuth]);
 
   // Auto-logout when any API call receives 401 (token expired)
   useEffect(() => {
@@ -164,7 +177,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authSyncController.current = controller;
       void getMeApi(controller.signal)
         .then(async (nextUser) => {
-          await preparePrivatePhotoCachesForScope(authCacheScope(nextUser));
+          const nextScope = authCacheScope(nextUser);
+          if (getTokenAuthScope() !== nextScope) {
+            logout();
+            return;
+          }
+          await preparePrivatePhotoCachesForScope(nextScope);
           if (!controller.signal.aborted && generation === authSyncGeneration.current) {
             setUser(nextUser);
           }
@@ -181,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [cancelAuthSync, user?.id, user?.role]);
+  }, [cancelAuthSync, logout, user?.id, user?.role]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>

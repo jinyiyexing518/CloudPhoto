@@ -12,6 +12,7 @@ const DEFAULT_PROXY_MEDIA_BASE = "https://cloudphotos.top/media";
 const ROUTE_CACHE_KEY = "cloudphoto_media_route_v1";
 const ROUTE_CACHE_MS = 30 * 60 * 1000;
 const ROUTE_PROBE_TIMEOUT_MS = 1_500;
+const MEDIA_ATTEMPT_TIMEOUT_MS = 10_000;
 
 const blobMediaBase = (
   (import.meta.env.VITE_BLOB_MEDIA_BASE as string | undefined) ??
@@ -310,6 +311,13 @@ export function fallbackMediaSource(
   }
 
   state.attempted.add(absoluteUrl(next));
+  const expectedSource = absoluteUrl(next);
+  const successEvent = element.tagName === "IMG" ? "load" : "loadeddata";
+  element.addEventListener(successEvent, () => {
+    if (absoluteUrl(element.currentSrc || element.src) !== expectedSource) return;
+    const route = mediaRouteForUrl(next);
+    if (route) rememberRoute(route);
+  }, { once: true });
   element.src = next;
   return true;
 }
@@ -317,6 +325,7 @@ export function fallbackMediaSource(
 export async function fetchMediaWithFallback(
   url: string,
   init?: RequestInit,
+  routeTimeoutMs = MEDIA_ATTEMPT_TIMEOUT_MS,
 ): Promise<Response> {
   const candidates = mediaCandidates([url]);
   const requiresPartialContent = new Headers(init?.headers).has("Range");
@@ -324,24 +333,48 @@ export async function fetchMediaWithFallback(
   let lastError: unknown;
   for (let index = 0; index < candidates.length; index++) {
     const candidate = candidates[index];
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort(init?.signal?.reason);
+    if (init?.signal?.aborted) abortFromCaller();
+    else init?.signal?.addEventListener("abort", abortFromCaller, { once: true });
+    const timeoutId = setTimeout(
+      () => controller.abort(new DOMException("Media route timed out", "TimeoutError")),
+      routeTimeoutMs,
+    );
     try {
-      const response = await fetch(candidate, init);
-      lastResponse = response;
+      const response = await fetch(candidate, { ...init, signal: controller.signal });
       if (response.ok && (!requiresPartialContent || response.status === 206)) {
+        const body = await response.arrayBuffer();
+        const bufferedResponse = new Response(body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+        Object.defineProperties(bufferedResponse, {
+          url: { value: response.url },
+          redirected: { value: response.redirected },
+          type: { value: response.type },
+        });
         if (index > 0) {
           const route = mediaRouteForUrl(candidate);
           if (route) rememberRoute(route);
         }
-        return response;
+        return bufferedResponse;
       }
+      lastResponse = new Response(null, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
       // A server that ignores Range can otherwise keep streaming the entire
       // video after the caller rejects its 200 response.
-      if (requiresPartialContent || index < candidates.length - 1) {
-        await response.body?.cancel().catch(() => undefined);
-      }
+      await response.body?.cancel().catch(() => undefined);
     } catch (error) {
       if (init?.signal?.aborted) throw error;
       lastError = error;
+    } finally {
+      clearTimeout(timeoutId);
+      init?.signal?.removeEventListener("abort", abortFromCaller);
     }
   }
   if (lastResponse) return lastResponse;
@@ -352,6 +385,7 @@ export async function fetchMediaWithFallback(
 export function preloadImageWithFallback(
   urls: Array<string | undefined>,
   signal?: AbortSignal,
+  routeTimeoutMs = MEDIA_ATTEMPT_TIMEOUT_MS,
 ): Promise<string> {
   const candidates = mediaCandidates(urls);
   return new Promise((resolve, reject) => {
@@ -361,7 +395,11 @@ export function preloadImageWithFallback(
     }
     const image = new Image();
     let index = 0;
+    let attemptId = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = null;
       image.onload = null;
       image.onerror = null;
       signal?.removeEventListener("abort", abort);
@@ -382,7 +420,16 @@ export function preloadImageWithFallback(
         reject(new Error("Media preload failed"));
         return;
       }
+      const currentAttempt = ++attemptId;
+      const advance = () => {
+        if (currentAttempt !== attemptId) return;
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = null;
+        index += 1;
+        attempt();
+      };
       image.onload = () => {
+        if (currentAttempt !== attemptId) return;
         cleanup();
         if (index > 0) {
           const route = mediaRouteForUrl(candidate);
@@ -390,10 +437,13 @@ export function preloadImageWithFallback(
         }
         resolve(candidate);
       };
-      image.onerror = () => {
-        index += 1;
-        attempt();
-      };
+      image.onerror = advance;
+      timeoutId = setTimeout(() => {
+        image.onload = null;
+        image.onerror = null;
+        image.src = "";
+        advance();
+      }, routeTimeoutMs);
       image.src = candidate;
     };
     signal?.addEventListener("abort", abort, { once: true });

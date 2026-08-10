@@ -61,6 +61,71 @@ async function readBlobProperties(blockBlobClient: BlockBlobClient) {
   }
 }
 
+interface VersionedPhotoLocationDoc extends PhotoLocationDoc {
+  sourceBlobEtag: string;
+  _etag?: string;
+}
+
+export type LocationPublishResult =
+  | { status: "published"; etag: string }
+  | { status: "source-changed" };
+
+/**
+ * Writes one Blob snapshot without overwriting a publication from a concurrent
+ * reconciler. The Blob check runs after the Cosmos read, so a later writer
+ * either wins first (our If-Match fails) or publishes after this write.
+ */
+export async function publishPhotoLocationSnapshot(
+  container: Container,
+  doc: PhotoLocationDoc,
+  sourceBlobEtag: string,
+  sourceIsCurrent: () => Promise<boolean>,
+): Promise<LocationPublishResult> {
+  const versionedDoc: VersionedPhotoLocationDoc = {
+    ...doc,
+    sourceBlobEtag,
+  };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let current: VersionedPhotoLocationDoc | undefined;
+    let currentEtag: string | undefined;
+    try {
+      const response = await container.item(doc.id, doc.scope).read<VersionedPhotoLocationDoc>();
+      current = response.resource;
+      currentEtag = response.etag ?? current?._etag;
+    } catch (error) {
+      if (statusCode(error) !== 404) throw error;
+    }
+
+    if (!await sourceIsCurrent()) return { status: "source-changed" };
+    if (current && !currentEtag) {
+      throw new Error(`Photo location is missing an ETag: ${doc.name}`);
+    }
+
+    try {
+      const response = current
+        ? await container.item(doc.id, doc.scope).replace(versionedDoc, {
+            accessCondition: {
+              type: "IfMatch",
+              condition: currentEtag!,
+            },
+          })
+        : await container.items.create(versionedDoc);
+      const etag = response.etag
+        ?? (response.resource as VersionedPhotoLocationDoc | undefined)?._etag;
+      if (!etag) throw new Error(`Photo location write returned no ETag: ${doc.name}`);
+      return { status: "published", etag };
+    } catch (error) {
+      if ((statusCode(error) === 409 || statusCode(error) === 412) && attempt < 3) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(`Photo location changed repeatedly during publication: ${doc.name}`);
+}
+
 async function removeLocationForMissingBlob(
   container: Container,
   blockBlobClient: BlockBlobClient,
@@ -100,6 +165,9 @@ export async function syncPhotoLocationFromBlob(
     }
     const metadata = props.metadata;
     const sourceEtag = props.etag;
+    if (!sourceEtag) {
+      throw new Error(`Blob properties returned no ETag: ${blobName}`);
+    }
     const lat = parseCoordinate(getMeta(metadata, "gpsLat"), -90, 90);
     const lon = parseCoordinate(getMeta(metadata, "gpsLon"), -180, 180);
     const hasLocation = (
@@ -124,7 +192,14 @@ export async function syncPhotoLocationFromBlob(
         } : {}),
         ...(props.contentType ? { contentType: props.contentType } : {}),
       };
-      publishedEtag = (await container.items.upsert(doc)).etag;
+      const publication = await publishPhotoLocationSnapshot(
+        container,
+        doc,
+        sourceEtag,
+        async () => (await readBlobProperties(blockBlobClient))?.etag === sourceEtag,
+      );
+      if (publication.status === "source-changed") continue;
+      publishedEtag = publication.etag;
     } else {
       const locationEtag = await readLocationEtag(container, id, scope);
       if (locationEtag) {

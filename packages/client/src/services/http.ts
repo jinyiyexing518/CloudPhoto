@@ -25,6 +25,7 @@ import {
   isSafeReplayMethod,
   proxyProbeTtlMs,
   raceHedgedAttempts,
+  shouldHedgeApiRequest,
 } from "./photoLoadingPolicy";
 
 type ApiRouteKind = "direct" | "proxy" | "same-origin";
@@ -114,13 +115,16 @@ function requestMethod(input: RequestInfo, init?: RequestInit): string {
   ).toUpperCase();
 }
 
-function canHedgeOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
+function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
   const method = requestMethod(input, init);
   const request = parseApiRequest(input);
-  if (isSafeReplayMethod(method)) {
-    return request?.suffix.split("?")[0] !== "/photos/share";
-  }
-  return false;
+  return isSafeReplayMethod(method) && request?.suffix !== "/photos/share";
+}
+
+function canHedgeOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
+  const request = parseApiRequest(input);
+  return canRetryOnAlternateRoute(input, init)
+    && shouldHedgeApiRequest(requestMethod(input, init), request?.suffix ?? "");
 }
 
 function keepCancellationUntilBodyCompletes(
@@ -279,14 +283,17 @@ async function fetchWithProxyFallback(
   hedgeDelayMs?: number,
 ): Promise<Response> {
   const primaryInput = await resolvePrimaryApiInput(input, init);
-  const fallbackUrl = canHedgeOnAlternateRoute(primaryInput, init)
+  const fallbackUrl = canRetryOnAlternateRoute(primaryInput, init)
     ? getFallbackApiUrl(primaryInput)
     : null;
 
   const handleMissingSameOriginRoute = async (response: Response): Promise<Response> => {
     const primaryRequest = parseApiRequest(primaryInput);
+    const safeToReplay = isSafeReplayMethod(requestMethod(primaryInput, init));
     const contentType = response.headers.get("content-type") ?? "";
     const routeMissing = (
+      safeToReplay
+      &&
       primaryRequest?.kind === "same-origin"
       && (
         response.status === 404
@@ -300,8 +307,34 @@ async function fetchWithProxyFallback(
     return fetch(buildApiUrl(DIRECT_API_BASE, primaryRequest), init);
   };
 
-  if (!fallbackUrl || !hedgeDelayMs) {
+  if (!fallbackUrl) {
     return handleMissingSameOriginRoute(await fetch(primaryInput, init));
+  }
+
+  const retryableStatuses = new Set([502, 503, 504, 521, 522, 523, 524]);
+  if (!hedgeDelayMs || !canHedgeOnAlternateRoute(primaryInput, init)) {
+    let primaryResponse: Response;
+    try {
+      primaryResponse = await fetch(primaryInput, init);
+    } catch (error) {
+      if (init?.signal?.aborted) throw error;
+      return fetch(fallbackUrl, init);
+    }
+
+    const handledResponse = await handleMissingSameOriginRoute(primaryResponse);
+    if (handledResponse !== primaryResponse) return handledResponse;
+    if (!retryableStatuses.has(primaryResponse.status) || init?.signal?.aborted) {
+      return primaryResponse;
+    }
+
+    try {
+      const fallbackResponse = await fetch(fallbackUrl, init);
+      await primaryResponse.body?.cancel().catch(() => undefined);
+      return fallbackResponse;
+    } catch (error) {
+      if (init?.signal?.aborted) throw error;
+      return primaryResponse;
+    }
   }
 
   const startAttempt = (attemptInput: RequestInfo) => {
@@ -315,7 +348,6 @@ async function fetchWithProxyFallback(
       release: () => init?.signal?.removeEventListener("abort", abortFromCaller),
     };
   };
-  const retryableStatuses = new Set([502, 503, 504, 521, 522, 523, 524]);
   const outcome = await raceHedgedAttempts({
     startPrimary: () => startAttempt(primaryInput),
     startFallback: () => startAttempt(fallbackUrl),

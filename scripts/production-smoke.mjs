@@ -53,6 +53,20 @@ async function validateChangelogs(response) {
   }
 }
 
+async function validateProxyHealth(response) {
+  if (response.status !== 200) {
+    throw new Error(`expected 200, received ${response.status}`);
+  }
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new Error("response is not JSON");
+  }
+  const body = await response.json();
+  if (body?.status !== "ok" || body?.route !== "cloudphoto-proxy") {
+    throw new Error("response does not identify the CloudPhoto proxy");
+  }
+}
+
 export function createChecks(env = process.env) {
   const primaryBaseUrl = env.PRODUCTION_BASE_URL ?? DEFAULT_BASE_URL;
   const azureFrontendUrl =
@@ -66,6 +80,12 @@ export function createChecks(env = process.env) {
       name: "homepage",
       url: env.PRODUCTION_HOME_URL ?? new URL("/", primaryBaseUrl).href,
       validate: validateHomepage,
+    },
+    {
+      target: "primary",
+      name: "healthz",
+      url: env.PRODUCTION_HEALTH_URL ?? new URL("/healthz", primaryBaseUrl).href,
+      validate: validateProxyHealth,
     },
     {
       target: "azure",

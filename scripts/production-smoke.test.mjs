@@ -23,6 +23,7 @@ async function withServer(handler, run) {
 function testEnvironment(origin) {
   return {
     PRODUCTION_HOME_URL: `${origin}/primary`,
+    PRODUCTION_HEALTH_URL: `${origin}/primary/healthz`,
     PRODUCTION_AZURE_HOME_URL: `${origin}/azure`,
     PRODUCTION_AUTH_ME_URL: `${origin}/primary/api/auth/me`,
     PRODUCTION_AZURE_AUTH_ME_URL: `${origin}/azure/api/auth/me`,
@@ -56,6 +57,11 @@ test("builds primary and Azure checks from base URL overrides", () => {
         url: "https://primary.example/",
       },
       {
+        target: "primary",
+        name: "healthz",
+        url: "https://primary.example/healthz",
+      },
+      {
         target: "azure",
         name: "homepage",
         url: "https://frontend.example/",
@@ -84,12 +90,33 @@ test("builds primary and Azure checks from base URL overrides", () => {
   );
 });
 
+test("rejects a proxy health route that falls through to the SPA", async () => {
+  const healthCheck = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+  }).find(({ name }) => name === "healthz");
+  assert(healthCheck);
+
+  await assert.rejects(
+    healthCheck.validate(new Response("<!doctype html>", {
+      headers: { "content-type": "text/html" },
+    })),
+    /response is not JSON/,
+  );
+  await assert.rejects(
+    healthCheck.validate(Response.json({ status: "ok", route: "wrong-route" })),
+    /does not identify the CloudPhoto proxy/,
+  );
+});
+
 test("passes the primary and Azure production contracts with timings", async () => {
   await withServer(
     (request, response) => {
       if (request.url === "/primary" || request.url === "/azure") {
         response.writeHead(200, { "content-type": "text/html" });
         response.end("<!doctype html><title>Cloud Photo</title>");
+      } else if (request.url === "/primary/healthz") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end('{"status":"ok","route":"cloudphoto-proxy"}');
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
@@ -113,7 +140,7 @@ test("passes the primary and Azure production contracts with timings", async () 
       assert.equal(passed, true);
       assert.equal(
         messages.output.filter((message) => message.startsWith("PASS ")).length,
-        6
+        7
       );
       assert.ok(
         messages.output.some((message) =>
@@ -136,6 +163,9 @@ test("retries and fails when either changelog response is not an array", async (
       if (request.url === "/primary" || request.url === "/azure") {
         response.writeHead(200, { "content-type": "text/html" });
         response.end("<!doctype html><title>Cloud Photo</title>");
+      } else if (request.url === "/primary/healthz") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end('{"status":"ok","route":"cloudphoto-proxy"}');
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
@@ -187,6 +217,9 @@ test("runs all checks concurrently and reports an isolated failure in order", as
     if (url.endsWith("/azure/api/changelogs")) {
       throw new Error("controlled failure");
     }
+    if (url.endsWith("/healthz")) {
+      return Response.json({ status: "ok", route: "cloudphoto-proxy" });
+    }
     if (url.endsWith("/api/auth/me")) {
       return new Response('{"error":"Unauthorized"}', { status: 401 });
     }
@@ -208,14 +241,15 @@ test("runs all checks concurrently and reports an isolated failure in order", as
   });
 
   assert.equal(passed, false);
-  assert.equal(maxInFlight, 6);
-  assert.equal(completed, 6);
+  assert.equal(maxInFlight, 7);
+  assert.equal(completed, 7);
   assert.deepEqual(
     messages.output
       .filter((message) => /^(PASS|FAIL) /.test(message))
       .map((message) => message.match(/^(?:PASS|FAIL) (\S+ \S+):/)[1]),
     [
       "primary homepage",
+      "primary healthz",
       "azure homepage",
       "primary auth/me",
       "azure auth/me",
@@ -223,7 +257,7 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       "azure changelogs",
     ]
   );
-  assert.match(messages.output[5], /^FAIL azure changelogs:/);
+  assert.match(messages.output[6], /^FAIL azure changelogs:/);
   assert.match(
     messages.output.at(-1),
     /Production smoke checks failed after 1 attempts:/

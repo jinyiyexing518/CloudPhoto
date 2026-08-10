@@ -104,6 +104,8 @@ export interface PhotoLocationDoc {
   originalName?: string;
   contentType?: string;
   uploadedAt: string;
+  /** Blob ETag used to build this cache row; never returned by the public query. */
+  sourceBlobEtag?: string;
 }
 
 export async function getUserById(userId: string): Promise<UserDoc | null> {

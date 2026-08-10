@@ -16,6 +16,7 @@ const auth = read("packages/client/src/contexts/AuthContext.tsx");
 const groupContext = read("packages/client/src/contexts/GroupContext.tsx");
 const groupApi = read("packages/client/src/services/groupApi.ts");
 const http = read("packages/client/src/services/http.ts");
+const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
 const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
@@ -32,6 +33,8 @@ const backfillCursor = read("packages/server/src/functions/photos/backfillCursor
 const photoLocationSync = read("packages/server/src/utils/cosmos/photoLocationSync.ts");
 const setVideoThumb = read("packages/server/src/functions/photos/setVideoThumbnail.ts");
 const trash = read("packages/server/src/functions/trash/listTrash.ts");
+const restore = read("packages/server/src/functions/trash/restorePhoto.ts");
+const productionSmoke = read("scripts/production-smoke.mjs");
 
 // Cold list + persisted paint + one shared focus/visibility throttle.
 assert.equal((app.match(/\blistPhotos\(currentGroupId,/g) ?? []).length, 1);
@@ -52,8 +55,15 @@ for (const name of ["cloudphoto-photo-lists-v1", "photo-media-v1", "cf-media-v1"
   requireText(listCache, name, "private cache cleanup");
 }
 requireText(auth, "void clearPrivatePhotoCaches()", "explicit/automatic logout cleanup");
-requireText(auth, "preparePrivatePhotoCachesForScope(authCacheScope(restoredUser))", "restore authorization ownership");
-requireText(auth, "preparePrivatePhotoCachesForScope(authCacheScope(resp.user))", "account/role ownership");
+requireText(auth, "getTokenAuthScope() !== restoredScope", "restore token/role drift rejection");
+requireText(auth, "preparePrivatePhotoCachesForScope(restoredScope)", "restore authorization ownership");
+requireText(auth, "getTokenAuthScope(resp.token) !== nextScope", "login token/user scope validation");
+requireText(auth, "preparePrivatePhotoCachesForScope(nextScope)", "account/role ownership");
+assert.equal(
+  (auth.match(/getTokenAuthScope\(\) !== (?:restoredScope|nextScope)/g) ?? []).length,
+  2,
+  "mount and cross-tab restoration must both reject token/role drift",
+);
 requireText(auth, 'window.addEventListener("storage", handleStorage)', "cross-tab memory cleanup");
 requireText(auth, "replacementScope === currentScope", "same-scope cross-tab token rotation");
 assert(
@@ -61,7 +71,11 @@ assert(
     < auth.indexOf("invalidateAuthRefresh();", auth.indexOf("const handleStorage")),
   "cross-tab same-scope rotations must return before auth invalidation",
 );
-requireText(auth, "preparePrivatePhotoCachesForScope(authCacheScope(nextUser))", "cross-tab account switch");
+assert.equal(
+  (auth.match(/preparePrivatePhotoCachesForScope\(nextScope\)/g) ?? []).length,
+  2,
+  "login and cross-tab account switches must both adopt scoped caches",
+);
 requireText(auth, "invalidateAuthRefresh();", "cross-tab refresh invalidation");
 requireText(auth, "getMeApi(controller.signal)", "abortable auth restoration");
 requireText(auth, "generation !== authSyncGeneration.current", "stale restore generation guard");
@@ -86,8 +100,13 @@ requireText(groupContext, "generation !== refreshGenerationRef.current", "stale 
 requireText(groupContext, "groupsOwnerIdRef.current === user.id", "first-render group ownership guard");
 requireText(groupContext, "userId !== currentUserIdRef.current", "stale group callback guard");
 requireText(http, "canHedgeOnAlternateRoute", "safe route hedge guard");
+requireText(http, "canRetryOnAlternateRoute", "failure-only route retry guard");
 requireText(http, "isSafeReplayMethod(method)", "unsafe route replay exclusion");
+requireText(http, "const safeToReplay = isSafeReplayMethod", "misrouted unsafe request replay guard");
 requireText(http, "raceHedgedAttempts", "non-destructive route hedge");
+for (const path of ["/photos", "/photos/locations", "/photos/motion-video", "/photos/trash", "/geocode/search"]) {
+  requireText(loadingPolicy, `"${path}"`, `expensive GET hedge exclusion ${path}`);
+}
 requireText(http, "proxyProbeTtlMs(result)", "classified proxy probe expiry");
 requireText(http, "handleMissingSameOriginRoute", "misrouted SPA response detection");
 requireText(http, "invalidateApiProxyProbe();", "misrouted proxy cache invalidation");
@@ -131,6 +150,8 @@ requireText(photoCard, ".filter((source): source is string => Boolean(source))",
 // Route probes and fallback are finite, body-free, bounded, and cancel losers.
 requireText(media, 'method: "HEAD"', "body-free media probe");
 requireText(media, "const ROUTE_PROBE_TIMEOUT_MS = 1_500", "probe timeout");
+requireText(media, "const MEDIA_ATTEMPT_TIMEOUT_MS = 10_000", "per-route media timeout");
+requireText(media, "const body = await response.arrayBuffer()", "media body timeout coverage");
 requireText(media, "directController.abort()", "direct loser cancellation");
 requireText(media, "proxyController.abort()", "proxy loser cancellation");
 requireText(media, "for (let index = 0; index < candidates.length; index++)", "fetch fallback loop");
@@ -139,10 +160,12 @@ requireText(media, "response.ok && (!requiresPartialContent || response.status =
 requireText(media, 'new Headers(init?.headers).has("Range")', "Range response validation");
 requireText(
   media,
-  "requiresPartialContent || index < candidates.length - 1",
+  "await response.body?.cancel().catch(() => undefined)",
   "all non-206 Range response bodies are canceled",
 );
 requireText(media, "attempted: Set<string>", "finite element fallback");
+requireText(media, "if (route) rememberRoute(route)", "successful alternate route promotion");
+requireText(media, 'element.tagName === "IMG" ? "load" : "loadeddata"', "image/media success events");
 requireText(media, "resolveMediaUrlWithFallback", "native download preflight");
 const nativeDownloadResolver = media.slice(media.indexOf("export async function resolveMediaUrlWithFallback"));
 assert(
@@ -198,6 +221,10 @@ requireText(photoLocationSync, "const props = await readBlobProperties(blockBlob
 requireText(photoLocationSync, "verified.etag === sourceEtag", "GPS post-publish ETag reconciliation");
 requireText(photoLocationSync, "publishedEtag", "GPS stale-publication tracking");
 requireText(photoLocationSync, "condition: etag", "GPS conditional Cosmos mutation");
+requireText(photoLocationSync, "publishPhotoLocationSnapshot", "conditional GPS publication");
+requireText(photoLocationSync, "if (!await sourceIsCurrent())", "pre-publication Blob ETag verification");
+requireText(photoLocationSync, ".replace(versionedDoc", "GPS conditional replace");
+requireText(photoLocationSync, "condition: currentEtag!", "GPS publication If-Match");
 requireText(photoLocationSync, "code?: unknown", "Cosmos conditional error normalization");
 requireText(photoLocationSync, "await deleteLocation(container, id, scope, publishedEtag)", "exact stale GPS rollback");
 requireText(photoLocationSync, "removeLocationForMissingBlob", "recreated Blob location protection");
@@ -220,6 +247,8 @@ requireText(upload, 'conditions: { ifNoneMatch: "*" }', "idempotent original cre
 requireText(upload, "syncPhotoLocationFromBlob(blockBlobClient, blobName, scope)", "idempotent GPS reconciliation");
 requireText(trash, "thumbnailUrl:", "trash thumbnail contract");
 requireText(trash, "previewUrl:", "trash preview contract");
+requireText(restore, "syncPhotoLocationFromBlob(blockBlobClient, blobName, scope)", "restore GPS conditional reconciliation");
+assert(!restore.includes("items.upsert"), "restore must not bypass conditional GPS publication");
 
 // Nginx CORS and byte ranges.
 const swaOrigin = "https://brave-sand-053b07a00.7.azurestaticapps.net";
@@ -227,8 +256,14 @@ requireText(nginx, `"${swaOrigin}" $http_origin;`, "exact SWA origin");
 assert(!nginx.includes("*.azurestaticapps.net"), "wildcard SWA origin is forbidden");
 requireText(nginx, "proxy_set_header      Range             $http_range;", "Range forwarding");
 requireText(nginx, 'Access-Control-Expose-Headers "Accept-Ranges, Content-Length, Content-Range"', "Range exposure");
+requireText(productionSmoke, 'name: "healthz"', "production proxy health check");
+requireText(productionSmoke, 'body?.route !== "cloudphoto-proxy"', "production proxy route marker");
 requireText(setup, "server_name ${DOMAIN} www.${DOMAIN} cn.${DOMAIN};", "China hostname ACME route");
 requireText(setup, '-d "cn.${DOMAIN}"', "China hostname certificate SAN");
+requireText(setup, 'CERTBOT_DNS_ARGS=("$@")', "split-DNS certificate arguments");
+requireText(setup, 'HAS_DNS_PLUGIN', "DNS authenticator enforcement");
+requireText(setup, '--authenticator=dns-*', "explicit DNS authenticator validation");
+assert(!setup.includes("certbot certonly --nginx"), "split-DNS www certificate must not use HTTP-01");
 
 const allowedOrigin = (origin) => (
   origin === swaOrigin ||

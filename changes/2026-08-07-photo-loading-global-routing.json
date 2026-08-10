@@ -5,6 +5,6 @@
   "title": "优化照片加载速度、流量与全球访问",
   "type": "improvement",
   "desc": "照片列表跨刷新快速绘制并抑制聚焦重复请求；媒体自动选择 Blob 直连或 Nginx 代理，图片、视频、复制和下载失败时有限次换线。",
-  "details": "PWA 媒体缓存只接收非 Range 的可验证 200 GET，保留 SAS 查询作为账号授权边界并限制为一小时；注销/切号仍会主动清除。Blob 与 Nginx 的浏览器 HTTP freshness 同样限为一小时。所有非 206 的 Range 响应都会主动取消响应体，避免忽略 Range 的线路继续下载完整视频。缩略图仅在 derivative 存在后以 ETag 合并元数据，历史回填、回收站字段、Nginx Range 与精确 CORS allowlist 同步更新。",
+  "details": "PWA 媒体缓存只接收非 Range 的可验证 200 GET，保留 SAS 查询作为账号授权边界并限制为一小时；注销/切号仍会主动清除。Blob 与 Nginx 的浏览器 HTTP freshness 同样限为一小时。所有非 206 的 Range 响应都会主动取消响应体，避免忽略 Range 的线路继续下载完整视频；媒体每条候选线路有独立超时，备用线路成功后会成为后续首选。高成本照片读取只在网络或网关明确失败后换线，不因短时慢响应重复执行。缩略图仅在 derivative 存在后以 ETag 合并元数据，历史回填、回收站字段、Nginx Range 与精确 CORS allowlist 同步更新。",
   "seq": 1786088379482
 }
