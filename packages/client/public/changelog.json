@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-private-cache-lifecycle-boundary",
+    "date": "2026-08-10",
+    "icon": "⚡",
+    "title": "登录页延后加载照片缓存实现",
+    "type": "improvement",
+    "desc": "未登录页面只保留账号安全清理所需的轻量缓存生命周期，照片列表读写改为登录后加载。",
+    "details": "私有缓存的账号/角色归属、generation 失效、内存 reset、在途写入 drain 和 Cache Storage 删除抽成独立生命周期模块，AuthContext 不再提前加载照片列表读写、裁剪与序列化实现。入口由 30.45 kB 降至 28.84 kB，gzip 由 11.03 kB 降至 10.44 kB；PWA 首装预缓存降至 183.31 KiB。源码、行为和构建契约共同锁定跨账号清理语义及 30 kB 登录入口上限。",
+    "seq": 1786343631605
+  },
+  {
     "id": "2026-08-10-auth-service-boundary",
     "date": "2026-08-10",
     "icon": "⚡",

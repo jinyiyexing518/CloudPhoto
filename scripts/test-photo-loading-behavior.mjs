@@ -703,8 +703,15 @@ const http = await import(httpUrl);
   assert.equal(bodyTimeoutCalls.length, 2, "a stalled media body must advance to the alternate");
 }
 
+const cacheLifecycleUrl = await compileTypeScript(
+  "packages/client/src/services/privatePhotoCacheLifecycle.ts",
+);
 const listCache = await importTypeScript(
   "packages/client/src/services/photoListCache.ts",
+  (source) => source.replaceAll(
+    '"./privatePhotoCacheLifecycle"',
+    JSON.stringify(cacheLifecycleUrl),
+  ),
 );
 assert.equal(
   await listCache.readPhotoListCache("cold-start"),

@@ -247,16 +247,19 @@ function checkHashedAssets(configPath) {
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
-  if (statSync(entryScripts[0]).size > 32_000) {
-    fail(configPath, "built login entry script must stay below 32 kB");
+  if (statSync(entryScripts[0]).size > 30_000) {
+    fail(configPath, "built login entry script must stay below 30 kB");
   }
   for (const workspaceMarker of [
     "Media route timed out",
     "No media candidate available",
     "Media preload failed",
+    "/__cloudphoto-cache__/photo-lists/",
+    "读取照片列表缓存失败:",
+    "写入照片列表缓存失败:",
   ]) {
     if (entryScript.includes(workspaceMarker)) {
-      fail(configPath, `workspace media helper leaked into login JavaScript: ${workspaceMarker}`);
+      fail(configPath, `workspace implementation leaked into login JavaScript: ${workspaceMarker}`);
     }
   }
   for (const selector of [".auth-page", ".app-splash", ".error-boundary-card"]) {

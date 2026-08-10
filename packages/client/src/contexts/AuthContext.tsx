@@ -18,7 +18,7 @@ import {
 import {
   clearPrivatePhotoCaches,
   preparePrivatePhotoCachesForScope,
-} from "../services/photoListCache";
+} from "../services/privatePhotoCacheLifecycle";
 
 interface AuthContextValue {
   user: AuthUser | null;

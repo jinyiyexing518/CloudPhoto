@@ -20,6 +20,7 @@ const groupSwitcher = read("packages/client/src/components/groups/GroupSwitcher.
 const groupApi = read("packages/client/src/services/groupApi.ts");
 const http = read("packages/client/src/services/http.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
+const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
@@ -85,17 +86,33 @@ assert(
   !auth.includes('from "../services/photoApi"'),
   "the auth gate must not import the photo workspace compatibility barrel",
 );
+assert(
+  !auth.includes('from "../services/photoListCache"'),
+  "the auth gate must not import photo-list persistence before authentication",
+);
 requireText(auth, 'from "../services/authApi"', "direct auth API boundary");
 requireText(auth, 'from "../services/http"', "direct auth token boundary");
+requireText(
+  auth,
+  'from "../services/privatePhotoCacheLifecycle"',
+  "direct private-cache lifecycle boundary",
+);
 
 // Private list/media cache constraints and account cleanup.
 requireText(listCache, "const CACHE_MAX_ENTRIES = 24", "cache bound");
 requireText(listCache, "Date.now() - cachedAt <= CACHE_MAX_AGE_MS", "cache expiry");
-requireText(listCache, "activePersistentWrites", "in-flight cache cleanup");
-requireText(listCache, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
+requireText(listCache, "registerPrivatePhotoCacheReset", "synchronous memory reset registration");
+requireText(listCache, "registerPrivatePhotoCacheWrite(operation)", "in-flight write registration");
+requireText(cacheLifecycle, "activePersistentWrites", "in-flight cache cleanup");
+requireText(cacheLifecycle, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
 for (const name of ["cloudphoto-photo-lists-v1", "photo-media-v1", "cf-media-v1"]) {
-  requireText(listCache, name, "private cache cleanup");
+  requireText(cacheLifecycle, name, "private cache cleanup");
 }
+assert(
+  cacheLifecycle.indexOf("cacheGeneration += 1;")
+    < cacheLifecycle.indexOf("for (const reset of resetListeners) reset();"),
+  "private-cache invalidation must advance the generation before resetting consumers",
+);
 requireText(auth, "void clearPrivatePhotoCaches()", "explicit/automatic logout cleanup");
 requireText(auth, "getTokenAuthScope() !== restoredScope", "restore token/role drift rejection");
 requireText(auth, "preparePrivatePhotoCachesForScope(restoredScope)", "restore authorization ownership");
