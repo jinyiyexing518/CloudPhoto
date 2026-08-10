@@ -31,9 +31,9 @@ const productionHealthRejectCondition =
   "github.event_name == 'workflow_run' && steps.deployment_event.outputs.deployment_started == 'true' && github.event.workflow_run.conclusion != 'success'";
 const productionHealthCheckCondition =
   "github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'";
+const productionHealthClassifierCommand =
+  'gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" >> "$GITHUB_OUTPUT"';
 const productionHealthGuardedSteps = [
-  "Checkout",
-  "Setup Node.js",
   "Test workflow runtime parser",
   "Verify workflow runtimes",
   "Test smoke checks",
@@ -330,7 +330,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
       productionHealthClassification = {
         condition: stepField(step, "if"),
         ghToken: stepChildField(step, "env", "GH_TOKEN"),
-        source: step.lines.join("\n"),
+        command: stepField(step, "run"),
       };
     }
     if (stepField(step, "id") === "swa_token") {
@@ -446,12 +446,7 @@ export function checkWorkflowRuntimeContracts(workflows) {
     !healthPolicy?.productionHealthClassification
     || healthPolicy.productionHealthClassification.condition !== "github.event_name == 'workflow_run'"
     || healthPolicy.productionHealthClassification.ghToken !== "${{ secrets.GITHUB_TOKEN }}"
-    || !healthPolicy.productionHealthClassification.source.includes(
-      'repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100'
-    )
-    || !healthPolicy.productionHealthClassification.source.includes(
-      '.name == "Deploy production" and .started_at != null and .conclusion != "skipped"'
-    )
+    || healthPolicy.productionHealthClassification.command !== productionHealthClassifierCommand
     || healthPolicy.stepConditions["Reject failed deployment"] !== productionHealthRejectCondition
     || productionHealthGuardedSteps.some(
       (name) => healthPolicy.stepConditions[name] !== productionHealthCheckCondition

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { classifyDeploymentStarted } from "./classify-deployment-event.mjs";
 import {
   checkWorkflowRuntimeContracts,
   inspectWorkflow,
@@ -280,14 +281,14 @@ test("rejects production health without deployment-event classification", () => 
   );
 });
 
-test("rejects health classification that sees only successful deployments", () => {
+test("rejects a health classifier command with success-only filtering", () => {
   const path = ".github/workflows/production-health.yml";
   const health = readFileSync(
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    '.conclusion != "skipped"',
-    '.conclusion == "success"'
+    'node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW"',
+    'jq \'.jobs |= map(select(.conclusion == "success"))\' | node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW"'
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
@@ -295,6 +296,57 @@ test("rejects health classification that sees only successful deployments", () =
     result.issues.some((issue) =>
       issue.includes("never started production deployment")
     )
+  );
+});
+
+test("classifies only a started non-skipped frontend production job as deployment", () => {
+  const workflow = "Deploy Frontend (Azure Static Web Apps)";
+
+  assert.equal(
+    classifyDeploymentStarted(workflow, {
+      jobs: [
+        {
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: "failure",
+        },
+      ],
+    }),
+    true
+  );
+  assert.equal(
+    classifyDeploymentStarted(workflow, {
+      jobs: [
+        {
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: "success",
+        },
+      ],
+    }),
+    true
+  );
+  assert.equal(
+    classifyDeploymentStarted(workflow, {
+      jobs: [
+        {
+          name: "Deploy production",
+          started_at: null,
+          conclusion: "skipped",
+        },
+      ],
+    }),
+    false
+  );
+  assert.equal(classifyDeploymentStarted(workflow, { jobs: [] }), false);
+});
+
+test("keeps backend workflow failures classified as deployment events", () => {
+  assert.equal(
+    classifyDeploymentStarted("Deploy Backend (Azure Functions)", {
+      jobs: [{ name: "deploy", started_at: null, conclusion: "failure" }],
+    }),
+    true
   );
 });
 

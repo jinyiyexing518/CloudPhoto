@@ -25,6 +25,14 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
       - name: Classify deployment event
         id: deployment_event
         if: github.event_name == 'workflow_run'
@@ -32,14 +40,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOYMENT_RUN_ID: ${{ github.event.workflow_run.id }}
           DEPLOYMENT_WORKFLOW: ${{ github.event.workflow_run.name }}
-        run: |
-          DEPLOYMENT_STARTED=true
-          if [[ "$DEPLOYMENT_WORKFLOW" == "Deploy Frontend (Azure Static Web Apps)" ]]; then
-            DEPLOYMENT_STARTED="$(gh api \
-              "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" \
-              --jq '[.jobs[] | select(.name == "Deploy production" and .started_at != null and .conclusion != "skipped")] | length > 0')"
-          fi
-          echo "deployment_started=$DEPLOYMENT_STARTED" >> "$GITHUB_OUTPUT"
+        run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100" | node scripts/classify-deployment-event.mjs --workflow "$DEPLOYMENT_WORKFLOW" >> "$GITHUB_OUTPUT"
 
       - name: Reject failed deployment
         if: github.event_name == 'workflow_run' && steps.deployment_event.outputs.deployment_started == 'true' && github.event.workflow_run.conclusion != 'success'
@@ -49,16 +50,6 @@ jobs:
         run: |
           echo "::error::${DEPLOYMENT_WORKFLOW} finished with ${DEPLOYMENT_CONCLUSION}; production health cannot pass."
           exit 1
-
-      - name: Checkout
-        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
-        uses: actions/setup-node@v7
-        with:
-          node-version: "24"
 
       - name: Test workflow runtime parser
         if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'
