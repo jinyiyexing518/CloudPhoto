@@ -105,9 +105,11 @@ export function inspectWorkflow(text, path = "workflow.yml") {
       azureLoginRefs.push({ path, version: azureLogin[1] });
     }
 
-    if (uses?.startsWith("actions/setup-node@")) {
+    const setupNode = uses?.match(/^actions\/setup-node@(.+)$/);
+    if (setupNode) {
       setupNodeVersions.push({
         path,
+        actionVersion: setupNode[1],
         version: stepChildField(step, "with", "node-version"),
       });
     }
@@ -139,6 +141,11 @@ export function checkWorkflowRuntimeContracts(workflows) {
     }
   }
   for (const setup of aggregate.setupNodeVersions) {
+    if (setup.actionVersion !== "v7") {
+      issues.push(
+        `${setup.path} must use actions/setup-node@v7, found @${setup.actionVersion}`
+      );
+    }
     if (setup.version !== "24") {
       issues.push(
         `${setup.path} setup-node must select Node 24, found ${setup.version ?? "no version"}`
@@ -182,7 +189,7 @@ function main() {
   }
 
   console.log(
-    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@24 enforced-by=${result.contractInvocations.length}`
+    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length}`
   );
 }
 

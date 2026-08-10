@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           # node-version: "20"
@@ -32,7 +32,7 @@ jobs:
     { path: ".github/workflows/example.yml", version: "v3" },
   ]);
   assert.deepEqual(inspected.setupNodeVersions, [
-    { path: ".github/workflows/example.yml", version: "24" },
+    { path: ".github/workflows/example.yml", actionVersion: "v7", version: "24" },
   ]);
   assert.deepEqual(inspected.contractInvocations, [
     ".github/workflows/example.yml",
@@ -54,6 +54,6 @@ jobs:
     { path: "deprecated.yml", version: "v2" },
   ]);
   assert.deepEqual(inspected.setupNodeVersions, [
-    { path: "deprecated.yml", version: "20" },
+    { path: "deprecated.yml", actionVersion: "v5", version: "20" },
   ]);
 });

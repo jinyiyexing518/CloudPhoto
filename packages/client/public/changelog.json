@@ -3,10 +3,10 @@
     "id": "2026-08-10-node24-deploy-actions",
     "date": "2026-08-10",
     "icon": "🚀",
-    "title": "升级部署流水线 Node 24 运行时",
+    "title": "升级部署流水线 Node 24 Action",
     "type": "fix",
-    "desc": "消除 Azure 登录 Action 与更新日志同步仍依赖已弃用 Node 20、未来可能导致自动部署失败的风险。",
-    "details": "后端部署和更新日志同步统一升级为 azure/login@v3，更新日志作业改用 Node 24；新增静态 workflow 契约并接入部署与生产健康检查，阻止登录 Action、Node 版本或登录步骤数量静默回退。",
+    "desc": "消除 Azure 登录和 Node 环境 Action 仍依赖旧运行时或弃用依赖、未来可能导致自动部署失败的风险。",
+    "details": "全部流水线统一升级为 actions/setup-node@v7，后端部署和更新日志同步改用 azure/login@v3，更新日志作业目标运行时改为 Node 24；新增静态 workflow 契约并接入部署与生产健康检查，阻止 Action major、Node 版本或登录步骤数量静默回退。",
     "seq": 1786335332288
   },
   {
