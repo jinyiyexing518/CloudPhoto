@@ -26,7 +26,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (data: { username: string; email: string; displayName: string; password: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (displayName: string) => Promise<void>;
 }
 
@@ -46,59 +46,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authSyncController.current = null;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     cancelAuthSync();
     clearStoredAuth();
-    void clearPrivatePhotoCaches();
-    setUser(null);
-    setLoading(false);
+    try {
+      await clearPrivatePhotoCaches();
+    } finally {
+      setUser(null);
+      setLoading(false);
+    }
   }, [cancelAuthSync]);
+
+  const restoreCurrentUser = useCallback(async (
+    controller: AbortController,
+    generation: number,
+  ) => {
+    const nextUser = await getMeApi(controller.signal);
+    if (controller.signal.aborted || generation !== authSyncGeneration.current) return;
+    const nextScope = authCacheOwner(nextUser.id, nextUser.role);
+    if (getTokenAuthScope() !== nextScope) {
+      await logout();
+      return;
+    }
+    await preparePrivatePhotoCachesForScope(nextScope);
+    if (!controller.signal.aborted && generation === authSyncGeneration.current) {
+      currentUserRef.current = nextUser;
+      setUser(nextUser);
+    }
+  }, [logout]);
 
   useEffect(() => () => cancelAuthSync(), [cancelAuthSync]);
 
   // Restore session on mount
   useEffect(() => {
-    if (!getToken()) {
-      void clearPrivatePhotoCaches();
-      setLoading(false);
-      return;
-    }
     const generation = authSyncGeneration.current;
     const controller = new AbortController();
     authSyncController.current = controller;
-    getMeApi(controller.signal)
-      .then(async (restoredUser) => {
-        if (controller.signal.aborted || generation !== authSyncGeneration.current) return;
-        const restoredScope = authCacheOwner(restoredUser.id, restoredUser.role);
-        if (getTokenAuthScope() !== restoredScope) {
-          logout();
+    void (async () => {
+      try {
+        if (!getToken()) {
+          await clearPrivatePhotoCaches();
           return;
         }
-        await preparePrivatePhotoCachesForScope(restoredScope);
+        await restoreCurrentUser(controller, generation);
+      } catch {
         if (!controller.signal.aborted && generation === authSyncGeneration.current) {
-          setUser(restoredUser);
+          await logout().catch(console.error);
         }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted && generation === authSyncGeneration.current) logout();
-      })
-      .finally(() => {
+      } finally {
         if (authSyncController.current === controller) authSyncController.current = null;
         if (!controller.signal.aborted && generation === authSyncGeneration.current) {
           setLoading(false);
         }
-      });
+      }
+    })();
     return () => {
       if (authSyncController.current === controller) authSyncController.current = null;
       controller.abort();
     };
-  }, [logout]);
+  }, [logout, restoreCurrentUser]);
 
   const saveAuth = useCallback(async (resp: AuthResponse): Promise<boolean> => {
     const previousUser = currentUserRef.current;
     const nextScope = authCacheOwner(resp.user.id, resp.user.role);
     if (getTokenAuthScope(resp.token) !== nextScope) {
-      logout();
+      await logout();
       return false;
     }
     if (previousUser && authCacheOwner(previousUser.id, previousUser.role) !== nextScope) {
@@ -141,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error("登录状态已变更，个人资料未应用");
     }
     if (resp.user.id !== expectedUser.id) {
-      logout();
+      await logout();
       throw new Error("登录状态已变更，个人资料未应用");
     }
     if (!await saveAuth(resp)) throw new Error("登录状态已变更，个人资料未应用");
@@ -149,15 +161,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Auto-logout when any API call receives 401 (token expired)
   useEffect(() => {
-    setUnauthorizedHandler((failedToken) => {
-      if (!failedToken || getToken() === failedToken) logout();
+    setUnauthorizedHandler(async (failedToken) => {
+      if (!failedToken || getToken() === failedToken) await logout();
     });
   }, [logout]);
 
   // localStorage events notify other tabs. Clear their private data immediately
   // on logout or token replacement, then adopt the replacement account locally.
   useEffect(() => {
-    const handleStorage = (event: StorageEvent) => {
+    const handleStorage = async (event: StorageEvent) => {
       if (event.key !== "cloudphoto_token") return;
       const currentScope = user ? authCacheOwner(user.id, user.role) : null;
       const replacementScope = event.newValue ? getTokenAuthScope(event.newValue) : null;
@@ -165,40 +177,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       invalidateAuthRefresh();
       cancelAuthSync();
       const generation = authSyncGeneration.current;
-      void clearPrivatePhotoCaches();
-      setUser(null);
-      if (event.newValue === null) {
+      try {
+        await clearPrivatePhotoCaches();
+      } catch (error) {
+        setLoading(false);
+        console.error(error);
+        return;
+      } finally {
+        currentUserRef.current = null;
+        setUser(null);
+      }
+      if (!getToken()) {
         setLoading(false);
         return;
       }
       setLoading(true);
       const controller = new AbortController();
       authSyncController.current = controller;
-      void getMeApi(controller.signal)
-        .then(async (nextUser) => {
-          const nextScope = authCacheOwner(nextUser.id, nextUser.role);
-          if (getTokenAuthScope() !== nextScope) {
-            logout();
-            return;
-          }
-          await preparePrivatePhotoCachesForScope(nextScope);
-          if (!controller.signal.aborted && generation === authSyncGeneration.current) {
-            setUser(nextUser);
-          }
-        })
-        .catch(() => {
-          // Keep this tab signed out if the replacement token is invalid.
-        })
-        .finally(() => {
-          if (authSyncController.current === controller) authSyncController.current = null;
-          if (!controller.signal.aborted && generation === authSyncGeneration.current) {
-            setLoading(false);
-          }
-        });
+      try {
+        await restoreCurrentUser(controller, generation);
+      } catch {
+        // Keep this tab signed out if the replacement token is invalid.
+      } finally {
+        if (authSyncController.current === controller) authSyncController.current = null;
+        if (!controller.signal.aborted && generation === authSyncGeneration.current) {
+          setLoading(false);
+        }
+      }
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [cancelAuthSync, logout, user?.id, user?.role]);
+  }, [cancelAuthSync, restoreCurrentUser, user?.id, user?.role]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>

@@ -398,7 +398,7 @@ function checkHashedAssets(configPath) {
     fail(configPath, "built assets must contain one deferred PWA install entry chunk");
   }
   const privateMetadataChunks = currentAssets.filter((asset) =>
-    /^idb-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+    /^privateCachePurge-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
   if (privateMetadataChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred private metadata cleanup chunk");
@@ -432,8 +432,8 @@ function checkHashedAssets(configPath) {
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
-  if (statSync(entryScripts[0]).size > 38_000) {
-    fail(configPath, "built login entry script must stay below 38 kB");
+  if (statSync(entryScripts[0]).size > 36_000) {
+    fail(configPath, "built login entry script must stay below 36 kB");
   }
   if (!pwaInstallEntryScript.includes("安装应用")) {
     fail(configPath, "deferred signed-out entry must expose the install application action");
@@ -503,8 +503,8 @@ function checkHashedAssets(configPath) {
   if (serviceWorker.includes(`assets/${basename(authenticatedStylesheets[0])}`)) {
     fail(configPath, "deferred AuthenticatedApp styles must not be downloaded by the precache");
   }
-  if (!serviceWorker.includes(`assets/${basename(privateMetadataChunks[0])}`)) {
-    fail(configPath, "private metadata cleanup must remain available for offline logout");
+  if (serviceWorker.includes(`assets/${basename(privateMetadataChunks[0])}`)) {
+    fail(configPath, "private metadata cleanup must stay out of the app-shell precache");
   }
   if (!serviceWorker.includes("app-code-v1")) {
     fail(configPath, "service worker must cache deferred app chunks after first use");

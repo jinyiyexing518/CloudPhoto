@@ -125,8 +125,8 @@
     "icon": "🔒",
     "title": "退出时清除私有媒体缓存索引",
     "type": "fix",
-    "desc": "退出、会话失效或切换账号时会同步清除私有照片缓存及其 Workbox 过期索引，避免浏览器继续保留上一会话的媒体请求元数据。",
-    "details": "清理仅匹配照片列表、当前媒体与旧版媒体缓存名，不删除 IndexedDB 数据库或对象仓库；应用代码缓存、预缓存及 service worker 注册保持不变。清理会等待活动写入并重复定向删除，以阻止迟到写入重新留下私有索引；数据库、仓库缺失或结构变化不会阻断 Cache Storage 清理。",
+    "desc": "退出、会话失效或切换账号时会等待清除私有照片缓存及其 Workbox 过期索引，避免浏览器继续保留上一会话的媒体请求元数据。",
+    "details": "轻量账号归属、generation 与同步 reset 仍由登录入口直接持有；Workbox IndexedDB 的 schema、open、cursor 和定向删除实现改为按需 chunk，未登录入口、HTML preload 与 service worker precache 均不携带该实现。清理仅匹配照片列表、当前媒体与旧版媒体缓存名，不删除数据库、对象仓库、app-code-v1、预缓存或其他行；所有注销、401、恢复失败及跨标签切号路径都会等待清理，chunk、open、cursor 或事务失败会显式报错而不伪装成功。",
     "seq": 1786410000000
   },
   {

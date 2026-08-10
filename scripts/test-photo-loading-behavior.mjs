@@ -994,30 +994,23 @@ const failingMetadataUrl = `data:text/javascript;base64,${
 }`;
 const failingLifecycleUrl = await compileTypeScript(
   "packages/client/src/services/privatePhotoCacheLifecycle.ts",
-  (source) => source.replaceAll('"./idb.ts"', JSON.stringify(failingMetadataUrl)),
+  (source) => source.replaceAll('"./privateCachePurge.ts"', JSON.stringify(failingMetadataUrl)),
 );
 const failingLifecycle = await import(failingLifecycleUrl);
-const previousWarn = console.warn;
-let cleanupWarning = "";
-console.warn = (message) => {
-  cleanupWarning = String(message);
-};
 availableCacheNames.add("photo-media-v1");
-try {
-  await failingLifecycle.clearPrivatePhotoCaches();
-} finally {
-  console.warn = previousWarn;
-}
-assert(!availableCacheNames.has("photo-media-v1"), "chunk failure must not block Cache Storage deletion");
-assert.equal(cleanupWarning, "IDB purge fail", "chunk failure must report without metadata contents");
+await assert.rejects(
+  failingLifecycle.clearPrivatePhotoCaches(),
+  /chunk unavailable/,
+  "chunk failure must reject the cleanup promise instead of reporting success",
+);
 
 const expirationMetadataUrl = await compileTypeScript(
-  "packages/client/src/services/idb.ts",
+  "packages/client/src/services/privateCachePurge.ts",
 );
 const cacheLifecycleUrl = await compileTypeScript(
   "packages/client/src/services/privatePhotoCacheLifecycle.ts",
   (source) => source.replaceAll(
-    '"./idb.ts"',
+    '"./privateCachePurge.ts"',
     JSON.stringify(expirationMetadataUrl),
   ),
 );

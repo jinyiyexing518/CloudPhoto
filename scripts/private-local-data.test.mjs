@@ -44,9 +44,11 @@ globalThis.localStorage = {
 };
 
 const availableCacheNames = new Set(["workbox-precache-v2", "photo-media-v1"]);
+let cacheDeleteFailure = null;
 globalThis.window = {
   caches: {
     async delete(name) {
+      if (name === cacheDeleteFailure) throw new Error("fake cache deletion failure");
       availableCacheNames.delete(name);
       return true;
     },
@@ -55,7 +57,7 @@ globalThis.window = {
 globalThis.caches = globalThis.window.caches;
 
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
-const expirationMetadata = await import("../packages/client/src/services/idb.ts");
+const workboxCleanup = await import("../packages/client/src/services/privateCachePurge.ts");
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
 const dateFormat = await import("../packages/client/src/utils/dateFormat.ts");
 const shareStore = await import("../packages/client/src/services/share/shareLinksStore.ts");
@@ -67,7 +69,15 @@ const privateCacheNames = [
 
 function createFakeWorkboxExpirationDb(
   entries,
-  { includeDatabase = true, includeStore = true, onClose } = {},
+  {
+    includeDatabase = true,
+    includeStore = true,
+    onClose,
+    openFailure = false,
+    cursorFailure = false,
+    readonlyTransactionFailure = false,
+    readwriteTransactionFailure = false,
+  } = {},
 ) {
   const rows = new Map(entries.map((entry) => [entry.id, { ...entry }]));
   let openCount = 0;
@@ -84,6 +94,13 @@ function createFakeWorkboxExpirationDb(
             indexNames: { contains: () => false },
             openCursor() {
               const request = {};
+              if (cursorFailure) {
+                queueMicrotask(() => {
+                  request.error = new Error("fake cursor failure");
+                  request.onerror?.();
+                });
+                return request;
+              }
               const storedRows = [...rows.values()];
               let index = 0;
               const advance = () => {
@@ -96,6 +113,7 @@ function createFakeWorkboxExpirationDb(
                     }
                   : null;
                 request.onsuccess?.();
+                if (!value) queueMicrotask(() => transaction.oncomplete?.());
               };
               queueMicrotask(advance);
               return request;
@@ -107,7 +125,16 @@ function createFakeWorkboxExpirationDb(
           };
         },
       };
-      if (mode === "readwrite") {
+      const transactionFailure = (
+        (mode === "readonly" && readonlyTransactionFailure)
+        || (mode === "readwrite" && readwriteTransactionFailure)
+      );
+      if (transactionFailure) {
+        queueMicrotask(() => {
+          transaction.error = new Error(`fake ${mode} transaction failure`);
+          transaction.onerror?.();
+        });
+      } else if (mode === "readwrite") {
         queueMicrotask(() => transaction.oncomplete?.());
       }
       return transaction;
@@ -128,6 +155,11 @@ function createFakeWorkboxExpirationDb(
       openCount += 1;
       const request = {};
       queueMicrotask(() => {
+        if (openFailure) {
+          request.error = new Error("fake database open failure");
+          request.onerror?.();
+          return;
+        }
         request.result = db;
         request.onsuccess?.();
       });
@@ -583,7 +615,7 @@ localStorage.removeItem(quotaKey);
     { id: "unknown", cacheName: "future-public-cache-v1", timestamp: 1 },
   ]);
 
-  const first = await expirationMetadata.purge(
+  const first = await workboxCleanup.purgePrivateWorkboxExpirationMetadata(
     expirationDb.factory,
     privateCacheNames,
   );
@@ -595,7 +627,7 @@ localStorage.removeItem(quotaKey);
   assert.equal(expirationDb.count("app-code-v1"), 48);
   assert.equal(expirationDb.count("future-public-cache-v1"), 1);
 
-  const second = await expirationMetadata.purge(
+  const second = await workboxCleanup.purgePrivateWorkboxExpirationMetadata(
     expirationDb.factory,
     privateCacheNames,
   );
@@ -606,21 +638,51 @@ localStorage.removeItem(quotaKey);
 
   const absentDb = createFakeWorkboxExpirationDb([], { includeDatabase: false });
   assert.equal(
-    (await expirationMetadata.purge(
-      absentDb.factory,
-      privateCacheNames,
-    )).status,
+    (await workboxCleanup.purgePrivateWorkboxExpirationMetadata(absentDb.factory, [])).status,
     "database-absent",
   );
   assert.equal(absentDb.openCount(), 0);
 
   const absentStore = createFakeWorkboxExpirationDb([], { includeStore: false });
   assert.equal(
-    (await expirationMetadata.purge(
-      absentStore.factory,
-      privateCacheNames,
-    )).status,
+    (await workboxCleanup.purgePrivateWorkboxExpirationMetadata(absentStore.factory, [])).status,
     "store-absent",
+  );
+
+  await assert.rejects(
+    workboxCleanup.purgePrivateWorkboxExpirationMetadata(
+      createFakeWorkboxExpirationDb([], { openFailure: true }).factory,
+      [],
+    ),
+    /database open/,
+    "IndexedDB open failures must reject explicitly",
+  );
+  await assert.rejects(
+    workboxCleanup.purgePrivateWorkboxExpirationMetadata(
+      createFakeWorkboxExpirationDb([], { cursorFailure: true }).factory,
+      [],
+    ),
+    /cursor scan/,
+    "cursor failures must reject explicitly",
+  );
+  await assert.rejects(
+    workboxCleanup.purgePrivateWorkboxExpirationMetadata(
+      createFakeWorkboxExpirationDb([], { readonlyTransactionFailure: true }).factory,
+      [],
+    ),
+    /readonly transaction/,
+    "readonly transaction failures must reject explicitly",
+  );
+  await assert.rejects(
+    workboxCleanup.purgePrivateWorkboxExpirationMetadata(
+      createFakeWorkboxExpirationDb(
+        [{ id: "private", cacheName: "photo-media-v1", timestamp: 1 }],
+        { readwriteTransactionFailure: true },
+      ).factory,
+      ["photo-media-v1"],
+    ),
+    /readwrite transaction/,
+    "readwrite transaction failures must reject explicitly",
   );
 }
 
@@ -633,11 +695,36 @@ globalThis.indexedDB = {
     throw new Error("metadata database unavailable");
   },
 };
-await lifecycle.clearPrivatePhotoCaches();
+await assert.rejects(
+  lifecycle.clearPrivatePhotoCaches(),
+  /database open/,
+  "metadata cleanup failures must reject the lifecycle cleanup promise",
+);
 assert.equal(
   availableCacheNames.has("photo-media-v1"),
   false,
-  "metadata cleanup failure must not block private Cache Storage deletion",
+  "metadata cleanup failure must still follow private Cache Storage deletion",
+);
+
+const cacheFailureDb = createFakeWorkboxExpirationDb([
+  { id: "private-cache-failure", cacheName: "photo-media-v1", timestamp: 1 },
+]);
+globalThis.indexedDB = cacheFailureDb.factory;
+cacheDeleteFailure = "photo-media-v1";
+await assert.rejects(
+  lifecycle.clearPrivatePhotoCaches(),
+  /fake cache deletion failure/,
+  "Cache Storage failures must reject after all targeted cleanup stages finish",
+);
+cacheDeleteFailure = null;
+assert.equal(
+  cacheFailureDb.count("photo-media-v1"),
+  0,
+  "Cache Storage failure must not skip targeted Workbox metadata cleanup",
+);
+assert.ok(
+  cacheFailureDb.openCount() >= 2,
+  "Cache Storage failure must not skip the second late-write cleanup pass",
 );
 
 let recreatedLateEntry = false;
@@ -687,28 +774,39 @@ const auth = await read("packages/client/src/contexts/AuthContext.tsx");
 const logoutStart = auth.indexOf("const logout = useCallback");
 const logoutBody = auth.slice(logoutStart, auth.indexOf("useEffect", logoutStart));
 assert(
-  logoutBody.indexOf("void clearPrivatePhotoCaches()") < logoutBody.indexOf("setUser(null)"),
-  "explicit logout and 401 logout must revoke private data before clearing auth state",
+  logoutBody.indexOf("await clearPrivatePhotoCaches()") < logoutBody.indexOf("setUser(null)"),
+  "explicit logout and 401 logout must await private-data cleanup before clearing auth state",
 );
 assert(
-  auth.includes("setUnauthorizedHandler((failedToken) => {")
-  && auth.includes("if (!failedToken || getToken() === failedToken) logout();"),
+  auth.includes("setUnauthorizedHandler(async (failedToken) => {")
+  && auth.includes("if (!failedToken || getToken() === failedToken) await logout();"),
   "the active-token 401 path must use the same private-data logout boundary",
 );
 const crossTabStart = auth.indexOf("const handleStorage");
 assert(crossTabStart >= 0);
 const crossTabBody = auth.slice(crossTabStart, auth.indexOf("window.addEventListener", crossTabStart));
 assert(
-  crossTabBody.indexOf("void clearPrivatePhotoCaches()") < crossTabBody.indexOf("setUser(null)"),
-  "cross-tab account replacement must invalidate private data before clearing auth state",
+  crossTabBody.indexOf("await clearPrivatePhotoCaches()") < crossTabBody.indexOf("setUser(null)"),
+  "cross-tab account replacement must await private data cleanup before clearing auth state",
 );
 assert(
-  auth.includes("if (!getToken()) {\n      void clearPrivatePhotoCaches();"),
+  crossTabBody.includes("if (!getToken()) {")
+  && !crossTabBody.includes("if (event.newValue === null)"),
+  "cross-tab cleanup must adopt the current token when another tab replaces it during cleanup",
+);
+assert(
+  auth.includes("if (!getToken()) {")
+  && auth.includes("await clearPrivatePhotoCaches();"),
   "invalid or absent token restore must fail closed and remove orphaned private data",
 );
 assert(
-  auth.includes("getTokenAuthScope() !== restoredScope")
-  && auth.includes("preparePrivatePhotoCachesForScope(restoredScope)"),
+  !auth.includes("void clearPrivatePhotoCaches()"),
+  "privacy-critical auth paths must never discard the cleanup promise",
+);
+assert(
+  auth.includes("getTokenAuthScope() !== nextScope")
+  && auth.includes("preparePrivatePhotoCachesForScope(nextScope)")
+  && (auth.match(/restoreCurrentUser\(controller, generation\)/g) ?? []).length === 2,
   "restored sessions must validate and prepare the exact account/role scope before publishing the user",
 );
 assert(

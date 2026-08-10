@@ -1121,7 +1121,9 @@ function AppContent() {
   const mutatePhotos = useCallback((updater: (previous: Photo[]) => Photo[]) => {
     photoStateRevisionRef.current += 1;
     fetchAbortRef.current?.abort();
-    void invalidatePhotoListCaches();
+    void invalidatePhotoListCaches().catch((error) => {
+      console.error("[PrivateDataCleanup] Photo list cache invalidation failed:", error);
+    });
     setPhotos(updater);
   }, []);
 
@@ -2413,7 +2415,21 @@ function AppContent() {
                 </>
               )}
               <div className="user-menu-divider" role="separator" />
-              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item user-menu-item--danger" onClick={() => { logout(); setUserMenuOpen(false); }}>
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                className="user-menu-item user-menu-item--danger"
+                onClick={async () => {
+                  setUserMenuOpen(false);
+                  try {
+                    await logout();
+                  } catch (error) {
+                    console.error("[PrivateDataCleanup] Logout cleanup failed:", error);
+                    showToast("已退出登录，但私有缓存清理失败，请关闭此页面", "error");
+                  }
+                }}
+              >
                 <span className="user-menu-item-icon">🚪</span> 退出登录
               </button>
             </div>

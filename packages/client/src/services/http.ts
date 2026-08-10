@@ -422,8 +422,10 @@ export function getAuthGeneration(): number {
 }
 
 // ── 401 auto-logout callback ──────────────────────────────────────────────
-let _onUnauthorized: ((failedToken: string | null) => void) | null = null;
-export function setUnauthorizedHandler(fn: (failedToken: string | null) => void): void {
+let _onUnauthorized: ((failedToken: string | null) => void | Promise<void>) | null = null;
+export function setUnauthorizedHandler(
+  fn: (failedToken: string | null) => void | Promise<void>,
+): void {
   _onUnauthorized = fn;
 }
 
@@ -488,7 +490,7 @@ async function _doRefresh(
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     invalidateAuthRefresh();
-    _onUnauthorized?.(null);
+    await _onUnauthorized?.(null);
     return null;
   }
   // This is the same authenticated session, so keep the shared refresh state
@@ -619,7 +621,7 @@ export function fetchWithTimeout(
         }
         // A 401 from an older request must not sign out a newer login.
         if (requestAuthGeneration === _authGeneration && getToken() === requestToken) {
-          _onUnauthorized?.(requestToken);
+          await _onUnauthorized?.(requestToken);
         }
       }
       return res;

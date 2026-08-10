@@ -10,6 +10,7 @@ let activePrivateCacheOwner: string | null = null;
 let cleanupChain: Promise<void> = Promise.resolve();
 const activePersistentWrites = new Set<Promise<void>>();
 const resetListeners = new Set<(scopeReset: boolean) => void>();
+const loadPrivateCacheCleanup = () => import("./privateCachePurge.ts");
 
 export function getPrivatePhotoCacheGeneration(): number {
   return cacheGeneration;
@@ -59,16 +60,8 @@ function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean):
   if (clearOwner) removeScopedPrivateLocalData();
 
   const deletePrivateCaches = async () => {
-    await Promise.allSettled([...activePersistentWrites]);
-    if (typeof caches !== "undefined") {
-      await Promise.allSettled(cacheNames.map((name) => caches.delete(name)));
-    }
-    try {
-      const metadata = await import("./idb.ts");
-      await metadata.clean(cacheNames);
-    } catch {
-      console.warn("IDB purge fail");
-    }
+    const cleanup = await loadPrivateCacheCleanup();
+    await cleanup.deletePrivateCaches(cacheNames, activePersistentWrites);
   };
   cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
   return cleanupChain;
@@ -104,12 +97,10 @@ export async function preparePrivatePhotoCachesForScope(authScope: string): Prom
     ? clearPrivatePhotoCaches()
     : cleanupChain;
   const expectedGeneration = cacheGeneration;
+  const cleanup = await loadPrivateCacheCleanup();
+  cleanup.removeLegacyPrivateLocalData();
   await pendingCleanup;
   if (expectedGeneration !== cacheGeneration) return;
   activePrivateCacheOwner = authScope;
-  try {
-    localStorage.setItem(CACHE_OWNER_KEY, authScope);
-  } catch {
-    // Authorization-scoped cache keys still isolate memory and Cache Storage entries.
-  }
+  cleanup.storePrivateCacheOwner(authScope);
 }

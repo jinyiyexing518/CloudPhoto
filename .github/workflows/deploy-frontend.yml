@@ -12,6 +12,8 @@ on:
       - "infra/nginx.conf"
       - "package.json"
       - "scripts/auth-layout-cdp.mjs"
+      - "scripts/private-cache-lazy-contract.test.mjs"
+      - "scripts/private-local-data.test.mjs"
       - "scripts/check-static-cache-config.mjs"
       - "scripts/deployment-asset-retention.test.mjs"
       - "scripts/deployment-assets.mjs"
@@ -128,6 +130,9 @@ jobs:
 
       - name: Verify static cache contract
         run: yarn check:static-cache packages/client/public/staticwebapp.config.json packages/client/dist/staticwebapp.config.json
+
+      - name: Verify private cache lifecycle and lazy ownership
+        run: yarn test:private-data && yarn test:photo-loading-contracts && yarn test:private-cache-lazy
 
       - name: Verify security header contracts
         run: yarn test:security

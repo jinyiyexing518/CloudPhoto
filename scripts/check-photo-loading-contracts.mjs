@@ -25,7 +25,7 @@ const authScope = read("packages/client/src/services/authScope.ts");
 const routingPolicy = read("packages/client/src/services/apiRoutingPolicy.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
 const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
-const expirationMetadata = read("packages/client/src/services/idb.ts");
+const workboxCleanup = read("packages/client/src/services/privateCachePurge.ts");
 const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
 const maintenanceBackfillPaging = read("packages/client/src/services/maintenanceBackfillPaging.ts");
@@ -166,17 +166,27 @@ requireText(listCache, "Date.now() - cachedAt <= CACHE_MAX_AGE_MS", "cache expir
 requireText(listCache, "registerPrivatePhotoCacheReset", "synchronous memory reset registration");
 requireText(listCache, "registerPrivatePhotoCacheWrite(operation)", "in-flight write registration");
 requireText(cacheLifecycle, "activePersistentWrites", "in-flight cache cleanup");
-requireText(cacheLifecycle, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
-requireText(cacheLifecycle, 'import("./idb.ts")', "lazy metadata cleanup boundary");
-requireText(cacheLifecycle, 'console.warn("IDB purge fail")', "metadata chunk failure report");
-requireText(expirationMetadata, '"workbox-expiration"', "Workbox expiration metadata inventory");
-requireText(expirationMetadata, '"cache-entries"', "Workbox expiration metadata store");
-requireText(expirationMetadata, "objectStoreNames.contains", "defensive Workbox schema discovery");
-requireText(expirationMetadata, "openCursor()", "bounded metadata row scan");
-requireText(expirationMetadata, "privateCacheNames.has", "targeted private metadata selection");
-requireText(expirationMetadata, "for (let pass = 0; pass < 2; pass += 1)", "late-write cleanup pass");
+requireText(workboxCleanup, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
+requireText(
+  cacheLifecycle,
+  'import("./privateCachePurge.ts")',
+  "lazy Workbox expiration cleanup boundary",
+);
 assert(
-  !expirationMetadata.includes("deleteDatabase("),
+  !cacheLifecycle.includes('"workbox-expiration"')
+  && !cacheLifecycle.includes('"cache-entries"')
+  && !cacheLifecycle.includes("openCursor()"),
+  "the statically reachable private-cache shell must not contain IndexedDB purge implementation",
+);
+requireText(workboxCleanup, '"workbox-expiration"', "Workbox expiration metadata inventory");
+requireText(workboxCleanup, '"cache-entries"', "Workbox expiration metadata store");
+requireText(workboxCleanup, "objectStoreNames.contains", "defensive Workbox schema discovery");
+requireText(workboxCleanup, "openCursor()", "bounded metadata row scan");
+requireText(workboxCleanup, "privateCacheNames.has", "targeted private metadata selection");
+requireText(workboxCleanup, "reject(cleanupFailure", "explicit IndexedDB failure propagation");
+requireText(workboxCleanup, "for (let pass = 0; pass < 2; pass += 1)", "late-write cleanup pass");
+assert(
+  !cacheLifecycle.includes("deleteDatabase(") && !workboxCleanup.includes("deleteDatabase("),
   "private cleanup must never delete the Workbox database or app-code metadata",
 );
 for (const name of ["cloudphoto-photo-lists-v1", "photo-media-v1", "cf-media-v1"]) {
@@ -192,15 +202,24 @@ requireText(
   "for (const reset of resetListeners) reset(clearOwner);",
   "scope-aware private reset",
 );
-requireText(auth, "void clearPrivatePhotoCaches()", "explicit/automatic logout cleanup");
-requireText(auth, "getTokenAuthScope() !== restoredScope", "restore token/role drift rejection");
-requireText(auth, "preparePrivatePhotoCachesForScope(restoredScope)", "restore authorization ownership");
+requireText(
+  app,
+  'console.error("[PrivateDataCleanup] Photo list cache invalidation failed:", error)',
+  "photo mutation cache invalidation error handling",
+);
+requireText(auth, "await clearPrivatePhotoCaches()", "awaited explicit/automatic logout cleanup");
+assert(
+  !auth.includes("void clearPrivatePhotoCaches()"),
+  "privacy-critical auth paths must not discard cleanup promises",
+);
+requireText(auth, "getTokenAuthScope() !== nextScope", "restore token/role drift rejection");
+requireText(auth, "preparePrivatePhotoCachesForScope(nextScope)", "restore authorization ownership");
 requireText(auth, "getTokenAuthScope(resp.token) !== nextScope", "login token/user scope validation");
 requireText(auth, "preparePrivatePhotoCachesForScope(nextScope)", "account/role ownership");
 assert.equal(
-  (auth.match(/getTokenAuthScope\(\) !== (?:restoredScope|nextScope)/g) ?? []).length,
+  (auth.match(/restoreCurrentUser\(controller, generation\)/g) ?? []).length,
   2,
-  "mount and cross-tab restoration must both reject token/role drift",
+  "mount and cross-tab restoration must share token/role validation",
 );
 requireText(auth, 'window.addEventListener("storage", handleStorage)', "cross-tab memory cleanup");
 requireText(auth, "replacementScope === currentScope", "same-scope cross-tab token rotation");
@@ -209,10 +228,15 @@ assert(
     < auth.indexOf("invalidateAuthRefresh();", auth.indexOf("const handleStorage")),
   "cross-tab same-scope rotations must return before auth invalidation",
 );
+requireText(auth, "if (!getToken())", "post-cleanup cross-tab token recheck");
+assert(
+  !auth.includes("if (event.newValue === null)"),
+  "cross-tab restore must recheck the live token after awaited cleanup",
+);
 assert.equal(
   (auth.match(/preparePrivatePhotoCachesForScope\(nextScope\)/g) ?? []).length,
   2,
-  "login and cross-tab account switches must both adopt scoped caches",
+  "login and shared session restoration must both adopt scoped caches",
 );
 requireText(auth, "invalidateAuthRefresh();", "cross-tab refresh invalidation");
 requireText(auth, "getMeApi(controller.signal)", "abortable auth restoration");
@@ -418,13 +442,16 @@ assert(
 for (const pattern of [
   '"index.html"',
   '"assets/index-*.{js,css}"',
-  '"assets/idb-*.js"',
   '"assets/react-vendor-*.js"',
   '"assets/virtual_pwa-register-*.js"',
   '"assets/workbox-window*.js"',
 ]) {
   requireText(vite, pattern, "minimal app-shell precache");
 }
+assert(
+  !vite.includes('"assets/privateCachePurge-*.js"'),
+  "private cleanup implementation must stay out of the install-time precache",
+);
 requireText(vite, 'cacheName: "app-code-v1"', "on-demand app chunk cache");
 requireText(vite, 'url.pathname.startsWith("/assets/")', "on-demand app chunk route");
 requireText(vite, "matchOptions: { ignoreSearch: false }", "account-safe SAS cache key");
