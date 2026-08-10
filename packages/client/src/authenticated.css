@@ -1327,6 +1327,7 @@ body {
 .capsule-photo-sentinel {
   grid-column: 1 / -1;
   height: 1px;
+  margin-top: 96px;
   pointer-events: none;
 }
 .capsule-photo-thumb {

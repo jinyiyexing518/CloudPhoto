@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const capsuleSource = readFileSync(new URL("./TimeCapsule.tsx", import.meta.url), "utf8");
+const authenticatedCss = readFileSync(new URL("../../authenticated.css", import.meta.url), "utf8");
 const {
   CAPSULE_PHOTO_BATCH_SIZE,
   CAPSULE_PHOTO_INITIAL_COUNT,
@@ -44,6 +45,7 @@ test("capsule observes an internal sentinel and renders only the current derivat
   assert.match(capsuleSource, /new IntersectionObserver\([\s\S]*root: scrollRoot[\s\S]*rootMargin: "0px 0px 96px 0px"/);
   assert.match(capsuleSource, /!showCreateRef\.current[\s\S]*displayPhotoSourceKeyRef\.current !== observerSourceKey/);
   assert.match(capsuleSource, /observer\.observe\(sentinel\)/);
+  assert.match(authenticatedCss, /\.capsule-photo-sentinel\s*\{[^}]*margin-top:\s*96px;/);
   assert.match(capsuleSource, /showCreate,[\s\S]*visiblePhotoCount,[\s\S]*\]\);/);
   assert.match(capsuleSource, /key="capsule-photo-sentinel"[\s\S]*ref=\{capsulePhotoSentinelRef\}/);
   assert.match(capsuleSource, /active = false;[\s\S]*observer\.disconnect\(\)/);
