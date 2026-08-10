@@ -478,13 +478,13 @@ body {
   align-items: center;
   flex: 0 0 auto;
   gap: 6px;
-  background: transparent;
+  background: #ffffff;
   border: none;
   border-bottom: 3px solid transparent;
   padding: 8px 18px 8px;
   font-size: 0.93rem;
   font-weight: 500;
-  color: #94a3b8;
+  color: #475569;
   cursor: pointer;
   position: relative;
   border-radius: 0;
@@ -492,22 +492,22 @@ body {
 }
 
 .view-tab:hover {
-  background: transparent;
-  color: #475569;
-  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #1e293b;
+  border-color: #64748b;
   transform: none;
   box-shadow: none;
 }
 
 .view-tab:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline: 3px solid #1d4ed8;
   outline-offset: -3px;
 }
 
 .view-tab.active {
   color: #0f172a;
   font-weight: 700;
-  background: transparent;
+  background: #eff6ff;
   border-bottom-color: #2563eb;
   box-shadow: none;
 }
@@ -524,7 +524,7 @@ body {
   justify-content: center;
   border-radius: 999px;
   background: #f1f5f9;
-  color: #94a3b8;
+  color: #334155;
   font-size: 0.72rem;
   font-weight: 700;
   padding: 0 6px;
@@ -532,7 +532,30 @@ body {
 
 .view-tab.active .view-tab-count {
   background: #dbeafe;
-  color: #1d4ed8;
+  color: #1e3a8a;
+}
+
+.view-tab:hover .view-tab-count {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.view-tab.active:hover .view-tab-count {
+  background: #bfdbfe;
+  color: #1e3a8a;
+}
+
+.view-tab:disabled {
+  background: #f8fafc;
+  color: #475569;
+  border-bottom-color: #64748b;
+  border-bottom-style: dashed;
+  cursor: not-allowed;
+}
+
+.view-tab:disabled .view-tab-count {
+  background: #e2e8f0;
+  color: #334155;
 }
 
 /* Filter active dot on timeline tab */
