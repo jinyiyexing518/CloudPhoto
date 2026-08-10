@@ -79,6 +79,30 @@
       "headers": {
         "Cache-Control": "public, max-age=3600, must-revalidate"
       }
+    },
+    {
+      "route": "/apple-touch-icon.png",
+      "headers": {
+        "Cache-Control": "public, max-age=3600, must-revalidate"
+      }
+    },
+    {
+      "route": "/pwa-192x192.png",
+      "headers": {
+        "Cache-Control": "public, max-age=3600, must-revalidate"
+      }
+    },
+    {
+      "route": "/pwa-512x512.png",
+      "headers": {
+        "Cache-Control": "public, max-age=3600, must-revalidate"
+      }
+    },
+    {
+      "route": "/maskable-icon.png",
+      "headers": {
+        "Cache-Control": "public, max-age=3600, must-revalidate"
+      }
     }
   ],
   "navigationFallback": {

@@ -2,6 +2,7 @@
 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspectPng } from "./png-contract.mjs";
 
 const DEFAULT_BASE_URL = "https://cloudphotos.top";
 const DEFAULT_AZURE_FRONTEND_URL =
@@ -62,6 +63,50 @@ async function validateManifest(response) {
   if (!hasInstallMetadata) {
     throw new Error("manifest is missing required install metadata");
   }
+
+  if (body.id !== "/" || body.lang !== "zh-CN") {
+    throw new Error("manifest must use the stable root id and zh-CN language");
+  }
+
+  const hasPngIcon = (source, size, purpose) => body.icons.some((icon) => (
+    typeof icon?.src === "string"
+    && (icon.src === source || icon.src === `/${source}`)
+    && icon.type === "image/png"
+    && icon.sizes?.split(/\s+/).includes(size)
+    && icon.purpose?.split(/\s+/).includes(purpose)
+  ));
+  if (
+    !hasPngIcon("pwa-192x192.png", "192x192", "any")
+    || !hasPngIcon("pwa-512x512.png", "512x512", "any")
+    || !hasPngIcon("maskable-icon.png", "512x512", "maskable")
+  ) {
+    throw new Error("manifest is missing compatible PNG install icons");
+  }
+}
+
+function validatePngIcon(expectedWidth, expectedHeight) {
+  return async (response) => {
+    if (response.status !== 200) {
+      throw new Error(`expected 200, received ${response.status}`);
+    }
+    const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+    if (!contentType.includes("image/png")) {
+      throw new Error("response is not a PNG image");
+    }
+
+    let dimensions;
+    try {
+      dimensions = inspectPng(await response.arrayBuffer());
+    } catch (error) {
+      throw new Error(`response body is not a valid PNG: ${error.message}`);
+    }
+    const { width, height } = dimensions;
+    if (width !== expectedWidth || height !== expectedHeight) {
+      throw new Error(
+        `expected ${expectedWidth}x${expectedHeight}, received ${width}x${height}`
+      );
+    }
+  };
 }
 
 async function validateAuthMe(response) {
@@ -146,6 +191,22 @@ export function createChecks(env = process.env) {
         env.PRODUCTION_AZURE_MANIFEST_URL ??
         new URL("/manifest.webmanifest", azureFrontendUrl).href,
       validate: validateManifest,
+    },
+    {
+      target: "primary",
+      name: "apple-touch-icon",
+      url:
+        env.PRODUCTION_APPLE_TOUCH_ICON_URL ??
+        new URL("/apple-touch-icon.png", primaryBaseUrl).href,
+      validate: validatePngIcon(180, 180),
+    },
+    {
+      target: "azure",
+      name: "apple-touch-icon",
+      url:
+        env.PRODUCTION_AZURE_APPLE_TOUCH_ICON_URL ??
+        new URL("/apple-touch-icon.png", azureFrontendUrl).href,
+      validate: validatePngIcon(180, 180),
     },
     {
       target: "primary",

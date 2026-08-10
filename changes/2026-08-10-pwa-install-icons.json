@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-pwa-install-icons",
+  "date": "2026-08-10",
+  "icon": "📱",
+  "title": "完善 PWA 安装图标兼容性",
+  "type": "fix",
+  "desc": "修复 CloudPhoto 安装清单仍声明英文且 iOS 主屏幕图标使用 SVG、部分设备可能显示通用或空白图标的问题。",
+  "details": "manifest 现在使用稳定根路径 id 和 zh-CN 语言，并提供标准 192px、512px 与 maskable PNG；Safari 添加到主屏幕改用 180px PNG。构建契约验证真实 PNG 尺寸与 manifest 用途，生产健康检查同时验证主域和 Azure 直连入口的 Apple Touch 图标。",
+  "seq": 1786334234515
+}

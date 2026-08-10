@@ -3,6 +3,7 @@
 import { readFileSync, readdirSync, statSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
+import { inspectPng } from "./png-contract.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const defaultConfig = join(root, "packages", "client", "public", "staticwebapp.config.json");
@@ -20,6 +21,17 @@ const mutableRoutes = [
   "/pwa-192x192.svg",
   "/pwa-512x512.svg",
   "/maskable-icon.svg",
+  "/apple-touch-icon.png",
+  "/pwa-192x192.png",
+  "/pwa-512x512.png",
+  "/maskable-icon.png",
+];
+
+const installIcons = [
+  { name: "apple-touch-icon.png", width: 180, height: 180 },
+  { name: "pwa-192x192.png", width: 192, height: 192 },
+  { name: "pwa-512x512.png", width: 512, height: 512 },
+  { name: "maskable-icon.png", width: 512, height: 512 },
 ];
 
 function fail(configPath, message) {
@@ -41,6 +53,65 @@ function listFiles(directory) {
     const path = join(directory, entry.name);
     return entry.isDirectory() ? listFiles(path) : [path];
   });
+}
+
+function pngDimensions(configPath, path) {
+  try {
+    return inspectPng(readFileSync(path));
+  } catch (error) {
+    fail(configPath, `cannot decode ${basename(path)}: ${error.message}`);
+  }
+}
+
+function checkInstallMetadata(configPath) {
+  if (basename(dirname(configPath)) !== "dist") return;
+
+  const distDir = dirname(configPath);
+  let manifest;
+  let indexHtml;
+  try {
+    manifest = JSON.parse(readFileSync(join(distDir, "manifest.webmanifest"), "utf8"));
+    indexHtml = readFileSync(join(distDir, "index.html"), "utf8");
+  } catch (error) {
+    fail(configPath, `cannot inspect built install metadata: ${error.message}`);
+  }
+
+  if (manifest.id !== "/" || manifest.lang !== "zh-CN") {
+    fail(configPath, "built manifest must use the stable root id and zh-CN language");
+  }
+
+  const requiredManifestIcons = [
+    { name: "pwa-192x192.png", size: "192x192", purpose: "any" },
+    { name: "pwa-512x512.png", size: "512x512", purpose: "any" },
+    { name: "maskable-icon.png", size: "512x512", purpose: "maskable" },
+  ];
+  for (const required of requiredManifestIcons) {
+    const icon = manifest.icons?.find((candidate) => candidate.src === required.name);
+    if (
+      icon?.type !== "image/png"
+      || !icon.sizes?.split(/\s+/).includes(required.size)
+      || !icon.purpose?.split(/\s+/).includes(required.purpose)
+    ) {
+      fail(configPath, `built manifest is missing ${required.purpose} ${required.size} PNG`);
+    }
+  }
+
+  if (
+    !/<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']\/apple-touch-icon\.png["']/i
+      .test(indexHtml)
+  ) {
+    fail(configPath, "built HTML must link the PNG Apple Touch icon");
+  }
+
+  for (const icon of installIcons) {
+    const dimensions = pngDimensions(configPath, join(distDir, icon.name));
+    if (dimensions.width !== icon.width || dimensions.height !== icon.height) {
+      fail(
+        configPath,
+        `${icon.name} must be ${icon.width}x${icon.height}, received ${dimensions.width}x${dimensions.height}`
+      );
+    }
+  }
 }
 
 function checkHashedAssets(configPath) {
@@ -137,5 +208,6 @@ for (const configPath of configPaths) {
   }
 
   checkHashedAssets(configPath);
+  checkInstallMetadata(configPath);
   console.log(`Static cache contract passed: ${relative(process.cwd(), configPath)}`);
 }
