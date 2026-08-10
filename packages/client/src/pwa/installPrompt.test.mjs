@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   createPwaInstallController,
@@ -205,4 +206,14 @@ test("supports legacy media-query listeners used by older Safari", () => {
   assert.equal(typeof registeredListener, "function");
   unsubscribe();
   assert.equal(registeredListener, undefined);
+});
+
+test("keeps an authenticated install action directly discoverable", () => {
+  const authenticatedAppSource = readFileSync(
+    new URL("../AuthenticatedApp.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(authenticatedAppSource, /className="header-install-button"/);
+  assert.doesNotMatch(authenticatedAppSource, /Auto-dismiss install banner|10_000/);
 });

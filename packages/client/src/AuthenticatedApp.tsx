@@ -739,19 +739,6 @@ function AppContent() {
   // Reset all active filters when the user switches groups (B5 / F9)
   useEffect(() => { setFilters(emptyFilter); }, [currentGroupId]);
 
-  // Auto-dismiss install banner after 10 s if the user hasn’t acted (F6)
-  const bannerAutoDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (isStandalone || installBannerDismissed) return;
-    bannerAutoDismissRef.current = setTimeout(() => {
-      setInstallBannerDismissed(true);
-    }, 10_000);
-    return () => {
-      if (bannerAutoDismissRef.current) clearTimeout(bannerAutoDismissRef.current);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     let disposed = false;
     const loadManagedShareSummary = async () => {
@@ -1445,7 +1432,7 @@ function AppContent() {
       } else if (result.status === "prompted" && result.outcome === "accepted") {
         showToast("已确认安装，请按浏览器提示完成", "success");
       } else if (result.status === "prompted") {
-        showToast("已取消安装，仍可从用户菜单再次打开安装指引", "info");
+        showToast("已取消安装，仍可从顶部“安装应用”再次打开", "info");
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : "无法打开安装提示，请查看安装指引", "error");
@@ -1600,6 +1587,16 @@ function AppContent() {
           <span className="header-greeting">{greetingText} 👋</span>
         </h1>
         <GroupSwitcher />
+        {!isStandalone && (
+          <button
+            type="button"
+            className="header-install-button"
+            onClick={() => void handleInstallApp()}
+          >
+            <span aria-hidden="true">📲</span>
+            安装应用
+          </button>
+        )}
         <span className="photo-count">
           {photos.length.toLocaleString()} 张
           {recentUploads.length > 0 && (
