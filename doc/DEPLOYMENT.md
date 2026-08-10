@@ -16,6 +16,7 @@
 - **前端**：推送 `packages/client/**` 变更时 `.github/workflows/deploy-frontend.yml` 自动触发，`VITE_API_BASE` 从 GitHub Secret 读取
 - **后端**：推送 `packages/server/**` 变更时 `.github/workflows/deploy-backend.yml` 自动触发
 - 部署与同步 Workflow 均使用 `actions/setup-node@v7`、基于 Node 24 的 `azure/login@v3` 和 **OIDC Federated Credential**，无任何长期密码；静态契约会阻止 Node 环境 Action、登录 Action 或目标 Node 运行时回退到弃用版本
+- 前端 Vite 配置使用 `.mts` ESM 入口并从 `import.meta.url` 解析源码别名；构建后的静态契约会拒绝旧 `.ts` 配置或 CommonJS `__dirname` 回归
 
 ### 所需 GitHub Secrets
 

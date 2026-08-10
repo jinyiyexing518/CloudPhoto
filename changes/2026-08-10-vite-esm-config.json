@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-vite-esm-config",
+  "date": "2026-08-10",
+  "icon": "🚀",
+  "title": "迁移 Vite ESM 构建配置",
+  "type": "fix",
+  "desc": "消除前端部署中的 Vite CJS Node API 弃用警告，避免后续升级演变为构建失败。",
+  "details": "前端配置迁移为 vite.config.mts，并使用 import.meta.url 替代 CommonJS __dirname 解析算法源码别名；TypeScript、照片加载契约和文档引用同步更新。前端 CI 已执行的静态契约会拒绝旧 .ts 配置或 CommonJS 路径回归。",
+  "seq": 1786339464761
+}

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { readFileSync, readdirSync, statSync } from "fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { inspectPng } from "./png-contract.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const defaultConfig = join(root, "packages", "client", "public", "staticwebapp.config.json");
+const viteConfig = join(root, "packages", "client", "vite.config.mts");
+const legacyViteConfig = join(root, "packages", "client", "vite.config.ts");
 const configPaths = process.argv.slice(2).map((configPath) => resolve(configPath));
 if (configPaths.length === 0) configPaths.push(defaultConfig);
 
@@ -40,6 +42,20 @@ function fail(configPath, message) {
 
 function cacheControl(rule) {
   return rule?.headers?.["Cache-Control"] ?? "";
+}
+
+function checkViteConfigModule() {
+  if (!existsSync(viteConfig)) {
+    fail(viteConfig, "missing ESM Vite config");
+  }
+  if (existsSync(legacyViteConfig)) {
+    fail(legacyViteConfig, "legacy .ts config loads Vite's deprecated CJS Node API");
+  }
+
+  const source = readFileSync(viteConfig, "utf8");
+  if (!source.includes("import.meta.url") || /\b__dirname\b/.test(source)) {
+    fail(viteConfig, "ESM config must resolve paths from import.meta.url");
+  }
 }
 
 function requireRoute(configPath, routes, route) {
@@ -144,6 +160,8 @@ function checkHashedAssets(configPath) {
     }
   }
 }
+
+checkViteConfigModule();
 
 for (const configPath of configPaths) {
   let config;

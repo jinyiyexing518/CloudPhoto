@@ -32,7 +32,7 @@
 import { scorePhotoImportance, DEFAULT_PAGE_SIZE } from "@cloudphoto/algorithm";
 ```
 
-通过 `packages/client/vite.config.ts` 的 `resolve.alias` 映射到源码，Vite 直接 tree-shake 和打包。
+通过 `packages/client/vite.config.mts` 的 `resolve.alias` 映射到源码，Vite 直接 tree-shake 和打包。
 
 ---
 

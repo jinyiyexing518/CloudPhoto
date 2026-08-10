@@ -592,7 +592,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 | 同步更新日志 | `.github/workflows/sync-changelog.yml` | `changes/**` 变更 |
 | 生产健康检查 | `.github/workflows/production-health.yml` | 每 30 分钟、手动触发、前端或后端部署完成 |
 
-部署和更新日志同步 workflow 使用 **OIDC 认证**（无存储的 Azure 密码/密钥）；生产健康检查仅需仓库只读权限。
+部署和更新日志同步 workflow 使用 **OIDC 认证**（无存储的 Azure 密码/密钥）；生产健康检查仅需仓库只读权限。前端构建配置使用 `packages/client/vite.config.mts` 和 Vite ESM Node API，静态契约会拒绝重新引入触发 CJS 弃用警告的 `.ts` 配置。
 
 ### 生产健康检查
 
