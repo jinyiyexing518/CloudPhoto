@@ -52,6 +52,7 @@ globalThis.window = {
     },
   },
 };
+globalThis.caches = globalThis.window.caches;
 
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const expirationMetadata = await import("../packages/client/src/services/idb.ts");

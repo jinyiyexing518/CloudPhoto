@@ -495,6 +495,7 @@ globalThis.window = {
     },
   },
 };
+globalThis.caches = globalThis.window.caches;
 globalThis.localStorage = {
   values: new Map(),
   getItem(key) {

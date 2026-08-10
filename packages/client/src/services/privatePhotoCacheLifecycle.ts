@@ -4,11 +4,6 @@ const PRIVATE_MEDIA_CACHE_NAMES = ["photo-media-v1", "cf-media-v1"] as const;
 const PRIVATE_CACHE_NAMES = [PHOTO_LIST_CACHE_NAME, ...PRIVATE_MEDIA_CACHE_NAMES] as const;
 const CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
 const PRIVATE_LOCAL_DATA_PREFIX = "cloudphoto_private_data_v1:";
-const LEGACY_PRIVATE_LOCAL_KEYS = [
-  "cloudphoto_moments_insights_v1",
-  "cloudphoto_moments_diagnostics_v1",
-  "cf_recent_share_links",
-] as const;
 
 let cacheGeneration = 0;
 let activePrivateCacheOwner: string | null = null;
@@ -40,19 +35,15 @@ export function registerPrivatePhotoCacheWrite(operation: Promise<void>): () => 
   return () => activePersistentWrites.delete(operation);
 }
 
-function removePrivateLocalData(clearOwner: boolean): void {
+function removeScopedPrivateLocalData(): void {
   try {
     for (const key of Object.keys(localStorage)) {
-      if (
-        LEGACY_PRIVATE_LOCAL_KEYS.includes(key as typeof LEGACY_PRIVATE_LOCAL_KEYS[number])
-        || (clearOwner && (key === CACHE_OWNER_KEY || key.startsWith(PRIVATE_LOCAL_DATA_PREFIX)))
-      ) {
+      if (key === CACHE_OWNER_KEY || key.startsWith(PRIVATE_LOCAL_DATA_PREFIX)) {
         localStorage.removeItem(key);
       }
     }
-    localStorage.setItem("cloudphoto_private_cleanup_v1", "1");
   } catch {
-    // Cache Storage cleanup and in-memory invalidation still proceed.
+    // In-memory invalidation still makes scoped records unreadable.
   }
 }
 
@@ -60,23 +51,18 @@ function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean):
   cacheGeneration += 1;
   if (clearOwner) activePrivateCacheOwner = null;
   for (const reset of resetListeners) reset(clearOwner);
-  if (clearOwner) removePrivateLocalData(true);
+  if (clearOwner) removeScopedPrivateLocalData();
 
   const deletePrivateCaches = async () => {
-    for (let pass = 0; pass < 2; pass += 1) {
-      await Promise.allSettled([...activePersistentWrites]);
-      if (typeof window !== "undefined" && "caches" in window) {
-        await Promise.allSettled(cacheNames.map((name) => window.caches.delete(name)));
-      }
-      try {
-        const metadata = await import("./idb.ts");
-        await metadata.purge(
-          typeof indexedDB === "undefined" ? undefined : indexedDB,
-          cacheNames,
-        );
-      } catch {
-        console.warn("IDB purge fail");
-      }
+    await Promise.allSettled([...activePersistentWrites]);
+    if (typeof caches !== "undefined") {
+      await Promise.allSettled(cacheNames.map((name) => caches.delete(name)));
+    }
+    try {
+      const metadata = await import("./idb.ts");
+      await metadata.clean(cacheNames);
+    } catch {
+      console.warn("IDB purge fail");
     }
   };
   cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
@@ -102,13 +88,14 @@ export function clearPrivatePhotoCaches(): Promise<void> {
 export async function preparePrivatePhotoCachesForScope(authScope: string): Promise<void> {
   if (typeof window === "undefined" || !authScope) return;
   let owner: string | null = null;
+  let cleanupComplete = false;
   try {
     owner = localStorage.getItem(CACHE_OWNER_KEY);
+    cleanupComplete = localStorage.getItem("cloudphoto_private_cleanup_v1") === "1";
   } catch {
     // Treat storage failures as unknown ownership.
   }
-  removePrivateLocalData(false);
-  const pendingCleanup = owner !== authScope
+  const pendingCleanup = owner !== authScope || !cleanupComplete
     ? clearPrivatePhotoCaches()
     : cleanupChain;
   const expectedGeneration = cacheGeneration;

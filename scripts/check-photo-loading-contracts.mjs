@@ -174,7 +174,7 @@ requireText(expirationMetadata, '"cache-entries"', "Workbox expiration metadata 
 requireText(expirationMetadata, "objectStoreNames.contains", "defensive Workbox schema discovery");
 requireText(expirationMetadata, "openCursor()", "bounded metadata row scan");
 requireText(expirationMetadata, "privateCacheNames.has", "targeted private metadata selection");
-requireText(cacheLifecycle, "for (let pass = 0; pass < 2; pass += 1)", "late-write cleanup pass");
+requireText(expirationMetadata, "for (let pass = 0; pass < 2; pass += 1)", "late-write cleanup pass");
 assert(
   !expirationMetadata.includes("deleteDatabase("),
   "private cleanup must never delete the Workbox database or app-code metadata",

@@ -1,10 +1,24 @@
 const WORKBOX_EXPIRATION_DB_NAME = "workbox-expiration";
 const WORKBOX_EXPIRATION_STORE_NAME = "cache-entries";
+const LEGACY_PRIVATE_LOCAL_KEYS = [
+  "cloudphoto_moments_insights_v1",
+  "cloudphoto_moments_diagnostics_v1",
+  "cf_recent_share_links",
+] as const;
 
 export type PrivateExpirationCleanupResult = {
   status: "deleted" | "unavailable" | "database-absent" | "store-absent" | "error";
   deletedEntries: number;
 };
+
+function removeLegacyLocal(): void {
+  try {
+    for (const key of LEGACY_PRIVATE_LOCAL_KEYS) localStorage.removeItem(key);
+    localStorage.setItem("cloudphoto_private_cleanup_v1", "1");
+  } catch {
+    // Cache Storage cleanup and in-memory invalidation still proceed.
+  }
+}
 
 function openExistingExpirationDatabase(
   databaseFactory: IDBFactory,
@@ -122,5 +136,17 @@ export async function purge(
     return { status: "error", deletedEntries: 0 };
   } finally {
     database.close();
+  }
+}
+
+export async function clean(
+  cacheNames: readonly string[],
+): Promise<void> {
+  removeLegacyLocal();
+  for (let pass = 0; pass < 2; pass += 1) {
+    if (typeof caches !== "undefined") {
+      await Promise.allSettled(cacheNames.map((name) => caches.delete(name)));
+    }
+    await purge(typeof indexedDB === "undefined" ? undefined : indexedDB, cacheNames);
   }
 }
