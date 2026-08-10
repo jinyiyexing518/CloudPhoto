@@ -14,6 +14,7 @@ import LocationSearchPanel from "../shared/LocationSearchPanel";
 import { useToast } from "../../contexts/ToastContext";
 import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+import { partitionPhotoLocations } from "./memoryMapLocationPartitions";
 import {
   createMapTooltipContent,
   getMapMarkerLabel,
@@ -43,17 +44,6 @@ interface Props {
   locationIndexRevision?: number;
   onViewPhoto?: (name: string) => void;
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
-}
-
-/** Unified GPS pin — may come from the full Photo list or the fast Cosmos cache */
-interface GeoPin {
-  name: string;
-  lat: number;
-  lon: number;
-  originalName?: string;
-  contentType?: string;
-  /** Present when the full Photo object has been loaded */
-  photo?: Photo;
 }
 
 interface MarkerRegistration {
@@ -141,46 +131,11 @@ export default function MemoryMap({
   const [noGpsShowAll, setNoGpsShowAll] = useState(false);
 
   // Memoised derived state
-  const geoPhotos = useMemo<GeoPin[]>(() => {
+  const locationPartitions = useMemo(() => {
     const currentPhotos = photosGroupId === groupId ? photos : [];
-    // Build a fast lookup of full Photo objects by name
-    const photoMap = new Map<string, Photo>(currentPhotos.map((p) => [p.name, p]));
-
-    // Merge: Cosmos locations are the source of truth for GPS coords;
-    // enrich with full Photo object when available (provides URL, subject, etc.)
-    const fromCosmos: GeoPin[] = cosmosLocations
-      .flatMap((location) => {
-        const gps = readGpsCoordinates(String(location.lat), String(location.lon));
-        return gps
-          ? [{
-              name: location.name,
-              lat: gps.lat,
-              lon: gps.lon,
-              originalName: location.originalName,
-              contentType: location.contentType,
-              photo: photoMap.get(location.name),
-            }]
-          : [];
-      });
-
-    // Also include photos with GPS that aren't in Cosmos yet (e.g. just uploaded this session)
-    const cosmosNames = new Set(fromCosmos.map((location) => location.name));
-    const fromPhotosOnly: GeoPin[] = currentPhotos
-      .filter((p) => !cosmosNames.has(p.name))
-      .flatMap((p) => {
-        const gps = readGpsCoordinates(p.gpsLat, p.gpsLon);
-        if (!gps) return [];
-        return [{ name: p.name, lat: gps.lat, lon: gps.lon, originalName: p.originalName, contentType: p.contentType, photo: p } satisfies GeoPin];
-      });
-
-    return [...fromCosmos, ...fromPhotosOnly];
+    return partitionPhotoLocations(currentPhotos, cosmosLocations);
   }, [cosmosLocations, groupId, photos, photosGroupId]);
-
-  const noGpsPhotos = useMemo(
-    () => (photosGroupId === groupId ? photos : [])
-      .filter((p) => !readGpsCoordinates(p.gpsLat, p.gpsLon)),
-    [groupId, photos, photosGroupId],
-  );
+  const { geoPhotos, noGpsPhotos } = locationPartitions;
 
   // Includes coordinates so effect re-runs on GPS updates, not just count changes
   const geoPhotoKey = useMemo(

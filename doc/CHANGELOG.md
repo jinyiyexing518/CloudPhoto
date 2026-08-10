@@ -4,6 +4,7 @@
 
 **Bug 修复**
 - **📍 新上传 JPEG/HEIC 位置立即可见** — 浏览器空 MIME、`application/octet-stream` 和非标准 JPEG/HEIC MIME 通过有界签名/扩展名识别；客户端坐标不完整、NaN 或越界时服务端回退 EXIF。合法 GPS 写入 Blob metadata、同步 Cosmos、合并到同名 React 照片并显式刷新记忆地图；地址服务失败显示“地址暂不可用”，不再伪装成无 GPS 或回显坐标
+- **🧭 位置分类闭合** — 时间线计数、无位置筛选和地图统一使用 finite/range 坐标对；单边、NaN、Infinity、越界和缺失值进入互斥的无位置分区。地图丢弃旧 Cosmos 交集与孤儿索引，合法照片在索引缺失或非法时回退自身 GPS，用户可见有/无位置总数保持闭合
 - **🧪 iPhone HEIC 行为证据** — 生成式 JPEG/HEIC fixture 同时验证当前 `exifr` 的浏览器 `File` 与服务端 `Buffer` 读取路径，避免仅按格式名推断支持
 
 ---
