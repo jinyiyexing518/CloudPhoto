@@ -13,9 +13,14 @@ const WRONG_SIZE_ICON = readFileSync(
 
 const INSTALLABLE_MANIFEST = JSON.stringify({
   name: "Cloud Photo",
+  short_name: "CloudPhoto",
   id: "/",
   lang: "zh-CN",
   start_url: "/",
+  scope: "/",
+  display: "standalone",
+  theme_color: "#0078d4",
+  background_color: "#f0f2f5",
   icons: [
     {
       src: "/pwa-192x192.png",
@@ -200,7 +205,7 @@ test("rejects a manifest with an unsafe MIME type or incomplete metadata", async
   );
   await assert.rejects(
     manifestCheck.validate(new Response(
-      '{"name":"Cloud Photo","id":"/","lang":"zh-CN","start_url":"/","icons":[{"src":"/icon.svg","sizes":"192x192","type":"image/svg+xml"},{"src":"/icon.svg","sizes":"512x512","type":"image/svg+xml"}]}',
+      '{"name":"Cloud Photo","short_name":"CloudPhoto","id":"/","lang":"zh-CN","start_url":"/","scope":"/","display":"standalone","theme_color":"#0078d4","background_color":"#f0f2f5","icons":[{"src":"/icon.svg","sizes":"192x192","type":"image/svg+xml"},{"src":"/icon.svg","sizes":"512x512","type":"image/svg+xml"}]}',
       { headers: { "content-type": "application/manifest+json" } },
     )),
     /compatible PNG install icons/,

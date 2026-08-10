@@ -147,6 +147,17 @@ function checkInstallMetadata(configPath) {
   if (manifest.id !== "/" || manifest.lang !== "zh-CN") {
     fail(configPath, "built manifest must use the stable root id and zh-CN language");
   }
+  if (
+    manifest.name !== "Cloud Photo"
+    || manifest.short_name !== "CloudPhoto"
+    || manifest.start_url !== "/"
+    || manifest.scope !== "/"
+    || manifest.display !== "standalone"
+    || manifest.theme_color !== "#0078d4"
+    || manifest.background_color !== "#f0f2f5"
+  ) {
+    fail(configPath, "built manifest is missing the required app identity, scope, display, or theme metadata");
+  }
 
   const requiredManifestIcons = [
     { name: "pwa-192x192.png", size: "192x192", purpose: "any" },

@@ -13,6 +13,7 @@ import { listRecentShareLinks, removeRecentShareLink, clearRecentShareLinks } fr
 import { copyText } from "../../services/share/clipboard";
 import { useToast } from "../../contexts/ToastContext";
 import TrashView from "../gallery/TrashView";
+import type { PwaInstallOutcome } from "../../pwa/installPrompt";
 
 type SettingsTab = "profile" | "security" | "trash" | "diagnostics";
 type SettingsEntryTab = SettingsTab | "app";
@@ -35,11 +36,11 @@ interface Props {
   onPhotosRestored?: () => void;
   canInstall?: boolean;
   isStandalone?: boolean;
+  installOutcome?: PwaInstallOutcome;
   initialTab?: SettingsEntryTab;
   initialFocusTarget?: SettingsFocusTarget;
   initialFocusItemId?: string;
   onInstallApp?: () => void;
-  onOpenInstallGuide?: () => void;
 }
 
 export default function SettingsDialog({
@@ -47,11 +48,11 @@ export default function SettingsDialog({
   onPhotosRestored,
   canInstall = false,
   isStandalone = false,
+  installOutcome = null,
   initialTab = "profile",
   initialFocusTarget = "overview",
   initialFocusItemId,
   onInstallApp,
-  onOpenInstallGuide,
 }: Props) {
   const appVersion = __APP_VERSION__;
   const appBuildTime = new Date(__APP_BUILD_TIME__);
@@ -61,6 +62,15 @@ export default function SettingsDialog({
   const { user, updateProfile } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
+  const installStatusText = isStandalone
+    ? "已安装到设备"
+    : canInstall
+      ? "可以直接安装"
+      : installOutcome === "accepted"
+        ? "已确认，等待浏览器完成"
+        : installOutcome === "dismissed"
+          ? "已取消，可再次查看安装步骤"
+          : "可按当前浏览器步骤安装";
   const [tab, setTab] = useState<SettingsEntryTab>(initialTab);
   const settingsBodyRef = useRef<HTMLDivElement | null>(null);
   const settingsTabsRef = useRef<HTMLDivElement | null>(null);
@@ -441,8 +451,8 @@ export default function SettingsDialog({
                     <span className="settings-info-value">{appBuildTimeText}</span>
                   </div>
                   <div className="settings-info-row">
-                    <span className="settings-info-label">一键安装</span>
-                    <span className="settings-info-value">{canInstall ? "当前浏览器支持" : "当前浏览器可能不支持"}</span>
+                    <span className="settings-info-label">安装状态</span>
+                    <span className="settings-info-value">{installStatusText}</span>
                   </div>
                 </div>
               </div>
@@ -502,14 +512,18 @@ export default function SettingsDialog({
                 <div className="settings-card-head">
                   <h3>安装与启动</h3>
                 </div>
-                {!isStandalone && canInstall && (
-                  <button type="button" className="settings-save-btn" onClick={onInstallApp}>立即安装 App</button>
-                )}
-                {!isStandalone && (
-                  <button type="button" className="settings-save-btn" onClick={onOpenInstallGuide}>查看安装指引</button>
-                )}
+                <button
+                  type="button"
+                  className="settings-save-btn"
+                  onClick={onInstallApp}
+                  disabled={isStandalone}
+                >
+                  {isStandalone ? "已安装到设备" : canInstall ? "立即安装应用" : "安装应用"}
+                </button>
                 <p className="add-admin-hint" style={{ marginTop: 4 }}>
-                  说明：并非所有浏览器都支持一键安装。如果按钮不可用，请按安装指引手动添加到主屏幕。
+                  {canInstall
+                    ? "点击后将打开浏览器的原生安装确认。"
+                    : "点击后会显示适用于当前浏览器的安装或添加到主屏幕步骤。"}
                 </p>
               </div>
 

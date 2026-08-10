@@ -168,6 +168,11 @@ body {
   transition: background 0.12s;
 }
 .user-menu-item:hover { background: #f1f5f9; }
+.user-menu-item:disabled {
+  color: #64748b;
+  cursor: default;
+}
+.user-menu-item:disabled:hover { background: transparent; }
 
 .user-menu-item--danger { color: #dc2626; }
 .user-menu-item--danger:hover { background: #fef2f2; }

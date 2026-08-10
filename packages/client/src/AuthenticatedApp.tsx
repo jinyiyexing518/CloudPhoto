@@ -18,6 +18,8 @@ import { useToast } from "./contexts/ToastContext";
 import WhatsNewPopup from "./components/whats-new/WhatsNewPopup";
 import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
+import { getPwaInstallGuidance } from "./pwa/installPrompt";
+import { usePwaInstall } from "./pwa/usePwaInstall";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -102,9 +104,6 @@ function _parseMoovBox(dv: DataView, u8: Uint8Array, start: number, end: number)
 // ────────────────────────────────────────────────────────────────────────────
 
 // Computed once at module load — avoids recalculating on every render
-const _ua = navigator.userAgent.toLowerCase();
-const IS_IOS = /iphone|ipad|ipod/.test(_ua);
-const IS_ANDROID = /android/.test(_ua);
 type ViewTab = "timeline" | "folder" | "moments" | "map" | "capsule" | "story";
 type SettingsEntryTab = "profile" | "security" | "trash" | "diagnostics" | "app";
 type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
@@ -204,11 +203,6 @@ interface HomeDiagnosticsSnapshot {
   persistenceUpdatedAt?: string;
 }
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-}
-
 function AppContent() {
   const { user, logout } = useAuth();
   useEffect(() => {
@@ -226,13 +220,12 @@ function AppContent() {
   const [settingsFocusTarget, setSettingsFocusTarget] = useState<SettingsFocusTarget>("overview");
   const [settingsFocusItemId, setSettingsFocusItemId] = useState<string | undefined>(undefined);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
-  const [canInstall, setCanInstall] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
   const [installBannerDismissed, setInstallBannerDismissed] = useState<boolean>(() => localStorage.getItem(INSTALL_BANNER_DISMISSED_KEY) === "1");
-  const deferredInstallPrompt = useRef<BeforeInstallPromptEvent | null>(null);
-  const isIOS = IS_IOS;
-  const isAndroid = IS_ANDROID;
+  const pwaInstall = usePwaInstall();
+  const canInstall = pwaInstall.mode === "native";
+  const isStandalone = pwaInstall.mode === "installed";
+  const previousInstallMode = useRef(pwaInstall.mode);
 
   // Location banner: shown briefly when entering a group or personal space
   const [locationBanner, setLocationBanner] = useState<string | null>(null);
@@ -256,38 +249,26 @@ function AppContent() {
   }, [currentGroupId, groupsLoaded]); // groups intentionally omitted — only care when user switches
 
   useEffect(() => {
-    const standalone = window.matchMedia("(display-mode: standalone)").matches
-      || ((navigator as Navigator & { standalone?: boolean }).standalone === true);
-    setIsStandalone(standalone);
-
-    const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      deferredInstallPrompt.current = event as BeforeInstallPromptEvent;
-      setCanInstall(true);
-    };
-    const onAppInstalled = () => {
-      deferredInstallPrompt.current = null;
-      setCanInstall(false);
-      setIsStandalone(true);
-      showToast("Cloud Photo 已安装到设备", "success");
-    };
     const onUpdateReady = () => {
       setUpdateReady(true);
     };
     const onOfflineReady = () => showToast("已启用离线基础访问", "success");
 
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
-    window.addEventListener("appinstalled", onAppInstalled);
     window.addEventListener("cloudphoto-pwa-update-ready", onUpdateReady as EventListener);
     window.addEventListener("cloudphoto-pwa-offline-ready", onOfflineReady as EventListener);
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
-      window.removeEventListener("appinstalled", onAppInstalled);
       window.removeEventListener("cloudphoto-pwa-update-ready", onUpdateReady as EventListener);
       window.removeEventListener("cloudphoto-pwa-offline-ready", onOfflineReady as EventListener);
     };
   }, [showToast]);
+
+  useEffect(() => {
+    if (previousInstallMode.current !== "installed" && pwaInstall.mode === "installed") {
+      showToast("Cloud Photo 已安装到设备", "success");
+    }
+    previousInstallMode.current = pwaInstall.mode;
+  }, [pwaInstall.mode, showToast]);
 
   // Invite token from URL ?invite=<token>
   const [inviteToken, setInviteToken] = useState<string | null>(() => {
@@ -1447,12 +1428,18 @@ function AppContent() {
   };
 
   const handleInstallApp = async () => {
-    const promptEvent = deferredInstallPrompt.current;
-    if (!promptEvent) return;
-    await promptEvent.prompt();
-    const result = await promptEvent.userChoice;
-    if (result.outcome === "accepted") {
-      showToast("正在安装 Cloud Photo", "success");
+    try {
+      const result = await pwaInstall.requestInstall();
+      if (result.status === "guidance") {
+        setShowInstallGuide(true);
+      } else if (result.status === "prompted" && result.outcome === "accepted") {
+        showToast("已确认安装，请按浏览器提示完成", "success");
+      } else if (result.status === "prompted") {
+        showToast("已取消安装，仍可从用户菜单再次打开安装指引", "info");
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "无法打开安装提示，请查看安装指引", "error");
+      setShowInstallGuide(true);
     }
   };
 
@@ -1541,34 +1528,16 @@ function AppContent() {
     });
   };
 
-  const installGuideText = useMemo(() => {
-    if (isIOS) {
-      return [
-        "使用 Safari 打开本网站",
-        "点击底部分享按钮",
-        "选择“添加到主屏幕”",
-        "返回桌面后从图标启动",
-      ];
-    }
-    if (isAndroid) {
-      return [
-        "使用 Chrome/Edge 打开本网站",
-        "点击地址栏安装图标，或菜单里的“安装应用”",
-        "安装后可从桌面图标启动",
-      ];
-    }
-    return [
-      "使用 Chrome 或 Edge 打开本网站",
-      "点击地址栏安装图标，或菜单里的“安装应用”",
-      "安装后可在桌面/开始菜单启动",
-    ];
-  }, [isAndroid, isIOS]);
+  const installGuideText = useMemo(
+    () => getPwaInstallGuidance(pwaInstall.platform),
+    [pwaInstall.platform],
+  );
 
   const installBannerText = useMemo(() => {
-    if (isIOS) return "可安装为 App：在 Safari 中点“分享 -> 添加到主屏幕”。";
+    if (pwaInstall.mode === "ios") return "可安装为 App：在 Safari 中点“分享 → 添加到主屏幕”。";
     if (canInstall) return "可安装为 App：点击“立即安装”后，可从桌面图标直接打开。";
     return "可安装为 App：打开安装指引，按设备步骤安装到桌面/主屏幕。";
-  }, [canInstall, isIOS]);
+  }, [canInstall, pwaInstall.mode]);
 
   return (
     <div className={`app${headerHidden ? " header-hidden" : ""}`}>
@@ -1651,6 +1620,14 @@ function AppContent() {
               <button className="user-menu-item" onClick={() => { setShowSettings(true); setUserMenuOpen(false); }}>
                 <span className="user-menu-item-icon">⚙️</span> 设置
               </button>
+              <button
+                className="user-menu-item"
+                disabled={isStandalone}
+                onClick={() => { setUserMenuOpen(false); void handleInstallApp(); }}
+              >
+                <span className="user-menu-item-icon">{isStandalone ? "✅" : "📲"}</span>
+                {isStandalone ? "已安装应用" : "安装应用"}
+              </button>
               <button className="user-menu-item" onClick={() => { setShowShortcutsHelp(true); setUserMenuOpen(false); }}>
                 <span className="user-menu-item-icon">⌨️</span> 快捷键
               </button>
@@ -1678,11 +1655,11 @@ function AppContent() {
           onPhotosRestored={fetchPhotos}
           canInstall={canInstall}
           isStandalone={isStandalone}
+          installOutcome={pwaInstall.outcome}
           initialTab={settingsInitialTab}
           initialFocusTarget={settingsFocusTarget}
           initialFocusItemId={settingsFocusItemId}
           onInstallApp={() => void handleInstallApp()}
-          onOpenInstallGuide={() => setShowInstallGuide(true)}
         /></Suspense>
       )}
       {inviteToken && <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>}

@@ -68,10 +68,14 @@ async function validateManifest(response) {
     throw new Error("response is not valid JSON");
   }
   const hasInstallMetadata = (
-    typeof body?.name === "string"
-    && body.name.length > 0
+    body?.name === "Cloud Photo"
+    && body.short_name === "CloudPhoto"
     && typeof body?.start_url === "string"
-    && body.start_url.length > 0
+    && body.start_url === "/"
+    && body.scope === "/"
+    && body.display === "standalone"
+    && body.theme_color === "#0078d4"
+    && body.background_color === "#f0f2f5"
     && Array.isArray(body?.icons)
     && body.icons.some((icon) => (
       typeof icon?.src === "string"
