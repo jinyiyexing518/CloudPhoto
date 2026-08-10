@@ -199,6 +199,7 @@ SWA 与 Nginx 模板统一使用 `Strict-Transport-Security: max-age=31536000; i
 - **图片加载骨架屏** — 每张缩略图加载时显示闪光骨架，加载完成后淡入，消除布局偏移
 - **激活筛选 chip** — 已应用的主题/上传者/日期筛选以可关闭 chip 形式显示在搜索栏下方
 - **名称搜索防抖** — 名称筛选 300ms 防抖，提交时合并最新主题、日期和收藏状态；清空、外部重置或侧栏卸载会取消旧任务，连续输入只提交最后值
+- **本地自然日一致性** — 时间线分组、日期筛选、今日上传、时光胶囊和重要片段日统计共用本地日历 key；跨 UTC 与夏令时边界不会归入前一天，无效日期进入明确空值/未知日期路径
 - **全选 / 取消全选** — 批量模式下时间线和文件夹视图均支持一键全选切换
 - **批量删除确认对话框** — 批量删除前需明确确认
 - **有界并发批量移动** — 文件夹批量移动最多同时发出 4 个请求；reject 与 `false` 结果逐项计入失败，单项失败不会跳过剩余照片或最终清理
@@ -396,7 +397,7 @@ previewName       2048 px WebP 名称（仅在 derivative 上传成功后以 ETa
 | `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | 列出当前用户的托管分享链接，支持状态/名称筛选 |
 | `PATCH`  | `/api/photos/share/links/{linkId}` | ✓ | 立即吊销（`action=revoke`）或延长有效期（`action=extend`, `hours=1..720`）；冲突返回 `409` |
 | `POST`   | `/api/photos/moments/insights` | ✓ | 批量查询指定照片的 moments 统计，通过 JSON body `{ photoNames: string[] }`（跨设备持久化） |
-| `POST`   | `/api/photos/moments/view` | ✓ | 记录一次 moments 浏览（`photoName`, 可选 `viewerName`），乐观并发 |
+| `POST`   | `/api/photos/moments/view` | ✓ | 记录一次 moments 浏览（`photoName`, `localDateKey: YYYY-MM-DD`，可选 `viewerName`），按客户端本地自然日持久化并使用乐观并发 |
 | `POST`   | `/api/photos/move` | ✓ | 将照片移动到其他文件夹 |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | 更新主题/文件夹/原始名称/拍摄时间/GPS；冲突返回 `409` |
 | `DELETE` | `/api/photos?name=<blobName>` | ✓ | 软删除照片；冲突返回 `409` |

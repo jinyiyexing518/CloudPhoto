@@ -24,6 +24,17 @@ const photoCard = read("packages/client/src/components/gallery/PhotoCard.tsx");
 const folderView = read(
   "packages/client/src/components/gallery/FolderView.tsx",
 );
+const authenticatedApp = read("packages/client/src/AuthenticatedApp.tsx");
+const privateMomentsStore = read(
+  "packages/client/src/services/privateMomentsStore.ts",
+);
+const photoApi = read("packages/client/src/services/photoApi.ts");
+const settingsDialog = read(
+  "packages/client/src/components/settings/SettingsDialog.tsx",
+);
+const momentInsightsApi = read(
+  "packages/server/src/functions/moments/manageMomentInsights.ts",
+);
 const dateHelperPath = join(
   repoRoot,
   "packages/client/src/utils/dateFormat.ts",
@@ -176,7 +187,7 @@ test("timeline, cards, and folder viewer share formatter presets", () => {
   );
   assert.match(
     photoGallery,
-    /getPhotoDateKey\(raw \?\? ""\) \|\| "0000-00-00"/,
+    /getFirstLocalCalendarDateKey\(photo\.takenAt,\s*photo\.createdAt,\s*photo\.lastModified\)/,
     "invalid timeline timestamps must use the explicit unknown-date bucket",
   );
   assert.match(
@@ -230,9 +241,9 @@ test("native date inputs and YYYY-MM-DD serialization stay intact", () => {
   );
   assert.match(timeCapsule, /type="date"[\s\S]*value=\{unlockDate\}/);
   assert.match(timeCapsule, /unlockDate,/);
-  assert.match(timeCapsule, /getPhotoDateKey/);
-  assert.match(timeCapsule, /return getPhotoDateKey\(d\)/);
-  assert.match(timeCapsule, /const today = getPhotoDateKey\(now\)/);
+  assert.match(timeCapsule, /getLocalCalendarDateKey/);
+  assert.match(timeCapsule, /return getLocalCalendarDateKey\(d\)/);
+  assert.match(timeCapsule, /const today = getLocalCalendarDateKey\(now\)/);
   assert.match(timeCapsule, /createdAt: today/);
   assert.match(timeCapsule, /min=\{minimumUnlockDate\}/);
   assert.match(timeCapsule, /unlockDate < minimumUnlockDate/);
@@ -258,7 +269,7 @@ test("native date inputs and YYYY-MM-DD serialization stay intact", () => {
       [
         "--input-type=module",
         "--eval",
-        `const { getPhotoDateKey, getPhotoCalendarDayDistance } = await import(${JSON.stringify(helperUrl + `?tz=${timezone}`)}); const now = new Date(${JSON.stringify(instant)}); console.log(JSON.stringify({ key: getPhotoDateKey(now), days: getPhotoCalendarDayDistance(${JSON.stringify(target)}, now) }));`,
+        `const { getLocalCalendarDateKey, getPhotoCalendarDayDistance } = await import(${JSON.stringify(helperUrl + `?tz=${timezone}`)}); const now = new Date(${JSON.stringify(instant)}); console.log(JSON.stringify({ key: getLocalCalendarDateKey(now), days: getPhotoCalendarDayDistance(${JSON.stringify(target)}, now) }));`,
       ],
       {
         encoding: "utf8",
@@ -268,4 +279,74 @@ test("native date inputs and YYYY-MM-DD serialization stay intact", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout.trim()), { key: expected, days: 1 }, timezone);
   }
+});
+
+test("one local calendar policy drives timeline, filters, uploads, and moment stats", () => {
+  assert.doesNotMatch(authenticatedApp, /function (?:formatLocalDate|toLocalDateKey)\(/);
+  assert.match(authenticatedApp, /getLocalCalendarDateKey/);
+  assert.match(authenticatedApp, /getFirstLocalCalendarDateKey/);
+  assert.match(photoGallery, /getFirstLocalCalendarDateKey\(photo\.takenAt,\s*photo\.createdAt,\s*photo\.lastModified\)/);
+  assert.match(privateMomentsStore, /getLocalCalendarDateKey\(viewedAt\)/);
+  assert.doesNotMatch(privateMomentsStore, /viewedAt\.slice\(0,\s*10\)/);
+  assert.match(photoGallery, /recordMomentViewApi\(photoName,\s*localDateKey,\s*userName\)/);
+  assert.match(folderView, /recordMomentViewApi\(photoName,\s*getLocalCalendarDateKey\(new Date\(\)\),\s*userName\)/);
+  assert.match(photoApi, /localDateKey: string,\s*viewerName\?: string/);
+  assert.match(photoApi, /JSON\.stringify\(\{\s*photoName,\s*viewerName,\s*localDateKey\s*\}\)/);
+  assert.match(momentInsightsApi, /const today = normalizeLocalDateKey\(suppliedDateKey\)/);
+  assert.match(momentInsightsApi, /if \(suppliedDateKey && !today\)/);
+  assert.match(momentInsightsApi, /path: `\/dailyViews\/\$\{today\}`/);
+  assert.match(momentInsightsApi, /dailyViews: today \? \{ \[today\]: 1 \} : \{\}/);
+  assert.doesNotMatch(momentInsightsApi, /new Date\(\)\.toISOString\(\)\.slice\(0,\s*10\)/);
+  assert.match(settingsDialog, /formatPhotoDateTimeSeconds/);
+  assert.doesNotMatch(
+    settingsDialog,
+    /toLocale(?:DateString|TimeString|String)\(\s*(?:undefined\s*[,)]|\))/,
+  );
+
+  const helperUrl = pathToFileURL(dateHelperPath).href;
+  const cases = [
+    ["Asia/Shanghai", "2026-08-10T16:30:00.000Z", "2026-08-11", "2026年8月11日"],
+    ["America/New_York", "2026-03-08T06:30:00.000Z", "2026-03-08", "2026年3月8日"],
+    ["America/New_York", "2026-03-08T07:30:00.000Z", "2026-03-08", "2026年3月8日"],
+    ["America/New_York", "2026-11-01T03:30:00.000Z", "2026-10-31", "2026年10月31日"],
+    ["America/New_York", "2026-11-01T05:30:00.000Z", "2026-11-01", "2026年11月1日"],
+  ];
+
+  for (const [timezone, instant, expectedKey, expectedLabel] of cases) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `const { formatPhotoGroupDate, getFirstLocalCalendarDateKey, getLocalCalendarDateKey } = await import(${JSON.stringify(helperUrl + `?calendar=${timezone}-${instant}`)}); const key = getLocalCalendarDateKey(${JSON.stringify(instant)}); console.log(JSON.stringify({ key, first: getFirstLocalCalendarDateKey("invalid", ${JSON.stringify(instant)}), label: formatPhotoGroupDate(key) }));`,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, TZ: timezone },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      JSON.parse(result.stdout.trim()),
+      { key: expectedKey, first: expectedKey, label: expectedLabel },
+      `${timezone} ${instant}`,
+    );
+  }
+
+  const invalidResult = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `const { getFirstLocalCalendarDateKey, getLocalCalendarDateKey } = await import(${JSON.stringify(helperUrl + "?calendar=invalid")}); console.log(JSON.stringify({ empty: getLocalCalendarDateKey(""), invalid: getLocalCalendarDateKey("not-a-date"), impossible: getLocalCalendarDateKey("2026-02-30"), first: getFirstLocalCalendarDateKey("invalid", "2026-02-30") }));`,
+    ],
+    { encoding: "utf8", env: { ...process.env, TZ: "Asia/Shanghai" } },
+  );
+  assert.equal(invalidResult.status, 0, invalidResult.stderr);
+  assert.deepEqual(JSON.parse(invalidResult.stdout.trim()), {
+    empty: "",
+    invalid: "",
+    impossible: "",
+    first: "",
+  });
 });

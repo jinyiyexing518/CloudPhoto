@@ -743,6 +743,7 @@ export async function listMomentInsights(
 /** Record a single photo view for the current user and return the updated insight. */
 export async function recordMomentViewApi(
   photoName: string,
+  localDateKey: string,
   viewerName?: string,
 ): Promise<MomentInsight | null> {
   type RecordBody = { ok: boolean; item?: MomentInsight; managedUnavailable?: boolean; message?: string };
@@ -752,7 +753,7 @@ export async function recordMomentViewApi(
       {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ photoName, viewerName }),
+        body: JSON.stringify({ photoName, viewerName, localDateKey }),
       },
     );
     if (!response.ok) {

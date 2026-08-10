@@ -5,7 +5,7 @@ import {
   formatPhotoDate,
   formatPhotoDateTime,
   formatPhotoGroupDate,
-  getPhotoDateKey,
+  getLocalCalendarDateKey,
 } from "../packages/client/src/utils/dateFormat.ts";
 
 const read = (relativePath) =>
@@ -87,7 +87,7 @@ test("shared photo dates stay zh-CN and reject invalid values", () => {
   const timestamp = "2026-08-09T16:30:00Z";
   const localDate = new Date(timestamp);
   assert.equal(
-    getPhotoDateKey(timestamp),
+    getLocalCalendarDateKey(timestamp),
     [
       localDate.getFullYear(),
       String(localDate.getMonth() + 1).padStart(2, "0"),
@@ -106,7 +106,10 @@ test("gallery, card, timeline, and folder reuse one explicit locale formatter", 
   assert.doesNotMatch(photoCard, /toLocaleDateString\(undefined/);
   assert.doesNotMatch(folderView, /toLocaleString\(undefined/);
   assert.match(photoGallery, /formatPhotoGroupDate\(key\) \|\| "日期未知"/);
-  assert.match(photoGallery, /getPhotoDateKey\(raw \?\? ""\) \|\| "0000-00-00"/);
+  assert.match(
+    photoGallery,
+    /getFirstLocalCalendarDateKey\(photo\.takenAt,\s*photo\.createdAt,\s*photo\.lastModified\)/,
+  );
 });
 
 test("all authenticated native date inputs share readable native control metrics", () => {

@@ -38,7 +38,10 @@ import { isVideoCoverKnownBroken } from "../../services/videoCoverRepair";
 import { needsPlaybackVideoCoverCapture } from "../../services/videoCoverRepairPolicy";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
-import { formatPhotoDateTime } from "../../utils/dateFormat";
+import {
+  formatPhotoDateTime,
+  getLocalCalendarDateKey,
+} from "../../utils/dateFormat";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
@@ -1122,7 +1125,7 @@ function FolderContent({
   };
 
   const trackPhotoView = useCallback((photoName: string) => {
-    void recordMomentViewApi(photoName, userName).catch((error) => {
+    void recordMomentViewApi(photoName, getLocalCalendarDateKey(new Date()), userName).catch((error) => {
       if (error instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
         momentsUnavailableNoticeShown.current = true;
         showToast("照片浏览量暂时不可持久化，稍后会继续尝试同步", "info");

@@ -8,6 +8,7 @@ import {
   registerPrivateLocalDataReset,
   type PrivateLocalDataContext,
 } from "./privateLocalDataLifecycle.ts";
+import { getLocalCalendarDateKey } from "../utils/dateFormat.ts";
 
 export const PRIVATE_MOMENTS_MAX_BYTES = 256 * 1024;
 const PRIVATE_DIAGNOSTICS_MAX_BYTES = 4 * 1024;
@@ -299,7 +300,8 @@ export function recordPrivateMomentViewLocally(
   viewer: string,
   viewedAt: string,
 ): Promise<boolean> {
-  const day = viewedAt.slice(0, 10);
+  const day = getLocalCalendarDateKey(viewedAt);
+  if (!day) return Promise.resolve(false);
   const previous = context
     ? memoryInsights.get(privateMomentsStorageKey("insights", context))?.[photoName]
     : undefined;

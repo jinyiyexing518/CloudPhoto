@@ -57,6 +57,7 @@ globalThis.caches = globalThis.window.caches;
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const expirationMetadata = await import("../packages/client/src/services/idb.ts");
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
+const dateFormat = await import("../packages/client/src/utils/dateFormat.ts");
 const shareStore = await import("../packages/client/src/services/share/shareLinksStore.ts");
 const privateCacheNames = [
   "cloudphoto-photo-lists-v1",
@@ -311,6 +312,34 @@ assert.equal(
   JSON.parse(values.get(counterStorageKey))[insight.photoName].totalViews,
   7,
   "serialized offline deltas must preserve concurrent view increments",
+);
+const boundaryContext = momentsStore.capturePrivateMomentsContext("local-calendar-group");
+const boundaryTimestamp = "2026-08-10T16:30:00.000Z";
+const boundaryDateKey = dateFormat.getLocalCalendarDateKey(boundaryTimestamp);
+assert.equal(
+  await momentsStore.recordPrivateMomentViewLocally(
+    boundaryContext,
+    insight.photoName,
+    "viewer",
+    boundaryTimestamp,
+  ),
+  true,
+);
+const boundaryStorageKey = momentsStore.privateMomentsStorageKey("insights", boundaryContext);
+assert.deepEqual(
+  JSON.parse(values.get(boundaryStorageKey))[insight.photoName].dailyViews,
+  { [boundaryDateKey]: 1 },
+  "moments daily stats must use the shared local calendar day",
+);
+assert.equal(
+  await momentsStore.recordPrivateMomentViewLocally(
+    boundaryContext,
+    insight.photoName,
+    "viewer",
+    "not-a-date",
+  ),
+  false,
+  "invalid moment timestamps must not create a fallback day bucket",
 );
 assert(
   String(await read("packages/client/src/services/privateMomentsStore.ts"))

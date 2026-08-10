@@ -55,17 +55,29 @@ export function formatPhotoGroupDate(dateKey: string): string {
   });
 }
 
-export function getPhotoDateKey(value: PhotoDateValue): string {
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return validDate(value) ? value : "";
+export function getLocalCalendarDateKey(value: PhotoDateValue): string {
+  const normalized = typeof value === "string" ? value.trim() : value;
+  if (typeof normalized === "string" && /^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return validDate(normalized) ? normalized : "";
   }
-  const date = validDate(value);
+  const date = validDate(normalized);
   if (!date) return "";
   return [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+export function getFirstLocalCalendarDateKey(
+  ...values: Array<PhotoDateValue | null | undefined>
+): string {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const dateKey = getLocalCalendarDateKey(value);
+    if (dateKey) return dateKey;
+  }
+  return "";
 }
 
 export function getPhotoCalendarDayDistance(

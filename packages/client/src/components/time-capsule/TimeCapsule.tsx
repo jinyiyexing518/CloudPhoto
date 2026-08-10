@@ -4,7 +4,7 @@ import { Photo } from "../../services/photoApi";
 import { useToast } from "../../contexts/ToastContext";
 import {
   getPhotoCalendarDayDistance,
-  getPhotoDateKey,
+  getLocalCalendarDateKey,
 } from "../../utils/dateFormat";
 import {
   advanceIncrementalWindow,
@@ -60,7 +60,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
   const [unlockDate, setUnlockDate] = useState(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() + 1);
-    return getPhotoDateKey(d);
+    return getLocalCalendarDateKey(d);
   });
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [folderFilter, setFolderFilter] = useState("");
@@ -69,10 +69,10 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
   const migrationHandledRef = useRef(false);
 
   const now = new Date();
-  const today = getPhotoDateKey(now);
+  const today = getLocalCalendarDateKey(now);
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const minimumUnlockDate = getPhotoDateKey(tomorrow);
+  const minimumUnlockDate = getLocalCalendarDateKey(tomorrow);
 
   const folders = useMemo(
     () => [...new Set(photos.map((p) => (p.folder ?? "").trim()).filter(Boolean))].sort(),

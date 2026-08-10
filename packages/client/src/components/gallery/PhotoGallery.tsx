@@ -43,7 +43,8 @@ import { useToast } from "../../contexts/ToastContext";
 import {
   formatPhotoDateTime,
   formatPhotoGroupDate,
-  getPhotoDateKey,
+  getFirstLocalCalendarDateKey,
+  getLocalCalendarDateKey,
 } from "../../utils/dateFormat";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
@@ -241,10 +242,10 @@ function groupByDate(photos: Photo[], sortKey: "taken" | "uploaded" = "taken"): 
   const map = new Map<string, Photo[]>();
 
   for (const photo of photos) {
-    const raw = sortKey === "taken"
-      ? (photo.takenAt ?? photo.createdAt ?? photo.lastModified)
-      : (photo.createdAt ?? photo.lastModified);
-    const key = getPhotoDateKey(raw ?? "") || "0000-00-00";
+    const key = (sortKey === "taken"
+      ? getFirstLocalCalendarDateKey(photo.takenAt, photo.createdAt, photo.lastModified)
+      : getFirstLocalCalendarDateKey(photo.createdAt, photo.lastModified)
+    ) || "0000-00-00";
     const bucket = map.get(key) ?? [];
     bucket.push(photo);
     map.set(key, bucket);
@@ -811,6 +812,7 @@ function PhotoGallery({
     if (!isCurrentMomentsContext(requestContext)) return;
     const viewer = (userName?.trim() || "匿名用户").slice(0, 80);
     const now = new Date();
+    const localDateKey = getLocalCalendarDateKey(now);
     const localWrite = recordPrivateMomentViewLocally(
       requestContext,
       photoName,
@@ -818,7 +820,7 @@ function PhotoGallery({
       now.toISOString(),
     );
 
-    void recordMomentViewApi(photoName, userName).then(async (serverItem) => {
+    void recordMomentViewApi(photoName, localDateKey, userName).then(async (serverItem) => {
       if (!serverItem || !isCurrentMomentsContext(requestContext)) return;
       await localWrite;
       if (!isCurrentMomentsContext(requestContext)) return;

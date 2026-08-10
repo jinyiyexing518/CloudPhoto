@@ -10,6 +10,7 @@ import {
   MomentInsightDoc,
 } from "../../utils/cosmos/cosmosClient";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { normalizeLocalDateKey } from "./momentDateKey";
 
 type MomentInsightDocWithEtag = MomentInsightDoc & { _etag?: string };
 
@@ -187,9 +188,13 @@ app.http("recordMomentView", {
     const body = (await request.json().catch(() => ({}))) as {
       photoName?: string;
       viewerName?: string;
+      localDateKey?: string;
     };
     const photoName = body.photoName?.trim();
     if (!photoName) return json({ error: "photoName required" }, 400);
+    const suppliedDateKey = body.localDateKey?.trim();
+    const today = normalizeLocalDateKey(suppliedDateKey);
+    if (suppliedDateKey && !today) return json({ error: "invalid localDateKey" }, 400);
 
     const scope = getScopeFromPhotoName(photoName);
     if (!scope.ok) return scope.response;
@@ -205,7 +210,6 @@ app.http("recordMomentView", {
 
     const id = toMomentInsightId(photoName);
     const viewer = normalizeViewerName(body.viewerName ?? payload.displayName ?? payload.username);
-    const today = new Date().toISOString().slice(0, 10);
     const maxAttempts = 3;
 
     try {
@@ -220,6 +224,9 @@ app.http("recordMomentView", {
             { op: "set", path: "/lastViewedBy", value: viewer },
             { op: "set", path: "/updatedAt", value: now },
           ];
+          if (today) {
+            patchOperations.push({ op: "incr", path: `/dailyViews/${today}`, value: 1 });
+          }
 
           const { resource } = await container.item(id, id).patch<MomentInsightDoc>(patchOperations);
           if (resource) {
@@ -239,7 +246,7 @@ app.http("recordMomentView", {
               lastViewedAt: now,
               lastViewedBy: viewer,
               viewers: { [viewer]: 1 },
-              dailyViews: { [today]: 1 },
+              dailyViews: today ? { [today]: 1 } : {},
               createdAt: now,
               updatedAt: now,
             };

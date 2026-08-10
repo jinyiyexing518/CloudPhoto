@@ -43,7 +43,11 @@ import {
   type ViewTab,
 } from "./keyboard/workspaceTabs";
 import { getHeaderVisibilityAction } from "./headerAutoHide";
-import { formatPhotoDateTimeSeconds } from "./utils/dateFormat";
+import {
+  formatPhotoDateTimeSeconds,
+  getFirstLocalCalendarDateKey,
+  getLocalCalendarDateKey,
+} from "./utils/dateFormat";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 const loadPhotoGallery = () => import("./components/gallery/PhotoGallery");
 const PhotoGallery = lazy(loadPhotoGallery);
@@ -281,52 +285,14 @@ const QUICK_DATE_FILTER_OPTIONS: ReadonlyArray<{ key: QuickDateFilter; label: st
   { key: "thisMonth", label: "📆 本月", title: "本月（月初至月末）" },
 ];
 
-function formatLocalDate(date: Date) {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function toLocalDateKey(value?: string): string | null {
-  const normalized = value?.trim();
-  if (!normalized) return null;
-
-  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
-  if (dateOnlyMatch) {
-    const [, yearText, monthText, dayText] = dateOnlyMatch;
-    const year = Number(yearText);
-    const month = Number(monthText);
-    const day = Number(dayText);
-    const localDate = new Date(year, month - 1, day);
-    if (
-      localDate.getFullYear() !== year
-      || localDate.getMonth() !== month - 1
-      || localDate.getDate() !== day
-    ) {
-      return null;
-    }
-    return normalized;
-  }
-
-  const date = new Date(normalized);
-  return Number.isFinite(date.getTime()) ? formatLocalDate(date) : null;
-}
-
-function firstLocalDateKey(...values: Array<string | undefined>) {
-  for (const value of values) {
-    const dateKey = toLocalDateKey(value);
-    if (dateKey) return dateKey;
-  }
-  return null;
-}
-
 function getPhotoUploadDateKey(photo: Photo) {
-  return firstLocalDateKey(photo.createdAt, photo.lastModified);
+  return getFirstLocalCalendarDateKey(photo.createdAt, photo.lastModified);
 }
 
-function getPhotoDateKey(photo: Photo, sortKey: "taken" | "uploaded") {
+function getPhotoSortDateKey(photo: Photo, sortKey: "taken" | "uploaded") {
   return sortKey === "uploaded"
     ? getPhotoUploadDateKey(photo)
-    : firstLocalDateKey(photo.takenAt, photo.createdAt, photo.lastModified);
+    : getFirstLocalCalendarDateKey(photo.takenAt, photo.createdAt, photo.lastModified);
 }
 
 function getPhotoUploadTimestamp(photo: Photo) {
@@ -344,20 +310,20 @@ function getQuickDateRanges(referenceDate = new Date()): Record<QuickDateFilter,
 
   return {
     today: {
-      dateFrom: formatLocalDate(today),
-      dateTo: formatLocalDate(today),
+      dateFrom: getLocalCalendarDateKey(today),
+      dateTo: getLocalCalendarDateKey(today),
     },
     last7Days: {
-      dateFrom: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)),
-      dateTo: formatLocalDate(today),
+      dateFrom: getLocalCalendarDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)),
+      dateTo: getLocalCalendarDateKey(today),
     },
     thisWeek: {
-      dateFrom: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - mondayOffset)),
-      dateTo: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6 - mondayOffset)),
+      dateFrom: getLocalCalendarDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - mondayOffset)),
+      dateTo: getLocalCalendarDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6 - mondayOffset)),
     },
     thisMonth: {
-      dateFrom: formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1)),
-      dateTo: formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+      dateFrom: getLocalCalendarDateKey(new Date(today.getFullYear(), today.getMonth(), 1)),
+      dateTo: getLocalCalendarDateKey(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
     },
   };
 }
@@ -941,7 +907,7 @@ function AppContent() {
   const filteredPhotos = useMemo(() => {
     return photos.filter((p) => {
       const name = (p.originalName || p.name.replace(/^\d+-/, "")).toLowerCase();
-      const dateKey = getPhotoDateKey(p, photoSortKey);
+      const dateKey = getPhotoSortDateKey(p, photoSortKey);
 
       if (filters.name && !name.includes(filters.name.toLowerCase())) return false;
       if (filters.subject && !(p.subject ?? "").toLowerCase().includes(filters.subject.toLowerCase())) return false;
