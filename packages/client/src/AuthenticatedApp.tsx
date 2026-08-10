@@ -86,6 +86,7 @@ import {
 } from "./transfer/folderRenameState";
 import {
   aggregateUploadProgress,
+  formatUploadResultSummary,
   getUploadConcurrencyPolicy,
   getUploadProgressPercent,
   runWeightedUploadQueue,
@@ -1693,6 +1694,14 @@ function AppContent() {
       if (currentGroupIdRef.current !== uploadWorkspaceId && !batchController.signal.aborted) {
         batchController.abort(new UploadWorkspaceChangedError());
       }
+      const finalProgress = aggregateUploadProgress(result.items);
+      const resultSummary = formatUploadResultSummary(finalProgress);
+      const cancellationMessage = () => {
+        const reason = batchAbortReason();
+        return reason instanceof UploadWorkspaceChangedError
+          ? reason.message
+          : "登录状态已变更，上传已停止";
+      };
       if (batchController.signal.aborted || result.cancelled.length > 0) {
         if (ownsUploadBatch()) {
           setUploadProgress(null);
@@ -1701,17 +1710,10 @@ function AppContent() {
           setUploadPaused(false);
           pausedRef.current = false;
         }
-        const reason = batchAbortReason();
-        showToast(
-          reason instanceof UploadWorkspaceChangedError
-          ? reason.message
-          : "登录状态已变更，上传已停止",
-          "error",
-        );
+        showToast(`${resultSummary}；${cancellationMessage()}`, "error");
         return;
       }
 
-      const finalProgress = aggregateUploadProgress(result.items);
       setUploadProgress({
         ...finalProgress,
         folder,
@@ -1724,16 +1726,19 @@ function AppContent() {
       setUploadTotalSize(null);
       setUploadPaused(false);
       pausedRef.current = false;
-      const failed = result.failed.map((item) => item.file.name);
-      if (failed.length > 0) {
-        showToast(
-          `上传结束：成功 ${result.succeeded.length}，失败 ${result.failed.length}: ${failed.join(", ")}`,
-          "error",
-        );
-      } else {
-        const hasVideo = result.succeeded.some((item) => VIDEO_TYPES.has(item.file.type));
-        showToast(`成功上传 ${result.succeeded.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
-      }
+      const refreshCancellationMessage = batchController.signal.aborted
+        ? cancellationMessage()
+        : null;
+      showToast(
+        refreshCancellationMessage
+          ? `${resultSummary}；${refreshCancellationMessage}`
+          : resultSummary,
+        refreshCancellationMessage
+          || finalProgress.failedCount > 0
+          || finalProgress.cancelledCount > 0
+          ? "error"
+          : "success",
+      );
     } finally {
       unsubscribeAuth();
       if (ownsUploadBatch()) {
@@ -2251,6 +2256,7 @@ function AppContent() {
                   <div className="transfer-banner-body">
                     <span className="transfer-banner-text">
                       {uploadPaused
+                        && (uploadProgress.activeCount > 0 || uploadProgress.queuedCount > 0)
                         ? uploadProgress.activeCount > 0
                           ? `已暂停，${uploadProgress.activeCount} 个仍在上传 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
                           : `已暂停 (${uploadProgress.filesSettled}/${uploadProgress.filesTotal})`
@@ -2271,26 +2277,26 @@ function AppContent() {
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="transfer-banner-pause"
-                    onClick={handleToggleUploadPause}
-                    aria-label={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
-                    title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
-                  >
-                    {uploadPaused ? (
-                      /* Play triangle */
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
-                        <polygon points="3,1 13,7 3,13" />
-                      </svg>
-                    ) : (
-                      /* Pause two bars */
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
-                        <rect x="2" y="1" width="4" height="12" rx="1" />
-                        <rect x="8" y="1" width="4" height="12" rx="1" />
-                      </svg>
-                    )}
-                  </button>
+                  {uploadProgress.activeCount > 0 || uploadProgress.queuedCount > 0 ? (
+                    <button
+                      type="button"
+                      className="transfer-banner-pause"
+                      onClick={handleToggleUploadPause}
+                      aria-label={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
+                      title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
+                    >
+                      {uploadPaused ? (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                          <polygon points="3,1 13,7 3,13" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                          <rect x="2" y="1" width="4" height="12" rx="1" />
+                          <rect x="8" y="1" width="4" height="12" rx="1" />
+                        </svg>
+                      )}
+                    </button>
+                  ) : null}
                   <span className="transfer-banner-pct">
                     {getUploadProgressPercent(uploadProgress)}%
                   </span>

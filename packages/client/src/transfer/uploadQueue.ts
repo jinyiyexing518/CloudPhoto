@@ -165,6 +165,18 @@ export function getUploadProgressPercent(
   return boundedRatio === 1 ? 100 : Math.min(99, Math.round(boundedRatio * 100));
 }
 
+export function formatUploadResultSummary(
+  progress: Pick<
+    UploadAggregateProgress,
+    "succeededCount" | "failedCount" | "cancelledCount"
+  >,
+): string {
+  const cancelled = progress.cancelledCount > 0
+    ? `，取消 ${progress.cancelledCount}`
+    : "";
+  return `上传结束：成功 ${progress.succeededCount}，失败 ${progress.failedCount}${cancelled}`;
+}
+
 export function sampleUploadSpeed(
   previous: UploadSpeedState,
   transferredBytes: number,

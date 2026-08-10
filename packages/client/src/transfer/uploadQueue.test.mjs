@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   aggregateUploadProgress,
+  formatUploadResultSummary,
   getUploadConcurrencyPolicy,
   getUploadItemWeight,
   getUploadProgressPercent,
@@ -173,6 +174,21 @@ test("failed and cancelled files retain only observed bytes and distinct outcome
     activeFiles: [],
   });
   assert.equal(getUploadProgressPercent(progress), 62);
+  assert.equal(
+    formatUploadResultSummary(progress),
+    "上传结束：成功 1，失败 3，取消 1",
+  );
+});
+
+test("successful result summaries still report zero failures", () => {
+  assert.equal(
+    formatUploadResultSummary({
+      succeededCount: 3,
+      failedCount: 0,
+      cancelledCount: 0,
+    }),
+    "上传结束：成功 3，失败 0",
+  );
 });
 
 test("retry progress reset stays monotonic without double-counting the previous attempt", async () => {

@@ -37,8 +37,31 @@ test("failed batches keep truthful final progress through refresh and report bot
   assert.match(appSource, /const finalProgress = aggregateUploadProgress\(result\.items\)/);
   assert.match(appSource, /setUploadProgress\(\{\s*\.\.\.finalProgress,/s);
   assert.match(appSource, /if \(result\.succeeded\.length > 0\) \{\s*await fetchPhotos\(\)/s);
-  assert.match(appSource, /成功 \$\{result\.succeeded\.length\}，失败 \$\{result\.failed\.length\}/);
+  assert.match(appSource, /const resultSummary = formatUploadResultSummary\(finalProgress\)/);
   assert.match(appSource, /成功 \$\{uploadProgress\.succeededCount\} \/ 失败 \$\{uploadProgress\.failedCount\}/);
+});
+
+test("all settled outcomes use one summary and stale pause state cannot mask refresh", () => {
+  const finalProgress = appSource.indexOf("const finalProgress = aggregateUploadProgress(result.items)");
+  const cancellation = appSource.indexOf("if (batchController.signal.aborted || result.cancelled.length > 0)");
+  assert.ok(finalProgress >= 0 && finalProgress < cancellation);
+  assert.match(appSource, /formatUploadResultSummary\(finalProgress\)/);
+  assert.doesNotMatch(appSource, /result\.failed\.map\(\(item\) => item\.file\.name\)/);
+  assert.match(appSource, /uploadPaused\s*&&\s*\(uploadProgress\.activeCount > 0 \|\| uploadProgress\.queuedCount > 0\)/);
+});
+
+test("auth or workspace cancellation during refresh reaches the final toast", () => {
+  const refresh = appSource.indexOf("await fetchPhotos()");
+  const postRefreshAbort = appSource.indexOf(
+    "batchController.signal.aborted",
+    refresh,
+  );
+  const finalToast = appSource.indexOf("showToast(", refresh);
+  assert.ok(refresh >= 0 && postRefreshAbort > refresh && finalToast > postRefreshAbort);
+  assert.match(
+    appSource.slice(postRefreshAbort, finalToast + 500),
+    /refreshCancellationMessage[\s\S]*\$\{resultSummary\}；\$\{refreshCancellationMessage\}/,
+  );
 });
 
 test("upload speed and percentage use named truthful helpers", () => {
