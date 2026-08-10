@@ -54,8 +54,14 @@ globalThis.window = {
 };
 
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const expirationMetadata = await import("../packages/client/src/services/idb.ts");
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
 const shareStore = await import("../packages/client/src/services/share/shareLinksStore.ts");
+const privateCacheNames = [
+  "cloudphoto-photo-lists-v1",
+  "photo-media-v1",
+  "cf-media-v1",
+];
 
 function createFakeWorkboxExpirationDb(
   entries,
@@ -478,7 +484,10 @@ await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
     { id: "unknown", cacheName: "future-public-cache-v1", timestamp: 1 },
   ]);
 
-  const first = await lifecycle.purgePrivateWorkboxExpirationMetadata(expirationDb.factory);
+  const first = await expirationMetadata.purge(
+    expirationDb.factory,
+    privateCacheNames,
+  );
   assert.equal(first.status, "deleted");
   assert.equal(first.deletedEntries, 352);
   assert.equal(expirationDb.count("photo-media-v1"), 0);
@@ -487,7 +496,10 @@ await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
   assert.equal(expirationDb.count("app-code-v1"), 48);
   assert.equal(expirationDb.count("future-public-cache-v1"), 1);
 
-  const second = await lifecycle.purgePrivateWorkboxExpirationMetadata(expirationDb.factory);
+  const second = await expirationMetadata.purge(
+    expirationDb.factory,
+    privateCacheNames,
+  );
   assert.equal(second.status, "deleted");
   assert.equal(second.deletedEntries, 0);
   assert.equal(expirationDb.count("app-code-v1"), 48);
@@ -495,14 +507,20 @@ await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
 
   const absentDb = createFakeWorkboxExpirationDb([], { includeDatabase: false });
   assert.equal(
-    (await lifecycle.purgePrivateWorkboxExpirationMetadata(absentDb.factory)).status,
+    (await expirationMetadata.purge(
+      absentDb.factory,
+      privateCacheNames,
+    )).status,
     "database-absent",
   );
   assert.equal(absentDb.openCount(), 0);
 
   const absentStore = createFakeWorkboxExpirationDb([], { includeStore: false });
   assert.equal(
-    (await lifecycle.purgePrivateWorkboxExpirationMetadata(absentStore.factory)).status,
+    (await expirationMetadata.purge(
+      absentStore.factory,
+      privateCacheNames,
+    )).status,
     "store-absent",
   );
 }
