@@ -114,6 +114,7 @@ test("timeline and folder viewers share the complete dialog boundary contract", 
   }
   assert.match(photoCardSource, /tabIndex=\{!onSelect && !interactionDisabled \? -1 : undefined\}/);
   assert.match(photoCardSource, /event\.currentTarget\.focus\(\{ preventScroll: true \}\);[\s\S]*onClick\(\)/);
+  assert.match(photoCardSource, /videoRepairTargetRef\.current\?\.focus\(\{ preventScroll: true \}\);[\s\S]*setCtxMenu\(null\);[\s\S]*onClick\(\)/);
 });
 
 test("nested viewer layers are independently named and focus-managed", () => {

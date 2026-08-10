@@ -394,7 +394,16 @@ function PhotoCard({
       {ctxMenu && !interactionDisabled && createPortal(
         <div className="photo-ctx-backdrop" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }}>
           <ul className="photo-ctx-menu" style={{ top: ctxMenu.y, left: ctxMenu.x }} onClick={(e) => e.stopPropagation()}>
-            <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onClick(); }}>🔍 预览</li>
+            <li
+              className="photo-ctx-item"
+              onClick={() => {
+                videoRepairTargetRef.current?.focus({ preventScroll: true });
+                setCtxMenu(null);
+                onClick();
+              }}
+            >
+              🔍 预览
+            </li>
             {onToggleFavorite && (
               <li className="photo-ctx-item" onClick={() => { setCtxMenu(null); onToggleFavorite(!photo.favorite); }}>
                 {photo.favorite ? "☆ 取消收藏" : "★ 收藏"}
