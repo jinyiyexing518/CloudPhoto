@@ -196,6 +196,22 @@ test("pause, seek, ended, and hidden-document transitions never switch routes", 
   }
 });
 
+test("a visible stalled video rearms after backgrounding", () => {
+  const run = harness();
+  const video = media();
+  run.controller.onPlay(run.session.key, video);
+  run.controller.onWaiting(run.session.key, video);
+  run.setVisible(false);
+  run.controller.onVisibilityChange(video);
+  run.clock.flush();
+  assert.equal(video.counts().loadCalls, 0);
+
+  run.setVisible(true);
+  run.controller.onVisibilityChange(video);
+  run.clock.flush();
+  assert.equal(video.counts().loadCalls, 1);
+});
+
 test("stall failover restores 18s and playback properties exactly once", async () => {
   const run = harness();
   const video = media();

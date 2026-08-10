@@ -138,7 +138,7 @@ export function useResilientVideoPlayback({
   }, [controller]);
 
   useEffect(() => {
-    const onVisibilityChange = () => controller.onVisibilityChange();
+    const onVisibilityChange = () => controller.onVisibilityChange(videoRef.current ?? undefined);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);

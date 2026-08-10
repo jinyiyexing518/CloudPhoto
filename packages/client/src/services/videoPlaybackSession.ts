@@ -193,7 +193,7 @@ export interface VideoPlaybackController {
   onSeeking(sessionKey: string, media: VideoPlaybackMedia): void;
   onSeeked(sessionKey: string, media: VideoPlaybackMedia): void;
   onEnded(sessionKey: string, media: VideoPlaybackMedia): void;
-  onVisibilityChange(): void;
+  onVisibilityChange(media?: VideoPlaybackMedia): void;
   onError(sessionKey: string, media: VideoPlaybackMedia): boolean;
   onLoadedMetadata(sessionKey: string, media: VideoPlaybackMedia): Promise<void>;
   retry(sessionId: number, media: VideoPlaybackMedia): VideoPlaybackSession;
@@ -419,10 +419,12 @@ export function createVideoPlaybackController({
       clearWatchdog();
       emitStatus("idle");
     },
-    onVisibilityChange() {
+    onVisibilityChange(media) {
       if (!isVisible()) {
         clearWatchdog();
         if (currentStatus === "buffering") emitStatus("idle");
+      } else if (media && activeKey) {
+        armWatchdog(activeKey, media);
       }
     },
     onError: recover,
