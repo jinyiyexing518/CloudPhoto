@@ -74,6 +74,7 @@
 - **侧栏筛选容器级响应式** — 同一 `FilterBar` 以显式 sidebar variant 隔离抽屉布局，搜索/清空先行、快捷筛选与网格尺寸按容器自动换行；320–480px 与 200% 缩放下长标签和激活 chip 不再越界，所有交互保持至少 44px，宽桌面默认样式不变
 - **PWA 安全更新闸门** — `onNeedRefresh` 仅设置全局 `update-ready` 状态并发事件，不自动 `updateSW(true)`/刷新页面；登录页期间收到更新事件也会在进入工作区后恢复更新提示
 - **跨部署 chunk 一次性自愈** — pre-React 入口只识别同源 content-hashed JS/CSS 的 dynamic import/preload 失败，安全会话显式激活 waiting SW，再以 cache-busting 导航恢复，自动 reload 上限 **1 次**；危险操作期间 reload 为 **0**，完成后自动续接。时间线、文件夹、重要片段、地图、胶囊与故事各有 keyed ErrorBoundary，因此 FolderView 404 的故障域从整个主区缩至 **1 个 panel**；sessionStorage 只留 opaque 指纹和 allowlisted tab，生产 DOM 中 raw URL/stack 为 **0**。常驻恢复与 waiting-worker 控制令登录入口从 26.58 kB 增至 34.21 kB（gzip 9.91 → 12.76 kB），换取普通 Tab 与 installed PWA 的跨版本可恢复性
+- **前端 production 单目标串行** — 事故中 1 个可观测 PushEvent 生成了同 SHA 的 2 个 attempt-1 Frontend runs（398/399），旧 workflow 无 concurrency，两个 SWA upload 竞速后留下 1 success + 1 Azure Deployment Canceled failure。现在 main push 与 main 手动 production 共用一个不取消在途 upload 的 production group；同目标最多 1 running + 1 pending，更多事件仅在 Azure 前 coalesce，SWA 并发 upload 上限固定为 **1**。PR 与 validation upload 为 **0**，production job 通过 main OIDC 即时读取 SWA token；仓库级 deployment token 删除后，15 个未包含新 guard 的旧远端分支也无法取得生产凭据
 - **Service Worker 私有媒体缓存**
   - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），媒体缓存既要减少同一会话重复下载，也不能跨越账号授权边界
   - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  

@@ -1,4 +1,5 @@
 name: Deploy Frontend (Azure Static Web Apps)
+run-name: "${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && format('Validate frontend · {0}', github.ref_name) || github.event_name == 'workflow_dispatch' && inputs.mode == 'validate' && 'Validate frontend · main' || github.event_name == 'workflow_dispatch' && 'Deploy frontend production · main' || github.event_name == 'pull_request' && format('Validate frontend · PR #{0}', github.event.pull_request.number) || github.workflow }}"
 
 on:
   push:
@@ -14,14 +15,25 @@ on:
       - "scripts/security-headers.test.mjs"
       - ".github/workflows/deploy-frontend.yml"
   pull_request:
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Production is allowed only from main; non-main branches always run validation without Azure upload."
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - production
+
+concurrency:
+  group: deploy-frontend-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && 'production' || github.event_name == 'pull_request' && format('validation-pr-{0}', github.event.pull_request.number) || format('validation-{0}', github.ref_name) }}
+  cancel-in-progress: ${{ !((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) }}
 
 jobs:
-  build_and_deploy:
-    # Skip deploy job for closed PRs (SWA handles environment cleanup automatically)
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -34,6 +46,9 @@ jobs:
           node-version: "24"
           cache: "yarn"
           cache-dependency-path: yarn.lock
+
+      - name: Verify workflow runtimes
+        run: node scripts/check-workflow-runtime-contracts.mjs
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -59,24 +74,96 @@ jobs:
       - name: Verify security header contracts
         run: yarn test:security
 
+      - name: Record validation-only dispatch
+        if: github.event_name == 'workflow_dispatch' && (github.ref != 'refs/heads/main' || inputs.mode != 'production')
+        run: echo "::notice::Manual run is validation-only; Azure production upload is disabled."
+
+      - name: Stage production artifact
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: packages/client/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy_production:
+    name: Deploy production
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download production artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: packages/client/dist
+
+      - name: Azure Login (attempt 1)
+        id: azure_login_first
+        uses: azure/login@v3
+        continue-on-error: true
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure Login (attempt 2)
+        id: azure_login_second
+        if: steps.azure_login_first.outcome == 'failure'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure Login
+        if: steps.azure_login_first.outcome == 'failure' && steps.azure_login_second.outcome == 'failure'
+        run: |
+          echo "Azure login failed twice. Verify the main-branch OIDC credential."
+          exit 1
+
+      - name: Resolve deployment token
+        id: swa_token
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          SWA_DEFAULT_HOSTNAME: brave-sand-053b07a00.7.azurestaticapps.net
+        run: |
+          SWA_NAME="$(az staticwebapp list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?defaultHostname=='$SWA_DEFAULT_HOSTNAME'].name | [0]" \
+            --output tsv)"
+          if [[ -z "$SWA_NAME" ]]; then
+            echo "::error::CloudPhoto Static Web App was not found in the configured resource group."
+            exit 1
+          fi
+
+          DEPLOYMENT_TOKEN="$(az staticwebapp secrets list \
+            --name "$SWA_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query properties.apiKey \
+            --output tsv)"
+          if [[ -z "$DEPLOYMENT_TOKEN" ]]; then
+            echo "::error::Azure returned an empty Static Web Apps deployment token."
+            exit 1
+          fi
+
+          echo "::add-mask::$DEPLOYMENT_TOKEN"
+          echo "deployment_token=$DEPLOYMENT_TOKEN" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to Azure Static Web Apps
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          azure_static_web_apps_api_token: ${{ steps.swa_token.outputs.deployment_token }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: packages/client/dist   # deploy pre-built output directly
           output_location: ""
+          production_branch: main
           skip_app_build: true        # we built manually above to inject env vars
-
-  close_pull_request:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Close pull request environment
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          action: close
-          app_location: packages/client/dist

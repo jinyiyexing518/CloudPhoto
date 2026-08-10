@@ -652,7 +652,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 | 同步更新日志 | `.github/workflows/sync-changelog.yml` | `changes/**` 变更 |
 | 生产健康检查 | `.github/workflows/production-health.yml` | 每 30 分钟、手动触发、前端或后端部署完成 |
 
-部署和更新日志同步 workflow 使用 **OIDC 认证**（无存储的 Azure 密码/密钥）；生产健康检查仅需仓库只读权限。共享算法仅在 `src/**`、`package.json` 或 `tsconfig.json` 变化时触发生产部署，README 等文档修改不会重建前后端。前端构建配置使用 `packages/client/vite.config.mts` 和 Vite ESM Node API，静态契约会拒绝重新引入触发 CJS 弃用警告的 `.ts` 配置。构建产物契约同时要求 `AuthenticatedApp` 与 `PhotoGallery` 保持独立哈希 chunk，防止工作区代码重新进入未登录首屏。
+部署和更新日志同步 workflow 使用 **OIDC 认证**（无存储的 Azure 密码/密钥）；生产健康检查仅需仓库只读权限。共享算法仅在 `src/**`、`package.json` 或 `tsconfig.json` 变化时触发生产部署，README 等文档修改不会重建前后端。前端 production push 与 `main` 上显式选择 production 的手动运行共用单一 concurrency group，运行中的 upload 不会被后续 run 取消；GitHub 最多保留 1 个 pending，同目标更多事件只会在进入 Azure 前 coalesce，因此不会再制造 Azure Deployment Canceled failure。PR 与 validation 使用独立 group，可取消旧验证。`workflow_dispatch` 默认 `validate`，非 `main` 分支与所有 PR 始终只构建和检查，upload 数量为 0。production job 只在 `main` 上通过 OIDC 从 Azure 即时读取 SWA deployment token，仓库不再保存该 token，因此旧分支上的历史 workflow 也无法取得生产凭据。Production Health 只把确实启动过 `Deploy production` 的 Frontend run 当部署事件，validation 或 Azure 前 coalesce 不会伪造生产红灯。前端构建配置使用 `packages/client/vite.config.mts` 和 Vite ESM Node API，静态契约会拒绝重新引入触发 CJS 弃用警告的 `.ts` 配置。构建产物契约同时要求 `AuthenticatedApp` 与 `PhotoGallery` 保持独立哈希 chunk，防止工作区代码重新进入未登录首屏。
 
 ### 生产健康检查
 
@@ -671,7 +671,6 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 | `AZURE_SUBSCRIPTION_ID` | Azure 订阅 ID |
 | `AZURE_FUNCTIONAPP_NAME` | `cloudphoto-api` |
 | `AZURE_RESOURCE_GROUP` | `CloudPhoto` |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA 部署令牌 |
 | `VITE_API_BASE` | `https://cloudphoto-api.azurewebsites.net/api` |
 
 ### 更新日志自动化

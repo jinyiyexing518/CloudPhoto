@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   checkWorkflowRuntimeContracts,
@@ -102,6 +103,230 @@ jobs:
   assert.ok(
     result.issues.some((issue) =>
       issue.includes("without hiding deployment failures")
+    )
+  );
+});
+
+test("rejects frontend production uploads without serialized production concurrency", () => {
+  const result = checkWorkflowRuntimeContracts([
+    {
+      path: ".github/workflows/deploy-frontend.yml",
+      text: `
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build_and_deploy:
+    steps:
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          action: upload
+`,
+    },
+  ]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("serialize the production target")
+    )
+  );
+});
+
+test("rejects non-main manual frontend runs that can upload to production", () => {
+  const result = checkWorkflowRuntimeContracts([
+    {
+      path: ".github/workflows/deploy-frontend.yml",
+      text: `
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build_and_deploy:
+    steps:
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          action: upload
+`,
+    },
+  ]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("non-main workflow_dispatch runs validation-only")
+    )
+  );
+});
+
+test("reads frontend dispatch and upload policy from active YAML only", () => {
+  const inspected = inspectWorkflow(`
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - production
+concurrency:
+  group: deploy-frontend-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    steps:
+      - if: github.ref == 'refs/heads/main'
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: \${{ steps.swa_token.outputs.deployment_token }}
+          action: upload
+      # - uses: Azure/static-web-apps-deploy@v1
+      #   with:
+      #     action: upload
+`, ".github/workflows/deploy-frontend.yml");
+
+  assert.deepEqual(inspected.workflowDispatchModes, ["validate", "production"]);
+  assert.equal(inspected.workflowDispatchModeDefault, "validate");
+  assert.equal(inspected.workflowDispatchModeRequired, "true");
+  assert.equal(inspected.workflowDispatchModeType, "choice");
+  assert.deepEqual(inspected.staticWebAppActions, [
+    {
+      action: "upload",
+      path: ".github/workflows/deploy-frontend.yml",
+      condition: "github.ref == 'refs/heads/main'",
+      ref: "v1",
+      token: "${{ steps.swa_token.outputs.deployment_token }}",
+    },
+  ]);
+  assert.equal(inspected.usesRepositorySwaToken, false);
+});
+
+test("finds Static Web Apps actions regardless of ref or casing", () => {
+  const inspected = inspectWorkflow(`
+jobs:
+  deploy:
+    steps:
+      - uses: azure/Static-Web-Apps-Deploy@0123456789abcdef
+        with:
+          azure_static_web_apps_api_token: \${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+`, ".github/workflows/deploy-frontend.yml");
+
+  assert.equal(inspected.staticWebAppActions.length, 1);
+  assert.equal(inspected.staticWebAppActions[0].ref, "0123456789abcdef");
+  assert.equal(inspected.usesRepositorySwaToken, true);
+});
+
+test("rejects an additional Static Web Apps action pinned to another ref", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  );
+  const withShadowUpload = frontend.replace(
+    "      - name: Deploy to Azure Static Web Apps",
+    `      - name: Shadow production upload
+        uses: azure/Static-Web-Apps-Deploy@0123456789abcdef
+        with:
+          azure_static_web_apps_api_token: \${{ steps.swa_token.outputs.deployment_token }}
+          action: upload
+
+      - name: Deploy to Azure Static Web Apps`
+  );
+  const result = checkWorkflowRuntimeContracts([
+    { path, text: withShadowUpload },
+  ]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("non-main workflow_dispatch runs validation-only")
+    )
+  );
+});
+
+test("rejects bracket-notation access to the legacy repository token", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "          SWA_DEFAULT_HOSTNAME: brave-sand-053b07a00.7.azurestaticapps.net",
+    `          SWA_DEFAULT_HOSTNAME: brave-sand-053b07a00.7.azurestaticapps.net
+          LEGACY_TOKEN: \${{ secrets['azure_static_web_apps_api_token'] }}`
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("non-main workflow_dispatch runs validation-only")
+    )
+  );
+});
+
+test("rejects production health without deployment-event classification", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace("      - name: Classify deployment event", "      - name: Disabled classifier");
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("never started production deployment")
+    )
+  );
+});
+
+test("rejects health classification that sees only successful deployments", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    '.conclusion != "skipped"',
+    '.conclusion == "success"'
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("never started production deployment")
+    )
+  );
+});
+
+test("rejects a string dispatch input that can bypass the production choice", () => {
+  const result = checkWorkflowRuntimeContracts([
+    {
+      path: ".github/workflows/deploy-frontend.yml",
+      text: `
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        required: true
+        default: validate
+        type: string
+        options:
+          - validate
+          - production
+jobs:
+  deploy:
+    steps:
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: \${{ steps.swa_token.outputs.deployment_token }}
+          action: upload
+`,
+    },
+  ]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("non-main workflow_dispatch runs validation-only")
     )
   );
 });

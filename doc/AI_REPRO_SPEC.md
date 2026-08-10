@@ -68,6 +68,7 @@
 2.72 跨部署 lazy chunk 恢复契约：`main.tsx` 必须在 React root 创建前安装 `vite:preloadError` 监听器；只有错误文本明确属于 dynamic import/CSS preload，且 URL 为当前 origin 的 `/assets/<name>-<至少8位hash>.js|css` 时才 `preventDefault` 并进入恢复，普通 render、业务网络错误、跨域资源、无 hash asset 和 `/api/*` 500 均不得自动刷新。Safari 仅有精确 `Importing a module script failed` 且事件确实来自 Vite `vite:preloadError` 时可用事件 provenance 进入同一恢复，ErrorBoundary 或普通 Error 不得凭该无 URL 文案自动刷新。自动路径以当前 build + 不可逆 chunk 指纹在 sessionStorage 记录一次，值只能包含有界 opaque hash，禁止保存错误文本、模块名、URL、workspaceId、照片、SAS 或 token；同一 chunk/build 及恢复后的迟到事件最多自动 reload 1 次，第二次显示「刷新新版」「稍后重试」友好卡片并保留 raw error 仅在 console；sessionStorage 不可写时必须 fail closed 为手动恢复，自动 reload=0。恢复必须读取 PWA 更新与 beforeunload 共用的全局 dangerous-operation fact，覆盖 upload/download/delete/voice/batch/trash/maintenance/folderRename；active 时 reload=0，显示「新版资源已发布，当前操作完成后刷新」，任务完成后再继续，并在 SW 等待结束后、真正 navigation 前再次检查，防止等待窗口中新启动的任务被中断。VitePWA 必须使用 prompt registration，generated SW 只能在收到 `SKIP_WAITING` 消息后调用 `skipWaiting` 且不得 `clientsClaim`；注册 helper 的 `onNeedReload` 和 `onNeedRefresh` 都只能标记 update-ready，禁止自行 reload。离线时等待 online；安全时有界执行 `registration.update()`，等待 installing worker，向 waiting worker 发送 `SKIP_WAITING` 并等待 `controllerchange`（缺失/超时/失败仍记录 console），再给当前 URL 加内部 cache-busting query 执行一次 `location.replace`，新文档启动后移除该 query。session intent 只允许 timeline/folder/moments/map/capsule/story 枚举；workspace 继续由既有账号绑定持久化恢复。未登录 AuthPage、AuthenticatedApp 顶层、timeline/folder/moments/map/capsule/story 以及所有辅助 lazy 弹窗必须使用独立 ErrorBoundary；常驻面板的可见性 wrapper 必须位于 boundary 外层，FolderView 或辅助 chunk 失败不能遮掉已加载 timeline、卸载 authenticated shell 或终止 active 操作，切回正常页面立即可用；rejected lazy Promise 不得通过单纯清 error state 假装重试，恢复动作必须明确刷新新版。所有 production fallback 禁止显示 `error.message`/stack/module URL，按钮使用 `type=button`、aria-live 并聚焦主要恢复动作。入口恢复器允许把 built login JS 上限从 28 kB 调整至 36 kB，但必须保留 `vite:preloadError` 和 one-shot marker 构建检查；实测目标约 34.4 kB（gzip 12.8 kB）。已登录 Header 安装入口、CSS 与顶部安装文案约束保持不变。
 2.73 时光胶囊照片选择流量窗口：创建弹窗的照片 scroll root 初始最多挂载 18 个 `MediaThumb`，不得以 native `loading=lazy` 代替渲染边界；用户滚动该内部 scrollbox 后，绑定其为 `root` 的 `IntersectionObserver` sentinel 才能以每批 12 个单调扩展，键盘遍历到当前已挂载批次的末项时也必须只扩展一批并保持该焦点项连接，完整来源至少支持连续访问前 60 张且同一窗口内不得重复挂载既有 key。切换 folder/source 与重新打开弹窗必须同步回到首批并把 scrollTop 归零，不能在 effect 后置重置前短暂挂载旧数量；`selectedNames` 和真实创建数量不随窗口重置丢失。已渲染照片不得因扩窗卸载；来源异步变化若当前焦点仍指向保留照片，窗口至少覆盖该索引。关闭或 source 变化必须 disconnect observer，并以 active generation 拒绝迟到 callback。照片和视频封面继续只向 `MediaThumb` 传递 thumbnail/preview derivative，禁止挂载 `<video>` 或被动请求 original/video；创建器原有 `role=dialog`、可访问名称、初始焦点、动态 Tab trap、Escape/取消恢复和背景快捷键隔离保持不变。320px、cache disabled、来源前 60 张的生产门槛为初开 `/media` 请求不超过 18，滚至底可访问完整 60 且无重复请求。
 2.74 生产 HSTS 与入口真实性契约：SWA `globalHeaders` 和 `infra/nginx.conf` 所有本地 HSTS 必须严格为 `max-age=31536000; includeSubDomains; preload`；Nginx 前端代理必须隐藏上游 `Strict-Transport-Security`、`X-Content-Type-Options`、`X-Frame-Options` 后保留本地安全头，不得改写 SWA Cache-Control，也不得弱化 `/api`、`/media` 的 CORS/Range/缓存。production smoke 只检查实际部署的 `cloudphotos.top` 与 SWA 默认域名：SWA 必须只返回唯一 canonical HSTS，代理入口的第一个 effective HSTS 必须 canonical；短 max-age、缺 directive 或非 canonical 首值必须失败。VM 模板未热加载时只允许尾部出现已知旧本地值 `max-age=31536000; includeSubDomains` 或重复 canonical，`max-age=0` 等任意其他尾值必须失败；该情况作为 non-blocking infrastructure drift，且不得声称重复已消除。权威 DNS 事实必须分成当前部署与规划：`dns23.hichina.com` 上 apex/www 为 `A 20.195.27.151`，cn/global 为 NXDOMAIN；在 DNS 提供商真正配置前，不得把 cn/global/智能 DNS 写成已上线入口。GitHub 前端部署只更新 SWA，不得尝试未知 SSH、提交 secret 或伪装自动 VM 部署。
+2.75 前端 production workflow 并发与凭据契约：`.github/workflows/deploy-frontend.yml` 必须使用 workflow-level concurrency；所有 `main` push 与 `main` 上 `workflow_dispatch mode=production` 共用唯一 production group，`cancel-in-progress` 对这两类 production run 必须为 false。GitHub concurrency 只保证 1 running + 1 latest pending，第三个同目标事件可在 Azure 前替换 pending；契约必须保证任何时刻进入 SWA upload 的 production run 至多 1 个，并把被替换 run 视为 pre-Azure coalesce，而不是承诺无界队列或把它上报成 Azure deployment failure。PR validation 按 PR number、其他 validation 按 ref 使用独立 group，并可取消同目标旧验证。`workflow_dispatch` 必须提供 `required: true`、`type: choice`、默认 `validate` 的 `validate|production` 选项；只有 `main` push 或 `main` 且显式 `mode=production` 能执行唯一的 `Azure/static-web-apps-deploy@v1 action=upload` step，PR 和任何非 `main` 手动运行的 upload 数量必须为 0，引用 `#` 的 run-name 必须整体加引号且 notice 明确 validation-only 语义。production build 必须作为同 workflow artifact 交给独立 main-only deploy job；该 job 使用现有 OIDC 登录 Azure，按固定 CloudPhoto hostname 在配置的 resource group 中解析 SWA 并把运行时读取的 deployment token 以 masked step output 交给 upload action。workflow 禁止引用 repository `AZURE_STATIC_WEB_APPS_API_TOKEN`，完成迁移后必须删除该 secret，使所选 ref 仍含旧 workflow 的 stale branch 也无法获得生产凭据。`scripts/check-workflow-runtime-contracts.mjs` 必须从 active YAML（忽略注释与 shell 文本）验证 quoted run-name、concurrency、dispatch choice、任意大小写/ref 的 SWA action 总数、单一 upload condition 与 token source，且前端 workflow 在安装依赖与 upload 前自检该契约。Production Health 必须读取 Frontend run jobs，只有 `Deploy production` 确实 started 时才接受或拒绝 deployment conclusion；validation、build-before-deploy failure 与 pre-Azure coalesce 不得伪造生产红灯，真实 started deployment failure 仍必须逐个保留。
 
 ## 1. 目标
 
@@ -310,8 +311,13 @@ Function App 的系统分配托管身份需要：
 
 前端部署：
 
-- AZURE_STATIC_WEB_APPS_API_TOKEN
+- AZURE_CLIENT_ID（与后端共用、允许 main branch OIDC）
+- AZURE_TENANT_ID
+- AZURE_SUBSCRIPTION_ID
+- AZURE_RESOURCE_GROUP
 - VITE_API_BASE（例如 https://<function-app>.azurewebsites.net/api）
+
+不得保留 `AZURE_STATIC_WEB_APPS_API_TOKEN` repository secret；首次 OIDC 前端部署成功后立即删除旧 secret，生产 job 运行时从 Azure 读取并 mask deployment token。
 
 ## 6.2 工作流行为
 
@@ -322,8 +328,8 @@ Function App 的系统分配托管身份需要：
 
 - deploy-frontend.yml
 1. 仅 client 相关变更触发
-2. 注入 VITE_API_BASE 构建
-3. 发布到 Static Web Apps
+2. 注入 VITE_API_BASE 构建并上传同 workflow artifact
+3. 仅 main production job 通过 OIDC 解析 SWA deployment token 并发布；PR 与分支手动运行只验证
 
 建议使用 OIDC（federated credentials），不要存储 SP 密码。
 

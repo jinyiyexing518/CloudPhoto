@@ -9,15 +9,40 @@ const root = dirname(dirname(scriptPath));
 const workflowDir = join(root, ".github", "workflows");
 const requiredContractWorkflows = [
   ".github/workflows/deploy-backend.yml",
+  ".github/workflows/deploy-frontend.yml",
   ".github/workflows/production-health.yml",
   ".github/workflows/sync-changelog.yml",
 ];
 const productionHealthWorkflow = ".github/workflows/production-health.yml";
 const productionHealthConcurrencyGroup =
   "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}";
+const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
+const frontendProductionConcurrencyGroup =
+  "deploy-frontend-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && 'production' || github.event_name == 'pull_request' && format('validation-pr-{0}', github.event.pull_request.number) || format('validation-{0}', github.ref_name) }}";
+const frontendCancelInProgress =
+  "${{ !((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) }}";
+const frontendUploadCondition =
+  "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')";
+const frontendUploadToken = "${{ steps.swa_token.outputs.deployment_token }}";
+const frontendDispatchModes = ["validate", "production"];
+const frontendRunName =
+  "${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && format('Validate frontend · {0}', github.ref_name) || github.event_name == 'workflow_dispatch' && inputs.mode == 'validate' && 'Validate frontend · main' || github.event_name == 'workflow_dispatch' && 'Deploy frontend production · main' || github.event_name == 'pull_request' && format('Validate frontend · PR #{0}', github.event.pull_request.number) || github.workflow }}";
+const productionHealthRejectCondition =
+  "github.event_name == 'workflow_run' && steps.deployment_event.outputs.deployment_started == 'true' && github.event.workflow_run.conclusion != 'success'";
+const productionHealthCheckCondition =
+  "github.event_name != 'workflow_run' || steps.deployment_event.outputs.deployment_started == 'true'";
+const productionHealthGuardedSteps = [
+  "Checkout",
+  "Setup Node.js",
+  "Test workflow runtime parser",
+  "Verify workflow runtimes",
+  "Test smoke checks",
+  "Verify security header contracts",
+  "Check production",
+];
 const deployWorkflows = [
   ".github/workflows/deploy-backend.yml",
-  ".github/workflows/deploy-frontend.yml",
+  frontendWorkflow,
 ];
 const runtimeAlgorithmPaths = [
   "packages/algorithm/src/**",
@@ -52,6 +77,12 @@ function rootChildField(text, parent, field) {
     if (match) return scalarValue(match[1]);
   }
   return null;
+}
+
+function quotedRootScalar(text, field) {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^${escaped}:\\s*"([^"]*)"\\s*$`, "m");
+  return text.match(pattern)?.[1] ?? null;
 }
 
 function nestedListItems(text, keys) {
@@ -101,6 +132,44 @@ function nestedListItems(text, keys) {
     if (match) items.push(scalarValue(match[1]));
   }
   return items;
+}
+
+function nestedScalarValue(text, keys) {
+  const lines = text.split(/\r?\n/);
+  let parentIndex = -1;
+  let parentIndent = -1;
+
+  for (const [depth, key] of keys.entries()) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = depth === 0
+      ? new RegExp(`^${escaped}:\\s*(.*)$`)
+      : new RegExp(`^\\s+${escaped}:\\s*(.*)$`);
+    let childIndent;
+    let matchIndex = -1;
+    let matchValue = null;
+
+    for (let index = parentIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/^\s*(?:#.*)?$/.test(line)) continue;
+      const lineIndent = indentation(line);
+      if (depth > 0 && lineIndent <= parentIndent) break;
+      if (depth > 0 && childIndent === undefined) childIndent = lineIndent;
+      if (depth > 0 && lineIndent !== childIndent) continue;
+      const match = line.match(pattern);
+      if (!match) continue;
+      matchIndex = index;
+      matchValue = scalarValue(match[1]);
+      childIndent = lineIndent;
+      break;
+    }
+
+    if (matchIndex < 0) return null;
+    if (depth === keys.length - 1) return matchValue;
+    parentIndex = matchIndex;
+    parentIndent = childIndent ?? 0;
+  }
+
+  return null;
 }
 
 function activeStepBlocks(text) {
@@ -178,12 +247,52 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const setupNodeVersions = [];
   const contractInvocations = [];
   const pushPaths = nestedListItems(text, ["on", "push", "paths"]);
+  const workflowDispatchModes = nestedListItems(text, [
+    "on",
+    "workflow_dispatch",
+    "inputs",
+    "mode",
+    "options",
+  ]);
+  const workflowDispatchModeDefault = nestedScalarValue(text, [
+    "on",
+    "workflow_dispatch",
+    "inputs",
+    "mode",
+    "default",
+  ]);
+  const workflowDispatchModeRequired = nestedScalarValue(text, [
+    "on",
+    "workflow_dispatch",
+    "inputs",
+    "mode",
+    "required",
+  ]);
+  const workflowDispatchModeType = nestedScalarValue(text, [
+    "on",
+    "workflow_dispatch",
+    "inputs",
+    "mode",
+    "type",
+  ]);
+  const staticWebAppActions = [];
+  const activeSource = text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+  const usesRepositorySwaToken =
+    /secrets\s*(?:\.\s*AZURE_STATIC_WEB_APPS_API_TOKEN|\[\s*["']AZURE_STATIC_WEB_APPS_API_TOKEN["']\s*\])/i
+      .test(activeSource);
+  const stepConditions = {};
+  let frontendTokenResolver = null;
+  let productionHealthClassification = null;
   const concurrency = {
     group: rootChildField(text, "concurrency", "group"),
     cancelInProgress: rootChildField(text, "concurrency", "cancel-in-progress"),
   };
 
   for (const step of activeStepBlocks(text)) {
+    const name = stepField(step, "name");
     const uses = stepField(step, "uses");
     const azureLogin = uses?.match(/^azure\/login@(.+)$/);
     if (azureLogin) {
@@ -202,6 +311,33 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     if (stepField(step, "run") === "node scripts/check-workflow-runtime-contracts.mjs") {
       contractInvocations.push(path);
     }
+
+    const staticWebApp = uses?.match(/^azure\/static-web-apps-deploy@(.+)$/i);
+    if (staticWebApp) {
+      staticWebAppActions.push({
+        action: stepChildField(step, "with", "action"),
+        path,
+        condition: stepField(step, "if"),
+        ref: staticWebApp[1],
+        token: stepChildField(step, "with", "azure_static_web_apps_api_token"),
+      });
+    }
+
+    if (name) {
+      stepConditions[name] = stepField(step, "if");
+    }
+    if (name === "Classify deployment event") {
+      productionHealthClassification = {
+        condition: stepField(step, "if"),
+        ghToken: stepChildField(step, "env", "GH_TOKEN"),
+        source: step.lines.join("\n"),
+      };
+    }
+    if (stepField(step, "id") === "swa_token") {
+      frontendTokenResolver = {
+        source: step.lines.join("\n"),
+      };
+    }
   }
 
   return {
@@ -210,6 +346,16 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     contractInvocations,
     concurrency,
     pushPaths,
+    runName: quotedRootScalar(text, "run-name"),
+    staticWebAppActions,
+    stepConditions,
+    frontendTokenResolver,
+    productionHealthClassification,
+    usesRepositorySwaToken,
+    workflowDispatchModeDefault,
+    workflowDispatchModes,
+    workflowDispatchModeRequired,
+    workflowDispatchModeType,
   };
 }
 
@@ -220,6 +366,13 @@ export function checkWorkflowRuntimeContracts(workflows) {
   );
   const healthConcurrency = healthWorkflow
     ? inspectWorkflow(healthWorkflow.text, healthWorkflow.path).concurrency
+    : null;
+  const healthPolicy = healthWorkflow
+    ? inspectWorkflow(healthWorkflow.text, healthWorkflow.path)
+    : null;
+  const frontend = workflows.find((workflow) => workflow.path === frontendWorkflow);
+  const frontendPolicy = frontend
+    ? inspectWorkflow(frontend.text, frontend.path)
     : null;
   const deployPushPaths = Object.fromEntries(
     deployWorkflows.map((path) => {
@@ -255,8 +408,8 @@ export function checkWorkflowRuntimeContracts(workflows) {
       );
     }
   }
-  if (aggregate.azureLoginRefs.length !== 4) {
-    issues.push(`expected four Azure login steps, found ${aggregate.azureLoginRefs.length}`);
+  if (aggregate.azureLoginRefs.length !== 6) {
+    issues.push(`expected six Azure login steps, found ${aggregate.azureLoginRefs.length}`);
   }
   if (aggregate.setupNodeVersions.length !== 4) {
     issues.push(`expected four setup-node steps, found ${aggregate.setupNodeVersions.length}`);
@@ -289,6 +442,67 @@ export function checkWorkflowRuntimeContracts(workflows) {
       );
     }
   }
+  if (
+    !healthPolicy?.productionHealthClassification
+    || healthPolicy.productionHealthClassification.condition !== "github.event_name == 'workflow_run'"
+    || healthPolicy.productionHealthClassification.ghToken !== "${{ secrets.GITHUB_TOKEN }}"
+    || !healthPolicy.productionHealthClassification.source.includes(
+      'repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/jobs?per_page=100'
+    )
+    || !healthPolicy.productionHealthClassification.source.includes(
+      '.name == "Deploy production" and .started_at != null and .conclusion != "skipped"'
+    )
+    || healthPolicy.stepConditions["Reject failed deployment"] !== productionHealthRejectCondition
+    || productionHealthGuardedSteps.some(
+      (name) => healthPolicy.stepConditions[name] !== productionHealthCheckCondition
+    )
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must ignore validation/coalesced frontend runs that never started production deployment`
+    );
+  }
+  if (!frontendPolicy) {
+    issues.push(`${frontendWorkflow} is missing`);
+  } else {
+    if (
+      frontendPolicy.concurrency.group !== frontendProductionConcurrencyGroup
+      || frontendPolicy.concurrency.cancelInProgress !== frontendCancelInProgress
+    ) {
+      issues.push(
+        `${frontendWorkflow} must serialize the production target without canceling an in-flight production upload`
+      );
+    }
+    if (
+      frontendPolicy.runName !== frontendRunName
+      || frontendPolicy.workflowDispatchModeDefault !== "validate"
+      || frontendPolicy.workflowDispatchModeRequired !== "true"
+      || frontendPolicy.workflowDispatchModeType !== "choice"
+      || frontendPolicy.workflowDispatchModes.length !== frontendDispatchModes.length
+      || frontendDispatchModes.some(
+        (mode, index) => frontendPolicy.workflowDispatchModes[index] !== mode
+      )
+      || frontendPolicy.staticWebAppActions.length !== 1
+      || frontendPolicy.staticWebAppActions[0]?.action !== "upload"
+      || frontendPolicy.staticWebAppActions[0]?.condition !== frontendUploadCondition
+      || frontendPolicy.staticWebAppActions[0]?.ref !== "v1"
+      || frontendPolicy.staticWebAppActions[0]?.token !== frontendUploadToken
+      || frontendPolicy.usesRepositorySwaToken
+      || !frontendPolicy.frontendTokenResolver
+      || !frontendPolicy.frontendTokenResolver.source.includes(
+        "az staticwebapp secrets list"
+      )
+      || !frontendPolicy.frontendTokenResolver.source.includes(
+        'echo "::add-mask::$DEPLOYMENT_TOKEN"'
+      )
+      || !frontendPolicy.frontendTokenResolver.source.includes(
+        'echo "deployment_token=$DEPLOYMENT_TOKEN" >> "$GITHUB_OUTPUT"'
+      )
+    ) {
+      issues.push(
+        `${frontendWorkflow} must keep non-main workflow_dispatch runs validation-only and guard the production upload`
+      );
+    }
+  }
   for (const [path, pushPaths] of Object.entries(deployPushPaths)) {
     if (!pushPaths) {
       issues.push(`${path} is missing`);
@@ -311,7 +525,14 @@ export function checkWorkflowRuntimeContracts(workflows) {
     }
   }
 
-  return { ...aggregate, healthConcurrency, deployPushPaths, issues };
+  return {
+    ...aggregate,
+    frontendPolicy,
+    healthConcurrency,
+    healthPolicy,
+    deployPushPaths,
+    issues,
+  };
 }
 
 function main() {
@@ -331,7 +552,7 @@ function main() {
   }
 
   console.log(
-    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress} algorithm-runtime-paths=${runtimeAlgorithmPaths.length}x${deployWorkflows.length}`
+    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress} frontend-production=serialized frontend-dispatch=validation-guarded algorithm-runtime-paths=${runtimeAlgorithmPaths.length}x${deployWorkflows.length}`
   );
 }
 
