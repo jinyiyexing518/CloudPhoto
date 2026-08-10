@@ -127,7 +127,7 @@
 - **OIDC 无密码 CI/CD** — GitHub Actions 通过 Azure Federated Credential 认证，无长期密码
 - **用户委托 SAS** — Blob 访问凭证由 Managed Identity 签发（无账户密钥），2h 有效期，最小权限
 - **文件夹重命名无覆盖事务** — 路径策略只接受规范相对路径与同 parent 末段改名，同时保留历史 Unicode source key；完整源/目标预检后，Azure Copy Blob 使用 destination `ifNoneMatch=*` 与 source ETag 原子拒绝竞态覆盖/旧版本搬移。copy/delete 各 4 路有界并发，rollback 仅 2 路；首个 copy 失败停止派发，已启动任务 settle 后统一回滚。copy 后复核 inventory，删除每个源前短租约锁住并验证目标 copyId + final ETag，源删除也受预检 ETag 保护；失败只清理仍可证明归属本操作的目标，保证每个媒体至少一份。根目录与递归文件夹卡片使用有名称的非交互 group 包裹独立原生打开按钮；空白、超长和 emoji 名称均生成完整可访问名称，重命名/删除作为至少 44×44 的独立兄弟 Tab stop，busy、拖放和焦点状态不会误触打开
-- **照片卡片原生键盘入口** — timeline、moments、insight strip 与 folder grid 共用具名语义 group；主按钮在普通模式打开、批量模式选择并暴露 `aria-pressed`，可访问名称只组合原文件名、媒体类型与日期。收藏/删除维持独立 44×44 操作和 focus ring；Shift+F10/菜单键可打开具名 menu，支持方向键、Home/End、Enter/Space、Escape 和 connected-only 回焦。删除确认复用 alertdialog boundary，默认聚焦取消、pending 期间拒绝关闭和重复提交；GIF、历史视频封面 repair 与拖放继续独立
+- **照片卡片原生键盘与对比度** — timeline、moments、insight strip 与 folder grid 共用具名语义 group；主按钮支持打开/`aria-pressed` 选择，Shift+F10 菜单和 alertdialog 删除形成完整回焦链。文件名/日期/计数达到 **4.5:1**，操作图标、选择边界与 focus ring 达到 **3:1**，44×44 命中区、GIF、封面 repair 与拖放继续独立
 - **重命名流量与 HTTP 边界** — 源/目标预检分别用最多 101/1 条的 Azure 分页，整批复用一次可取消的 delegation-key 请求；单次最多 100 个 Blob，超过时 mutation 前返回 413。copy phase 最长 120 秒并按 copyId 直接终止在途 Azure copy，rollback 最长 60 秒；60 秒目标租约内的源删除关键区限为 20 秒，服务端 210 秒总边界低于客户端 220 秒上限。限流错误完全交给 Azure SDK 的 Retry-After 与指数退避，应用层不再包一层重试，避免 429/503/ServerBusy 时形成重试风暴
 
 ---
