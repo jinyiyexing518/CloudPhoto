@@ -46,6 +46,7 @@ interface Props {
   restoreFocusTo?: HTMLElement | null;
   gridSize?: GridSize;
   onGridSizeChange?: (size: GridSize) => void;
+  filterResetVersion: number;
 }
 
 function SidebarSection({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
@@ -88,6 +89,7 @@ export default function WorkspaceSidebar({
   restoreFocusTo,
   gridSize,
   onGridSizeChange,
+  filterResetVersion,
 }: Props) {
   const topbarRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -180,6 +182,7 @@ export default function WorkspaceSidebar({
                     gridSize={gridSize}
                     onGridSizeChange={onGridSizeChange}
                     variant="sidebar"
+                    resetVersion={filterResetVersion}
                   />
                 </SidebarSection>
 

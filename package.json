@@ -16,7 +16,7 @@
     "test:video-playback": "node --test packages/client/src/services/videoPlaybackSession.test.mjs packages/client/src/services/videoPlaybackCoverCapture.test.mjs",
     "test:photo-loading-contracts": "node packages/client/src/services/videoCoverRepairPolicy.test.mjs && node scripts/check-photo-loading-contracts.mjs",
     "test:private-data": "node scripts/private-local-data.test.mjs",
-    "test:mobile-layout-contracts": "node --test scripts/mobile-layout-contracts.test.mjs scripts/mobile-controls-date-contracts.test.mjs packages/client/src/components/home/WorkspaceSidebar.keyboard.test.mjs",
+    "test:mobile-layout-contracts": "node --test scripts/mobile-layout-contracts.test.mjs scripts/mobile-controls-date-contracts.test.mjs packages/client/src/components/gallery/FilterBar.debounce.test.mjs packages/client/src/components/home/WorkspaceSidebar.keyboard.test.mjs",
     "test:mobile-controls-dates": "node --test scripts/mobile-controls-date-contracts.test.mjs",
     "test:mobile-touch-targets": "node --test scripts/mobile-touch-targets.test.mjs",
     "test:workspace-tabs": "node --test packages/client/src/keyboard/workspaceTabs.test.mjs",

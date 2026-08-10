@@ -589,6 +589,7 @@ function AppContent() {
   const [trashMutation, setTrashMutation] = useState<TrashMutationState | null>(null);
   const [folderRenameOperation, setFolderRenameOperation] = useState<FolderRenameOperation | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
+  const [filterResetVersion, setFilterResetVersion] = useState(0);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const [momentsDisplayCount, setMomentsDisplayCount] = useState<number | null>(null);
   const [managedShareLinks, setManagedShareLinks] = useState<ManagedShareLink[]>([]);
@@ -771,6 +772,11 @@ function AppContent() {
 
   const closeWorkspaceSidebar = useCallback(() => {
     setSidebarOpen(false);
+  }, []);
+
+  const resetFilters = useCallback((nextFilters: FilterState = emptyFilter) => {
+    setFilters(nextFilters);
+    setFilterResetVersion((current) => current + 1);
   }, []);
 
   const openWorkspaceSidebar = useCallback((trigger: HTMLButtonElement) => {
@@ -1272,7 +1278,7 @@ function AppContent() {
   }, [fetchPhotos, resolvedPhotoWorkspaceKey]);
 
   // Reset all active filters when the user switches groups (B5 / F9)
-  useEffect(() => { setFilters(emptyFilter); }, [currentGroupId]);
+  useLayoutEffect(() => { resetFilters(); }, [currentGroupId, resetFilters]);
 
   useEffect(() => {
     let disposed = false;
@@ -1442,7 +1448,7 @@ function AppContent() {
       if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (activeFiltersCount > 0) {
           e.preventDefault();
-          setFilters(emptyFilter);
+          resetFilters();
           window.scrollTo({ top: 0, behavior: "smooth" });
           showToast("已清空所有筛选", "success");
         }
@@ -2200,7 +2206,7 @@ function AppContent() {
   };
 
   const jumpToTimelinePhoto = (photoName: string, nextFilters?: Partial<FilterState>) => {
-    setFilters({
+    resetFilters({
       ...emptyFilter,
       ...nextFilters,
     });
@@ -2761,7 +2767,7 @@ function AppContent() {
                 >📂 未分类 {uncategorizedCount}</button>
               )}
               {activeFiltersCount > 0 && (
-                <button className="quick-chip quick-chip--clear" onClick={() => setFilters(emptyFilter)}>✕ 清空</button>
+                <button className="quick-chip quick-chip--clear" onClick={() => resetFilters()}>✕ 清空</button>
               )}
               {/* Sort key toggle */}
               <button
@@ -2867,7 +2873,7 @@ function AppContent() {
                   <p className="empty-gallery-sub">可以一键清空筛选，或者去文件夹视图继续上传和整理。</p>
                   <div className="empty-gallery-actions">
                     {timelineHasActiveFilters && (
-                      <button className="empty-gallery-btn" onClick={() => setFilters(emptyFilter)}>
+                      <button className="empty-gallery-btn" onClick={() => resetFilters()}>
                         清空筛选
                       </button>
                     )}
@@ -3129,6 +3135,7 @@ function AppContent() {
             restoreFocusTo={sidebarRestoreFocusRef.current}
             gridSize={gridSize}
             onGridSizeChange={handleGridSizeChange}
+            filterResetVersion={filterResetVersion}
           />
         </div>
       </main>

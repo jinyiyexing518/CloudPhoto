@@ -1,5 +1,9 @@
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useLayoutEffect, useRef } from "react";
+import {
+  createFilterNameDebouncer,
+  type FilterNameDebouncer,
+} from "./filterNameDebounce";
 
 export interface FilterState {
   name: string;
@@ -39,6 +43,7 @@ interface Props {
   gridSize?: GridSize;
   onGridSizeChange?: (size: GridSize) => void;
   variant?: "default" | "sidebar";
+  resetVersion?: number;
 }
 
 export default function FilterBar({
@@ -51,22 +56,56 @@ export default function FilterBar({
   gridSize = "md",
   onGridSizeChange,
   variant = "default",
+  resetVersion = 0,
 }: Props) {
   // Debounced name search: local state updates immediately; parent notified after 300ms
   const [localName, setLocalName] = useState(filters.name);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filtersRef = useRef(filters);
+  const onChangeRef = useRef(onChange);
+  const previousFilterNameRef = useRef(filters.name);
+  const previousResetVersionRef = useRef(resetVersion);
+  const nameDebouncerRef = useRef<FilterNameDebouncer | null>(null);
+  filtersRef.current = filters;
+  onChangeRef.current = onChange;
 
-  // Sync when parent clears filters externally (e.g. "Clear all")
-  useEffect(() => { setLocalName(filters.name); }, [filters.name]);
+  if (nameDebouncerRef.current === null) {
+    nameDebouncerRef.current = createFilterNameDebouncer({
+      readFilters: () => filtersRef.current,
+      readOnChange: () => onChangeRef.current,
+    });
+  }
+
+  // External name changes and shared emptyFilter resets invalidate pending input.
+  useLayoutEffect(() => {
+    const nameChanged = previousFilterNameRef.current !== filters.name;
+    const resetChanged = previousResetVersionRef.current !== resetVersion;
+    previousFilterNameRef.current = filters.name;
+    previousResetVersionRef.current = resetVersion;
+    if (nameChanged || resetChanged || filters === emptyFilter) {
+      nameDebouncerRef.current?.cancel();
+      setLocalName(filters.name);
+    }
+  }, [filters, resetVersion]);
+
+  useLayoutEffect(
+    () => () => nameDebouncerRef.current?.cancel(),
+    [],
+  );
 
   const handleNameChange = (value: string) => {
     setLocalName(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => onChange({ ...filters, name: value }), 300);
+    nameDebouncerRef.current?.schedule(value);
   };
 
   const set = (key: keyof FilterState, value: string | boolean) =>
-    onChange({ ...filters, [key]: value });
+    onChangeRef.current({ ...filtersRef.current, [key]: value });
+
+  const clearAll = () => {
+    nameDebouncerRef.current?.cancel();
+    filtersRef.current = emptyFilter;
+    setLocalName("");
+    onChangeRef.current(emptyFilter);
+  };
 
   const hasAny = filters.name || filters.subject || filters.uploader || filters.dateFrom || filters.dateTo || filters.favoriteOnly || filters.missingSubjectOnly || filters.uncategorizedOnly || filters.noGpsOnly || filters.folder;
 
@@ -105,7 +144,7 @@ export default function FilterBar({
           </div>
 
           {hasAny && (
-            <button className="filter-clear-btn" onClick={() => { onChange(emptyFilter); setLocalName(""); }}>
+            <button type="button" className="filter-clear-btn" onClick={clearAll}>
               清空全部
             </button>
           )}
