@@ -17,6 +17,13 @@ function joinUrl(baseUrl, path) {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
+function headerValues(response, name) {
+  return (response.headers.get(name) ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 async function validateHomepage(response) {
   const body = await response.text();
   if (!response.ok) {
@@ -27,6 +34,21 @@ async function validateHomepage(response) {
   }
   if (!body.includes("Cloud Photo")) {
     throw new Error('response HTML does not contain "Cloud Photo"');
+  }
+  if (!headerValues(response, "x-content-type-options").includes("nosniff")) {
+    throw new Error("homepage is missing X-Content-Type-Options: nosniff");
+  }
+  if (!headerValues(response, "x-frame-options").includes("sameorigin")) {
+    throw new Error("homepage is missing X-Frame-Options: SAMEORIGIN");
+  }
+  const frameAncestors = headerValues(response, "content-security-policy")
+    .flatMap((policy) => policy.split(";"))
+    .map((directive) => directive.trim());
+  if (!frameAncestors.includes("frame-ancestors 'self'")) {
+    throw new Error("homepage CSP must restrict frame-ancestors to 'self'");
+  }
+  if (!headerValues(response, "referrer-policy").includes("same-origin")) {
+    throw new Error("homepage is missing Referrer-Policy: same-origin");
   }
 }
 

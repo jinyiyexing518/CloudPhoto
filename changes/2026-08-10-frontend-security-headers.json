@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-frontend-security-headers",
+  "date": "2026-08-10",
+  "icon": "🛡️",
+  "title": "统一前端防嵌入安全头",
+  "type": "fix",
+  "desc": "修复 Azure Static Web Apps 直连入口可被第三方页面 iframe 嵌入、与主域安全基线不一致的问题。",
+  "details": "SWA 全局响应现在设置 SAMEORIGIN、frame-ancestors 'self'、nosniff 和 same-origin referrer 策略；CSP 仅限制 framing，不影响脚本、图片、地图、上传或 API 连接。静态构建契约与 11 项生产健康检查会同时阻止配置和两个线上入口回归。",
+  "seq": 1786340230245
+}

@@ -37,6 +37,13 @@ const INSTALLABLE_MANIFEST = JSON.stringify({
     },
   ],
 });
+const SECURE_HOMEPAGE_HEADERS = {
+  "content-type": "text/html",
+  "content-security-policy": "frame-ancestors 'self'",
+  "referrer-policy": "same-origin",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "SAMEORIGIN",
+};
 
 async function withServer(handler, run) {
   const server = http.createServer(handler);
@@ -149,6 +156,30 @@ test("builds primary and Azure checks from base URL overrides", () => {
   );
 });
 
+test("rejects a homepage without the anti-framing security baseline", async () => {
+  const homepageCheck = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+  }).find(({ target, name }) => target === "primary" && name === "homepage");
+  assert(homepageCheck);
+
+  for (const [header, expectedError] of [
+    ["content-security-policy", /frame-ancestors/],
+    ["referrer-policy", /Referrer-Policy/],
+    ["x-content-type-options", /X-Content-Type-Options/],
+    ["x-frame-options", /X-Frame-Options/],
+  ]) {
+    const headers = { ...SECURE_HOMEPAGE_HEADERS };
+    delete headers[header];
+    await assert.rejects(
+      homepageCheck.validate(new Response(
+        "<!doctype html><title>Cloud Photo</title>",
+        { headers },
+      )),
+      expectedError,
+    );
+  }
+});
+
 test("rejects a manifest with an unsafe MIME type or incomplete metadata", async () => {
   const manifestCheck = createChecks({
     PRODUCTION_BASE_URL: "https://primary.example",
@@ -245,7 +276,7 @@ test("passes the primary and Azure production contracts with timings", async () 
   await withServer(
     (request, response) => {
       if (request.url === "/primary" || request.url === "/azure") {
-        response.writeHead(200, { "content-type": "text/html" });
+        response.writeHead(200, SECURE_HOMEPAGE_HEADERS);
         response.end("<!doctype html><title>Cloud Photo</title>");
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
@@ -300,7 +331,7 @@ test("retries and fails when either changelog response is not an array", async (
   await withServer(
     (request, response) => {
       if (request.url === "/primary" || request.url === "/azure") {
-        response.writeHead(200, { "content-type": "text/html" });
+        response.writeHead(200, SECURE_HOMEPAGE_HEADERS);
         response.end("<!doctype html><title>Cloud Photo</title>");
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
@@ -383,7 +414,7 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       return Response.json([]);
     }
     return new Response("<!doctype html><title>Cloud Photo</title>", {
-      headers: { "content-type": "text/html" },
+      headers: SECURE_HOMEPAGE_HEADERS,
     });
   };
 

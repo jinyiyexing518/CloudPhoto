@@ -128,7 +128,7 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 
 `/healthz` 在新版 Nginx 中直接返回 `cloudphoto-proxy`。前端也部署一个 `cloudphoto-frontend` JSON 兜底；直达 SWA 时客户端继续使用 Azure API，旧 Nginx 反代该 fallback 时则通过同源响应的 Nginx `Server` 标识确认 `/api` 仍可用。生产 smoke 接受两个入口标识并继续独立检查 API。
 
-前端缓存规则由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。`.webmanifest` 必须显式映射为 `application/manifest+json`，否则 SWA 会返回 `application/octet-stream`，在 `nosniff` 下无法可靠安装 PWA。manifest 固定使用根路径 `id`、`zh-CN` 语言以及 192/512 PNG 图标，另提供 512px maskable PNG；iOS 主屏幕入口使用独立 180px `apple-touch-icon.png`。构建契约会检查这些字段、用途、文件格式和实际像素尺寸。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
+前端缓存与全局响应头由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。全局安全基线要求 `X-Frame-Options: SAMEORIGIN`、`Content-Security-Policy: frame-ancestors 'self'`、`X-Content-Type-Options: nosniff` 和 `Referrer-Policy: same-origin`，使 SWA 直连与 Nginx 主域都拒绝第三方页面嵌入；CSP 仅约束 framing，不限制脚本、图片、地图或 API 连接。`.webmanifest` 必须显式映射为 `application/manifest+json`，否则 SWA 会返回 `application/octet-stream`，在 `nosniff` 下无法可靠安装 PWA。manifest 固定使用根路径 `id`、`zh-CN` 语言以及 192/512 PNG 图标，另提供 512px maskable PNG；iOS 主屏幕入口使用独立 180px `apple-touch-icon.png`。构建契约会检查这些响应头、字段、用途、文件格式和实际像素尺寸，生产 smoke 同时验证两个入口的实际首页响应。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
 
 ### 部署后更新 GitHub Secret
 

@@ -13,6 +13,12 @@ const configPaths = process.argv.slice(2).map((configPath) => resolve(configPath
 if (configPaths.length === 0) configPaths.push(defaultConfig);
 
 const immutableCache = "public, max-age=31536000, immutable";
+const frontendSecurityHeaders = {
+  "Content-Security-Policy": "frame-ancestors 'self'",
+  "Referrer-Policy": "same-origin",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "SAMEORIGIN",
+};
 const shellRoutes = ["/", "/index.html", "/sw.js", "/registerSW.js"];
 const mutableRoutes = [
   "/healthz",
@@ -184,6 +190,11 @@ for (const configPath of configPaths) {
   const globalCache = config.globalHeaders?.["Cache-Control"] ?? "";
   if (!/\bno-cache\b/i.test(globalCache) || /\bimmutable\b/i.test(globalCache)) {
     fail(configPath, "global Cache-Control must require revalidation and must not be immutable");
+  }
+  for (const [name, expected] of Object.entries(frontendSecurityHeaders)) {
+    if (config.globalHeaders?.[name] !== expected) {
+      fail(configPath, `global ${name} must be ${JSON.stringify(expected)}`);
+    }
   }
   if (config.mimeTypes?.[".webmanifest"] !== "application/manifest+json") {
     fail(configPath, ".webmanifest must use application/manifest+json");

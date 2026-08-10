@@ -110,7 +110,11 @@
     "exclude": ["/assets/*", "/healthz", "/healthz.json", "/*.{js,css,ico,png,jpg,jpeg,webp,svg,woff,woff2}"]
   },
   "globalHeaders": {
-    "Cache-Control": "no-cache, must-revalidate"
+    "Cache-Control": "no-cache, must-revalidate",
+    "Content-Security-Policy": "frame-ancestors 'self'",
+    "Referrer-Policy": "same-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN"
   },
   "mimeTypes": {
     ".json": "application/json",

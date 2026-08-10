@@ -180,6 +180,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 - **开发刷新稳定** — Vite 开发模式下 SW 注册默认禁用，避免本地开发刷新循环
 - **传输安全守卫** — 上传/下载进行中时阻止 Tab 切换，浏览器刷新/关闭显示 unload 确认
 - **无密钥安全** — 存储和数据库均无账户密钥；使用 `DefaultAzureCredential`（Azure 上托管身份，本地 Azure CLI）
+- **统一前端安全头** — 主域与 Azure 直连入口均限制跨站 iframe 嵌入，并锁定 MIME 嗅探和 referrer 基线
 - **CI/CD** — GitHub Actions + OIDC 认证（无存储密码）；前后端分离 workflow，仅在相关路径变更时触发
 - **自动隐藏 header** — 向下滚动时顶部导航栏滑出，向上滚动或回顶时立即重现；300ms cubic-bezier 平滑动画，移动端最大化照片画布
 - **导航圆角遮罩** — 全宽页面背景覆盖层包裹 sticky tab shell，遮蔽透明圆角区域，防止照片内容在滚动时透过卡片边缘渗出
@@ -596,7 +597,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 
 ### 生产健康检查
 
-`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML，两个 manifest 均以 `application/manifest+json` 返回完整安装字段，两张 Apple Touch PNG 均可解码为 180px 图标，两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组；主域还会检查 `/healthz`。同一轮的 11 个检查并行执行，完成后仍按固定检查顺序输出目标、状态和耗时；每个请求 10 秒超时，失败后最多重试 8 次、轮次间隔 15 秒，以覆盖前后端部署传播竞态。最坏检查时长为 185 秒（8 × 10 秒并行轮次 + 7 × 15 秒等待，不含 runner setup），低于 workflow 的 10 分钟上限。新的成功部署、定时或手动事件会取消仍在运行的旧轮次，只让最新生产状态完成整套检查；失败部署使用独立并发组，其显式失败不会被后续成功事件覆盖。
+`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML，并携带 `SAMEORIGIN`、`frame-ancestors 'self'`、`nosniff` 和 `same-origin` referrer 安全头；两个 manifest 均以 `application/manifest+json` 返回完整安装字段，两张 Apple Touch PNG 均可解码为 180px 图标，两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组；主域还会检查 `/healthz`。同一轮的 11 个检查并行执行，完成后仍按固定检查顺序输出目标、状态和耗时；每个请求 10 秒超时，失败后最多重试 8 次、轮次间隔 15 秒，以覆盖前后端部署传播竞态。最坏检查时长为 185 秒（8 × 10 秒并行轮次 + 7 × 15 秒等待，不含 runner setup），低于 workflow 的 10 分钟上限。新的成功部署、定时或手动事件会取消仍在运行的旧轮次，只让最新生产状态完成整套检查；失败部署使用独立并发组，其显式失败不会被后续成功事件覆盖。
 
 默认入口为 `https://cloudphotos.top`、`https://brave-sand-053b07a00.7.azurestaticapps.net` 和 `https://cloudphoto-api.azurewebsites.net/api`。可通过 `PRODUCTION_BASE_URL`、`PRODUCTION_AZURE_FRONTEND_URL`、`PRODUCTION_AZURE_API_BASE_URL` 覆盖入口，或使用对应的 `PRODUCTION_HOME_URL` / `PRODUCTION_MANIFEST_URL` / `PRODUCTION_AUTH_ME_URL` / `PRODUCTION_CHANGELOGS_URL` 与 `PRODUCTION_AZURE_*` 变量覆盖单个检查地址。运行 `yarn test:production-smoke` 可在本机用内置 HTTP fixture 重复验证成功、重试和失败路径，无需访问生产环境。
 
