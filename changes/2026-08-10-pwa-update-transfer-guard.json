@@ -1,0 +1,8 @@
+{
+  "id": "2026-08-10-pwa-update-transfer-guard",
+  "date": "2026-08-10",
+  "title": "fix: PWA 更新改为用户显式触发并受传输守卫保护",
+  "description": "修复 Service Worker onNeedRefresh 直接 updateSW(true) 导致绕过传输守卫的问题。main.tsx 现在只持久化 __CF_PWA_UPDATE_READY__ 并派发 update-ready 事件；AuthenticatedApp 初始读取该状态，保证登录页期间触发也不会丢失。上传/下载/批量删除进行中时，更新按钮禁用并提示“传输完成后更新”，只有用户显式点击才会激活 waiting worker。",
+  "type": "fix",
+  "seq": 1786352000000
+}

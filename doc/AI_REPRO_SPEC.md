@@ -46,6 +46,7 @@
 2.53 注册表单意图边界：AuthPage.tsx 只保留默认登录表单，并通过缓存同一个 Promise 的 React.lazy loader 加载 RegisterForm.tsx；注册 Tab 的 pointer hover、键盘 focus 与实际切换均触发预载。RegisterForm 挂载后在登录/注册 Tab 间保持字段状态，注册提交仍必须在 API 请求前调用 onAuthIntent 预载认证工作区。构建必须产生唯一 `RegisterForm-<hash>.js`，该 chunk 不得进入 sw.js precache；登录入口必须小于 27.6 kB，且不得包含「正在创建账号…」注册提交文案。
 2.54 媒体快路径：时间线、重点片段和文件夹只允许前 `GALLERY_EAGER_MEDIA_COUNT = 6` 张派生图使用 eager/high priority，其余保持 lazy；后台直连/代理竞速改变首选线路后，已加载照片状态及卡片 URL 必须重路由。普通图片查看器首次打开只能按 thumbnail → preview → original fallback 选择，不得因高 DPR 自动下载 original，且主图使用 high priority；视频查看器在用户打开后使用 metadata preload。下载接口必须校验 `personal/{userId}` 或已加入的 `groups/{groupId}` 路径，拒绝 derivative/voice 内部 Blob，接收清洗后的 filename 并直接签发附件 SAS，不读取 Blob properties；客户端票据缓存按 auth generation 隔离、最多 8 条，查看器打开后预热，点击不得等待媒体 HEAD。视频上传开始前必须启动本地封面提取，原 Blob 创建后再持久化封面。
 2.55 更新弹窗关键路径延后：AuthenticatedApp.tsx 禁止静态导入 WhatsNewPopup；必须通过 `const loadWhatsNewPopup = () => import("./components/whats-new/WhatsNewPopup")` + `lazy(loadWhatsNewPopup)` 形成独立 chunk。`loading=true` 时不允许挂载弹窗组件（因此不得触发 fetchChangelogs），`loading=false` 后仅允许通过 `requestIdleCallback({ timeout: 2000 })` 调度挂载，并提供 `setTimeout(..., 0)` 兼容 fallback。切回 loading 或组件卸载必须 `cancelIdleCallback`/clearTimeout 并通过 requestId guard 拒绝迟到挂载。构建产物必须存在唯一 `WhatsNewPopup-<hash>.js`，且该 chunk 不得进入 sw.js precache。
+2.56 PWA 更新激活路径与传输守卫：`main.tsx` 的 `registerSW().onNeedRefresh` 禁止调用 `updateSW(true)` 或 `location.reload`，只能持久化全局 `__CF_PWA_UPDATE_READY__` 并派发 `cloudphoto-pwa-update-ready`。AuthenticatedApp 初始 `updateReady` 必须读取该 flag，后续通过事件同步，保证事件早于登录/工作区挂载时仍可恢复提示。用户显式点击是唯一激活路径；`uploadProgress !== null || downloading || deleteProgress !== null` 任一成立时，更新按钮 disabled 且文案明确「传输完成后更新」，并阻止激活 waiting worker / 刷新页面。
 
 ## 1. 目标
 
@@ -173,6 +174,7 @@
 4. 本地开发模式默认关闭 SW 注入，避免调试阶段出现循环刷新
 5. 普通网页版应优先即时更新，不应长期受 SW 缓存拖慢；已安装的 standalone App 才保留持久 SW 行为
 6. 设置内应提供独立“诊断”页签，用于显示前端版本、构建时间、SW 注册数、本地 moments 缓存条数、moments 持久化状态
+7. 当存在上传/下载/批量删除传输任务时，PWA 更新必须等待用户在传输完成后主动触发，不得后台自动刷新
 
 ### 3.8 传输稳定性
 

@@ -22,6 +22,13 @@ import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
 import { usePwaInstall } from "./pwa/usePwaInstall";
+import {
+  activatePwaUpdate,
+  isPwaUpdateReady,
+  PWA_OFFLINE_READY_EVENT,
+  PWA_UPDATE_READY_EVENT,
+  type PwaUpdateBrowserWindow,
+} from "./pwa/updatePolicy";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -256,7 +263,7 @@ function AppContent() {
   const [settingsFocusTarget, setSettingsFocusTarget] = useState<SettingsFocusTarget>("overview");
   const [settingsFocusItemId, setSettingsFocusItemId] = useState<string | undefined>(undefined);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
-  const [updateReady, setUpdateReady] = useState(false);
+  const [updateReady, setUpdateReady] = useState<boolean>(() => isPwaUpdateReady(window as PwaUpdateBrowserWindow));
   const [installBannerDismissed, setInstallBannerDismissed] = useState<boolean>(() => localStorage.getItem(INSTALL_BANNER_DISMISSED_KEY) === "1");
   const pwaInstall = usePwaInstall();
   const canInstall = pwaInstall.mode === "native";
@@ -290,12 +297,13 @@ function AppContent() {
     };
     const onOfflineReady = () => showToast("已启用离线基础访问", "success");
 
-    window.addEventListener("cloudphoto-pwa-update-ready", onUpdateReady as EventListener);
-    window.addEventListener("cloudphoto-pwa-offline-ready", onOfflineReady as EventListener);
+    window.addEventListener(PWA_UPDATE_READY_EVENT, onUpdateReady as EventListener);
+    window.addEventListener(PWA_OFFLINE_READY_EVENT, onOfflineReady as EventListener);
+    if (isPwaUpdateReady(window as PwaUpdateBrowserWindow)) setUpdateReady(true);
 
     return () => {
-      window.removeEventListener("cloudphoto-pwa-update-ready", onUpdateReady as EventListener);
-      window.removeEventListener("cloudphoto-pwa-offline-ready", onOfflineReady as EventListener);
+      window.removeEventListener(PWA_UPDATE_READY_EVENT, onUpdateReady as EventListener);
+      window.removeEventListener(PWA_OFFLINE_READY_EVENT, onOfflineReady as EventListener);
     };
   }, [showToast]);
 
@@ -1498,12 +1506,16 @@ function AppContent() {
   };
 
   const handleRefreshToUpdate = async () => {
-    const updateSW = (window as Window & { __CF_UPDATE_SW__?: (reloadPage?: boolean) => Promise<void> }).__CF_UPDATE_SW__;
-    if (!updateSW) {
-      window.location.reload();
+    const result = await activatePwaUpdate(window as PwaUpdateBrowserWindow, { transferring });
+    if (result === "blocked-transferring") {
+      showToast("传输进行中，请在传输完成后更新", "info");
       return;
     }
-    await updateSW(true);
+    if (result === "missing-updater") {
+      showToast("更新服务暂不可用，请稍后再试", "error");
+      return;
+    }
+    setUpdateReady(false);
   };
 
   const handleLaterUpdate = () => {
@@ -1827,9 +1839,11 @@ function AppContent() {
 
         {updateReady && (
           <div className="pwa-update-banner">
-            <span>检测到新版本，点击即可更新。</span>
+            <span>{transferring ? "检测到新版本，传输完成后可更新。" : "检测到新版本，点击即可更新。"}</span>
             <div className="pwa-install-actions">
-              <button onClick={() => void handleRefreshToUpdate()}>立即更新</button>
+              <button disabled={transferring} onClick={() => void handleRefreshToUpdate()}>
+                {transferring ? "传输完成后更新" : "立即更新"}
+              </button>
               <button className="pwa-install-later" onClick={handleLaterUpdate}>稍后提醒</button>
             </div>
           </div>

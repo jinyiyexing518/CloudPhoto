@@ -4000,6 +4000,13 @@ body {
   background: #15803d;
 }
 
+.pwa-update-banner button:disabled,
+.pwa-update-banner button:disabled:hover {
+  background: #86efac;
+  color: #166534;
+  cursor: not-allowed;
+}
+
 .pwa-install-banner {
   display: flex;
   align-items: center;

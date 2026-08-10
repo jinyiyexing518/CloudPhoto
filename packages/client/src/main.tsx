@@ -2,8 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import {
+  markPwaUpdateReady,
+  PWA_OFFLINE_READY_EVENT,
+  type PwaUpdateBrowserWindow,
+} from "./pwa/updatePolicy";
 
-const installWindow = window as Window & {
+const installWindow = window as PwaUpdateBrowserWindow & {
   __CF_PWA__?: Event;
   __CF_PWA_INSTALLED__?: boolean;
 };
@@ -24,7 +29,6 @@ const registerPwa = async () => {
   // Browser and installed sessions share the same small app-shell precache.
   // Feature chunks and authorization-bound media are cached only after first use.
   const { registerSW } = await import("virtual:pwa-register");
-  let refreshTriggered = false;
   const updateSW = registerSW({
     immediate: true,
     onRegisteredSW(_, registration) {
@@ -41,18 +45,14 @@ const registerPwa = async () => {
       window.addEventListener("online", checkForUpdates);
     },
     onNeedRefresh() {
-      if (!refreshTriggered) {
-        refreshTriggered = true;
-        void updateSW(true);
-      }
-      window.dispatchEvent(new Event("cloudphoto-pwa-update-ready"));
+      markPwaUpdateReady(installWindow);
     },
     onOfflineReady() {
-      window.dispatchEvent(new Event("cloudphoto-pwa-offline-ready"));
+      window.dispatchEvent(new Event(PWA_OFFLINE_READY_EVENT));
     },
   });
 
-  (window as Window & { __CF_UPDATE_SW__?: (reloadPage?: boolean) => Promise<void> }).__CF_UPDATE_SW__ = updateSW;
+  installWindow.__CF_UPDATE_SW__ = updateSW;
 };
 
 void registerPwa();
