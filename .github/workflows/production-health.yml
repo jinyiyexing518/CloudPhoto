@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-health
-  cancel-in-progress: false
+  group: production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}
+  cancel-in-progress: true
 
 jobs:
   smoke:

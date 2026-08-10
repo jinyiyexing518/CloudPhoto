@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inspectWorkflow } from "./check-workflow-runtime-contracts.mjs";
+import {
+  checkWorkflowRuntimeContracts,
+  inspectWorkflow,
+} from "./check-workflow-runtime-contracts.mjs";
 
 test("reads active workflow steps and ignores comments and run script text", () => {
   const inspected = inspectWorkflow(`
@@ -56,4 +59,49 @@ jobs:
   assert.deepEqual(inspected.setupNodeVersions, [
     { path: "deprecated.yml", actionVersion: "v5", version: "20" },
   ]);
+});
+
+test("reads active top-level concurrency and ignores comments and run script text", () => {
+  const inspected = inspectWorkflow(`
+concurrency:
+  group: production-health-\${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}
+  cancel-in-progress: true
+# concurrency:
+#   group: ignored
+#   cancel-in-progress: false
+jobs:
+  smoke:
+    steps:
+      - name: Misleading shell text
+        run: |
+          echo "concurrency:"
+          echo "  cancel-in-progress: false"
+`, ".github/workflows/production-health.yml");
+
+  assert.deepEqual(inspected.concurrency, {
+    group: "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}",
+    cancelInProgress: "true",
+  });
+});
+
+test("rejects a shared health group that could hide a failed deployment", () => {
+  const result = checkWorkflowRuntimeContracts([
+    {
+      path: ".github/workflows/production-health.yml",
+      text: `
+concurrency:
+  group: production-health
+  cancel-in-progress: true
+jobs:
+  smoke:
+    steps: []
+`,
+    },
+  ]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("without hiding deployment failures")
+    )
+  );
 });

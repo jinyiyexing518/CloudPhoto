@@ -596,7 +596,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 
 ### 生产健康检查
 
-`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML，两个 manifest 均以 `application/manifest+json` 返回完整安装字段，两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组；主域还会检查 `/healthz`。同一轮的 9 个检查并行执行，完成后仍按固定检查顺序输出目标、状态和耗时；每个请求 10 秒超时，失败后最多重试 8 次、轮次间隔 15 秒，以覆盖前后端部署传播竞态。最坏检查时长为 185 秒（8 × 10 秒并行轮次 + 7 × 15 秒等待，不含 runner setup），低于 workflow 的 10 分钟上限；若触发它的部署失败，workflow 会直接失败而不会将线上状态误报为健康。
+`node scripts/production-smoke.mjs` 使用 Node 24 内置 `fetch` 同时检查主域名和 Azure 直连：两个前端均返回 Cloud Photo HTML，两个 manifest 均以 `application/manifest+json` 返回完整安装字段，两张 Apple Touch PNG 均可解码为 180px 图标，两个未登录 `/api/auth/me` 均返回 401，且两个 `/api/changelogs` 均返回 200 JSON 数组；主域还会检查 `/healthz`。同一轮的 11 个检查并行执行，完成后仍按固定检查顺序输出目标、状态和耗时；每个请求 10 秒超时，失败后最多重试 8 次、轮次间隔 15 秒，以覆盖前后端部署传播竞态。最坏检查时长为 185 秒（8 × 10 秒并行轮次 + 7 × 15 秒等待，不含 runner setup），低于 workflow 的 10 分钟上限。新的成功部署、定时或手动事件会取消仍在运行的旧轮次，只让最新生产状态完成整套检查；失败部署使用独立并发组，其显式失败不会被后续成功事件覆盖。
 
 默认入口为 `https://cloudphotos.top`、`https://brave-sand-053b07a00.7.azurestaticapps.net` 和 `https://cloudphoto-api.azurewebsites.net/api`。可通过 `PRODUCTION_BASE_URL`、`PRODUCTION_AZURE_FRONTEND_URL`、`PRODUCTION_AZURE_API_BASE_URL` 覆盖入口，或使用对应的 `PRODUCTION_HOME_URL` / `PRODUCTION_MANIFEST_URL` / `PRODUCTION_AUTH_ME_URL` / `PRODUCTION_CHANGELOGS_URL` 与 `PRODUCTION_AZURE_*` 变量覆盖单个检查地址。运行 `yarn test:production-smoke` 可在本机用内置 HTTP fixture 重复验证成功、重试和失败路径，无需访问生产环境。
 

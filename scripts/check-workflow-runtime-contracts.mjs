@@ -12,6 +12,9 @@ const requiredContractWorkflows = [
   ".github/workflows/production-health.yml",
   ".github/workflows/sync-changelog.yml",
 ];
+const productionHealthWorkflow = ".github/workflows/production-health.yml";
+const productionHealthConcurrencyGroup =
+  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}', github.event.workflow_run.id) || 'latest' }}";
 
 function indentation(line) {
   return line.match(/^\s*/)[0].length;
@@ -21,6 +24,25 @@ function scalarValue(value) {
   const trimmed = value.replace(/\s+#.*$/, "").trim();
   const quoted = trimmed.match(/^(["'])(.*)\1$/);
   return quoted ? quoted[2] : trimmed;
+}
+
+function rootChildField(text, parent, field) {
+  const lines = text.split(/\r?\n/);
+  const escapedParent = parent.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parentPattern = new RegExp(`^${escapedParent}:\\s*(?:#.*)?$`);
+  const fieldPattern = new RegExp(`^\\s+${escapedField}:\\s*(.*)$`);
+  const parentIndex = lines.findIndex((line) => parentPattern.test(line));
+  if (parentIndex < 0) return null;
+
+  for (let index = parentIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+    if (indentation(line) === 0) break;
+    const match = line.match(fieldPattern);
+    if (match) return scalarValue(match[1]);
+  }
+  return null;
 }
 
 function activeStepBlocks(text) {
@@ -97,6 +119,10 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const azureLoginRefs = [];
   const setupNodeVersions = [];
   const contractInvocations = [];
+  const concurrency = {
+    group: rootChildField(text, "concurrency", "group"),
+    cancelInProgress: rootChildField(text, "concurrency", "cancel-in-progress"),
+  };
 
   for (const step of activeStepBlocks(text)) {
     const uses = stepField(step, "uses");
@@ -119,11 +145,17 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     }
   }
 
-  return { azureLoginRefs, setupNodeVersions, contractInvocations };
+  return { azureLoginRefs, setupNodeVersions, contractInvocations, concurrency };
 }
 
 export function checkWorkflowRuntimeContracts(workflows) {
   const issues = [];
+  const healthWorkflow = workflows.find(
+    (workflow) => workflow.path === productionHealthWorkflow
+  );
+  const healthConcurrency = healthWorkflow
+    ? inspectWorkflow(healthWorkflow.text, healthWorkflow.path).concurrency
+    : null;
   const aggregate = workflows.reduce(
     (result, workflow) => {
       const inspected = inspectWorkflow(workflow.text, workflow.path);
@@ -168,8 +200,26 @@ export function checkWorkflowRuntimeContracts(workflows) {
       `expected ${requiredContractWorkflows.length} workflow contract steps, found ${aggregate.contractInvocations.length}`
     );
   }
+  if (!healthConcurrency) {
+    issues.push(`${productionHealthWorkflow} is missing`);
+  } else {
+    if (healthConcurrency.group !== productionHealthConcurrencyGroup) {
+      issues.push(
+        `${productionHealthWorkflow} concurrency group must coalesce fresh checks without hiding deployment failures, found ${
+          healthConcurrency.group ?? "no group"
+        }`
+      );
+    }
+    if (healthConcurrency.cancelInProgress !== "true") {
+      issues.push(
+        `${productionHealthWorkflow} must cancel stale in-progress checks, found cancel-in-progress: ${
+          healthConcurrency.cancelInProgress ?? "missing"
+        }`
+      );
+    }
+  }
 
-  return { ...aggregate, issues };
+  return { ...aggregate, healthConcurrency, issues };
 }
 
 function main() {
@@ -189,7 +239,7 @@ function main() {
   }
 
   console.log(
-    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length}`
+    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress}`
   );
 }
 
