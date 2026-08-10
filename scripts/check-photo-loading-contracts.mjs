@@ -171,8 +171,13 @@ for (const name of ["cloudphoto-photo-lists-v1", "photo-media-v1", "cf-media-v1"
 }
 assert(
   cacheLifecycle.indexOf("cacheGeneration += 1;")
-    < cacheLifecycle.indexOf("for (const reset of resetListeners) reset();"),
+    < cacheLifecycle.indexOf("for (const reset of resetListeners) reset(clearOwner);"),
   "private-cache invalidation must advance the generation before resetting consumers",
+);
+requireText(
+  cacheLifecycle,
+  "for (const reset of resetListeners) reset(clearOwner);",
+  "scope-aware private reset",
 );
 requireText(auth, "void clearPrivatePhotoCaches()", "explicit/automatic logout cleanup");
 requireText(auth, "getTokenAuthScope() !== restoredScope", "restore token/role drift rejection");

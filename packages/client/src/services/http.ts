@@ -410,19 +410,7 @@ export function signalAuthIdentityChange(): void {
 }
 
 export function getTokenAuthScope(token = getToken()): string | null {
-  if (!token) return null;
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const normalized = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-    const decoded = JSON.parse(atob(normalized)) as { userId?: unknown; role?: unknown };
-    return typeof decoded.userId === "string" && typeof decoded.role === "string"
-      ? `${decoded.userId}:${decoded.role}`
-      : null;
-  } catch {
-    return null;
-  }
+  return decodeAuthorizationSnapshot(token)?.cacheOwner ?? null;
 }
 
 export function getAuthGeneration(): number {

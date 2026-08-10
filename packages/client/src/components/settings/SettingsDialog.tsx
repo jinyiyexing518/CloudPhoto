@@ -48,13 +48,14 @@ import {
   type TrashMutationEvent,
   type TrashMutationState,
 } from "../../transfer/trashMutationState";
+import {
+  readPrivateMomentInsights,
+  readPrivateMomentsDiagnostics,
+} from "../../services/privateMomentsStore";
 
 type SettingsTab = "profile" | "security" | "trash" | "diagnostics";
 type SettingsEntryTab = SettingsTab | "app";
 type SettingsFocusTarget = "overview" | "managed-shares" | "diagnostics";
-
-const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
-const MOMENTS_DIAGNOSTICS_KEY = "cloudphoto_moments_diagnostics_v1";
 
 interface DiagnosticsSnapshot {
   serviceWorkerCount: number;
@@ -429,45 +430,24 @@ export default function SettingsDialog({
 
       let localMomentsCount = 0;
       let localMomentsLastViewedAt: string | undefined;
-      try {
-        const raw = localStorage.getItem(MOMENTS_LOCAL_STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Record<string, { lastViewedAt?: string }>;
-          const entries = Object.values(parsed ?? {});
-          localMomentsCount = entries.length;
-          localMomentsLastViewedAt = entries
-            .map((item) => item?.lastViewedAt)
-            .filter((value): value is string => !!value)
-            .sort()
-            .pop();
-        }
-      } catch {
-        localMomentsCount = 0;
-      }
-
-      let persistenceStatus = "unknown";
-      let persistenceMessage: string | undefined;
-      let persistenceUpdatedAt: string | undefined;
-      try {
-        const raw = localStorage.getItem(MOMENTS_DIAGNOSTICS_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as { status?: string; message?: string; updatedAt?: string };
-          persistenceStatus = parsed.status ?? "unknown";
-          persistenceMessage = parsed.message;
-          persistenceUpdatedAt = parsed.updatedAt;
-        }
-      } catch {
-        persistenceStatus = "unknown";
-      }
+      const moments = readPrivateMomentInsights(currentGroupId);
+      const momentEntries = Object.values(moments);
+      localMomentsCount = momentEntries.length;
+      localMomentsLastViewedAt = momentEntries
+        .map((item) => item.lastViewedAt)
+        .filter((value): value is string => !!value)
+        .sort()
+        .pop();
+      const persistence = readPrivateMomentsDiagnostics(currentGroupId);
 
       if (!cancelled) {
         setDiagnostics({
           serviceWorkerCount,
           localMomentsCount,
           localMomentsLastViewedAt,
-          persistenceStatus,
-          persistenceMessage,
-          persistenceUpdatedAt,
+          persistenceStatus: persistence.status,
+          persistenceMessage: persistence.message,
+          persistenceUpdatedAt: persistence.updatedAt,
         });
       }
     };
@@ -475,7 +455,7 @@ export default function SettingsDialog({
     return () => {
       cancelled = true;
     };
-  }, [tab]);
+  }, [currentGroupId, tab]);
 
   const handleSaveProfile = async (e: FormEvent) => {
     e.preventDefault();

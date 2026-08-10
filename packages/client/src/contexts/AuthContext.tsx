@@ -19,6 +19,7 @@ import {
   clearPrivatePhotoCaches,
   preparePrivatePhotoCachesForScope,
 } from "../services/privatePhotoCacheLifecycle";
+import { authCacheOwner } from "../services/authScope";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -30,10 +31,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-function authCacheScope(user: AuthUser): string {
-  return `${user.id}:${user.role}`;
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -62,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Restore session on mount
   useEffect(() => {
     if (!getToken()) {
+      void clearPrivatePhotoCaches();
       setLoading(false);
       return;
     }
@@ -71,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     getMeApi(controller.signal)
       .then(async (restoredUser) => {
         if (controller.signal.aborted || generation !== authSyncGeneration.current) return;
-        const restoredScope = authCacheScope(restoredUser);
+        const restoredScope = authCacheOwner(restoredUser.id, restoredUser.role);
         if (getTokenAuthScope() !== restoredScope) {
           logout();
           return;
@@ -98,12 +96,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const saveAuth = useCallback(async (resp: AuthResponse): Promise<boolean> => {
     const previousUser = currentUserRef.current;
-    const nextScope = authCacheScope(resp.user);
+    const nextScope = authCacheOwner(resp.user.id, resp.user.role);
     if (getTokenAuthScope(resp.token) !== nextScope) {
       logout();
       return false;
     }
-    if (previousUser && authCacheScope(previousUser) !== nextScope) {
+    if (previousUser && authCacheOwner(previousUser.id, previousUser.role) !== nextScope) {
       currentUserRef.current = null;
       setUser(null);
     }
@@ -161,14 +159,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== "cloudphoto_token") return;
-      const currentScope = user ? authCacheScope(user) : null;
+      const currentScope = user ? authCacheOwner(user.id, user.role) : null;
       const replacementScope = event.newValue ? getTokenAuthScope(event.newValue) : null;
       if (replacementScope && replacementScope === currentScope) return;
       invalidateAuthRefresh();
       cancelAuthSync();
       const generation = authSyncGeneration.current;
-      setUser(null);
       void clearPrivatePhotoCaches();
+      setUser(null);
       if (event.newValue === null) {
         setLoading(false);
         return;
@@ -178,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authSyncController.current = controller;
       void getMeApi(controller.signal)
         .then(async (nextUser) => {
-          const nextScope = authCacheScope(nextUser);
+          const nextScope = authCacheOwner(nextUser.id, nextUser.role);
           if (getTokenAuthScope() !== nextScope) {
             logout();
             return;

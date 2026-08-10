@@ -2,11 +2,16 @@ export const PHOTO_LIST_CACHE_NAME = "cloudphoto-photo-lists-v1";
 
 const PRIVATE_MEDIA_CACHE_NAMES = ["photo-media-v1", "cf-media-v1"] as const;
 const CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
+const PRIVATE_LOCAL_DATA_PREFIX = "cloudphoto_private_data_v1:";
+const LEGACY_PRIVATE_LOCAL_KEYS = [
+  "cloudphoto_moments_insights_v1",
+  "cloudphoto_moments_diagnostics_v1",
+] as const;
 
 let cacheGeneration = 0;
 let cleanupChain: Promise<void> = Promise.resolve();
 const activePersistentWrites = new Set<Promise<void>>();
-const resetListeners = new Set<() => void>();
+const resetListeners = new Set<(scopeReset: boolean) => void>();
 
 export function getPrivatePhotoCacheGeneration(): number {
   return cacheGeneration;
@@ -16,7 +21,9 @@ export function waitForPrivatePhotoCacheCleanup(): Promise<void> {
   return cleanupChain;
 }
 
-export function registerPrivatePhotoCacheReset(listener: () => void): () => void {
+export function registerPrivatePhotoCacheReset(
+  listener: (scopeReset: boolean) => void,
+): () => void {
   resetListeners.add(listener);
   return () => resetListeners.delete(listener);
 }
@@ -26,16 +33,26 @@ export function registerPrivatePhotoCacheWrite(operation: Promise<void>): () => 
   return () => activePersistentWrites.delete(operation);
 }
 
+function removePrivateLocalData(clearOwner: boolean): void {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (
+        LEGACY_PRIVATE_LOCAL_KEYS.includes(key as typeof LEGACY_PRIVATE_LOCAL_KEYS[number])
+        || (clearOwner && (key === CACHE_OWNER_KEY || key.startsWith(PRIVATE_LOCAL_DATA_PREFIX)))
+      ) {
+        localStorage.removeItem(key);
+      }
+    }
+    localStorage.setItem("cloudphoto_private_cleanup_v1", "1");
+  } catch {
+    // Cache Storage cleanup and in-memory invalidation still proceed.
+  }
+}
+
 function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean): Promise<void> {
   cacheGeneration += 1;
-  for (const reset of resetListeners) reset();
-  if (clearOwner && typeof window !== "undefined") {
-    try {
-      localStorage.removeItem(CACHE_OWNER_KEY);
-    } catch {
-      // Cache deletion still proceeds when localStorage is unavailable.
-    }
-  }
+  for (const reset of resetListeners) reset(clearOwner);
+  if (clearOwner) removePrivateLocalData(true);
 
   const deletePrivateCaches = async () => {
     await Promise.allSettled([...activePersistentWrites]);
@@ -73,8 +90,13 @@ export async function preparePrivatePhotoCachesForScope(authScope: string): Prom
   } catch {
     // Treat storage failures as unknown ownership.
   }
-  if (owner !== authScope) await clearPrivatePhotoCaches();
-  await cleanupChain;
+  removePrivateLocalData(false);
+  const pendingCleanup = owner !== authScope
+    ? clearPrivatePhotoCaches()
+    : cleanupChain;
+  const expectedGeneration = cacheGeneration;
+  await pendingCleanup;
+  if (expectedGeneration !== cacheGeneration) return;
   try {
     localStorage.setItem(CACHE_OWNER_KEY, authScope);
   } catch {

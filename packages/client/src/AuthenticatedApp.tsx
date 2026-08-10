@@ -16,6 +16,11 @@ import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
 import { hasOpenAriaModal, isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
+import {
+  readPrivateMomentInsights,
+  readPrivateMomentsDiagnostics,
+} from "./services/privateMomentsStore";
+import { registerPrivatePhotoCacheReset } from "./services/privatePhotoCacheLifecycle";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
 import {
   WORKSPACE_TAB_ORDER,
@@ -1236,46 +1241,32 @@ function AppContent() {
 
   useEffect(() => {
     const loadHomeDiagnostics = () => {
-      let localMomentsCount = 0;
-      let persistenceStatus: HomeDiagnosticsSnapshot["persistenceStatus"] = "unknown";
-      let persistenceUpdatedAt: string | undefined;
-
-      try {
-        const rawMoments = localStorage.getItem("cloudphoto_moments_insights_v1");
-        if (rawMoments) {
-          const parsed = JSON.parse(rawMoments) as Record<string, unknown>;
-          localMomentsCount = Object.keys(parsed ?? {}).length;
-        }
-      } catch {
-        localMomentsCount = 0;
-      }
-
-      try {
-        const rawDiagnostics = localStorage.getItem("cloudphoto_moments_diagnostics_v1");
-        if (rawDiagnostics) {
-          const parsed = JSON.parse(rawDiagnostics) as { status?: HomeDiagnosticsSnapshot["persistenceStatus"]; updatedAt?: string };
-          persistenceStatus = parsed.status ?? "unknown";
-          persistenceUpdatedAt = parsed.updatedAt;
-        }
-      } catch {
-        persistenceStatus = "unknown";
-      }
+      const moments = readPrivateMomentInsights(resolvedPhotoWorkspaceId);
+      const diagnostics = readPrivateMomentsDiagnostics(resolvedPhotoWorkspaceId);
 
       setHomeDiagnostics({
-        localMomentsCount,
-        persistenceStatus,
-        persistenceUpdatedAt,
+        localMomentsCount: Object.keys(moments).length,
+        persistenceStatus: diagnostics.status,
+        persistenceUpdatedAt: diagnostics.updatedAt,
       });
     };
 
     loadHomeDiagnostics();
+    const unregisterReset = registerPrivatePhotoCacheReset((scopeReset) => {
+      if (!scopeReset) return;
+      setHomeDiagnostics({
+        localMomentsCount: 0,
+        persistenceStatus: "unknown",
+      });
+    });
     window.addEventListener("storage", loadHomeDiagnostics);
     window.addEventListener("focus", loadHomeDiagnostics);
     return () => {
+      unregisterReset();
       window.removeEventListener("storage", loadHomeDiagnostics);
       window.removeEventListener("focus", loadHomeDiagnostics);
     };
-  }, []);
+  }, [photoCacheScope, resolvedPhotoWorkspaceId]);
 
   useEffect(() => {
     if (activeTab !== "moments") return;
@@ -2801,6 +2792,7 @@ function AppContent() {
                   <OnThisDayCard photos={photos} onJumpToPhoto={jumpToTimelinePhoto} />
                   <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
                     <PhotoGallery
+                      key={`timeline:${photoCacheScope}:${resolvedPhotoWorkspaceId ?? "unresolved"}`}
                       photos={filteredPhotos}
                       onDelete={handleDelete}
                       onBatchDelete={handleBatchDeleteWithProgress}
@@ -2817,6 +2809,7 @@ function AppContent() {
                       onShareCreated={handleMomentShareCreated}
                       onThumbnailUpdate={handleThumbnailUpdate}
                       userName={user?.displayName}
+                      privateMomentsWorkspace={resolvedPhotoWorkspaceId}
                       showImportantMoments={false}
                       reverseOrder={photoSortAsc}
                       sortKey={photoSortKey}
@@ -2850,6 +2843,7 @@ function AppContent() {
               >
               <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
                 <PhotoGallery
+                  key={`moments:${photoCacheScope}:${resolvedPhotoWorkspaceId ?? "unresolved"}`}
                   photos={importantPhotos}
                   onDelete={handleDelete}
                   onBatchDelete={handleBatchDeleteWithProgress}
@@ -2866,6 +2860,7 @@ function AppContent() {
                   onShareCreated={handleMomentShareCreated}
                   onThumbnailUpdate={handleThumbnailUpdate}
                   userName={user?.displayName}
+                  privateMomentsWorkspace={resolvedPhotoWorkspaceId}
                   showMemoryHighlights={false}
                   showImportantMoments={false}
                   momentsMode

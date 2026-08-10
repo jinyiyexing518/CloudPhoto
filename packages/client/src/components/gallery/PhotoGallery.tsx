@@ -54,6 +54,18 @@ import {
 } from "../../transfer/batchMutationState";
 import { isModalShortcutTarget } from "../shared/modalFocus";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+import {
+  capturePrivateMomentsContext,
+  isPrivateMomentsContextCurrent,
+  mutatePrivateMomentInsights,
+  readPrivateMomentInsights,
+  recordPrivateMomentViewLocally,
+  subscribePrivateMomentInsights,
+  writePrivateMomentInsights,
+  writePrivateMomentsDiagnostics,
+  type PrivateMomentsContext,
+} from "../../services/privateMomentsStore";
+import { registerPrivatePhotoCacheReset } from "../../services/privatePhotoCacheLifecycle";
 
 let photoGalleryBatchMutationSequence = 0;
 
@@ -74,6 +86,7 @@ interface Props {
   onShareCreated?: (photoName: string) => void;
   onThumbnailUpdate?: (photoName: string, thumbnailUrl: string) => void;
   userName?: string;
+  privateMomentsWorkspace: string | null;
   showMemoryHighlights?: boolean;
   showImportantMoments?: boolean;
   momentsMode?: boolean;
@@ -124,11 +137,6 @@ const MOMENT_SCORE_RECENCY_MAX = 40;
 const MOMENT_HOT_VIEW_THRESHOLD = 3;
 const MOMENT_ENGAGEMENT_VIEW_WEIGHT = 24;
 const MOMENT_ENGAGEMENT_RECENT_WINDOW_HOURS = 72;
-const MOMENTS_LOCAL_STORAGE_KEY = "cloudphoto_moments_insights_v1";
-const MOMENTS_DIAGNOSTICS_KEY = "cloudphoto_moments_diagnostics_v1";
-
-type MomentsDiagnosticsStatus = "unknown" | "local-only" | "server-synced" | "server-unavailable";
-
 async function toClipboardPng(blob: Blob): Promise<Blob> {
   if (blob.type === "image/png") return blob;
   const bitmap = await createImageBitmap(blob);
@@ -223,51 +231,6 @@ function mergeMomentInsight(current: MomentInsight | undefined, incoming: Moment
   };
 }
 
-function readLocalMomentInsights(): Record<string, MomentInsight> {
-  try {
-    const raw = localStorage.getItem(MOMENTS_LOCAL_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, MomentInsight>;
-    if (!parsed || typeof parsed !== "object") return {};
-    return Object.entries(parsed).reduce<Record<string, MomentInsight>>((acc, [photoName, item]) => {
-      if (!item || typeof item !== "object" || !photoName) return acc;
-      acc[photoName] = {
-        photoName,
-        totalViews: Number.isFinite(item.totalViews) ? item.totalViews : 0,
-        lastViewedAt: item.lastViewedAt,
-        lastViewedBy: item.lastViewedBy,
-        viewers: item.viewers ?? {},
-        dailyViews: item.dailyViews ?? {},
-        updatedAt: item.updatedAt,
-      };
-      return acc;
-    }, {});
-  } catch {
-    return {};
-  }
-}
-
-function writeLocalMomentInsights(map: Record<string, MomentInsight>): void {
-  try {
-    localStorage.setItem(MOMENTS_LOCAL_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // Ignore localStorage quota and privacy mode failures.
-  }
-}
-
-function writeMomentsDiagnostics(status: MomentsDiagnosticsStatus, details?: { message?: string; photoCount?: number }): void {
-  try {
-    localStorage.setItem(MOMENTS_DIAGNOSTICS_KEY, JSON.stringify({
-      status,
-      message: details?.message,
-      photoCount: details?.photoCount,
-      updatedAt: new Date().toISOString(),
-    }));
-  } catch {
-    // Ignore localStorage failures.
-  }
-}
-
 function groupByDate(photos: Photo[], sortKey: "taken" | "uploaded" = "taken"): DateGroup[] {
   const map = new Map<string, Photo[]>();
 
@@ -322,6 +285,7 @@ function PhotoGallery({
   onShareCreated,
   onThumbnailUpdate,
   userName,
+  privateMomentsWorkspace,
   showMemoryHighlights = true,
   showImportantMoments = false,
   momentsMode = false,
@@ -438,7 +402,19 @@ function PhotoGallery({
   const audioChunksRef = useRef<Blob[]>([]);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>(() => readLocalMomentInsights());
+  const [momentsInsightsMap, setMomentsInsightsMap] = useState<Record<string, MomentInsight>>(
+    () => readPrivateMomentInsights(privateMomentsWorkspace),
+  );
+  const momentsContextRef = useRef<PrivateMomentsContext | null>(
+    capturePrivateMomentsContext(privateMomentsWorkspace),
+  );
+  const isCurrentMomentsContext = useCallback((context: PrivateMomentsContext | null) => (
+    context !== null
+    && momentsContextRef.current?.authScope === context.authScope
+    && momentsContextRef.current.generation === context.generation
+    && momentsContextRef.current.workspaceId === context.workspaceId
+    && isPrivateMomentsContextCurrent(context)
+  ), []);
   const momentsUnavailableNoticeShown = useRef(false);
   const [momentsFilters, setMomentsFilters] = useState<MomentsFilterState>(createDefaultMomentsFilters);
 
@@ -455,6 +431,23 @@ function PhotoGallery({
   const batchMutationBusy = localBatchMutationBusy || batchMutationActive;
   const batchMutationGate = useRef<BatchMutationGate>({ current: null }).current;
   const mountedRef = useRef(true);
+
+  useEffect(() => {
+    momentsContextRef.current = capturePrivateMomentsContext(privateMomentsWorkspace);
+    setMomentsInsightsMap(readPrivateMomentInsights(privateMomentsWorkspace));
+    momentsUnavailableNoticeShown.current = false;
+    return subscribePrivateMomentInsights(
+      privateMomentsWorkspace,
+      setMomentsInsightsMap,
+    );
+  }, [privateMomentsWorkspace]);
+
+  useEffect(() => registerPrivatePhotoCacheReset((scopeReset) => {
+    if (!scopeReset) return;
+    momentsContextRef.current = null;
+    setMomentsInsightsMap({});
+    momentsUnavailableNoticeShown.current = false;
+  }), [privateMomentsWorkspace]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -660,27 +653,35 @@ function PhotoGallery({
   const writeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (writeDebounceRef.current) clearTimeout(writeDebounceRef.current);
+    const writeContext = capturePrivateMomentsContext(privateMomentsWorkspace);
     writeDebounceRef.current = setTimeout(() => {
-      writeLocalMomentInsights(momentsInsightsMap);
-      writeMomentsDiagnostics("local-only", { photoCount: Object.keys(momentsInsightsMap).length });
+      if (!isCurrentMomentsContext(writeContext)) return;
+      writePrivateMomentsDiagnostics(writeContext, "local-only", {
+        photoCount: Object.keys(momentsInsightsMap).length,
+      });
     }, 1500);
     return () => {
       if (writeDebounceRef.current) clearTimeout(writeDebounceRef.current);
     };
-  }, [momentsInsightsMap]);
+  }, [isCurrentMomentsContext, momentsInsightsMap, privateMomentsWorkspace]);
 
   useEffect(() => {
     if (!momentsMode) return;
     let cancelled = false;
+    const requestContext = capturePrivateMomentsContext(privateMomentsWorkspace);
     const load = async () => {
       try {
         const map = await listMomentInsights(flatPhotos.map((photo) => photo.name));
-        if (!cancelled) {
-          writeMomentsDiagnostics("server-synced", { photoCount: Object.keys(map).length });
+        if (!cancelled && isCurrentMomentsContext(requestContext)) {
+          await writePrivateMomentInsights(requestContext, map);
+          writePrivateMomentsDiagnostics(requestContext, "server-synced", {
+            photoCount: Object.keys(map).length,
+          });
           // Merge server data into local state — never discard locally-tracked views
           // that haven't been synced to the server yet (take max per photo).
           if (Object.keys(map).length > 0) {
-            setMomentsInsightsMap((prev) => {
+            mutatePrivateMomentInsights(requestContext, (prev) => {
+              if (!isCurrentMomentsContext(requestContext)) return prev;
               const merged: Record<string, MomentInsight> = { ...prev };
               for (const [photoName, serverItem] of Object.entries(map)) {
                 merged[photoName] = mergeMomentInsight(prev[photoName], serverItem);
@@ -690,9 +691,14 @@ function PhotoGallery({
           }
         }
       } catch (e) {
-        if (!cancelled && e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
+        if (
+          !cancelled
+          && isCurrentMomentsContext(requestContext)
+          && e instanceof ManagedMomentsUnavailableError
+          && !momentsUnavailableNoticeShown.current
+        ) {
           momentsUnavailableNoticeShown.current = true;
-          writeMomentsDiagnostics("server-unavailable", {
+          writePrivateMomentsDiagnostics(requestContext, "server-unavailable", {
             message: e.message,
             photoCount: Object.keys(momentsInsightsMap).length,
           });
@@ -704,7 +710,7 @@ function PhotoGallery({
     return () => {
       cancelled = true;
     };
-  }, [flatPhotos, momentsMode]);
+  }, [flatPhotos, isCurrentMomentsContext, momentsMode, privateMomentsWorkspace]);
 
   const momentCards = useMemo(() => {
     const filteredPhotos = flatPhotos.filter((photo) => {
@@ -791,52 +797,44 @@ function PhotoGallery({
   const selectedMomentInsight = selectedPhoto ? momentsInsightsMap[selectedPhoto.name] : undefined;
 
   const trackMomentView = useCallback((photoName: string) => {
+    const requestContext = capturePrivateMomentsContext(privateMomentsWorkspace);
+    if (!isCurrentMomentsContext(requestContext)) return;
     const viewer = (userName?.trim() || "匿名用户").slice(0, 80);
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    const localWrite = recordPrivateMomentViewLocally(
+      requestContext,
+      photoName,
+      viewer,
+      now.toISOString(),
+    );
 
-    setMomentsInsightsMap((prev) => {
-      const current = prev[photoName] ?? {
-        photoName,
-        totalViews: 0,
-        viewers: {},
-        dailyViews: {},
-      };
-      return {
-        ...prev,
-        [photoName]: {
-          ...current,
-          totalViews: (current.totalViews ?? 0) + 1,
-          lastViewedAt: now.toISOString(),
-          lastViewedBy: viewer,
-          viewers: {
-            ...(current.viewers ?? {}),
-            [viewer]: ((current.viewers ?? {})[viewer] ?? 0) + 1,
-          },
-          dailyViews: {
-            ...(current.dailyViews ?? {}),
-            [today]: ((current.dailyViews ?? {})[today] ?? 0) + 1,
-          },
-        },
-      };
-    });
-
-    void recordMomentViewApi(photoName, userName).then((serverItem) => {
-      if (!serverItem) return;
-      writeMomentsDiagnostics("server-synced", {});
+    void recordMomentViewApi(photoName, userName).then(async (serverItem) => {
+      if (!serverItem || !isCurrentMomentsContext(requestContext)) return;
+      await localWrite;
+      if (!isCurrentMomentsContext(requestContext)) return;
+      await writePrivateMomentInsights(requestContext, { [photoName]: serverItem });
+      if (!isCurrentMomentsContext(requestContext)) return;
+      writePrivateMomentsDiagnostics(requestContext, "server-synced", {});
       // Use functional updater — no need to read momentsInsightsMap in closure
-      setMomentsInsightsMap((prev) => ({
-        ...prev,
-        [photoName]: mergeMomentInsight(prev[photoName], serverItem),
-      }));
+      mutatePrivateMomentInsights(requestContext, (prev) => {
+        if (!isCurrentMomentsContext(requestContext)) return prev;
+        return {
+          ...prev,
+          [photoName]: mergeMomentInsight(prev[photoName], serverItem),
+        };
+      });
     }).catch((e) => {
-      if (e instanceof ManagedMomentsUnavailableError && !momentsUnavailableNoticeShown.current) {
+      if (
+        isCurrentMomentsContext(requestContext)
+        && e instanceof ManagedMomentsUnavailableError
+        && !momentsUnavailableNoticeShown.current
+      ) {
         momentsUnavailableNoticeShown.current = true;
-        writeMomentsDiagnostics("server-unavailable", { message: e.message });
+        writePrivateMomentsDiagnostics(requestContext, "server-unavailable", { message: e.message });
         showToast("照片浏览量暂时不可持久化，当前设备会先本地记录浏览变化", "info");
       }
     });
-  }, [userName]);  // momentsInsightsMap removed — functional updaters give latest state
+  }, [isCurrentMomentsContext, privateMomentsWorkspace, userName]);
 
   const navigateToPhoto = useCallback((idx: number) => {
     const photo = modalPhotos[idx];
