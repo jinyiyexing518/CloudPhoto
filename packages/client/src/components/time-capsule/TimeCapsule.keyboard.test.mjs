@@ -24,7 +24,7 @@ test("capsule cancel and Escape share one close path for connected-only restorat
   assert.match(capsuleSource, /const closeCreateDialog = useCallback\(\(\) => \{[\s\S]*setShowCreate\(false\)/);
   assert.match(capsuleSource, /onEscape: \(\) => \{[\s\S]*closeCreateDialog\(\)/);
   assert.match(capsuleSource, /className="capsule-cancel-btn" onClick=\{closeCreateDialog\}/);
-  assert.match(boundarySource, /restoreFocus\(previousFocusRef\.current\)/);
+  assert.match(boundarySource, /restoreFocus\(restoreFocusRef\?\.current \?\? previousFocusRef\.current\)/);
 });
 
 test("capsule's dynamic photo controls stay trapped and all keys stop before global shortcuts", () => {

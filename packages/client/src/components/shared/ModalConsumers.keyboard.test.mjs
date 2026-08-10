@@ -43,5 +43,5 @@ test("folder quick move is a protected named dialog with first-field focus", () 
 
 test("all added consumers inherit connected-only restoration and dynamic Tab trapping", () => {
   assert.match(boundarySource, /trapTabKey\(event, container, document\.activeElement\)/);
-  assert.match(boundarySource, /restoreFocus\(previousFocusRef\.current\)/);
+  assert.match(boundarySource, /restoreFocus\(restoreFocusRef\?\.current \?\? previousFocusRef\.current\)/);
 });
