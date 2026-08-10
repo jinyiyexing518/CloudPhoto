@@ -18,15 +18,17 @@ import {
   isProxySiteHost,
 } from "../utils/apiBase";
 import {
-  AuthorizationSnapshot,
-  ProxyProbeResult,
-  classifyProxyProbe,
   decodeAuthorizationSnapshot,
+  type AuthorizationSnapshot,
+} from "./authScope";
+import {
+  classifyProxyProbe,
   isSafeReplayMethod,
   proxyProbeTtlMs,
   raceHedgedAttempts,
   shouldHedgeApiRequest,
-} from "./photoLoadingPolicy";
+  type ProxyProbeResult,
+} from "./apiRoutingPolicy";
 
 type ApiRouteKind = "direct" | "proxy" | "same-origin";
 

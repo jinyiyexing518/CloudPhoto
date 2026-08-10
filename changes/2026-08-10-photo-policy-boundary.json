@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-photo-policy-boundary",
+  "date": "2026-08-10",
+  "icon": "⚡",
+  "title": "登录页不再携带照片刷新策略",
+  "type": "improvement",
+  "desc": "通用 API 路由与照片列表刷新规则拆分，未登录页面不再下载照片专用策略。",
+  "details": "JWT 授权快照、API 安全重放/代理探测/hedge 与照片列表键、刷新节流、媒体缓存规则分别进入 authScope、apiRoutingPolicy 和 photoLoadingPolicy。生产配置入口由 29,943 bytes 降至 29,584 bytes，本地入口由 28.84 kB 降至 28.48 kB，gzip 由 10.44 kB 降至 10.31 kB；PWA 首装预缓存降至 182.96 KiB。源码、行为和构建契约防止照片策略再次回流登录入口。",
+  "seq": 1786344122743
+}

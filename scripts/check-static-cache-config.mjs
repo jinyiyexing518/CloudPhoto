@@ -247,8 +247,8 @@ function checkHashedAssets(configPath) {
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
-  if (statSync(entryScripts[0]).size > 30_000) {
-    fail(configPath, "built login entry script must stay below 30 kB");
+  if (statSync(entryScripts[0]).size > 29_700) {
+    fail(configPath, "built login entry script must stay below 29.7 kB");
   }
   for (const workspaceMarker of [
     "Media route timed out",
@@ -257,6 +257,7 @@ function checkHashedAssets(configPath) {
     "/__cloudphoto-cache__/photo-lists/",
     "读取照片列表缓存失败:",
     "写入照片列表缓存失败:",
+    ":group:",
   ]) {
     if (entryScript.includes(workspaceMarker)) {
       fail(configPath, `workspace implementation leaked into login JavaScript: ${workspaceMarker}`);

@@ -19,6 +19,8 @@ const groupContext = read("packages/client/src/contexts/GroupContext.tsx");
 const groupSwitcher = read("packages/client/src/components/groups/GroupSwitcher.tsx");
 const groupApi = read("packages/client/src/services/groupApi.ts");
 const http = read("packages/client/src/services/http.ts");
+const authScope = read("packages/client/src/services/authScope.ts");
+const routingPolicy = read("packages/client/src/services/apiRoutingPolicy.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
 const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const listCache = read("packages/client/src/services/photoListCache.ts");
@@ -152,6 +154,22 @@ requireText(http, "if (requestAuthGeneration !== _authGeneration) return res;", 
 requireText(http, "newToken && requestAuthGeneration === _authGeneration", "stale request replay guard");
 requireText(http, "sameScopeReplacement", "superseded same-scope refresh guard");
 requireText(http, "replacementToken !== requestToken", "replacement token replay");
+assert(
+  !http.includes('from "./photoLoadingPolicy"'),
+  "shared HTTP must not hoist photo-only policy into the login entry",
+);
+requireText(http, 'from "./authScope"', "direct auth-scope policy boundary");
+requireText(http, 'from "./apiRoutingPolicy"', "direct API-routing policy boundary");
+requireText(authScope, "decodeAuthorizationSnapshot", "auth identity decoder");
+requireText(routingPolicy, "raceHedgedAttempts", "API hedge boundary");
+assert(
+  !routingPolicy.includes("privatePhotoListCacheKey"),
+  "API routing policy must not absorb photo-list policy",
+);
+assert(
+  !loadingPolicy.includes("raceHedgedAttempts"),
+  "photo loading policy must not absorb shared API routing",
+);
 requireText(groupApi, "listGroupsApi(signal?: AbortSignal)", "abortable group listing");
 requireText(groupContext, "refreshGenerationRef.current", "group refresh generation");
 requireText(groupContext, "listGroupsApi(controller.signal)", "group refresh cancellation");
@@ -171,7 +189,7 @@ requireText(http, "isSafeReplayMethod(method)", "unsafe route replay exclusion")
 requireText(http, "const safeToReplay = isSafeReplayMethod", "misrouted unsafe request replay guard");
 requireText(http, "raceHedgedAttempts", "non-destructive route hedge");
 for (const path of ["/photos", "/photos/locations", "/photos/motion-video", "/photos/trash", "/geocode/search"]) {
-  requireText(loadingPolicy, `"${path}"`, `expensive GET hedge exclusion ${path}`);
+  requireText(routingPolicy, `"${path}"`, `expensive GET hedge exclusion ${path}`);
 }
 requireText(http, "proxyProbeTtlMs(result)", "classified proxy probe expiry");
 requireText(http, "handleMissingSameOriginRoute", "misrouted SPA response detection");
@@ -377,7 +395,7 @@ assert.equal(
   "application/json; charset=utf-8",
   "SWA health fallback content type",
 );
-requireText(loadingPolicy, 'return input.route === "cloudphoto-proxy" ? "proxy" : "not-proxy"', "frontend marker remains non-proxy");
+requireText(routingPolicy, 'return input.route === "cloudphoto-proxy" ? "proxy" : "not-proxy"', "frontend marker remains non-proxy");
 requireText(setup, "server_name ${DOMAIN} www.${DOMAIN} cn.${DOMAIN};", "China hostname ACME route");
 requireText(setup, '-d "cn.${DOMAIN}"', "China hostname certificate SAN");
 requireText(setup, 'CERTBOT_DNS_ARGS=("$@")', "split-DNS certificate arguments");

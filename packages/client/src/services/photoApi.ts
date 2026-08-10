@@ -55,7 +55,7 @@ export {
   setUnauthorizedHandler, subscribeToAuthChanges, invalidateAuthRefresh,
   fetchWithTimeout, authHeaders,
 } from "./http";
-export { authCacheOwner } from "./photoLoadingPolicy";
+export { authCacheOwner } from "./authScope";
 export type { AuthUser, AuthResponse } from "./authApi";
 export { loginApi, registerApi, getMeApi, addAdminApi, updateProfileApi, changePasswordApi } from "./authApi";
 export {

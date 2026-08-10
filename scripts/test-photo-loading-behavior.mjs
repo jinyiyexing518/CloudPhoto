@@ -58,10 +58,21 @@ function delayedAttempt({ value, delay, reject = false, never = false }) {
   };
 }
 
-const policyUrl = await compileTypeScript(
-  "packages/client/src/services/photoLoadingPolicy.ts",
+const authScopeUrl = await compileTypeScript(
+  "packages/client/src/services/authScope.ts",
 );
-const policy = await import(policyUrl);
+const photoPolicyUrl = await compileTypeScript(
+  "packages/client/src/services/photoLoadingPolicy.ts",
+  (source) => source.replace('"./authScope"', JSON.stringify(authScopeUrl)),
+);
+const routingPolicyUrl = await compileTypeScript(
+  "packages/client/src/services/apiRoutingPolicy.ts",
+);
+const policy = {
+  ...await import(authScopeUrl),
+  ...await import(photoPolicyUrl),
+  ...await import(routingPolicyUrl),
+};
 
 const admin = policy.decodeAuthorizationSnapshot(jwt({
   userId: "same-user",
@@ -333,7 +344,8 @@ const httpUrl = await compileTypeScript(
   "packages/client/src/services/http.ts",
   (source) => source
     .replace('"../utils/apiBase"', JSON.stringify(apiBaseUrl))
-    .replace('"./photoLoadingPolicy"', JSON.stringify(policyUrl)),
+    .replace('"./authScope"', JSON.stringify(authScopeUrl))
+    .replace('"./apiRoutingPolicy"', JSON.stringify(routingPolicyUrl)),
 );
 const http = await import(httpUrl);
 
