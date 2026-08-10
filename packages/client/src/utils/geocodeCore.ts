@@ -73,12 +73,13 @@ function shouldFallback(status: number): boolean {
     || status === 504;
 }
 
-export async function fetchWithDeadline(
+export async function fetchWithDeadline<T>(
   request: typeof fetch,
   input: string,
   init: RequestInit,
+  consume: (response: Response) => Promise<T>,
   parentSignal?: AbortSignal,
-): Promise<Response> {
+): Promise<T> {
   const controller = new AbortController();
   const abortFromParent = () => controller.abort(parentSignal?.reason);
   if (parentSignal?.aborted) abortFromParent();
@@ -88,7 +89,8 @@ export async function fetchWithDeadline(
     8_000,
   );
   try {
-    return await request(input, { ...init, signal: controller.signal });
+    const response = await request(input, { ...init, signal: controller.signal });
+    return await consume(response);
   } finally {
     clearTimeout(timeout);
     parentSignal?.removeEventListener("abort", abortFromParent);
@@ -122,15 +124,17 @@ export function createReverseGeocoder(dependencies: ReverseGeocoderDependencies)
   };
 
   const fetchDirect = async (lat: number, lon: number, signal: AbortSignal): Promise<string | null> => {
-    const response = await fetchWithDeadline(
+    return fetchWithDeadline(
       request,
       `https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&accept-language=zh-CN,zh`,
       { headers: { "Accept-Language": "zh-CN,zh;q=0.9" } },
+      async (response) => {
+        if (!response.ok) return null;
+        const body = await response.json() as { address?: ReverseAddress; display_name?: string };
+        return body.address ? formatReverseAddress(body.address) : (body.display_name ?? null);
+      },
       signal,
     );
-    if (!response.ok) return null;
-    const body = await response.json() as { address?: ReverseAddress; display_name?: string };
-    return body.address ? formatReverseAddress(body.address) : (body.display_name ?? null);
   };
 
   const execute = async (
@@ -141,19 +145,24 @@ export function createReverseGeocoder(dependencies: ReverseGeocoderDependencies)
   ): Promise<string | null> => {
     if (authorization) {
       try {
-        const response = await fetchWithDeadline(
+        const result = await fetchWithDeadline(
           proxyRequest,
           `${dependencies.proxyBase ?? "/api"}/geocode/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
           {
             headers: { Authorization: `Bearer ${authorization.token}` },
           },
+          async (response) => {
+            if (!response.ok) return { status: response.status, address: null };
+            const body = await response.json() as { address?: unknown };
+            const address = typeof body.address === "string" && body.address.trim()
+              ? body.address.trim()
+              : null;
+            return { status: response.status, address };
+          },
           signal,
         );
-        if (response.ok) {
-          const body = await response.json() as { address?: unknown };
-          return typeof body.address === "string" && body.address.trim() ? body.address.trim() : null;
-        }
-        if (!shouldFallback(response.status)) return null;
+        if (result.status >= 200 && result.status < 300) return result.address;
+        if (!shouldFallback(result.status)) return null;
       } catch (error) {
         if (signal.aborted) throw error;
       }
@@ -250,5 +259,6 @@ export function createReverseGeocoder(dependencies: ReverseGeocoderDependencies)
 
 export default {
   createReverseGeocoder,
+  fetchWithDeadline,
   formatReverseAddress,
 };

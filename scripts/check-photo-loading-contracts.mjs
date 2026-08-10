@@ -567,7 +567,8 @@ requireText(
   "if (!page.cursor || page.cursor === cursor) throw new Error(paginationError)",
   "shared client cursor guard",
 );
-requireText(photoLocationSync, "const props = await readBlobProperties(blockBlobClient)", "GPS source refresh");
+requireText(photoLocationSync, "const props = await readBlobProperties(blockBlobClient, abortSignal)", "abortable GPS source refresh");
+requireText(photoLocationSync, "abortSignal?.throwIfAborted()", "GPS reconciliation cancellation");
 requireText(photoLocationSync, "verified.etag === sourceEtag", "GPS post-publish ETag reconciliation");
 requireText(photoLocationSync, "publishedEtag", "GPS stale-publication tracking");
 requireText(photoLocationSync, "condition: etag", "GPS conditional Cosmos mutation");
@@ -576,7 +577,7 @@ requireText(photoLocationSync, "if (!await sourceIsCurrent())", "pre-publication
 requireText(photoLocationSync, ".replace(versionedDoc", "GPS conditional replace");
 requireText(photoLocationSync, "condition: currentEtag!", "GPS publication If-Match");
 requireText(photoLocationSync, "code?: unknown", "Cosmos conditional error normalization");
-requireText(photoLocationSync, "await deleteLocation(container, id, scope, publishedEtag)", "exact stale GPS rollback");
+requireText(photoLocationSync, "await deleteLocation(container, id, scope, publishedEtag, abortSignal)", "exact stale GPS rollback");
 requireText(photoLocationSync, "removeLocationForMissingBlob", "recreated Blob location protection");
 requireText(backfill, 'request.query.get("cursor")', "backfill progress cursor");
 requireText(backfill, "listing.byPage({", "paged thumbnail listing");

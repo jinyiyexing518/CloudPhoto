@@ -30,11 +30,13 @@ async function deleteLocation(
   id: string,
   scope: string,
   etag?: string,
+  abortSignal?: AbortSignal,
 ): Promise<boolean> {
   try {
-    await container.item(id, scope).delete(etag ? {
-      accessCondition: { type: "IfMatch", condition: etag },
-    } : undefined);
+    await container.item(id, scope).delete({
+      ...(etag && { accessCondition: { type: "IfMatch", condition: etag } }),
+      abortSignal,
+    });
     return true;
   } catch (error) {
     if (statusCode(error) === 404) return true;
@@ -43,18 +45,23 @@ async function deleteLocation(
   }
 }
 
-async function readLocationEtag(container: Container, id: string, scope: string): Promise<string | null> {
+async function readLocationEtag(
+  container: Container,
+  id: string,
+  scope: string,
+  abortSignal?: AbortSignal,
+): Promise<string | null> {
   try {
-    return (await container.item(id, scope).read()).etag;
+    return (await container.item(id, scope).read({ abortSignal })).etag;
   } catch (error) {
     if (statusCode(error) === 404) return null;
     throw error;
   }
 }
 
-async function readBlobProperties(blockBlobClient: BlockBlobClient) {
+async function readBlobProperties(blockBlobClient: BlockBlobClient, abortSignal?: AbortSignal) {
   try {
-    return await blockBlobClient.getProperties();
+    return await blockBlobClient.getProperties({ abortSignal });
   } catch (error) {
     if (statusCode(error) === 404) return null;
     throw error;
@@ -80,6 +87,7 @@ export async function publishPhotoLocationSnapshot(
   doc: PhotoLocationDoc,
   sourceBlobEtag: string,
   sourceIsCurrent: () => Promise<boolean>,
+  abortSignal?: AbortSignal,
 ): Promise<LocationPublishResult> {
   const versionedDoc: VersionedPhotoLocationDoc = {
     ...doc,
@@ -90,7 +98,7 @@ export async function publishPhotoLocationSnapshot(
     let current: VersionedPhotoLocationDoc | undefined;
     let currentEtag: string | undefined;
     try {
-      const response = await container.item(doc.id, doc.scope).read<VersionedPhotoLocationDoc>();
+      const response = await container.item(doc.id, doc.scope).read<VersionedPhotoLocationDoc>({ abortSignal });
       current = response.resource;
       currentEtag = response.etag ?? current?._etag;
     } catch (error) {
@@ -109,8 +117,9 @@ export async function publishPhotoLocationSnapshot(
               type: "IfMatch",
               condition: currentEtag!,
             },
+            abortSignal,
           })
-        : await container.items.create(versionedDoc);
+        : await container.items.create(versionedDoc, { abortSignal });
       const etag = response.etag
         ?? (response.resource as VersionedPhotoLocationDoc | undefined)?._etag;
       if (!etag) throw new Error(`Photo location write returned no ETag: ${doc.name}`);
@@ -131,11 +140,12 @@ async function removeLocationForMissingBlob(
   blockBlobClient: BlockBlobClient,
   id: string,
   scope: string,
+  abortSignal?: AbortSignal,
 ): Promise<boolean> {
-  const locationEtag = await readLocationEtag(container, id, scope);
-  if (await readBlobProperties(blockBlobClient)) return false;
-  if (locationEtag && !await deleteLocation(container, id, scope, locationEtag)) return false;
-  return !await readBlobProperties(blockBlobClient);
+  const locationEtag = await readLocationEtag(container, id, scope, abortSignal);
+  if (await readBlobProperties(blockBlobClient, abortSignal)) return false;
+  if (locationEtag && !await deleteLocation(container, id, scope, locationEtag, abortSignal)) return false;
+  return !await readBlobProperties(blockBlobClient, abortSignal);
 }
 
 function parseCoordinate(raw: string | undefined, min: number, max: number): number | null {
@@ -153,14 +163,16 @@ export async function syncPhotoLocationFromBlob(
   blockBlobClient: BlockBlobClient,
   blobName: string,
   scope: string,
+  abortSignal?: AbortSignal,
 ): Promise<void> {
   const container = await getPhotoLocationsContainer();
   const id = encodeURIComponent(blobName);
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const props = await readBlobProperties(blockBlobClient);
+    abortSignal?.throwIfAborted();
+    const props = await readBlobProperties(blockBlobClient, abortSignal);
     if (!props) {
-      if (await removeLocationForMissingBlob(container, blockBlobClient, id, scope)) return;
+      if (await removeLocationForMissingBlob(container, blockBlobClient, id, scope, abortSignal)) return;
       continue;
     }
     const metadata = props.metadata;
@@ -196,34 +208,35 @@ export async function syncPhotoLocationFromBlob(
         container,
         doc,
         sourceEtag,
-        async () => (await readBlobProperties(blockBlobClient))?.etag === sourceEtag,
+        async () => (await readBlobProperties(blockBlobClient, abortSignal))?.etag === sourceEtag,
+        abortSignal,
       );
       if (publication.status === "source-changed") continue;
       publishedEtag = publication.etag;
     } else {
-      const locationEtag = await readLocationEtag(container, id, scope);
+      const locationEtag = await readLocationEtag(container, id, scope, abortSignal);
       if (locationEtag) {
         // Verify the no-location Blob snapshot immediately before the conditional
         // delete. A concurrent GPS writer either changes this ETag or the Cosmos ETag.
-        const beforeDelete = await readBlobProperties(blockBlobClient);
+        const beforeDelete = await readBlobProperties(blockBlobClient, abortSignal);
         if (!beforeDelete) {
-          if (await removeLocationForMissingBlob(container, blockBlobClient, id, scope)) return;
+          if (await removeLocationForMissingBlob(container, blockBlobClient, id, scope, abortSignal)) return;
           continue;
         }
         if (beforeDelete.etag !== sourceEtag) continue;
-        if (!await deleteLocation(container, id, scope, locationEtag)) continue;
+        if (!await deleteLocation(container, id, scope, locationEtag, abortSignal)) continue;
       }
     }
 
-    const verified = await readBlobProperties(blockBlobClient);
+    const verified = await readBlobProperties(blockBlobClient, abortSignal);
     if (!verified) {
-      if (await removeLocationForMissingBlob(container, blockBlobClient, id, scope)) return;
+      if (await removeLocationForMissingBlob(container, blockBlobClient, id, scope, abortSignal)) return;
       continue;
     }
     if (verified.etag === sourceEtag) return;
     // Remove only this helper's stale publication. A newer concurrent Cosmos
     // writer has a different ETag and is therefore preserved.
-    if (publishedEtag) await deleteLocation(container, id, scope, publishedEtag);
+    if (publishedEtag) await deleteLocation(container, id, scope, publishedEtag, abortSignal);
   }
 
   throw new Error(`Photo location changed repeatedly during reconciliation: ${blobName}`);

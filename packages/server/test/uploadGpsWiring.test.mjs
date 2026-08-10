@@ -85,7 +85,10 @@ test("the GPS-pending upload warning is only returned when valid GPS exists", as
 
 test("transactional folder rename republishes new location ids and removes old Cosmos ids", async () => {
   const rename = await source("packages/server/src/functions/photos/renameFolder.ts");
-  assert.match(rename, /syncPhotoLocationFromBlob\(container\.getBlockBlobClient\(blob\.name\), blob\.name, scope\)/);
-  assert.match(rename, /syncPhotoLocationFromBlob\(container\.getBlockBlobClient\(oldName\), oldName, scope\)/);
-  assert.match(rename, /pendingLocationIndexes > 0/);
+  assert.match(rename, /syncLocation\(container\.getBlockBlobClient\(newName\), newName, scope, controller\.signal\)/);
+  assert.match(rename, /syncLocation\(container\.getBlockBlobClient\(oldName\), oldName, scope, controller\.signal\)/);
+  assert.match(rename, /requestTimeoutMs: Math\.min\(/);
+  assert.match(rename, /reconcileTimeoutMs/);
+  assert.match(rename, /locationIndexPending = locationReconciliation\.pending > 0/);
+  assert.match(rename, /locationIndexInventoryIncomplete/);
 });

@@ -58,32 +58,34 @@ export async function searchLocation(query: string): Promise<LocationSearchResul
   }
 
   try {
-    const response = await fetchWithDeadline(
+    return await fetchWithDeadline(
       fetch,
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(normalized)}&format=json&limit=6`,
       {
         headers: { "Accept-Language": "zh-CN,zh;q=0.9" },
       },
+      async (response) => {
+        if (!response.ok) return [];
+        const data = await response.json() as Array<{
+          display_name?: string;
+          lat?: string;
+          lon?: string;
+        }>;
+        const results = data.flatMap<LocationSearchResult>((item) => {
+          const lat = Number(item.lat);
+          const lon = Number(item.lon);
+          if (!item.display_name || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+          return [{
+            displayName: item.display_name,
+            shortName: item.display_name.split(", ").slice(0, 2).join(", "),
+            lat,
+            lon,
+          }];
+        });
+        if (results.length > 0) searchCache.set(cacheKey, results);
+        return results;
+      },
     );
-    if (!response.ok) return [];
-    const data = await response.json() as Array<{
-      display_name?: string;
-      lat?: string;
-      lon?: string;
-    }>;
-    const results = data.flatMap<LocationSearchResult>((item) => {
-      const lat = Number(item.lat);
-      const lon = Number(item.lon);
-      if (!item.display_name || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
-      return [{
-        displayName: item.display_name,
-        shortName: item.display_name.split(", ").slice(0, 2).join(", "),
-        lat,
-        lon,
-      }];
-    });
-    if (results.length > 0) searchCache.set(cacheKey, results);
-    return results;
   } catch {
     return [];
   }

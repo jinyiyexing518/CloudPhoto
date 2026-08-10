@@ -14,44 +14,90 @@ import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import {
   FolderRenameError,
+  FOLDER_RENAME_REQUEST_LIMITS,
   planFolderRename,
   renameFolderBlobs,
 } from "./renameFolderSafety";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
 
-async function reconcileRenamedPhotoLocations(
+const ENDPOINT_BUDGET_MS = 215_000;
+const LOCATION_RECONCILE_BUDGET_MS = 8_000;
+const LOCATION_RECONCILE_CONCURRENCY = 4;
+
+export interface RenameLocationReconcileResult {
+  pending: number;
+  inventoryIncomplete: boolean;
+}
+
+export async function reconcileRenamedPhotoLocations(
   container: ReturnType<ReturnType<typeof getBlobServiceClient>["getContainerClient"]>,
   oldPrefix: string,
   newPrefix: string,
   scope: string,
   context: InvocationContext,
-): Promise<number> {
+  timeoutMs = LOCATION_RECONCILE_BUDGET_MS,
+  syncLocation: typeof syncPhotoLocationFromBlob = syncPhotoLocationFromBlob,
+): Promise<RenameLocationReconcileResult> {
+  if (timeoutMs <= 0) return { pending: 0, inventoryIncomplete: true };
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("Folder location reconciliation timed out", "TimeoutError")),
+    timeoutMs,
+  );
+  const candidates: string[] = [];
   let pending = 0;
-  for await (const blob of container.listBlobsFlat({ prefix: newPrefix })) {
-    const relativeName = blob.name.slice(newPrefix.length);
-    const filename = relativeName.split("/").pop() ?? "";
-    if (filename.startsWith("_th_") || relativeName.startsWith("_voice/")) continue;
-    const oldName = `${oldPrefix}${relativeName}`;
-    let reconciled = false;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        await syncPhotoLocationFromBlob(container.getBlockBlobClient(blob.name), blob.name, scope);
-        await syncPhotoLocationFromBlob(container.getBlockBlobClient(oldName), oldName, scope);
-        reconciled = true;
-        break;
-      } catch (error) {
-        if (attempt === 3) {
+  try {
+    for await (const blob of container.listBlobsFlat({
+      prefix: newPrefix,
+      abortSignal: controller.signal,
+    })) {
+      const relativeName = blob.name.slice(newPrefix.length);
+      const filename = relativeName.split("/").pop() ?? "";
+      if (!filename.startsWith("_th_") && !relativeName.startsWith("_voice/")) {
+        candidates.push(relativeName);
+      }
+    }
+
+    let cursor = 0;
+    const worker = async () => {
+      while (!controller.signal.aborted) {
+        const index = cursor++;
+        if (index >= candidates.length) return;
+        const relativeName = candidates[index];
+        const newName = `${newPrefix}${relativeName}`;
+        const oldName = `${oldPrefix}${relativeName}`;
+        try {
+          await syncLocation(container.getBlockBlobClient(newName), newName, scope, controller.signal);
+          await syncLocation(container.getBlockBlobClient(oldName), oldName, scope, controller.signal);
+        } catch (error) {
+          pending++;
           context.warn("Folder rename location reconciliation pending", {
             oldName,
-            newName: blob.name,
+            newName,
             error,
           });
         }
       }
+    };
+    await Promise.all(Array.from(
+      { length: Math.min(LOCATION_RECONCILE_CONCURRENCY, candidates.length) },
+      worker,
+    ));
+    if (controller.signal.aborted && cursor < candidates.length) {
+      pending += candidates.length - cursor;
     }
-    if (!reconciled) pending++;
+  } catch (error) {
+    pending = Math.max(candidates.length, pending);
+    context.warn("Folder rename location reconciliation inventory incomplete", {
+      error,
+      timedOut: controller.signal.aborted,
+      discoveredCandidates: candidates.length,
+    });
+    return { pending, inventoryIncomplete: true };
+  } finally {
+    clearTimeout(timeout);
   }
-  return pending;
+  return { pending, inventoryIncomplete: false };
 }
 
 app.http("renameFolder", {
@@ -62,6 +108,7 @@ app.http("renameFolder", {
     request: HttpRequest,
     context: InvocationContext
   ): Promise<HttpResponseInit> => {
+    const endpointDeadline = Date.now() + ENDPOINT_BUDGET_MS;
     const payload = extractTokenFromHeader(request.headers.get("authorization") ?? "");
     if (!payload)
       return { status: 401, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Unauthorized" }) };
@@ -107,28 +154,44 @@ app.http("renameFolder", {
           return generateSasUrlWithKey(blobName, await delegationKeyPromise, 2);
         },
         context,
+        requestTimeoutMs: Math.min(
+          FOLDER_RENAME_REQUEST_LIMITS.requestTimeoutMs,
+          Math.max(1_000, endpointDeadline - Date.now() - LOCATION_RECONCILE_BUDGET_MS),
+        ),
       });
-      const pendingLocationIndexes = await reconcileRenamedPhotoLocations(
+      const reconcileTimeoutMs = Math.min(
+        LOCATION_RECONCILE_BUDGET_MS,
+        Math.max(0, endpointDeadline - Date.now()),
+      );
+      const locationReconciliation = await reconcileRenamedPhotoLocations(
         containerClient,
         oldPrefix,
         newPrefix,
         scope,
         context,
+        reconcileTimeoutMs,
       );
+      const locationIndexPending = locationReconciliation.pending > 0
+        || locationReconciliation.inventoryIncomplete;
 
       return {
-        status: pendingLocationIndexes > 0 ? 500 : 200,
+        status: locationIndexPending ? 500 : 200,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           renamed: result.renamed,
           oldFolder: plan.oldFolder,
           newFolder: plan.newFolder,
-          ...(pendingLocationIndexes > 0 && {
+          ...(locationIndexPending && {
             error: "文件夹已重命名，但部分照片位置索引对账未完成，请联系管理员",
             phase: "location-index",
             recoveryNeeded: true,
             locationIndexPending: true,
-            pendingLocationIndexes,
+            ...(!locationReconciliation.inventoryIncomplete && {
+              pendingLocationIndexes: locationReconciliation.pending,
+            }),
+            ...(locationReconciliation.inventoryIncomplete && {
+              locationIndexInventoryIncomplete: true,
+            }),
           }),
         }),
       };

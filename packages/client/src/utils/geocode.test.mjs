@@ -4,6 +4,7 @@ import geocodeCore from "./geocodeCore.ts";
 
 const {
   createReverseGeocoder,
+  fetchWithDeadline,
   formatReverseAddress,
 } = geocodeCore;
 
@@ -72,6 +73,7 @@ test("deadline composition does not require AbortSignal static helpers", async (
     any: { configurable: true, value: undefined },
     timeout: { configurable: true, value: undefined },
   });
+
   try {
     let calls = 0;
     const reverse = createReverseGeocoder({
@@ -89,6 +91,29 @@ test("deadline composition does not require AbortSignal static helpers", async (
       timeout: { configurable: true, value: originalTimeout },
     });
   }
+});
+
+test("parent cancellation remains connected while the response body is read", async () => {
+  const parent = new AbortController();
+  let markBodyStarted;
+  const bodyStarted = new Promise((resolve) => { markBodyStarted = resolve; });
+  const pending = fetchWithDeadline(
+    async (_url, init) => ({
+      json: () => new Promise((_resolve, reject) => {
+        markBodyStarted();
+        init.signal.addEventListener("abort", () => reject(
+          init.signal.reason ?? new DOMException("Aborted", "AbortError"),
+        ), { once: true });
+      }),
+    }),
+    "https://example.test/geocode",
+    {},
+    (result) => result.json(),
+    parent.signal,
+  );
+  await bodyStarted;
+  parent.abort(new DOMException("Photo changed", "AbortError"));
+  await assert.rejects(pending, { name: "AbortError" });
 });
 
 test("negative cache expires, successful calls dedupe, and auth/workspace keys isolate values", async () => {
