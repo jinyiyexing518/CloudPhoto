@@ -122,9 +122,12 @@ app.http("backfillThumbnails", {
         const filename = segs[segs.length - 1];
         if (filename.startsWith("_th_")) continue;
 
-        // Only process images that support thumbnail generation
+        // Image originals can be decoded by sharp. Video originals are never
+        // downloaded here; backfill may only reconnect an existing _th_ blob
+        // produced by the upload/playback thumbnail endpoint.
         const mime = blob.properties.contentType ?? "";
-        if (!THUMBNAIL_MIME.has(mime)) { skipped++; continue; }
+        const isVideo = mime.startsWith("video/");
+        if (!THUMBNAIL_MIME.has(mime) && !isVideo) { skipped++; continue; }
 
         // All animated images in THUMBNAIL_MIME get a first-frame static WebP thumbnail:
         // - Motion photos (animated JPEG): sharp processes JPEG portion, ignores video track.
@@ -147,7 +150,9 @@ app.http("backfillThumbnails", {
         try {
           [thumbExists, previewExists] = await Promise.all([
             containerClient.getBlockBlobClient(thumbName).exists(),
-            containerClient.getBlockBlobClient(previewName).exists(),
+            isVideo
+              ? Promise.resolve(false)
+              : containerClient.getBlockBlobClient(previewName).exists(),
           ]);
         } catch (error) {
           failed++;
@@ -156,9 +161,13 @@ app.http("backfillThumbnails", {
         }
 
         const needsThumb = storedThumbName !== thumbName || !thumbExists;
-        const needsPreview = storedPreviewName !== previewName || !previewExists;
+        const needsPreview = !isVideo && (storedPreviewName !== previewName || !previewExists);
         // Skip blobs that already have both thumbnail and preview
         if (!needsThumb && !needsPreview) { skipped++; continue; }
+        if (isVideo && !thumbExists) {
+          skipped++;
+          continue;
+        }
 
         try {
           const blockBlobClient = containerClient.getBlockBlobClient(blob.name);

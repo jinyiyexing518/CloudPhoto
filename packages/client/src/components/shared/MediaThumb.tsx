@@ -1,11 +1,9 @@
 /**
  * MediaThumb — renders a thumbnail for photos or videos.
  *
- * For videos: if a thumbnail/preview is provided, renders an <img> (zero network cost
- * beyond what the gallery already loaded). Falls back to <video preload="none">
- * only when no thumbnail is available. The old preload="metadata" + seek approach
- * was removed because it downloads video headers on every render, burning MB/s in
- * grid views.
+ * For videos: if a thumbnail/preview is provided, renders an <img>. When no
+ * derivative exists it renders a local placeholder, never an original-video
+ * element. The actual video is created only by an explicit playback surface.
  *
  * Props:
  *   url           — full-resolution src (video URL or photo URL)
@@ -76,18 +74,14 @@ export default function MediaThumb({
     return <>{img}{badge}</>;
   }
 
-  // No thumbnail: fall back to <video preload="none"> + badge.
-  // The browser will show nothing until the user interacts with it.
-  const video = (
-    <video
-      src={url}
-      className={className}
-      preload="none"
-      muted
-      playsInline
+  const placeholder = (
+    <span
+      className={[className, "video-thumb-placeholder"].filter(Boolean).join(" ")}
+      role="img"
+      aria-label={alt || "视频封面暂不可用"}
     />
   );
   const badge = <span className="photo-video-badge">▶</span>;
-  if (wrapClass) return <span className={wrapClass}>{video}{badge}</span>;
-  return <>{video}{badge}</>;
+  if (wrapClass) return <span className={wrapClass}>{placeholder}{badge}</span>;
+  return <>{placeholder}{badge}</>;
 }

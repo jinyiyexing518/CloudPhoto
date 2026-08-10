@@ -63,6 +63,7 @@ export {
   uploadPhoto,
   uploadPhotoWithProgress,
   extractVideoThumbnail,
+  persistVideoPlaybackThumbnail,
   setVideoThumbnail,
 } from "./uploadApi";
 export type { ManagedShareLink, MomentInsight } from "./shareApi";
@@ -301,7 +302,6 @@ export async function listPhotos(groupId = "", options: ListPhotosOptions = {}):
   const rawPhotos = parsePhotoListPayload(await response.json() as unknown);
   assertAuthorizationOwner(expectedOwner);
   if (options.isCurrent?.() === false) throw new AuthorizationDriftError();
-  await selectFastestMediaRoute(rawPhotos[0]?.url);
   const currentOwner = getAuthorizationSnapshot()?.cacheOwner ?? null;
   if (!canPublishPhotoList({
     expectedOwner,
@@ -318,6 +318,8 @@ export async function listPhotos(groupId = "", options: ListPhotosOptions = {}):
   const photos = rawPhotos
     .map(proxyPhoto)
     .map((photo) => reuseFreshMediaUrls(photo, previousByName.get(photo.name)));
+  const routeProbeSample = photos.find((photo) => photo.thumbnailUrl || photo.previewUrl);
+  void selectFastestMediaRoute(routeProbeSample?.thumbnailUrl ?? routeProbeSample?.previewUrl);
   if (key) {
     writeMemoryPhotoListCache(key, photos);
     void writePhotoListCache(key, photos, cacheGeneration);
