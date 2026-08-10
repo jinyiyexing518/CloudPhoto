@@ -8,10 +8,6 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import {
-  clearNativeValidation,
-  setChineseNativeValidation,
-} from "./nativeValidation";
 import PasswordField from "./PasswordField";
 
 type AuthTab = "login" | "register";
@@ -171,7 +167,18 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
               role="tabpanel"
               aria-labelledby="login-tab"
             >
-              <form className="auth-form" onSubmit={handleLogin} aria-busy={loading}>
+              <form
+                className="auth-form"
+                onSubmit={handleLogin}
+                onInvalid={(event) =>
+                  (event.target as HTMLInputElement).setCustomValidity(
+                    `请输入${
+                      (event.target as HTMLInputElement).labels![0].textContent
+                    }`,
+                  )
+                }
+                aria-busy={loading}
+              >
                 <div className="auth-field">
                   <label htmlFor="login-username">用户名</label>
                   <input
@@ -179,9 +186,10 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
                     id="login-username"
                     type="text"
                     value={loginUsername}
-                    onChange={(event) => setLoginUsername(event.target.value)}
-                    onInput={(event) => clearNativeValidation(event.currentTarget)}
-                    onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
+                    onChange={(event) => {
+                      event.currentTarget.setCustomValidity("");
+                      setLoginUsername(event.target.value);
+                    }}
                     placeholder="请输入用户名"
                     required
                     autoComplete="username"

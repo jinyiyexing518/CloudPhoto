@@ -72,7 +72,14 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
         aria-labelledby="register-tab"
         hidden={!active}
       >
-        <form className="auth-form" onSubmit={handleRegister} aria-busy={loading}>
+        <form
+          className="auth-form"
+          onSubmit={handleRegister}
+          onInvalid={(event) =>
+            setChineseNativeValidation(event.target as HTMLInputElement)
+          }
+          aria-busy={loading}
+        >
           <div className="auth-field">
             <label htmlFor="register-username">用户名</label>
             <input
@@ -80,9 +87,10 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               id="register-username"
               type="text"
               value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              onInput={(event) => clearNativeValidation(event.currentTarget)}
-              onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
+              onChange={(event) => {
+                clearNativeValidation(event.currentTarget);
+                setUsername(event.target.value);
+              }}
               placeholder="请输入用户名"
               required
               autoComplete="username"
@@ -97,9 +105,10 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               id="register-display-name"
               type="text"
               value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              onInput={(event) => clearNativeValidation(event.currentTarget)}
-              onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
+              onChange={(event) => {
+                clearNativeValidation(event.currentTarget);
+                setDisplayName(event.target.value);
+              }}
               placeholder="输入希望显示的名称"
               required
               autoComplete="nickname"
@@ -111,9 +120,10 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               id="register-email"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              onInput={(event) => clearNativeValidation(event.currentTarget)}
-              onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
+              onChange={(event) => {
+                clearNativeValidation(event.currentTarget);
+                setEmail(event.target.value);
+              }}
               placeholder="name@example.com"
               required
               autoComplete="email"
