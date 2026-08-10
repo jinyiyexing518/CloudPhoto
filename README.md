@@ -62,7 +62,7 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 本地开发时，Vite 将所有 `/api/*` 请求代理到 `localhost:7071`。生产环境下，`cloudphotos.top` / `cn.cloudphotos.top` 优先走同源 `/api`；`www` 会探测当前智能 DNS 落点，确认响应来自 Nginx 时走同源 `/api`，直达 SWA 时走 Azure Functions；其他全球入口优先直连 Azure Functions。只读请求和登录/刷新等可安全重试的请求在线路网络或网关故障时双向回退；照片列表、动态视频、回收站和地理搜索等高成本读取不会仅因 5 秒内未返回响应头就向同一后端重放。非幂等写请求不会在发送后自动重放，避免重复上传或修改。
 
-媒体也使用双线路：客户端对同一张原图执行两个无响应体的 `HEAD` 探测，在 Blob 直连和 `/media` 代理中缓存 30 分钟内最快的线路；胜出后立即取消另一探测。图片、视频、语音、动图预载、剪贴板复制和下载预检共用有限次换线逻辑，失败不会在直连/代理间循环；所有非 `206` 的 Range 响应都会主动取消响应体，避免忽略 Range 的线路继续下载完整视频。海外用户通常直连 Blob，避免所有流量绕行 VM；大陆网络则可自动选择 Nginx 代理。
+媒体也使用双线路：客户端对同一张派生图执行两个无响应体的 `HEAD` 探测，在 Blob 直连和 `/media` 代理中缓存 30 分钟内最快的线路；胜出后立即取消另一探测，并把已绘制图库统一切换到胜出线路。图片、视频、语音、动图预载和剪贴板复制共用有限次换线逻辑，失败不会在直连/代理间循环；所有非 `206` 的 Range 响应都会主动取消响应体，避免忽略 Range 的线路继续下载完整视频。海外用户通常直连 Blob，避免所有流量绕行 VM；大陆网络则可自动选择 Nginx 代理。
 
 照片列表使用按 `userId + role + groupId` 隔离的一小时 SWR 缓存：冷启动只发起一次列表请求；刷新页面时可先绘制最近的非空列表，再后台刷新，刷新失败仍显示错误提示。内存和 Cache Storage 各最多保留 24 个列表，过期项会清除。PWA 仅缓存可验证的 `200 GET` 媒体响应，Range/HEAD 和跨域 opaque 响应绕过缓存；媒体缓存保留 SAS 查询作为授权边界并限制为一小时，避免注销竞态中的迟到写入被其他账号复用。注销、自动注销、角色变化或账号切换只清除私有照片列表及 `photo-media-v1`，不删除应用壳/precache。
 
@@ -88,6 +88,8 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 - **JWT 认证与自动刷新** — 2 小时访问令牌 + 30 天滚动刷新令牌；收到 401 时客户端静默刷新并重试原请求；并发 401 共享同一个刷新请求（互斥锁），注销/切号会中止并作废旧会话刷新，迟到的 401 不会退出新账号
 - **API 双向故障回退** — 大陆入口优先同源 `/api`，全球入口优先 Azure Functions；读取请求在网络或网关故障时切换线路，高成本读取仅在明确失败后换线，非幂等认证与写入请求不重复发送
 - **媒体自适应线路** — Blob 直连与 Nginx `/media` 通过轻量 `HEAD` 竞速选择，失败时自动换线；海外直连可显著降低 VM 出站流量
+- **媒体首显快路径** — 首屏前 6 张派生图使用 eager/high priority，其余继续 lazy；线路探测结果会刷新已渲染卡片，查看器首次只选 400px 缩略图或 2048px 预览，原图仅在显式预览时获取
+- **下载票据预热** — 打开查看器后预取最多 8 个、按登录代次隔离的附件 SAS；点击下载不再串行等待 Blob metadata 与媒体 HEAD，仍由浏览器原生传输原文件
 - **用户隔离照片 SWR** — 最近非空照片列表按用户/群组持久化并限量保留；刷新先本地绘制再联网，注销/切号清除列表与私有媒体缓存
 - **认证限流** — 内存中按 IP 滑动窗口：登录 10 次/分，注册 5 次/分，刷新 20 次/分；超限返回 `429 + Retry-After: 60`
 - **委托密钥缓存** — Azure 用户委托密钥进程内缓存，有效期剩余 > 10 分钟时复用，省去每次列表请求的一次控制面调用
@@ -333,7 +335,7 @@ previewName       2048 px WebP 名称（仅在 derivative 上传成功后以 ETa
 |------|------|------|------|
 | `GET`    | `/api/photos[?groupId=<id>]` | ✓ | 列出照片；每个 URL 为 2 小时用户委托 SAS |
 | `POST`   | `/api/photos/upload?filename=<name>[&uploadId=<uuid>&folder=<path>&groupId=<id>&gpsLat=<lat>&gpsLon=<lon>]` | ✓ | 上传（原始二进制 body）；`uploadId` 令重试幂等，群组上传要求成员身份；拒绝非图片/视频 MIME（415）和超大文件（413） |
-| `GET`    | `/api/photos/download?name=<blobName>` | ✓ | 代理下载，附 `Content-Disposition: attachment` |
+| `GET`    | `/api/photos/download?name=<blobName>&filename=<displayName>` | ✓ | 校验个人/群组路径后返回短效附件 SAS；不代理文件体 |
 | `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | 创建过期分享链接（`{ url, expiresAt }`） |
 | `GET`    | `/api/photos/share/open/{linkId}` | — | 打开托管公开分享链接（重定向到短效 SAS 并增加浏览统计） |
 | `GET`    | `/api/photos/share/links[?status=active|expired|revoked&q=<keyword>]` | ✓ | 列出当前用户的托管分享链接，支持状态/名称筛选 |

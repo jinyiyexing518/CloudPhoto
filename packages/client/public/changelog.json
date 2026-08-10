@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-media-fast-paths",
+    "date": "2026-08-10",
+    "icon": "⚡",
+    "title": "加速封面、查看器和原图下载",
+    "type": "improvement",
+    "desc": "首屏封面提高请求优先级，查看器不再因高分屏自动下载原图，下载按钮复用预热票据。",
+    "details": "前 6 张派生图使用 eager/high priority，其余继续 lazy；直连与代理竞速完成后会刷新已绘制图库。普通图片首次打开只使用 400px thumbnail 或 2048px preview，原图保留给显式预览；视频打开后预载 metadata，新视频封面与原文件上传并行准备。下载查看器预热最多 8 条、按登录代次隔离的附件 SAS，点击不再等待 Blob metadata 或媒体 HEAD；服务端同时补齐个人/群组 Blob 路径授权。",
+    "seq": 1786346061281
+  },
+  {
     "id": "2026-08-10-register-form-intent-split",
     "date": "2026-08-10",
     "icon": "⚡",

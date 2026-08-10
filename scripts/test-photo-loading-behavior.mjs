@@ -73,6 +73,54 @@ const policy = {
   ...await import(photoPolicyUrl),
   ...await import(routingPolicyUrl),
 };
+const renderPolicy = await importTypeScript("packages/algorithm/src/render.ts");
+
+assert.equal(
+  renderPolicy.selectInitialViewerMediaSource({
+    originalUrl: "original.jpg",
+    thumbnailUrl: "thumb.webp",
+    previewUrl: "preview.webp",
+    viewportWidth: 1440,
+    devicePixelRatio: 2,
+  }),
+  "preview.webp",
+  "high-DPR desktop viewers must not fetch the original before explicit zoom",
+);
+assert.equal(
+  renderPolicy.selectInitialViewerMediaSource({
+    originalUrl: "original.jpg",
+    thumbnailUrl: "thumb.webp",
+    previewUrl: "preview.webp",
+    viewportWidth: 375,
+    devicePixelRatio: 1,
+  }),
+  "thumb.webp",
+  "small viewers should reuse the already-painted thumbnail",
+);
+assert.equal(
+  renderPolicy.selectInitialViewerMediaSource({
+    originalUrl: "original.jpg",
+    thumbnailUrl: "thumb.webp",
+    viewportWidth: 1440,
+    devicePixelRatio: 2,
+  }),
+  "thumb.webp",
+  "a missing preview must prefer an existing derivative over an implicit original download",
+);
+assert.equal(
+  renderPolicy.selectInitialViewerMediaSource({
+    originalUrl: "original.jpg",
+    viewportWidth: 1440,
+    devicePixelRatio: 2,
+  }),
+  "original.jpg",
+  "the original remains the final fallback when no derivative exists",
+);
+assert(
+  renderPolicy.GALLERY_EAGER_MEDIA_COUNT >= 4
+    && renderPolicy.GALLERY_EAGER_MEDIA_COUNT <= 8,
+  "above-fold eager media must stay tightly bounded",
+);
 
 const admin = policy.decodeAuthorizationSnapshot(jwt({
   userId: "same-user",
@@ -864,5 +912,6 @@ console.log("evidence slow-primary-survives=true fallback-wins=true caller-cance
 console.log("evidence health-explicit-ttl-ms=300000 health-transient-ttl-ms=5000");
 console.log("evidence cold-list-miss=true persisted-first-paint=true focus-visibility-requests=1");
 console.log("evidence media-primary-fail-alternate-pass=true media-route-timeout=true range-sw-cache=false opaque-cache=false");
+console.log("evidence viewer-high-dpr-tier=preview missing-preview-tier=thumbnail eager-media-bounded=true");
 console.log("evidence private-cache-max-age-s=3600 public=false stale=false range-forwarded=true");
 console.log("evidence role-account-logout-private-cache-miss=true app-shell-preserved=true");

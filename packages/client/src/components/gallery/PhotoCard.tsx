@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { BLANK_GIF } from "@cloudphoto/algorithm";
-import { fallbackMediaSource } from "../../services/mediaRoute";
+import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
 
 interface Props {
   photo: Photo;
@@ -16,6 +16,7 @@ interface Props {
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
+  priority?: boolean;
 }
 
 function PhotoCard({
@@ -29,6 +30,7 @@ function PhotoCard({
   draggable,
   onDragStart,
   onDragEnd,
+  priority = false,
 }: Props) {
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isGif = photo.contentType === "image/gif";
@@ -39,16 +41,18 @@ function PhotoCard({
   const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
     photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
   const derivativeImageSources = [photo.thumbnailUrl, photo.previewUrl]
-    .filter((source): source is string => Boolean(source));
+    .filter((source): source is string => Boolean(source))
+    .map(getPreferredMediaUrl);
+  const originalImageUrl = getPreferredMediaUrl(photo.url);
   const lowDataImageSources = derivativeImageSources.length > 0
     ? derivativeImageSources
     : isHeic
       ? []
-      : [photo.url];
+      : [originalImageUrl];
   const lowDataImageSrc = lowDataImageSources[0] ?? BLANK_GIF;
-  const staticAnimatedSrc = photo.thumbnailUrl ?? photo.previewUrl ?? BLANK_GIF;
+  const staticAnimatedSrc = derivativeImageSources[0] ?? BLANK_GIF;
   const videoPosterSources = derivativeImageSources;
-  const videoPosterSrc = photo.thumbnailUrl ?? photo.previewUrl;
+  const videoPosterSrc = derivativeImageSources[0];
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -89,8 +93,8 @@ function PhotoCard({
 
   useEffect(() => {
     if (!isGif) return;
-    setGifDisplaySrc(gifPaused ? staticAnimatedSrc : photo.url);
-  }, [gifPaused, isGif, photo.url, staticAnimatedSrc]);
+    setGifDisplaySrc(gifPaused ? staticAnimatedSrc : originalImageUrl);
+  }, [gifPaused, isGif, originalImageUrl, staticAnimatedSrc]);
 
   // Toggle play/pause for GIFs. Uses src-swap instead of canvas
   // to avoid cross-origin (CORS) security errors on Azure SAS URLs.
@@ -136,7 +140,8 @@ function PhotoCard({
               ref={videoThumbImgRef}
               src={videoPosterSrc}
               alt={displayName}
-              loading="lazy"
+              loading={priority ? "eager" : "lazy"}
+              fetchPriority={priority ? "high" : "auto"}
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={(e) => {
@@ -157,7 +162,8 @@ function PhotoCard({
               ref={gifImgRef}
               src={lowDataImageSrc}
               alt={displayName}
-              loading="lazy"
+              loading={priority ? "eager" : "lazy"}
+              fetchPriority={priority ? "high" : "auto"}
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={(e) => {
@@ -169,13 +175,14 @@ function PhotoCard({
               ref={gifImgRef}
               src={isGif ? gifDisplaySrc : staticAnimatedSrc}
               alt={displayName}
-              loading="lazy"
+              loading={priority ? "eager" : "lazy"}
+              fetchPriority={priority ? "high" : "auto"}
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}
               onError={(e) => {
                 const sources = isGif && !gifPaused
-                  ? [photo.url]
-                  : [photo.thumbnailUrl, photo.previewUrl];
+                  ? [originalImageUrl]
+                  : derivativeImageSources;
                 if (!fallbackMediaSource(e.currentTarget, sources)) setImgLoaded(false);
               }}
             />
@@ -183,7 +190,8 @@ function PhotoCard({
             <img
               src={lowDataImageSrc}
               alt={displayName}
-              loading="lazy"
+              loading={priority ? "eager" : "lazy"}
+              fetchPriority={priority ? "high" : "auto"}
               decoding="async"
               className={imgLoaded ? "img-loaded" : "img-loading"}
               onLoad={() => setImgLoaded(true)}

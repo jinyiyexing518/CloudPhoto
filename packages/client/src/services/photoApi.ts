@@ -22,6 +22,7 @@ import {
   getAuthorizationSnapshot,
   parseApiError,
   signalAuthIdentityChange,
+  subscribeToAuthChanges,
 } from "./http";
 import {
   getPrivatePhotoCacheGeneration,
@@ -36,7 +37,6 @@ import {
 } from "./photoLoadingPolicy";
 import {
   getPreferredMediaUrl,
-  resolveMediaUrlWithFallback,
   routeMediaUrls,
   selectFastestMediaRoute,
   toDirectMediaUrl,
@@ -44,9 +44,7 @@ import {
 import type { MomentInsight } from "./shareApi";
 import { ManagedMomentsUnavailableError } from "./shareApi";
 import {
-  VIEWER_THUMB_THRESHOLD_PX,
-  VIEWER_PREVIEW_THRESHOLD_PX,
-  VIEWER_DPR_SCALE,
+  selectInitialViewerMediaSource,
 } from "@cloudphoto/algorithm";
 
 // ── Re-exports for backward compatibility ─────────────────────────────────
@@ -128,16 +126,13 @@ export function proxyPhoto(photo: Photo): Photo {
 }
 
 export function getViewerSrc(photo: Photo): string {
-  const dpr = window.devicePixelRatio || 1;
-  const physicalViewerPx = Math.round(window.innerWidth * dpr * VIEWER_DPR_SCALE);
-  if (physicalViewerPx <= VIEWER_THUMB_THRESHOLD_PX && photo.thumbnailUrl) return photo.thumbnailUrl;
-  if (physicalViewerPx <= VIEWER_PREVIEW_THRESHOLD_PX) {
-    // On mobile-sized viewports, never fall through to the full original when
-    // previewUrl is missing — that could mean downloading a 10-20 MB raw file.
-    // Prefer previewUrl → thumbnailUrl (already cached as gallery thumb) → full url.
-    return photo.previewUrl ?? photo.thumbnailUrl ?? photo.url;
-  }
-  return photo.url;
+  return getPreferredMediaUrl(selectInitialViewerMediaSource({
+    originalUrl: photo.url,
+    thumbnailUrl: photo.thumbnailUrl,
+    previewUrl: photo.previewUrl,
+    viewportWidth: window.innerWidth,
+    devicePixelRatio: window.devicePixelRatio || 1,
+  }));
 }
 
 // ── Motion video ──────────────────────────────────────────────────────────
@@ -368,26 +363,91 @@ export async function movePhotoToFolder(name: string, toFolder: string, movedBy?
   return response.json() as Promise<{ newName: string }>;
 }
 
-export async function downloadPhotoApi(name: string, filename: string): Promise<void> {
-  // Ask the server for a short-lived SAS URL with Content-Disposition: attachment.
-  // The server only looks up metadata (~100ms), not the file body.
+interface DownloadTicket {
+  url: string;
+  filename: string;
+  expiresAt: number | null;
+}
+
+export const DOWNLOAD_TICKET_CACHE_MAX = 8;
+const DOWNLOAD_TICKET_MIN_REUSE_MS = 5 * 60 * 1000;
+const downloadTicketCache = new Map<string, Promise<DownloadTicket>>();
+subscribeToAuthChanges(() => downloadTicketCache.clear());
+
+function downloadTicketKey(name: string, filename: string, generation: number): string {
+  return `${generation}\n${name}\n${filename}`;
+}
+
+async function requestDownloadTicket(name: string, filename: string): Promise<DownloadTicket> {
+  const generation = getAuthGeneration();
+  const params = new URLSearchParams({ name });
+  params.set("filename", filename);
   const res = await fetchWithTimeout(
-    `${API_BASE}/photos/download?name=${encodeURIComponent(name)}`,
+    `${API_BASE}/photos/download?${params}`,
     { headers: authHeaders() },
     15_000,
   );
-  if (!res.ok) throw new Error("Download failed");
-  const { url } = await res.json() as { url: string };
+  if (generation !== getAuthGeneration()) throw new AuthorizationDriftError();
+  if (!res.ok) throw new Error(await parseApiError(res, "Download failed"));
+  const ticket = await res.json() as { url?: unknown; filename?: unknown };
+  if (generation !== getAuthGeneration()) throw new AuthorizationDriftError();
+  if (typeof ticket.url !== "string" || !ticket.url) {
+    throw new Error("Invalid download ticket");
+  }
+  return {
+    url: ticket.url,
+    filename: typeof ticket.filename === "string" && ticket.filename
+      ? ticket.filename
+      : filename,
+    expiresAt: sasExpiry(ticket.url) ?? Date.now() + 50 * 60 * 1000,
+  };
+}
 
-  // Verify the preferred route with bounded HEAD requests. The selected URL is
-  // still handed to the browser so large files never pass through JS memory.
-  const downloadUrl = await resolveMediaUrlWithFallback(url);
+async function getDownloadTicket(name: string, filename: string): Promise<DownloadTicket> {
+  const generation = getAuthGeneration();
+  const key = downloadTicketKey(name, filename, generation);
+  const cached = downloadTicketCache.get(key);
+  if (cached) {
+    const ticket = await cached;
+    if (
+      generation === getAuthGeneration()
+      && (ticket.expiresAt === null || ticket.expiresAt - Date.now() > DOWNLOAD_TICKET_MIN_REUSE_MS)
+    ) {
+      downloadTicketCache.delete(key);
+      downloadTicketCache.set(key, cached);
+      return ticket;
+    }
+    downloadTicketCache.delete(key);
+  }
+
+  const pending = requestDownloadTicket(name, filename);
+  downloadTicketCache.set(key, pending);
+  while (downloadTicketCache.size > DOWNLOAD_TICKET_CACHE_MAX) {
+    const oldestKey = downloadTicketCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    downloadTicketCache.delete(oldestKey);
+  }
+  try {
+    return await pending;
+  } catch (error) {
+    if (downloadTicketCache.get(key) === pending) downloadTicketCache.delete(key);
+    throw error;
+  }
+}
+
+export async function preloadPhotoDownload(name: string, filename: string): Promise<void> {
+  await getDownloadTicket(name, filename);
+}
+
+export async function downloadPhotoApi(name: string, filename: string): Promise<void> {
+  const ticket = await getDownloadTicket(name, filename);
+  const downloadUrl = getPreferredMediaUrl(ticket.url);
 
   // Trigger the browser's native download — no file data passes through JS memory.
   // The download bar appears immediately; user can navigate away while it runs.
   const a = document.createElement("a");
   a.href = downloadUrl;
-  a.download = filename;   // hint for same-origin; Content-Disposition handles cross-origin
+  a.download = ticket.filename; // hint for same-origin; Content-Disposition handles cross-origin
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
