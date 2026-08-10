@@ -98,25 +98,31 @@ export default defineConfig({
             handler: "NetworkOnly",
           },
           {
-            // Cache only verifiable successful GET responses. Opaque status-0
-            // responses and Range/HEAD probes must never enter this private cache.
+            // Cache only verifiable image GET responses. Opaque status-0,
+            // Range/HEAD probes, and original video bodies stay out of this cache.
             // Keep the SAS query in the key: a service-worker write that finishes
             // after logout then cannot satisfy another account's guessed media path.
             // The list layer reuses the same still-valid SAS URL across refreshes,
             // preserving cache hits without weakening this authorization boundary.
-            urlPattern: ({ url, request }) =>
-              request.method === "GET" &&
-              !request.headers.has("range") &&
-              (
-                url.pathname.startsWith("/media/") ||
-                url.hostname.endsWith(".blob.core.windows.net")
-              ),
+            urlPattern: ({ url, request }) => {
+              // Workbox serializes this callback into sw.js, so it cannot close
+              // over helpers imported by the Vite config.
+              const isCacheablePhotoPath =
+                /\.(?:bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(url.pathname);
+              return request.method === "GET"
+                && !request.headers.has("range")
+                && (
+                  url.pathname.startsWith("/media/")
+                  || url.hostname.endsWith(".blob.core.windows.net")
+                )
+                && isCacheablePhotoPath;
+            },
             handler: "CacheFirst" as const,
             options: {
               cacheName: "photo-media-v1",
               matchOptions: { ignoreSearch: false },
               expiration: {
-                maxEntries: 600,           // ~200 photos × 3 sizes (thumb+preview+orig)
+                maxEntries: 600,           // ~200 photos × thumbnail, preview, or image original
                 maxAgeSeconds: 60 * 60,    // never outlive the one-hour private freshness window
                 purgeOnQuotaError: true,   // auto-evict oldest if storage quota exceeded
               },

@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-video-cover-cache-loading",
+  "date": "2026-08-10",
+  "icon": "🎬",
+  "title": "修复移动后视频封面与播放卡顿",
+  "type": "fix",
+  "desc": "移动过目录的视频可继续显示原有封面；打开视频后会提前加载可播放数据，原视频不再被 Service Worker 整段缓存。",
+  "details": "列表复用同一次授权范围内的 Blob listing，优先使用当前位置的标准 derivative，并仅在历史 metadata 指向的封面仍存在且属于同一用户或群组时回退，不增加逐项 HEAD 或原视频下载。视频详情跳过下载票据预取，使用 preload=auto，并在首个 decoded frame 到达时补存缺失封面。",
+  "seq": 1786357582830
+}

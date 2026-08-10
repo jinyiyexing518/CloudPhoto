@@ -276,6 +276,19 @@ for (const [name, source] of [["timeline playback", gallery], ["folder playback"
   requireText(source, "if (selectedVideoRender.session.fallbackAttempted)", `${name} fallback-only route promotion`);
   requireText(source, "promoteSuccessfulMediaUrl(selectedVideoRender.source)", `${name} successful fallback route promotion`);
   requireText(source, "key={selectedVideoRender.key}", `${name} stable video element key`);
+  requireText(
+    source,
+    'if (!selectedPhoto || selectedPhoto.contentType?.startsWith("video/")) return;',
+    `${name} video startup must not compete with download-ticket prefetch`,
+  );
+  const loadedDataStart = source.indexOf("onLoadedData=");
+  const playingStart = source.indexOf("onPlaying=", loadedDataStart);
+  assert(loadedDataStart >= 0 && playingStart > loadedDataStart, `${name} loaded-data handler must exist`);
+  requireText(
+    source.slice(loadedDataStart, playingStart),
+    "claimVideoThumbnailCapture",
+    `${name} first decoded frame capture`,
+  );
   assert(
     !source.includes('key={`${selectedVideoUrl}:${videoRetryKey}`}'),
     `${name} key must not contain a mutable source or retry counter`,
@@ -295,12 +308,15 @@ requireText(photoApi, "selectInitialViewerMediaSource", "viewer tier policy reus
 requireText(photoApi, "getPreferredMediaUrl(", "viewer route refresh");
 for (const source of [gallery, folder]) {
   requireText(source, 'fetchPriority="high"', "selected viewer image priority");
-  requireText(source, 'preload="metadata"', "selected video metadata preload");
+  requireText(source, 'preload="auto"', "selected video body preload");
 }
 
-// Workbox may cache only full, verifiable GET 200 responses.
+// Workbox may cache only full, verifiable GET 200 image responses.
 requireText(vite, 'request.method === "GET"', "media request method");
 requireText(vite, '!request.headers.has("range")', "Range exclusion");
+requireText(vite, "const isCacheablePhotoPath =", "image-only media cache classification");
+requireText(vite, "/\\.(?:bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(url.pathname)", "self-contained Workbox image matcher");
+requireText(vite, "&& isCacheablePhotoPath", "original video cache exclusion");
 requireText(vite, "cacheableResponse: { statuses: [200] }", "opaque exclusion");
 assert(!vite.includes("statuses: [0, 200]"), "opaque status 0 must not be cached");
 requireText(vite, 'cacheName: "photo-media-v1"', "private media cache name");
@@ -330,7 +346,7 @@ requireText(photoCard, 'className="video-thumb-placeholder"', "missing video der
 requireText(mediaThumb, '"video-thumb-placeholder"', "shared missing video derivative placeholder");
 requireText(photoCard, ".filter((source): source is string => Boolean(source))", "preview-only source normalization");
 for (const [name, source] of [["timeline playback", gallery], ["folder playback", folder]]) {
- requireText(source, 'preload="metadata"', `${name} preloads only metadata after explicit open`);
+ requireText(source, 'preload="auto"', `${name} preloads the selected video body after explicit open`);
  requireText(source, "persistVideoPlaybackThumbnail", `${name} thumbnail persistence`);
  requireText(source, "getVideoPlaybackRenderState", `${name} separates mutable poster from frozen source`);
  requireText(source, "videoCaptureSessionRef.current !== activeSession.key", `${name} captures at most once per View session`);
@@ -468,11 +484,9 @@ assert.equal(
   "ordinary photo listing must discover originals and derivatives in one flat listing",
 );
 requireText(listPhotos, "resolveListedPhotoDerivatives", "same-list derivative recovery");
-assert(
-  !listPhotos.includes('getMeta(blob.metadata, "thumbnailName")')
-    && !listPhotos.includes('getMeta(blob.metadata, "previewName")'),
-  "ordinary photo listing must recover derivatives without original metadata",
-);
+requireText(listPhotos, "storedDerivativeNames", "historical derivative metadata hints");
+requireText(listPhotos, 'getMeta(blob.metadata, "thumbnailName")', "stored thumbnail hint");
+requireText(listPhotos, 'getMeta(blob.metadata, "previewName")', "stored preview hint");
 assert(!listPhotos.includes(".exists("), "ordinary photo listing must not issue per-item derivative HEAD calls");
 assert(!listPhotos.includes("getProperties("), "ordinary photo listing must not issue per-item metadata reads");
 assert(!listPhotos.includes("downloadToBuffer("), "ordinary photo listing must never download original video bodies");
@@ -522,7 +536,7 @@ assert.equal(allowedOrigin("https://attacker.example"), "");
 
 console.log("photo-loading contracts: PASS");
 console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=60000");
-console.log("evidence video-grid-original-requests=0 video-grid-original-bytes=0 cold-list-route-wait-ms=0 selected-video-preload=metadata");
+console.log("evidence video-grid-original-requests=0 video-grid-original-bytes=0 cold-list-route-wait-ms=0 selected-video-preload=auto");
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
 console.log("evidence view-normal-video-requests=1 explicit-error-max-requests=2 route-update-remounts=0 derivative-list-heads=0 derivative-list-extra-waits=0");
 console.log("evidence above-fold-priority=6 viewer-tier=derivative download-click-head=false video-cover-overlap=true");

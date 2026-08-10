@@ -202,16 +202,25 @@ assert.equal(policy.isMediaRequestCacheEligible({
   method: "GET",
   hasRange: false,
   isMediaUrl: true,
+  pathname: "/media/personal/user-a/_th_clip.mp4.webp",
 }), true);
+assert.equal(policy.isMediaRequestCacheEligible({
+  method: "GET",
+  hasRange: false,
+  isMediaUrl: true,
+  pathname: "/media/personal/user-a/clip.mp4",
+}), false, "original videos must bypass the service-worker CacheFirst path");
 assert.equal(policy.isMediaRequestCacheEligible({
   method: "GET",
   hasRange: true,
   isMediaUrl: true,
+  pathname: "/media/personal/user-a/clip.mp4",
 }), false, "Range requests must bypass the service-worker media cache");
 assert.equal(policy.isMediaRequestCacheEligible({
   method: "HEAD",
   hasRange: false,
   isMediaUrl: true,
+  pathname: "/media/personal/user-a/_th_clip.mp4.webp",
 }), false, "HEAD probes must bypass the service-worker media cache");
 
 {

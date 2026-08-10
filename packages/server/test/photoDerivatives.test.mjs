@@ -32,3 +32,55 @@ test("does not attach lookalike or cross-folder derivatives", () => {
     {},
   );
 });
+
+test("recovers listed metadata derivatives after the original moves folders", () => {
+  const originalName = "personal/user-a/new-folder/clip.mp4";
+  const storedThumbnailName = "personal/user-a/old-folder/_th_clip.mp4.webp";
+  const storedPreviewName = "personal/user-a/old-folder/_th_clip.mp4-prev.webp";
+
+  assert.deepEqual(
+    resolveListedPhotoDerivatives(
+      originalName,
+      new Set([originalName, storedThumbnailName, storedPreviewName]),
+      {
+        thumbnailName: storedThumbnailName,
+        previewName: storedPreviewName,
+      },
+    ),
+    {
+      thumbnailName: storedThumbnailName,
+      previewName: storedPreviewName,
+    },
+  );
+});
+
+test("prefers canonical derivatives and rejects metadata outside the original scope", () => {
+  const originalName = "groups/group-a/new-folder/clip.mp4";
+  const expected = expectedPhotoDerivativeNames(originalName);
+  const crossScopeThumbnail = "groups/group-b/old-folder/_th_clip.mp4.webp";
+
+  assert.deepEqual(
+    resolveListedPhotoDerivatives(
+      originalName,
+      new Set([expected.thumbnailName, crossScopeThumbnail]),
+      { thumbnailName: crossScopeThumbnail },
+    ),
+    { thumbnailName: expected.thumbnailName },
+  );
+  assert.deepEqual(
+    resolveListedPhotoDerivatives(
+      originalName,
+      new Set([crossScopeThumbnail]),
+      { thumbnailName: crossScopeThumbnail },
+    ),
+    {},
+  );
+  assert.deepEqual(
+    resolveListedPhotoDerivatives(
+      "personal/user-a/new-folder/clip.mp4",
+      new Set(["personal/user-b/old-folder/_th_clip.mp4.webp"]),
+      { thumbnailName: "personal/user-b/old-folder/_th_clip.mp4.webp" },
+    ),
+    {},
+  );
+});

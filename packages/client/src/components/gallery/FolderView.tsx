@@ -800,7 +800,7 @@ function FolderContent({
   }, []);
 
   useEffect(() => {
-    if (!selectedPhoto) return;
+    if (!selectedPhoto || selectedPhoto.contentType?.startsWith("video/")) return;
     const filename = selectedPhoto.originalName
       || (selectedPhoto.name.split("/").pop() ?? selectedPhoto.name).replace(/^\d+-/, "");
     const timerId = window.setTimeout(() => {
@@ -1546,26 +1546,19 @@ function FolderContent({
                     className="modal-image modal-video"
                     controls
                     playsInline
-                    preload="metadata"
+                    preload="auto"
                     onPlay={() => {
                       setVideoError(false);
                       setVideoBuffering(true);
                     }}
-                    onLoadedData={() => {
+                    onLoadedData={(event) => {
                       if (selectedVideoRender.session.fallbackAttempted) {
                         promoteSuccessfulMediaUrl(selectedVideoRender.source);
                       }
                       videoPlayableSessionRef.current = selectedVideoRender.session.key;
-                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
-                        ? markVideoPlaybackPlayable(current)
-                        : current);
-                    }}
-                    onPlaying={(event) => {
-                      setVideoBuffering(false);
-                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
                       const activeSession = markVideoPlaybackPlayable(selectedVideoRender.session);
                       const capture = claimVideoThumbnailCapture(activeSession);
-                      setVideoSession((current) => current?.key === activeSession.key
+                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
                         ? capture.session
                         : current);
                       const photoName = selectedPhoto.name;
@@ -1584,6 +1577,13 @@ function FolderContent({
                               : current);
                           });
                       }
+                    }}
+                    onPlaying={() => {
+                      setVideoBuffering(false);
+                      videoPlayableSessionRef.current = selectedVideoRender.session.key;
+                      setVideoSession((current) => current?.key === selectedVideoRender.session.key
+                        ? markVideoPlaybackPlayable(current)
+                        : current);
                     }}
                     onWaiting={() => setVideoBuffering(true)}
                     onError={(event) => {

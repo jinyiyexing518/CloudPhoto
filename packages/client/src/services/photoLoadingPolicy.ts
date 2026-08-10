@@ -12,14 +12,22 @@ export function privatePhotoListCacheKey(
 
 export const MEDIA_CACHEABLE_RESPONSE_STATUSES = [200] as const;
 
+const CACHEABLE_PHOTO_PATH = /\.(?:bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i;
+
+export function isCacheablePhotoPath(pathname: string): boolean {
+  return CACHEABLE_PHOTO_PATH.test(pathname);
+}
+
 export function isMediaRequestCacheEligible(input: {
   method: string;
   hasRange: boolean;
   isMediaUrl: boolean;
+  pathname: string;
 }): boolean {
   return input.method.toUpperCase() === "GET"
     && !input.hasRange
-    && input.isMediaUrl;
+    && input.isMediaUrl
+    && isCacheablePhotoPath(input.pathname);
 }
 
 export function shouldRefreshPhotoList(

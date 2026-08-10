@@ -12,7 +12,10 @@ import {
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
-import { resolveListedPhotoDerivatives } from "./photoDerivatives";
+import {
+  PhotoDerivativeNames,
+  resolveListedPhotoDerivatives,
+} from "./photoDerivatives";
 
 // Azure Blob metadata is ASCII-only; free-text fields are stored as base64
 function decodeMeta(raw: string | undefined): string | undefined {
@@ -86,6 +89,7 @@ app.http("listPhotos", {
         isAnimated: boolean;
       }> = [];
       const listedDerivativeNames = new Set<string>();
+      const storedDerivativeNames = new Map<string, Partial<PhotoDerivativeNames>>();
 
       // Fetch one delegation key for the whole listing — avoids a round-trip per blob
       const delegationKey = await getUserDelegationKey();
@@ -111,6 +115,12 @@ app.http("listPhotos", {
         const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
         const folder = folderRaw === "_" ? "" : folderRaw;
         const voiceMemoName = getMeta(blob.metadata, "voiceMemoName");
+        const storedThumbnailName = decodeMeta(getMeta(blob.metadata, "thumbnailName"));
+        const storedPreviewName = decodeMeta(getMeta(blob.metadata, "previewName"));
+        storedDerivativeNames.set(blob.name, {
+          ...(storedThumbnailName ? { thumbnailName: storedThumbnailName } : {}),
+          ...(storedPreviewName ? { previewName: storedPreviewName } : {}),
+        });
 
         photos.push({
           name: blob.name,
@@ -139,7 +149,11 @@ app.http("listPhotos", {
       }
 
       for (const photo of photos) {
-        const listed = resolveListedPhotoDerivatives(photo.name, listedDerivativeNames);
+        const listed = resolveListedPhotoDerivatives(
+          photo.name,
+          listedDerivativeNames,
+          storedDerivativeNames.get(photo.name),
+        );
         photo.thumbnailUrl = listed.thumbnailName
           ? generateSasUrlWithKey(listed.thumbnailName, delegationKey)
           : undefined;
