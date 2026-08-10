@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-auth-service-boundary",
+    "date": "2026-08-10",
+    "icon": "⚡",
+    "title": "登录入口不再携带照片服务",
+    "type": "improvement",
+    "desc": "登录页不再因为兼容导入提前携带媒体线路和照片工作区代码，入口 JavaScript 再减少约 16%。",
+    "details": "AuthContext 改为直接从 authApi 与 http 获取认证、会话和 token 生命周期能力，photoApi 兼容 barrel 完全留在认证后的工作区。入口由 36.25 kB 降至 30.45 kB，gzip 由 12.84 kB 降至 11.03 kB；PWA 首装预缓存同步降至 184.92 KiB。源码和构建契约会拒绝 photoApi 回流、超过 32 kB 的登录入口，以及媒体线路 helper 再次进入首屏。",
+    "seq": 1786343048111
+  },
+  {
     "id": "2026-08-10-authenticated-css-split",
     "date": "2026-08-10",
     "icon": "⚡",

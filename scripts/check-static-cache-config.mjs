@@ -235,10 +235,29 @@ function checkHashedAssets(configPath) {
   if (authenticatedStylesheets.length !== 1) {
     fail(configPath, "built assets must contain one deferred AuthenticatedApp stylesheet");
   }
+  const entryScripts = assets.filter((asset) =>
+    /^index-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (entryScripts.length !== 1) {
+    fail(configPath, "built assets must contain one login entry script");
+  }
   const entryStyles = readFileSync(entryStylesheets[0], "utf8");
   const authenticatedStyles = readFileSync(authenticatedStylesheets[0], "utf8");
+  const entryScript = readFileSync(entryScripts[0], "utf8");
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
+  }
+  if (statSync(entryScripts[0]).size > 32_000) {
+    fail(configPath, "built login entry script must stay below 32 kB");
+  }
+  for (const workspaceMarker of [
+    "Media route timed out",
+    "No media candidate available",
+    "Media preload failed",
+  ]) {
+    if (entryScript.includes(workspaceMarker)) {
+      fail(configPath, `workspace media helper leaked into login JavaScript: ${workspaceMarker}`);
+    }
   }
   for (const selector of [".auth-page", ".app-splash", ".error-boundary-card"]) {
     if (!entryStyles.includes(selector)) fail(configPath, `built login CSS is missing ${selector}`);

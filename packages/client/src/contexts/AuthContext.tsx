@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import type { AuthResponse, AuthUser } from "../services/authApi";
 import {
-  AuthUser,
-  AuthResponse,
   loginApi,
   registerApi,
   getMeApi,
   updateProfileApi,
+} from "../services/authApi";
+import {
   setUnauthorizedHandler,
   saveStoredAuth,
   clearStoredAuth,
@@ -13,7 +14,7 @@ import {
   getToken,
   getTokenAuthScope,
   invalidateAuthRefresh,
-} from "../services/photoApi";
+} from "../services/http";
 import {
   clearPrivatePhotoCaches,
   preparePrivatePhotoCachesForScope,

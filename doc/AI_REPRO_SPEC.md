@@ -40,6 +40,7 @@
 2.47 登录首屏分包：AuthenticatedApp.tsx 必须通过 React.lazy 动态导入 PhotoGallery，未认证状态不请求图库 chunk；认证工作区挂载后 useEffect 立即调用同一 loader 预载，使图库代码下载与照片列表请求并行。时间线与重要片段均提供「正在加载照片视图…」Suspense fallback；构建产物必须包含单独的 `PhotoGallery-<hash>.js`。Workbox 的应用代码预缓存仅包含 index.html、入口 JS/CSS、React vendor、PWA 注册和 workbox-window，另保留安装所需 manifest/图标；其他 `/assets/` chunk 使用 `app-code-v1` CacheFirst 在首次请求后缓存，PhotoGallery 不得出现在 sw.js precache manifest。
 2.48 认证工作区分包：App.tsx 只保留 ToastProvider、AuthProvider、AuthPage、会话门和 Suspense/ErrorBoundary；完整工作区及 GroupProvider 位于 React.lazy 加载的 AuthenticatedApp.tsx。模块加载器缓存同一个 Promise：已有 token 在模块初始化时预载，登录与注册提交通过 AuthPage onAuthIntent 在 API 请求前预载。chunk 失败时必须显示可刷新恢复 UI；构建产物必须存在 `AuthenticatedApp-<hash>.js`，且该文件不得进入 sw.js 预缓存。
 2.49 认证前样式分包：main.tsx 入口继续加载 index.css，但该文件只能包含全局 reset、AuthPage、AppSplash 和工作区 chunk 恢复样式，源码保持在 20 kB 内且不得出现 app-header、photo-grid 或 workspace-sidebar。AuthenticatedApp.tsx 单独导入 authenticated.css，构建必须生成 `AuthenticatedApp-<hash>.css`；登录入口 CSS 必须小于 12 kB，认证工作区 CSS 与 JS 均不得进入 sw.js precache，并在首次认证意图后由 `app-code-v1` 缓存。index.css 与完整工作区中的 Auth Page 区段必须保持一致，防止同一会话注销后登录页样式漂移。
+2.50 认证服务边界：AuthContext.tsx 必须直接从 authApi.ts 导入 AuthUser/AuthResponse 与登录、注册、会话、资料 API，并从 http.ts 导入 token 生命周期工具，禁止通过 photoApi.ts 兼容 barrel。构建后的 `index-<hash>.js` 必须小于 32 kB，且不得包含媒体线路超时、候选预载或媒体 fallback 错误文本；这些照片工作区 helper 只能随 AuthenticatedApp chunk 加载。
 
 ## 1. 目标
 

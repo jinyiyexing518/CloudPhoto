@@ -81,6 +81,12 @@ assert.equal(
   2,
   "login and registration must both preload the authenticated workspace",
 );
+assert(
+  !auth.includes('from "../services/photoApi"'),
+  "the auth gate must not import the photo workspace compatibility barrel",
+);
+requireText(auth, 'from "../services/authApi"', "direct auth API boundary");
+requireText(auth, 'from "../services/http"', "direct auth token boundary");
 
 // Private list/media cache constraints and account cleanup.
 requireText(listCache, "const CACHE_MAX_ENTRIES = 24", "cache bound");
