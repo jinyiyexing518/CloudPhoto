@@ -282,6 +282,10 @@ function checkHashedAssets(configPath) {
   const authenticatedStyles = readFileSync(authenticatedStylesheets[0], "utf8");
   const entryScript = readFileSync(entryScripts[0], "utf8");
   const pwaInstallEntryScript = readFileSync(pwaInstallEntryChunks[0], "utf8");
+  const builtJavaScript = assets
+    .filter((asset) => asset.endsWith(".js"))
+    .map((asset) => readFileSync(asset, "utf8"))
+    .join("\n");
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
@@ -290,6 +294,14 @@ function checkHashedAssets(configPath) {
   }
   if (!pwaInstallEntryScript.includes("安装应用")) {
     fail(configPath, "deferred signed-out entry must expose the install application action");
+  }
+  for (const marker of [
+    "cloudphoto-photo-workspace-resolved-v1",
+    "cloudphoto-grid-derivative-only-v1",
+  ]) {
+    if (!builtJavaScript.includes(marker)) {
+      fail(configPath, `built workspace assets are missing media policy marker: ${marker}`);
+    }
   }
   for (const workspaceMarker of [
     "Media route timed out",

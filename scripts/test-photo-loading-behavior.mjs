@@ -75,6 +75,121 @@ const policy = {
 };
 const renderPolicy = await importTypeScript("packages/algorithm/src/render.ts");
 
+{
+  assert.equal(
+    policy.canExposeWorkspaceSelection({
+      userId: "user-b",
+      selectionOwnerId: "user-a",
+      selectionRestored: true,
+    }),
+    false,
+    "workspace readiness from a previous account must never cross the auth boundary",
+  );
+  assert.equal(
+    policy.canExposeWorkspaceSelection({
+      userId: "user-b",
+      selectionOwnerId: "user-b",
+      selectionRestored: true,
+    }),
+    true,
+    "the current account may publish its resolved workspace selection",
+  );
+  const workspaceTransitions = [
+    { groupsLoaded: false, selectionRestored: false, groupId: "" },
+    { groupsLoaded: true, selectionRestored: false, groupId: "" },
+    { groupsLoaded: true, selectionRestored: true, groupId: "group-a" },
+  ];
+  const requestedWorkspaces = workspaceTransitions
+    .map(policy.resolvePhotoWorkspaceRequest)
+    .filter((groupId) => groupId !== null);
+  assert.deepEqual(
+    requestedWorkspaces,
+    ["group-a"],
+    "restoring a saved group must not issue a transient personal /photos request",
+  );
+  const personalTransitions = [
+    { groupsLoaded: false, selectionRestored: false, groupId: "" },
+    { groupsLoaded: false, selectionRestored: true, groupId: "" },
+    { groupsLoaded: true, selectionRestored: true, groupId: "" },
+  ].map(policy.resolvePhotoWorkspaceRequest);
+  assert.deepEqual(
+    personalTransitions.filter((groupId, index) => (
+      groupId !== null && groupId !== personalTransitions[index - 1]
+    )),
+    [""],
+    "group-list completion must not restart an already-resolved personal photo request",
+  );
+  assert.equal(
+    policy.resolvePhotoWorkspaceRequest({
+      groupsLoaded: false,
+      selectionRestored: true,
+      groupId: "",
+    }),
+    "",
+    "an explicitly resolved personal workspace must still load when group listing fails",
+  );
+  assert.equal(
+    policy.resolvePhotoWorkspaceRequest({
+      groupsLoaded: false,
+      selectionRestored: true,
+      groupId: "saved-group",
+    }),
+    null,
+    "a saved group must wait for membership validation before hydration or rendering",
+  );
+}
+
+{
+  const workspaceKey = "auth:user-a:viewer:group:group-a";
+  assert.equal(policy.shouldRefreshPhotoWorkspace({
+    currentWorkspaceKey: workspaceKey,
+    lastWorkspaceKey: workspaceKey,
+    lastRefreshAt: 1_000,
+    now: 121_000,
+    requestInFlight: false,
+  }), false, "returning to a fresh workspace must not decode the full list again");
+  assert.equal(policy.shouldRefreshPhotoWorkspace({
+    currentWorkspaceKey: workspaceKey,
+    lastWorkspaceKey: "auth:user-a:viewer:group:personal",
+    lastRefreshAt: 121_000,
+    now: 121_000,
+    requestInFlight: false,
+  }), true, "a workspace change must still refresh its own list");
+  assert.equal(policy.shouldRefreshPhotoWorkspace({
+    currentWorkspaceKey: workspaceKey,
+    lastWorkspaceKey: null,
+    lastRefreshAt: 0,
+    now: 121_000,
+    requestInFlight: true,
+  }), false, "focus must not abort and restart an in-flight full list request");
+}
+
+{
+  const originalUrl = "/media/personal/user-a/large-original.jpg";
+  assert.deepEqual(
+    renderPolicy.selectGridMediaSources({
+      thumbnailUrl: "/media/personal/user-a/_th_large-original.webp",
+      previewUrl: "/media/personal/user-a/_preview_large-original.webp",
+    }),
+    [
+      "/media/personal/user-a/_th_large-original.webp",
+      "/media/personal/user-a/_preview_large-original.webp",
+    ],
+    "grid media must keep thumbnail then preview fallback order",
+  );
+  const legacyCachedSources = renderPolicy.selectGridMediaSources({});
+  assert.deepEqual(
+    legacyCachedSources,
+    [],
+    "a legacy cached item without derivatives must render a local placeholder",
+  );
+  assert.equal(
+    legacyCachedSources.filter((source) => source === originalUrl).length,
+    0,
+    "initial grid original-media request count must stay at zero",
+  );
+}
+
 assert.equal(
   renderPolicy.selectInitialViewerMediaSource({
     originalUrl: "original.jpg",

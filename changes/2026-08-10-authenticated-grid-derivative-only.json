@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-10-authenticated-grid-derivative-only",
+  "date": "2026-08-10",
+  "icon": "⚡",
+  "title": "已认证首屏停止隐式加载原图",
+  "type": "fix",
+  "desc": "刷新已保存群组时不再瞬时加载个人空间，时间线和文件夹网格只请求缩略图或预览图。",
+  "details": "群组列表与账号绑定的持久化选择恢复完成后才启动授权范围内的缓存 hydration 和照片列表刷新，避免额外的无 groupId 全量请求；明确 personal 可在群组 API 失败时独立恢复。照片 effect 绑定稳定 resolved workspace ID，同工作区 5 分钟内返回或 focus 不重复拉取/解码全量列表，进行中的请求也不会被重启。旧缓存若缺少 thumbnail/preview 会显示本地占位，不再回退数 MB 原图；显式 viewer、动图播放与下载能力保持不变，视频无封面仍使用本地占位。契约量化首屏 personal list request=0、grid original-media request=0、in-flight restart=0，并在构建产物中校验策略标记。服务端 cursor pagination 留待缓存、地图和统计完整迁移后单独实施。",
+  "seq": 1786371000000
+}

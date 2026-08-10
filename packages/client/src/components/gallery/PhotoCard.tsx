@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
-import { BLANK_GIF } from "@cloudphoto/algorithm";
+import { BLANK_GIF, GRID_MEDIA_POLICY_MARKER, selectGridMediaSources } from "@cloudphoto/algorithm";
 import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
 import {
   isLowInformationVideoCoverImage,
@@ -48,15 +48,10 @@ function PhotoCard({
     (photo.contentType === "image/jpeg" || photo.contentType === "image/jpg");
   const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
     photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
-  const derivativeImageSources = [photo.thumbnailUrl, photo.previewUrl]
-    .filter((source): source is string => Boolean(source))
+  const derivativeImageSources = selectGridMediaSources(photo)
     .map(getPreferredMediaUrl);
   const originalImageUrl = getPreferredMediaUrl(photo.url);
-  const lowDataImageSources = derivativeImageSources.length > 0
-    ? derivativeImageSources
-    : isHeic
-      ? []
-      : [originalImageUrl];
+  const lowDataImageSources = derivativeImageSources;
   const lowDataImageSrc = lowDataImageSources[0] ?? BLANK_GIF;
   const staticAnimatedSrc = derivativeImageSources[0] ?? BLANK_GIF;
   const { targetRef: videoRepairTargetRef, state: videoRepairState, markDerivativeBroken } =
@@ -173,6 +168,7 @@ function PhotoCard({
         <div
           ref={videoRepairTargetRef}
           className="photo-thumbnail"
+          data-media-policy={GRID_MEDIA_POLICY_MARKER}
           onClick={interactionDisabled ? undefined : (onSelect ?? onClick)}
         >
           {!imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}

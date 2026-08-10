@@ -8,6 +8,20 @@ export const VIEWER_DPR_SCALE = 0.85;
 
 /** Number of initially visible derivatives allowed to bypass native lazy loading. */
 export const GALLERY_EAGER_MEDIA_COUNT = 6;
+export const GRID_MEDIA_POLICY_MARKER = "cloudphoto-grid-derivative-only-v1";
+
+interface GridMediaSource {
+  thumbnailUrl?: string;
+  previewUrl?: string;
+}
+
+/** Returns only derivative tiers that are safe to paint without viewer intent. */
+export function selectGridMediaSources({
+  thumbnailUrl,
+  previewUrl,
+}: GridMediaSource): string[] {
+  return [thumbnailUrl, previewUrl].filter((source): source is string => Boolean(source));
+}
 
 interface ViewerMediaSource {
   originalUrl: string;

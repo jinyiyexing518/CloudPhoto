@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { fallbackMediaSource } from "../../services/mediaRoute";
+import { BLANK_GIF, selectGridMediaSources } from "@cloudphoto/algorithm";
 import MediaThumb from "../shared/MediaThumb";
 
 interface Props {
@@ -77,7 +78,9 @@ export default function AutoStory({ photos }: Props) {
 
   const currentPhoto = storyPhotos[currentIndex];
   const currentPhotoIsVideo = currentPhoto?.contentType.startsWith("video/") ?? false;
-  const currentPhotoPoster = currentPhoto?.thumbnailUrl ?? currentPhoto?.previewUrl;
+  const currentDerivativeSources = currentPhoto ? selectGridMediaSources(currentPhoto) : [];
+  const currentPreviewSources = [...currentDerivativeSources].reverse();
+  const currentPhotoPoster = currentDerivativeSources[0];
 
   return (
     <div className="story-wrap">
@@ -183,15 +186,11 @@ export default function AutoStory({ photos }: Props) {
               />
             ) : (
               <img
-                src={currentPhoto.previewUrl ?? currentPhoto.url}
+                src={currentPreviewSources[0] ?? BLANK_GIF}
                 alt={currentPhoto.originalName ?? ""}
                 className="story-player-img"
                 onError={(event) => {
-                  fallbackMediaSource(event.currentTarget, [
-                    currentPhoto.previewUrl,
-                    currentPhoto.thumbnailUrl,
-                    currentPhoto.url,
-                  ]);
+                  fallbackMediaSource(event.currentTarget, currentPreviewSources);
                 }}
               />
             )}

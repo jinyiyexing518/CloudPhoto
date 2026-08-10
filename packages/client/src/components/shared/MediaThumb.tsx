@@ -6,7 +6,7 @@
  * element. The actual video is created only by an explicit playback surface.
  *
  * Props:
- *   url           — full-resolution src (video URL or photo URL)
+ *   url           — full-resolution src reserved for an explicit viewer action
  *   thumbnailUrl  — preferred low-cost thumbnail; img used for videos when provided
  *   alt           — alt text
  *   contentType   — MIME type; if it starts with "video/" renders video badge
@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
 import { isLowInformationVideoCoverImage } from "../../services/videoCoverRepair";
+import { GRID_MEDIA_POLICY_MARKER, selectGridMediaSources } from "@cloudphoto/algorithm";
 
 interface Props {
   url: string;
@@ -31,7 +32,6 @@ interface Props {
 }
 
 export default function MediaThumb({
-  url,
   thumbnailUrl,
   previewUrl,
   alt = "",
@@ -42,22 +42,30 @@ export default function MediaThumb({
   priority = false,
 }: Props) {
   const isVideo = contentType?.startsWith("video/") ?? false;
-  const derivativeSources = [thumbnailUrl, previewUrl]
-    .filter((source): source is string => Boolean(source))
+  const derivativeSources = selectGridMediaSources({ thumbnailUrl, previewUrl })
     .map(getPreferredMediaUrl);
-  const imageSources = derivativeSources.length > 0
-    ? derivativeSources
-    : [getPreferredMediaUrl(url)];
+  const imageSources = derivativeSources;
 
   const [videoPosterFailed, setVideoPosterFailed] = useState(false);
   useEffect(() => setVideoPosterFailed(false), [thumbnailUrl, previewUrl]);
 
   if (!isVideo) {
+    if (imageSources.length === 0) {
+      return (
+        <span
+          className={[className, "photo-thumb-placeholder"].filter(Boolean).join(" ")}
+          data-media-policy={GRID_MEDIA_POLICY_MARKER}
+          role="img"
+          aria-label={alt || "照片缩略图暂不可用"}
+        />
+      );
+    }
     return (
       <img
         src={imageSources[0]}
         alt={alt}
         className={className}
+        data-media-policy={GRID_MEDIA_POLICY_MARKER}
         loading={priority ? "eager" : loading}
         fetchPriority={priority ? "high" : "auto"}
         onError={(event) => { fallbackMediaSource(event.currentTarget, imageSources); }}
@@ -75,6 +83,7 @@ export default function MediaThumb({
         crossOrigin="anonymous"
         alt={alt}
         className={className}
+        data-media-policy={GRID_MEDIA_POLICY_MARKER}
         loading={priority ? "eager" : loading}
         fetchPriority={priority ? "high" : "auto"}
         onLoad={(event) => {
@@ -99,6 +108,7 @@ export default function MediaThumb({
   const placeholder = (
     <span
       className={[className, "video-thumb-placeholder"].filter(Boolean).join(" ")}
+      data-media-policy={GRID_MEDIA_POLICY_MARKER}
       role="img"
       aria-label={alt ? `${alt}，打开视频后生成封面` : "打开视频后生成封面"}
     >

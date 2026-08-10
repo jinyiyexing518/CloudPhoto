@@ -643,6 +643,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 - manifest、静态图标与 `changelog.json` 使用短缓存并重验证；`.webmanifest` 明确返回 `application/manifest+json`
 - `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
 - `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖
+- 已认证刷新会先完成账号绑定的上次群组选择恢复，再读取对应授权范围的照片缓存并刷新列表；同一工作区 5 分钟内返回或 focus 不重复拉取/解码全量列表，进行中的请求也不会被 focus 重启。时间线和文件夹网格只允许 `_th_`/preview derivative，旧缓存缺少衍生图时显示本地占位，不得隐式请求原图。原图仅由显式查看器或下载操作触发。服务端 cursor pagination 需在照片缓存、MemoryMap 与统计消费方完整迁移后单独实施，本次不做不完整的半分页。
 
 ---
 

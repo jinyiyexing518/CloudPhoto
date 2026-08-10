@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } fro
 import "./authenticated.css";
 import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
-import { shouldRefreshPhotoList } from "./services/photoLoadingPolicy";
+import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
 import { isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
@@ -298,7 +298,15 @@ function AppContent() {
     void loadPhotoGallery();
   }, []);
   const photoCacheScope = user ? authCacheOwner(user.id, user.role) : "";
-  const { currentGroupId, groups, groupsLoaded } = useGroup();
+  const { currentGroupId, groups, groupsLoaded, selectionRestored } = useGroup();
+  const resolvedPhotoWorkspaceId = resolvePhotoWorkspaceRequest({
+    groupsLoaded,
+    selectionRestored,
+    groupId: currentGroupId,
+  });
+  const resolvedPhotoWorkspaceKey = resolvedPhotoWorkspaceId === null
+    ? null
+    : privatePhotoListCacheKey(resolvedPhotoWorkspaceId, photoCacheScope);
   const currentGroupIdRef = useRef(currentGroupId);
   currentGroupIdRef.current = currentGroupId;
   const showToast = useToast();
@@ -410,6 +418,7 @@ function AppContent() {
   const scrollLockYRef = useRef(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const lastPhotoRefreshRef = useRef<number>(0);
+  const lastPhotoRefreshWorkspaceRef = useRef<string | null>(null);
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -862,6 +871,7 @@ function AppContent() {
 
   const fetchPhotos = useCallback(async () => {
     if (batchMutationActiveRef.current) return;
+    if (resolvedPhotoWorkspaceId === null || !resolvedPhotoWorkspaceKey) return;
     // Cancel any in-flight previous request before starting another full Blob listing.
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
@@ -871,9 +881,7 @@ function AppContent() {
       !controller.signal.aborted
       && photoStateRevisionRef.current === stateRevision
     );
-    lastPhotoRefreshRef.current = Date.now();
-
-    let stale = getCachedPhotos(currentGroupId, photoCacheScope);
+    let stale = getCachedPhotos(resolvedPhotoWorkspaceId, photoCacheScope);
     let hasStale = stale !== null && stale.length > 0;
     if (hasStale && isCurrent()) {
       setPhotos(stale!);
@@ -887,7 +895,7 @@ function AppContent() {
       // The memory cache disappears on reload. Restore the recent user-scoped
       // Cache Storage entry first so the gallery can paint while Azure refreshes.
       if (!hasStale) {
-        stale = await getPersistedPhotos(currentGroupId, photoCacheScope, isCurrent);
+        stale = await getPersistedPhotos(resolvedPhotoWorkspaceId, photoCacheScope, isCurrent);
         if (!isCurrent()) return;
         hasStale = stale !== null && stale.length > 0;
         if (hasStale) {
@@ -896,13 +904,15 @@ function AppContent() {
         }
       }
 
-      const data = await listPhotos(currentGroupId, {
+      const data = await listPhotos(resolvedPhotoWorkspaceId, {
         cacheScope: photoCacheScope,
         signal: controller.signal,
         isCurrent,
       });
       if (!isCurrent()) return;
       setPhotos(data);
+      lastPhotoRefreshRef.current = Date.now();
+      lastPhotoRefreshWorkspaceRef.current = resolvedPhotoWorkspaceKey;
     } catch (error) {
       // Superseded group/focus loads are intentionally aborted and must not
       // surface a false network error regardless of the transport's error type.
@@ -921,7 +931,7 @@ function AppContent() {
         setLoading(false);
       }
     }
-  }, [currentGroupId, photoCacheScope, showToast]);
+  }, [photoCacheScope, resolvedPhotoWorkspaceId, resolvedPhotoWorkspaceKey, showToast]);
   const fetchPhotosRef = useRef(fetchPhotos);
   fetchPhotosRef.current = fetchPhotos;
 
@@ -942,7 +952,12 @@ function AppContent() {
   useEffect(() => {
     let wasHidden = false;
     const refreshIfStale = () => {
-      if (shouldRefreshPhotoList(lastPhotoRefreshRef.current)) {
+      if (shouldRefreshPhotoWorkspace({
+        currentWorkspaceKey: resolvedPhotoWorkspaceKey,
+        lastWorkspaceKey: lastPhotoRefreshWorkspaceRef.current,
+        lastRefreshAt: lastPhotoRefreshRef.current,
+        requestInFlight: fetchAbortRef.current !== null,
+      })) {
         void fetchPhotos();
       }
     };
@@ -960,7 +975,7 @@ function AppContent() {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", refreshIfStale);
     };
-  }, [fetchPhotos]);
+  }, [fetchPhotos, resolvedPhotoWorkspaceKey]);
 
   // Reset all active filters when the user switches groups (B5 / F9)
   useEffect(() => { setFilters(emptyFilter); }, [currentGroupId]);
@@ -2058,7 +2073,7 @@ function AppContent() {
         </div>
       )}
 
-      <main className="app-main">
+      <main className="app-main" data-workspace-policy={PHOTO_WORKSPACE_POLICY_MARKER}>
         {transferring && (
           <div className="transfer-banner">
             {isTrashMutationActive(trashMutation) && trashMutation ? (

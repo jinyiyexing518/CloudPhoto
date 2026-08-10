@@ -38,6 +38,7 @@ const photoCard = read("packages/client/src/components/gallery/PhotoCard.tsx");
 const mediaThumb = read("packages/client/src/components/shared/MediaThumb.tsx");
 const autoStory = read("packages/client/src/components/auto-story/AutoStory.tsx");
 const onThisDay = read("packages/client/src/components/on-this-day/OnThisDayCard.tsx");
+const memoryMap = read("packages/client/src/components/memory-map/MemoryMap.tsx");
 const vite = read("packages/client/vite.config.mts");
 const nginx = read("infra/nginx.conf");
 const setup = read("infra/setup.sh");
@@ -56,9 +57,10 @@ const staticWebApp = JSON.parse(read("packages/client/public/staticwebapp.config
 const frontendHealth = JSON.parse(read("packages/client/public/healthz.json"));
 
 // Cold list + persisted paint + one shared focus/visibility throttle.
-assert.equal((app.match(/\blistPhotos\(currentGroupId,/g) ?? []).length, 1);
+assert.equal((app.match(/\blistPhotos\(resolvedPhotoWorkspaceId,/g) ?? []).length, 1);
 assert(app.indexOf("await getPersistedPhotos") < app.indexOf("await listPhotos"));
-requireText(app, "shouldRefreshPhotoList(lastPhotoRefreshRef.current)", "refresh gate");
+requireText(app, "shouldRefreshPhotoWorkspace({", "workspace-aware refresh gate");
+requireText(app, "requestInFlight: fetchAbortRef.current !== null", "in-flight list restart guard");
 requireText(app, 'window.addEventListener("focus", refreshIfStale)', "focus gate");
 requireText(app, "refreshIfStale();", "visibility gate");
 requireText(app, "if (!isCurrent()) return;", "superseded revision guard");
@@ -222,6 +224,10 @@ requireText(groupContext, "generation !== refreshGenerationRef.current", "stale 
 requireText(groupContext, "groupsOwnerIdRef.current === user.id", "first-render group ownership guard");
 requireText(groupContext, "userId !== currentUserIdRef.current", "stale group callback guard");
 requireText(groupContext, 'setGroupsError("群组加载失败，请重试")', "visible group load failure");
+requireText(groupContext, "selectionRestored", "saved workspace restoration boundary");
+requireText(groupContext, "Boolean(user && !storedGroupId)", "personal selection independent resolution");
+requireText(groupContext, "selectionOwnerIdRef.current = user?.id ?? null", "selection account ownership");
+requireText(groupContext, "canExposeWorkspaceSelection", "token-safe selection visibility");
 const groupFailure = groupContext.slice(
   groupContext.indexOf("    } catch {"),
   groupContext.indexOf("    } finally {", groupContext.indexOf("    } catch {")),
@@ -301,6 +307,50 @@ for (const [name, source] of [["timeline playback", gallery], ["folder playback"
 }
 requireText(photoCard, "getPreferredMediaUrl", "current card media route");
 requireText(mediaThumb, "getPreferredMediaUrl", "current shared-thumbnail media route");
+requireText(renderPolicy, "selectGridMediaSources", "derivative-only grid policy");
+requireText(photoCard, "selectGridMediaSources", "timeline derivative-only grid policy reuse");
+requireText(mediaThumb, "selectGridMediaSources", "folder derivative-only grid policy reuse");
+requireText(onThisDay, "MediaThumb", "history derivative-only grid policy reuse");
+requireText(autoStory, "selectGridMediaSources", "story derivative-only player policy reuse");
+requireText(autoStory, "MediaThumb", "story derivative-only grid policy reuse");
+requireText(memoryMap, "MediaThumb", "map derivative-only detail policy reuse");
+for (const [name, source] of [
+  ["history grid", onThisDay],
+  ["story grid", autoStory],
+  ["map detail", memoryMap],
+]) {
+  assert(
+    !/(?:thumbnailUrl|previewUrl)\s*(?:\?\?|\|\|)[^\n]*\.url/.test(source),
+    `${name} must not fall back to original media before explicit viewer intent`,
+  );
+}
+requireText(app, "resolvePhotoWorkspaceRequest", "resolved workspace request policy reuse");
+const fetchPhotosSource = app.slice(
+  app.indexOf("const fetchPhotos = useCallback"),
+  app.indexOf("const fetchPhotosRef = useRef"),
+);
+assert(
+  fetchPhotosSource.indexOf("resolvedPhotoWorkspaceId === null")
+    < fetchPhotosSource.indexOf("getCachedPhotos(resolvedPhotoWorkspaceId, photoCacheScope)"),
+  "workspace restoration must gate cache hydration and the network photo list",
+);
+assert(
+  app.indexOf("const resolvedPhotoWorkspaceId = resolvePhotoWorkspaceRequest")
+    < app.indexOf("const fetchPhotos = useCallback"),
+  "the photo loader must consume a resolved workspace identity",
+);
+assert(
+  !fetchPhotosSource.includes("currentGroupId"),
+  "photo loading must depend on the resolved workspace identity, not transient group state",
+);
+assert(
+  !photoCard.includes(": [originalImageUrl]"),
+  "timeline cards must not fall back to original media before viewer intent",
+);
+assert(
+  !mediaThumb.includes(": [getPreferredMediaUrl(url)]"),
+  "folder thumbnails must not fall back to original media before viewer intent",
+);
 requireText(photoCard, 'fetchPriority={priority ? "high" : "auto"}', "above-fold card priority");
 requireText(mediaThumb, 'fetchPriority={priority ? "high" : "auto"}', "above-fold shared-thumbnail priority");
 requireText(gallery, "GALLERY_EAGER_MEDIA_COUNT", "bounded gallery eager-media count");
@@ -349,7 +399,8 @@ assert(!photoCard.includes("Range:"), "gallery cards must not directly request v
 assert(!mediaThumb.includes("<video"), "secondary grids must never create original-video elements");
 requireText(photoCard, 'className="video-thumb-placeholder"', "missing video derivative placeholder");
 requireText(mediaThumb, '"video-thumb-placeholder"', "shared missing video derivative placeholder");
-requireText(photoCard, ".filter((source): source is string => Boolean(source))", "preview-only source normalization");
+requireText(mediaThumb, '"photo-thumb-placeholder"', "shared missing photo derivative placeholder");
+requireText(renderPolicy, ".filter((source): source is string => Boolean(source))", "preview-only source normalization");
 requireText(photoCard, "useVideoCoverRepair", "visible-card repair hook");
 requireText(photoCard, "markDerivativeBroken", "broken derivative repair transition");
 requireText(photoCard, "isLowInformationVideoCoverImage", "successful derivative content check");
@@ -581,7 +632,8 @@ assert.equal(allowedOrigin("https://brave-sand-053b07a00.7.azurestaticapps.net.e
 assert.equal(allowedOrigin("https://attacker.example"), "");
 
 console.log("photo-loading contracts: PASS");
-console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=60000");
+console.log("evidence cold-list-calls=1 persisted-before-network=true focus-visibility-gate-ms=300000 in-flight-restarts=0");
+console.log("evidence restored-group-personal-list-requests=0 initial-grid-original-requests=0 initial-grid-original-bytes=0");
 console.log("evidence video-grid-original-requests=0 video-grid-original-bytes=0 cold-list-route-wait-ms=0 selected-video-preload=auto");
 console.log("evidence media-route-candidates=2 primary-failure-alternate-success=true probe-body-bytes=0 probe-timeout-ms=1500 loser-abort=true");
 console.log("evidence view-normal-video-requests=1 explicit-error-max-requests=2 route-update-remounts=0 derivative-list-heads=0 derivative-list-extra-waits=0");
