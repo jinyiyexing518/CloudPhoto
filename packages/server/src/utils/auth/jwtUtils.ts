@@ -21,7 +21,9 @@ export function signRefreshToken(payload: TokenPayload): string {
 
 export function verifyToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload & { tokenType?: string };
+    if (decoded.tokenType === "refresh") return null;
+    return decoded;
   } catch {
     return null;
   }

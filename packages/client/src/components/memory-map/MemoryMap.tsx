@@ -2,9 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Photo, PhotoLocation, fetchPhotoLocations, updatePhotoGps } from "../../services/photoApi";
+import {
+  Photo,
+  PhotoLocation,
+  fetchPhotoLocations,
+  isAuthorizationDriftError,
+  updatePhotoGps,
+} from "../../services/photoApi";
+import { fallbackMediaSource } from "../../services/mediaRoute";
 import MediaThumb from "../shared/MediaThumb";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
+import { useToast } from "../../contexts/ToastContext";
 
 // Module-level Leaflet cache - avoids re-importing on every effect run
 let cachedLeaflet: typeof import("leaflet") | null = null;
@@ -30,6 +38,7 @@ function displayName(p: { name: string; originalName?: string }): string {
 interface Props {
   photos: Photo[];
   groupId?: string;
+  photosGroupId?: string;
   onViewPhoto?: (name: string) => void;
   onGpsUpdate?: (name: string, lat: string, lon: string) => void;
 }
@@ -45,7 +54,14 @@ interface GeoPin {
   photo?: Photo;
 }
 
-export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpdate }: Props) {
+export default function MemoryMap({
+  photos,
+  groupId = "",
+  photosGroupId = groupId,
+  onViewPhoto,
+  onGpsUpdate,
+}: Props) {
+  const showToast = useToast();
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
   // name -> Marker for O(1) incremental add/remove/update
@@ -56,12 +72,34 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
   // Fast GPS locations from Cosmos cache (lat/lon only, no URL)
-  const [cosmosLocations, setCosmosLocations] = useState<PhotoLocation[]>([]);
+  const [cosmosLocationState, setCosmosLocationState] = useState<{
+    workspace: string;
+    locations: PhotoLocation[];
+  }>({ workspace: groupId, locations: [] });
+  const cosmosLocations = cosmosLocationState.workspace === groupId
+    ? cosmosLocationState.locations
+    : [];
 
   // Fetch GPS locations from Cosmos on mount (fast, independent of full photo list)
   useEffect(() => {
-    void fetchPhotoLocations(groupId).then(setCosmosLocations);
-  }, [groupId]);
+    const controller = new AbortController();
+    const workspace = groupId;
+    setCosmosLocationState({ workspace, locations: [] });
+    void fetchPhotoLocations(workspace, { signal: controller.signal }).then(
+      (locations) => {
+        if (!controller.signal.aborted) setCosmosLocationState({ workspace, locations });
+      },
+      (error: unknown) => {
+        if (
+          controller.signal.aborted
+          || isAuthorizationDriftError(error)
+          || (error instanceof Error && error.name === "AbortError")
+        ) return;
+        showToast(error instanceof Error ? error.message : "加载照片位置失败", "error");
+      },
+    );
+    return () => controller.abort(new DOMException("Workspace changed", "AbortError"));
+  }, [groupId, showToast]);
 
   // Manual GPS editing
   const [editTarget, setEditTarget] = useState<Photo | null>(null);
@@ -74,8 +112,9 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
 
   // Memoised derived state
   const geoPhotos = useMemo<GeoPin[]>(() => {
+    const currentPhotos = photosGroupId === groupId ? photos : [];
     // Build a fast lookup of full Photo objects by name
-    const photoMap = new Map<string, Photo>(photos.map((p) => [p.name, p]));
+    const photoMap = new Map<string, Photo>(currentPhotos.map((p) => [p.name, p]));
 
     // Merge: Cosmos locations are the source of truth for GPS coords;
     // enrich with full Photo object when available (provides URL, subject, etc.)
@@ -92,7 +131,7 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
 
     // Also include photos with GPS that aren't in Cosmos yet (e.g. just uploaded this session)
     const cosmosNames = new Set(cosmosLocations.map((l) => l.name));
-    const fromPhotosOnly: GeoPin[] = photos
+    const fromPhotosOnly: GeoPin[] = currentPhotos
       .filter((p) => p.gpsLat && p.gpsLon && !cosmosNames.has(p.name))
       .flatMap((p) => {
         const lat = parseFloat(p.gpsLat!);
@@ -102,11 +141,11 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
       });
 
     return [...fromCosmos, ...fromPhotosOnly];
-  }, [cosmosLocations, photos]);
+  }, [cosmosLocations, groupId, photos, photosGroupId]);
 
   const noGpsPhotos = useMemo(
-    () => photos.filter((p) => !p.gpsLat || !p.gpsLon),
-    [photos],
+    () => (photosGroupId === groupId ? photos : []).filter((p) => !p.gpsLat || !p.gpsLon),
+    [groupId, photos, photosGroupId],
   );
 
   // Includes coordinates so effect re-runs on GPS updates, not just count changes

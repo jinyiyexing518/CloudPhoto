@@ -2,6 +2,7 @@ export interface MaintenanceBackfillPage {
   processed: number;
   changed: number;
   skipped: number;
+  indexReconciled: number;
   failed: number;
   hasMore: boolean;
   cursor?: string;
@@ -11,6 +12,7 @@ export interface MaintenanceBackfillProgress {
   processed: number;
   changed: number;
   skipped: number;
+  indexReconciled: number;
   failed: number;
   hasMore: boolean;
 }
@@ -47,6 +49,9 @@ function parsePage(value: unknown): MaintenanceBackfillPage {
     processed: requireCounter(page.processed, "processed"),
     changed: requireCounter(page.changed, "changed"),
     skipped: requireCounter(page.skipped, "skipped"),
+    indexReconciled: page.indexReconciled === undefined
+      ? 0
+      : requireCounter(page.indexReconciled, "indexReconciled"),
     failed: requireCounter(page.failed, "failed"),
     hasMore: page.hasMore,
     cursor: page.cursor,
@@ -63,6 +68,7 @@ export async function runMaintenanceBackfillPages({
     processed: 0,
     changed: 0,
     skipped: 0,
+    indexReconciled: 0,
     failed: 0,
   };
   let cursor = "";
@@ -73,6 +79,7 @@ export async function runMaintenanceBackfillPages({
     totals.processed += page.processed;
     totals.changed += page.changed;
     totals.skipped += page.skipped;
+    totals.indexReconciled += page.indexReconciled;
     totals.failed += page.failed;
     onProgress?.({ ...totals, hasMore: page.hasMore });
     if (!page.hasMore) return totals;

@@ -105,8 +105,8 @@ export async function uploadPhotoWithProgress(
   if (subject) params.set("subject", subject);
   if (folder) params.set("folder", folder);
   if (groupId) params.set("groupId", groupId);
-  if (gpsLat) params.set("gpsLat", gpsLat);
-  if (gpsLon) params.set("gpsLon", gpsLon);
+  if (gpsLat !== undefined && gpsLat.trim() !== "") params.set("gpsLat", gpsLat);
+  if (gpsLon !== undefined && gpsLon.trim() !== "") params.set("gpsLon", gpsLon);
   if (takenAt) params.set("takenAt", takenAt);
   if (uploadId) params.set("uploadId", uploadId);
   const authGeneration = getAuthGeneration();

@@ -38,10 +38,10 @@ import {
 } from "../../services/videoPlaybackSession";
 import PhotoCard from "./PhotoCard";
 import { useToast } from "../../contexts/ToastContext";
-import { reverseGeocode } from "../../utils/geocode";
 import PhotoTimeEditDialog from "../shared/PhotoTimeEditDialog";
 import LocationSearchPanel from "../shared/LocationSearchPanel";
 import BatchOperationsBar from "../shared/BatchOperationsBar";
+import { usePhotoLocationAddress } from "./usePhotoLocationAddress";
 import { type VoiceTransferState } from "../../transfer/voiceTransferState";
 import {
   runBatchMutationBoundary,
@@ -933,8 +933,7 @@ function FolderContent({
   const [showBatchGpsEdit, setShowBatchGpsEdit] = useState(false);
   const [batchGpsLat, setBatchGpsLat] = useState("");
   const [batchGpsLon, setBatchGpsLon] = useState("");
-  const [geoAddress, setGeoAddress] = useState<string | null>(null);
-  const [geoLoading, setGeoLoading] = useState(false);
+  const { address: geoAddress, loading: geoLoading } = usePhotoLocationAddress(selectedPhoto);
   const [downloading, setDownloading] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
@@ -1149,18 +1148,6 @@ function FolderContent({
     },
   });
 
-  // Reverse geocode GPS coordinates to human-readable address
-  useEffect(() => {
-    setGeoAddress(null);
-    const lat = parseFloat(selectedPhoto?.gpsLat ?? "");
-    const lon = parseFloat(selectedPhoto?.gpsLon ?? "");
-    if (!isFinite(lat) || !isFinite(lon)) return;
-    setGeoLoading(true);
-    void reverseGeocode(lat, lon).then((addr) => {
-      setGeoAddress(addr);
-      setGeoLoading(false);
-    });
-  }, [selectedPhoto?.gpsLat, selectedPhoto?.gpsLon]);
   const toggleSelect = (name: string) => {
     setSelected((prev) => { const next = new Set(prev); next.has(name) ? next.delete(name) : next.add(name); return next; });
   };
@@ -1335,7 +1322,6 @@ function FolderContent({
       onGpsUpdate?.(selectedPhoto.name, lat, lon);
       setSelectedPhoto({ ...selectedPhoto, gpsLat: lat, gpsLon: lon });
       setEditingGps(false);
-      setGeoAddress(null);
     } catch {
       showToast("更新位置失败", "error");
     } finally {

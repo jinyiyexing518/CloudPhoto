@@ -14,11 +14,13 @@ import {
   encodeBackfillCursor,
 } from "./backfillCursor";
 import exifr from "exifr";
+import { reconcileLocationIndex } from "./locationMaintenance";
 
 const ALLOWED_IMAGE_MIME = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/gif",
   "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff",
 ]);
+const METADATA_SCAN_VERSION = "1";
 
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
@@ -30,11 +32,6 @@ function setMeta(metadata: Record<string, string>, key: string, value: string): 
     if (existingKey.toLowerCase() === key.toLowerCase()) delete metadata[existingKey];
   }
   metadata[key] = value;
-}
-
-function isPreconditionFailed(error: unknown): boolean {
-  return !!error && typeof error === "object"
-    && (error as { statusCode?: number }).statusCode === 412;
 }
 
 app.http("backfillPhotoMetadata", {
@@ -73,7 +70,7 @@ app.http("backfillPhotoMetadata", {
 
     try {
       const containerClient = getBlobServiceClient().getContainerClient(containerName);
-      let processed = 0, updated = 0, failed = 0;
+      let processed = 0, updated = 0, indexReconciled = 0, failed = 0;
       let lastProcessedName = "";
       let hasMore = false;
       let nextCursor = "";
@@ -96,24 +93,38 @@ app.http("backfillPhotoMetadata", {
           });
           break pages;
         }
-        // Skip soft-deleted photos
-        if (getMeta(blob.metadata, "deletedAt")) continue;
         const filename = blob.name.split("/").pop() ?? "";
         if (filename.startsWith("_th_")) continue;
-
-        // Only process image files (not videos/audio)
+        const folder = blob.name.split("/").slice(2, -1).join("/");
+        if (folder === "_voice") continue;
         const mime = blob.properties.contentType ?? "";
-        if (!ALLOWED_IMAGE_MIME.has(mime)) continue;
-
+        const isImage = ALLOWED_IMAGE_MIME.has(mime);
+        const isDeleted = Boolean(getMeta(blob.metadata, "deletedAt"));
         const needsTakenAt = !getMeta(blob.metadata, "takenAt");
         const needsGps = !getMeta(blob.metadata, "gpsLat") || !getMeta(blob.metadata, "gpsLon");
-        // Skip blobs that already have all available info
-        if (!needsTakenAt && !needsGps) continue;
+        const needsMetadataScan = getMeta(blob.metadata, "metadataScanVersion") !== METADATA_SCAN_VERSION;
+        if (isDeleted || !isImage || (!needsTakenAt && !needsGps) || !needsMetadataScan) {
+          processed++;
+          lastProcessedName = blob.name;
+          const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
+          const reconciliation = await reconcileLocationIndex({
+            metadataChanged: false,
+            sync: () => syncPhotoLocationFromBlob(blockBlobClient, blob.name, scope),
+          });
+          if (reconciliation.indexReconciled) indexReconciled++;
+          else {
+            failed++;
+            context.warn(`photoLocations reconciliation remains pending for ${blob.name}`);
+          }
+          continue;
+        }
 
         processed++;
         lastProcessedName = blob.name;
         try {
           const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
+          const props = await blockBlobClient.getProperties();
+          if (!props.etag) throw new Error("Missing photo ETag");
           const buf = await blockBlobClient.downloadToBuffer();
           let extractedTakenAt: string | undefined;
           let extractedGps: { lat: number; lon: number } | undefined;
@@ -143,53 +154,45 @@ app.http("backfillPhotoMetadata", {
             }
           }
 
-          if (extractedTakenAt || extractedGps) {
-            let metadataUpdated = false;
-            let gpsPublished = false;
-            for (let attempt = 1; attempt <= 3; attempt++) {
-              const props = await blockBlobClient.getProperties();
-              const latestMetadata: Record<string, string> = { ...(props.metadata ?? {}) };
-              if (getMeta(latestMetadata, "deletedAt")) break;
+          let metadataUpdated = false;
+          const latestMetadata: Record<string, string> = { ...(props.metadata ?? {}) };
+          if (!getMeta(latestMetadata, "deletedAt")) {
 
-              let changed = false;
-              if (extractedTakenAt && !getMeta(latestMetadata, "takenAt")) {
-                setMeta(latestMetadata, "takenAt", extractedTakenAt);
-                changed = true;
-              }
-              const needsLatestLat = Boolean(extractedGps && !getMeta(latestMetadata, "gpsLat"));
-              const needsLatestLon = Boolean(extractedGps && !getMeta(latestMetadata, "gpsLon"));
-              if (extractedGps && needsLatestLat) {
-                setMeta(latestMetadata, "gpsLat", String(extractedGps.lat));
-                changed = true;
-              }
-              if (extractedGps && needsLatestLon) {
-                setMeta(latestMetadata, "gpsLon", String(extractedGps.lon));
-                changed = true;
-              }
-              if (!changed) break;
-
-              try {
-                if (!props.etag) throw new Error("Missing photo ETag");
-                await blockBlobClient.setMetadata(latestMetadata, {
-                  conditions: { ifMatch: props.etag },
-                });
-                metadataUpdated = true;
-                gpsPublished = needsLatestLat || needsLatestLon;
-                break;
-              } catch (error) {
-                if (isPreconditionFailed(error) && attempt < 3) continue;
-                throw error;
-              }
+            let changed = false;
+            if (extractedTakenAt && !getMeta(latestMetadata, "takenAt")) {
+              setMeta(latestMetadata, "takenAt", extractedTakenAt);
+              changed = true;
             }
-
-            if (metadataUpdated) updated++;
-            if (metadataUpdated && gpsPublished) {
-              try {
-                await syncPhotoLocationFromBlob(blockBlobClient, blob.name, scope);
-              } catch (error) {
-                context.warn(`photoLocations GPS sync failed for ${blob.name}:`, error);
-              }
+            const needsLatestLat = Boolean(extractedGps && !getMeta(latestMetadata, "gpsLat"));
+            const needsLatestLon = Boolean(extractedGps && !getMeta(latestMetadata, "gpsLon"));
+            if (extractedGps && needsLatestLat) {
+              setMeta(latestMetadata, "gpsLat", String(extractedGps.lat));
+              changed = true;
             }
+            if (extractedGps && needsLatestLon) {
+              setMeta(latestMetadata, "gpsLon", String(extractedGps.lon));
+              changed = true;
+            }
+            if (getMeta(latestMetadata, "metadataScanVersion") !== METADATA_SCAN_VERSION) {
+              setMeta(latestMetadata, "metadataScanVersion", METADATA_SCAN_VERSION);
+              changed = true;
+            }
+            if (changed) {
+              await blockBlobClient.setMetadata(latestMetadata, {
+                conditions: { ifMatch: props.etag },
+              });
+              metadataUpdated = true;
+            }
+          }
+          if (metadataUpdated) updated++;
+          const reconciliation = await reconcileLocationIndex({
+            metadataChanged: metadataUpdated,
+            sync: () => syncPhotoLocationFromBlob(blockBlobClient, blob.name, scope),
+          });
+          if (reconciliation.indexReconciled) indexReconciled++;
+          else {
+            failed++;
+            context.warn(`photoLocations reconciliation remains pending for ${blob.name}`);
           }
         } catch (err) {
           context.warn(`Backfill failed for ${blob.name}:`, err);
@@ -214,6 +217,7 @@ app.http("backfillPhotoMetadata", {
         body: JSON.stringify({
           processed,
           updated,
+          indexReconciled,
           failed,
           hasMore,
           ...(hasMore && nextCursor ? { cursor: nextCursor } : {}),

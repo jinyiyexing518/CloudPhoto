@@ -20,6 +20,11 @@ import {
   uploadAdmission,
   validateBufferedUploadLength,
 } from "./uploadAdmission";
+import {
+  readGpsMetadata,
+  resolveUploadGps,
+  uploadGpsMetadata,
+} from "./uploadGps";
 import exifr from "exifr";
 // sharp is loaded lazily via require() so a missing/incompatible native binary
 // does not crash the entire function app on startup (would break login, etc.).
@@ -99,13 +104,16 @@ async function buildUploadResponse(
   scope: string,
   context: InvocationContext,
 ): Promise<HttpResponseInit> {
+  const props = await blockBlobClient.getProperties();
+  const metadata = props.metadata;
+  const gps = readGpsMetadata(metadata);
+  let locationIndexPending = false;
   try {
     await syncPhotoLocationFromBlob(blockBlobClient, blobName, scope);
   } catch (error) {
-    context.warn("photoLocations reconciliation failed (non-fatal):", error);
+    locationIndexPending = Boolean(gps);
+    context.warn("photoLocations reconciliation pending:", error);
   }
-  const props = await blockBlobClient.getProperties();
-  const metadata = props.metadata;
   const thumbnailName = decodeMeta(getMeta(metadata, "thumbnailName"));
   const previewName = decodeMeta(getMeta(metadata, "previewName"));
   return {
@@ -131,9 +139,12 @@ async function buildUploadResponse(
       lastModifiedBy: decodeMeta(getMeta(metadata, "lastModifiedBy")),
       lastModifiedAt: getMeta(metadata, "lastModifiedAt"),
       ...(getMeta(metadata, "isAnimated") === "1" && { isAnimated: true }),
-      ...(getMeta(metadata, "gpsLat") && { gpsLat: getMeta(metadata, "gpsLat") }),
-      ...(getMeta(metadata, "gpsLon") && { gpsLon: getMeta(metadata, "gpsLon") }),
+      ...(gps ?? {}),
       ...(getMeta(metadata, "takenAt") && { takenAt: getMeta(metadata, "takenAt") }),
+      ...(locationIndexPending && {
+        locationIndexPending: true,
+        warning: "照片 GPS 已保存，位置索引将在历史照片维护时重试",
+      }),
     }),
   };
 }
@@ -312,9 +323,6 @@ app.http("uploadPhoto", {
         const buf = Buffer.from(arrayBuffer);
         const isAnimated = !isVideoUpload && !isAudioUpload && detectAnimated(buf, mimeType);
 
-      // Server-side GPS extraction: try to read EXIF if client didn't provide coordinates
-      let resolvedLat = gpsLat;
-      let resolvedLon = gpsLon;
       // Use client-supplied takenAt as the base; EXIF will override it below for images
       let takenAt: string | undefined = (request.query.get("takenAt") ?? "") || undefined;
       if (!isVideoUpload && !isAudioUpload) {
@@ -328,17 +336,15 @@ app.http("uploadPhoto", {
             takenAt = `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}T${pad(dt.getUTCHours())}:${pad(dt.getUTCMinutes())}:${pad(dt.getUTCSeconds())}`;
           }
         } catch { /* best-effort */ }
-        if (!resolvedLat) {
-          try {
-            const gps = await exifr.gps(buf);
-            if (gps?.latitude != null && gps?.longitude != null
-                && isFinite(gps.latitude) && isFinite(gps.longitude)) {
-              resolvedLat = String(gps.latitude);
-              resolvedLon = String(gps.longitude);
-            }
-          } catch { /* best-effort */ }
-        }
       }
+      const resolvedGps = await resolveUploadGps(gpsLat, gpsLon, async () => {
+        if (isVideoUpload || isAudioUpload) return null;
+        try {
+          return await exifr.gps(buf);
+        } catch {
+          return null;
+        }
+      });
       // Animated check must happen before upload so we can conditionally skip thumbnail.
       // Motion photos (animated JPEG): sharp processes the JPEG portion, ignoring the video track.
       // GIFs: sharp extracts the first frame → static WebP thumbnail used as gallery placeholder.
@@ -354,8 +360,7 @@ app.http("uploadPhoto", {
         createdAt: now,
         lastModifiedBy: b64(uploadedBy),
         lastModifiedAt: now,
-        ...(resolvedLat && { gpsLat: resolvedLat }),
-        ...(resolvedLon && { gpsLon: resolvedLon }),
+        ...uploadGpsMetadata(resolvedGps),
         ...(takenAt && { takenAt }),
         ...(isAnimated && { isAnimated: "1" }),
         ...(rawUploadId && { uploadId: rawUploadId }),

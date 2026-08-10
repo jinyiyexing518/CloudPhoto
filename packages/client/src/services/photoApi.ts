@@ -86,6 +86,7 @@ export interface Photo {
   deletedAt?: string; deletedBy?: string; deletedByName?: string;
   voiceMemoName?: string; voiceMemoUrl?: string;
   gpsLat?: string; gpsLon?: string;
+  locationIndexPending?: boolean; warning?: string;
   isAnimated?: boolean;
   takenAt?: string;
 }
@@ -330,13 +331,36 @@ export async function listPhotos(groupId = "", options: ListPhotosOptions = {}):
   return photos;
 }
 
-export async function fetchPhotoLocations(groupId = ""): Promise<PhotoLocation[]> {
+export async function fetchPhotoLocations(
+  groupId = "",
+  options: { signal?: AbortSignal } = {},
+): Promise<PhotoLocation[]> {
   const url = groupId ? `${API_BASE}/photos/locations?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos/locations`;
-  try {
-    const response = await fetchWithTimeout(url, { headers: authHeaders() });
-    if (!response.ok) return [];
-    return response.json() as Promise<PhotoLocation[]>;
-  } catch { return []; }
+  const snapshot = getAuthorizationSnapshot();
+  if (!snapshot) throw new AuthorizationDriftError();
+  const generation = getAuthGeneration();
+  const response = await fetchWithTimeout(url, {
+    headers: authHeadersForSnapshot(snapshot),
+    signal: options.signal,
+  });
+  if (
+    generation !== getAuthGeneration()
+    || getAuthorizationSnapshot()?.cacheOwner !== snapshot.cacheOwner
+  ) {
+    await response.body?.cancel();
+    throw new AuthorizationDriftError();
+  }
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "加载照片位置失败"));
+  }
+  const locations = await response.json() as PhotoLocation[];
+  if (
+    generation !== getAuthGeneration()
+    || getAuthorizationSnapshot()?.cacheOwner !== snapshot.cacheOwner
+  ) {
+    throw new AuthorizationDriftError();
+  }
+  return locations;
 }
 
 // ── Photo metadata mutations (consolidated via shared patchMetadata) ───────
@@ -483,6 +507,7 @@ export async function permanentlyDeletePhoto(name: string, signal?: AbortSignal)
 export interface PhotoMetadataBackfillProgress {
   processed: number;
   updated: number;
+  indexReconciled: number;
   failed: number;
   hasMore: boolean;
 }
@@ -508,7 +533,7 @@ export interface ThumbnailBackfillOptions {
 export async function backfillPhotoMetadata(
   groupId = "",
   options: PhotoMetadataBackfillOptions = {},
-): Promise<{ processed: number; updated: number; failed: number }> {
+): Promise<{ processed: number; updated: number; indexReconciled: number; failed: number }> {
   const authGeneration = getAuthGeneration();
   const assertCurrentAuth = () => {
     if (authGeneration !== getAuthGeneration()) {
@@ -537,6 +562,7 @@ export async function backfillPhotoMetadata(
       const result = await response.json() as {
         processed: number;
         updated: number;
+        indexReconciled: number;
         failed: number;
         hasMore: boolean;
         cursor?: string;
@@ -548,12 +574,18 @@ export async function backfillPhotoMetadata(
       options.onProgress?.({
         processed: progress.processed,
         updated: progress.changed,
+        indexReconciled: progress.indexReconciled,
         failed: progress.failed,
         hasMore: progress.hasMore,
       });
     },
   });
-  return { processed: totals.processed, updated: totals.changed, failed: totals.failed };
+  return {
+    processed: totals.processed,
+    updated: totals.changed,
+    indexReconciled: totals.indexReconciled,
+    failed: totals.failed,
+  };
 }
 
 export async function backfillThumbnails(

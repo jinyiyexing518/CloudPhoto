@@ -402,6 +402,7 @@ function AppContent() {
     return "timeline";
   });
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [photosGroupId, setPhotosGroupId] = useState(currentGroupId);
   const [loading, setLoading] = useState(true);
   const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -883,7 +884,8 @@ function AppContent() {
     photoStateRevisionRef.current += 1;
     fetchAbortRef.current?.abort();
     setPhotos([]);
-  }, [photoCacheScope]);
+    setPhotosGroupId(currentGroupId);
+  }, [currentGroupId, photoCacheScope]);
 
   useEffect(() => subscribeToPreferredMediaRoute(() => {
     setPhotos((current) => current.map(proxyPhoto));
@@ -905,6 +907,7 @@ function AppContent() {
     let hasStale = stale !== null && stale.length > 0;
     if (hasStale && isCurrent()) {
       setPhotos(stale!);
+      setPhotosGroupId(currentGroupId);
       setLoading(false);
     } else {
       setLoading(true);
@@ -920,6 +923,7 @@ function AppContent() {
         hasStale = stale !== null && stale.length > 0;
         if (hasStale) {
           setPhotos(stale!);
+          setPhotosGroupId(currentGroupId);
           setLoading(false);
         }
       }
@@ -931,6 +935,7 @@ function AppContent() {
       });
       if (!isCurrent()) return;
       setPhotos(data);
+      setPhotosGroupId(currentGroupId);
       lastPhotoRefreshRef.current = Date.now();
       lastPhotoRefreshWorkspaceRef.current = resolvedPhotoWorkspaceKey;
     } catch (error) {
@@ -939,6 +944,7 @@ function AppContent() {
       if (controller.signal.aborted) return;
       if (isAuthorizationDriftError(error)) {
         setPhotos([]);
+        setPhotosGroupId(currentGroupId);
         return;
       }
       // Always show the error — even when stale data is shown the user needs to
@@ -1567,6 +1573,9 @@ function AppContent() {
               ? previous
               : [...previous, uploadedPhoto]
           ));
+          if (uploadedPhoto.locationIndexPending) {
+            showToast(uploadedPhoto.warning ?? "照片 GPS 已保存，位置索引将在维护任务中自动重试", "info");
+          }
           }
 
           if (uploadedVideoNeedsThumbnail) {
@@ -2614,6 +2623,7 @@ function AppContent() {
                 <MemoryMap
                   photos={photos}
                   groupId={currentGroupId || ""}
+                  photosGroupId={photosGroupId}
                   onViewPhoto={jumpToTimelinePhoto}
                   onGpsUpdate={(name, lat, lon) =>
                     mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))

@@ -38,3 +38,4 @@ import "./functions/invites/listGroupInvites";
 import "./functions/invites/cancelInvite";
 import "./functions/changelogs/getChangelogs";
 import "./functions/geocode/searchGeocode";
+import "./functions/geocode/reverseGeocode";

@@ -545,7 +545,15 @@ for (const source of [upload, backfill, setVideoThumb]) {
 }
 requireText(metadataBackfill, "const props = await blockBlobClient.getProperties()", "fresh metadata backfill read");
 requireText(metadataBackfill, "conditions: { ifMatch: props.etag }", "metadata backfill ETag");
-requireText(metadataBackfill, "isPreconditionFailed(error)", "metadata backfill conflict retry");
+assert(
+  metadataBackfill.indexOf("const props = await blockBlobClient.getProperties()")
+    < metadataBackfill.indexOf("const buf = await blockBlobClient.downloadToBuffer()"),
+  "metadata EXIF extraction must bind to a pre-download source ETag",
+);
+assert(
+  !metadataBackfill.includes("isPreconditionFailed(error)"),
+  "metadata backfill must not retry stale EXIF against a replacement Blob",
+);
 requireText(metadataBackfill, 'request.query.get("cursor")', "metadata progress cursor");
 requireText(metadataBackfill, '!request.query.has("limit")', "legacy partial-backfill rejection");
 requireText(metadataBackfill, "listing.byPage({", "paged metadata listing");

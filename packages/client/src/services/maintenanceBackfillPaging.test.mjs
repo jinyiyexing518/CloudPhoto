@@ -15,10 +15,10 @@ test("reports cumulative metadata progress after every verified page", async () 
   });
 
   assert.deepEqual(progress, [
-    { processed: 30, changed: 20, skipped: 0, failed: 1, hasMore: true },
-    { processed: 37, changed: 24, skipped: 0, failed: 1, hasMore: false },
+    { processed: 30, changed: 20, skipped: 0, indexReconciled: 0, failed: 1, hasMore: true },
+    { processed: 37, changed: 24, skipped: 0, indexReconciled: 0, failed: 1, hasMore: false },
   ]);
-  assert.deepEqual(totals, { processed: 37, changed: 24, skipped: 0, failed: 1 });
+  assert.deepEqual(totals, { processed: 37, changed: 24, skipped: 0, indexReconciled: 0, failed: 1 });
 });
 
 test("reports cumulative thumbnail progress after every verified page", async () => {
@@ -37,6 +37,7 @@ test("reports cumulative thumbnail progress after every verified page", async ()
     processed: 42,
     changed: 15,
     skipped: 26,
+    indexReconciled: 0,
     failed: 1,
     hasMore: false,
   });
@@ -68,6 +69,7 @@ test("caller abort prevents the next page request and preserves prior progress",
     processed: 30,
     changed: 12,
     skipped: 17,
+    indexReconciled: 0,
     failed: 1,
     hasMore: true,
   });

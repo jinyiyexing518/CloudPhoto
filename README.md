@@ -130,6 +130,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 - **时间线视图** — 按日期分组的照片时间线，默认最新在前
 - **📷/☁ 排序方式切换** — 可在「拍摄时间」与「上传时间」两种排序之间切换；无拍摄时间时自动回退到上传时间
 - **受保护的历史维护任务** — 历史缩略图生成与照片元数据回填按绑定账号空间的不透明游标逐页执行；设置页实时显示累计处理/生成或更新/跳过/失败数，可停止并保留已完成页统计。任务期间禁止重复启动、关闭设置、切 Tab/空间、关闭页面或激活 PWA 更新；切号、卸载或空间漂移会中止当前请求及后续分页
+- **照片地点可靠恢复** — 照片 GPS 继续以 Blob metadata 为事实源；上传响应会明确标记暂未写入 Cosmos 位置索引的情况，历史元数据维护无需重新下载已有 GPS 的原图即可幂等修复索引。详情地址优先通过鉴权后的 `/api/geocode/reverse` 获取，失败时仅直连 Nominatim 一次，并始终保留坐标兜底显示
 - **以照片为主的聚焦工具栏** — 首页顶部工具栏轻量展示当前空间、数量、运行模式及高价值导航入口
 - **全高局部宽侧边栏** — 时间线和重要片段使用占横向 80%–90% 的右侧全高面板，其余区域变暗，视觉上明确是「侧面弹出工具面板」
 - **侧栏筛选自适应重排** — 时间线 `FilterBar` 通过显式 sidebar variant 按容器宽度重排：搜索与清空保持独立首行，快捷筛选和网格尺寸自动换行；320–480px、200% 缩放、长中英文标签和激活 chip 均保持完整可见及 44px 触控目标，桌面默认布局不变
@@ -363,11 +364,20 @@ previewName       2048 px WebP 名称（仅在 derivative 上传成功后以 ETa
 | `POST`   | `/api/photos/move` | ✓ | 将照片移动到其他文件夹 |
 | `PATCH`  | `/api/photos/metadata?name=<blobName>` | ✓ | 更新主题/文件夹/原始名称/拍摄时间/GPS；冲突返回 `409` |
 | `DELETE` | `/api/photos?name=<blobName>` | ✓ | 软删除照片；冲突返回 `409` |
-| `POST`   | `/api/photos/backfill?limit=30[&groupId=<id>&cursor=<opaque>]` | ✓ | 分页扫描缺少 `takenAt` 或 GPS 的原始照片（排除 `_th_` derivative），从 EXIF 回填元数据；`limit` 必填，游标绑定操作与账号空间；返回 `{ processed, updated, failed, hasMore, cursor? }` |
+| `POST`   | `/api/photos/backfill?limit=30[&groupId=<id>&cursor=<opaque>]` | ✓ | 分页扫描照片：缺少 `takenAt`/GPS 时从 EXIF 回填；已有合法 GPS 时不下载原图、直接修复位置索引。返回 `{ processed, updated, indexReconciled, failed, hasMore, cursor? }` |
 
 **`GET /api/photos` 所有权规则：**
 - `?groupId=<id>` — 请求者必须是该群组成员
 - 无 `groupId` — 返回请求者的私有照片（管理员可看全部私有照片）
+
+### 地理编码
+
+| 方法 | 路由 | 鉴权 | 说明 |
+|------|------|------|------|
+| `GET` | `/api/geocode/search?q=<query>` | ✓ | 地点正向搜索 |
+| `GET` | `/api/geocode/reverse?lat=<lat>&lon=<lon>` | ✓ | GPS 反向解析为最小 `{ address }`；严格校验范围，Nominatim 429 透传 `Retry-After` |
+
+正向与反向请求共用每 worker 约 1 req/s 的有界队列、并发去重及 TTL/LRU 缓存；失败不进入长缓存。客户端反向解析缓存只存在于内存，并按认证 generation 与个人/群组 workspace 隔离。
 
 ### 群组
 
