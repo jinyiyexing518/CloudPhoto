@@ -20,6 +20,36 @@ body {
   flex-direction: column;
 }
 
+.skip-to-content {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 10002;
+  max-width: calc(100vw - 24px);
+  padding: 10px 16px;
+  border: 2px solid #1d4ed8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 8px));
+  transition: transform 120ms ease-out;
+}
+
+.skip-to-content:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+  transform: translate(-50%, 12px);
+}
+
+.skip-to-content[aria-disabled="true"] {
+  visibility: hidden;
+}
+
 .app-header {
   background: #fff;
   padding: 4px 24px;

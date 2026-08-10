@@ -8,6 +8,7 @@ import {
   lazy,
   Suspense,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import "./authenticated.css";
@@ -25,6 +26,7 @@ import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility
 import {
   WORKSPACE_TAB_ORDER,
   activateWorkspaceTabWithFocus,
+  focusWorkspacePanel,
   getWorkspaceTabFromKey,
   isWorkspaceTab,
   workspaceTabId,
@@ -759,6 +761,13 @@ function AppContent() {
     if (!targetTab) return;
     event.preventDefault();
     activateWorkspaceTab(targetTab);
+  };
+
+  const handleSkipToWorkspacePanel = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (sidebarOpen || hasOpenAriaModal(document)) return;
+    const panel = document.getElementById(workspaceTabPanelId(activeTab));
+    focusWorkspacePanel(panel);
   };
 
   useEffect(() => {
@@ -2226,6 +2235,16 @@ function AppContent() {
 
   return (
     <div className={`app${headerHidden ? " header-hidden" : ""}${headerInteractionActive ? " header-pinned" : ""}`}>
+      <a
+        className="skip-to-content"
+        href={`#${workspaceTabPanelId(activeTab)}`}
+        tabIndex={sidebarOpen ? -1 : 0}
+        aria-disabled={sidebarOpen || undefined}
+        onClick={handleSkipToWorkspacePanel}
+      >
+        跳到主要内容
+      </a>
+
       {/* Reading progress bar – width/opacity driven by direct DOM ref, no setState */}
       <div ref={progressBarRef} className="scroll-progress-bar" style={{ width: "0%", opacity: 0 }} />
 
@@ -2388,7 +2407,7 @@ function AppContent() {
         />
       )}
 
-      <main className="app-main" data-workspace-policy={PHOTO_WORKSPACE_POLICY_MARKER}>
+      <main id="workspace-main" className="app-main" data-workspace-policy={PHOTO_WORKSPACE_POLICY_MARKER}>
         {transferring && (
           <div className="transfer-banner">
             {isTrashMutationActive(trashMutation) && trashMutation ? (

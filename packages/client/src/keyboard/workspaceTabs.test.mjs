@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   WORKSPACE_TAB_ORDER,
   activateWorkspaceTabWithFocus,
+  focusWorkspacePanel,
   getWorkspaceTabFromKey,
   isWorkspaceTab,
 } from "./workspaceTabs.ts";
@@ -13,6 +14,10 @@ const appSource = readFileSync(new URL("../AuthenticatedApp.tsx", import.meta.ur
 const stylesSource = readFileSync(new URL("../authenticated.css", import.meta.url), "utf8");
 const modalBoundarySource = readFileSync(
   new URL("../components/shared/useModalFocusBoundary.ts", import.meta.url),
+  "utf8",
+);
+const modalFocusSource = readFileSync(
+  new URL("../components/shared/modalFocus.ts", import.meta.url),
   "utf8",
 );
 const shortcutsDialogSource = readFileSync(
@@ -120,6 +125,25 @@ test("rejected activation restores focus to the selected tab", () => {
   assert.deepEqual(focused, ["timeline", "folder"]);
 });
 
+test("skip navigation focuses the active panel without uncontrolled scrolling", () => {
+  const calls = [];
+  const target = {
+    hidden: false,
+    focus: (options) => calls.push(["focus", options]),
+    scrollIntoView: (options) => calls.push(["scroll", options]),
+  };
+  assert.equal(focusWorkspacePanel(target), true);
+  assert.deepEqual(calls, [
+    ["focus", { preventScroll: true }],
+    ["scroll", { block: "start", inline: "nearest" }],
+  ]);
+
+  target.hidden = true;
+  assert.equal(focusWorkspacePanel(target), false);
+  assert.equal(focusWorkspacePanel(null), false);
+  assert.equal(calls.length, 2);
+});
+
 test("AuthenticatedApp exposes a labelled tablist, roving tabs, and linked tabpanels", () => {
   assert.match(appSource, /role="tablist"[\s\S]*aria-label="工作区主视图"/);
   assert.match(appSource, /role="tab"[\s\S]*aria-selected=\{activeTab === tab\}[\s\S]*tabIndex=\{activeTab === tab \? 0 : -1\}/);
@@ -133,6 +157,19 @@ test("AuthenticatedApp exposes a labelled tablist, roving tabs, and linked tabpa
   assert.match(appSource, /tabIndex=\{activeTab ===/);
   assert.match(appSource, /hidden=\{activeTab !==/);
   assert.match(appSource, /aria-hidden="true"[\s\S]*view-tab-count/);
+});
+
+test("AuthenticatedApp exposes the first focusable skip link to the active panel", () => {
+  const skipLinkIndex = appSource.indexOf('className="skip-to-content"');
+  const headerIndex = appSource.indexOf('className="app-header"');
+  assert.ok(skipLinkIndex > 0 && skipLinkIndex < headerIndex);
+  assert.match(appSource, /href=\{`#\$\{workspaceTabPanelId\(activeTab\)\}`\}/);
+  assert.match(appSource, /tabIndex=\{sidebarOpen \? -1 : 0\}/);
+  assert.match(appSource, /aria-disabled=\{sidebarOpen \|\| undefined\}/);
+  assert.match(appSource, /const handleSkipToWorkspacePanel =[\s\S]*event\.preventDefault\(\)[\s\S]*sidebarOpen \|\| hasOpenAriaModal\(document\)[\s\S]*focusWorkspacePanel/);
+  assert.match(appSource, /<main[\s\S]*id="workspace-main"[\s\S]*className="app-main"/);
+  assert.match(modalBoundarySource, /document\.addEventListener\("focusin", handleFocusIn, true\)/);
+  assert.match(modalFocusSource, /child\.inert = true/);
 });
 
 test("tab activation stays behind modal and transfer guards and keeps mobile focus visible", () => {
@@ -220,4 +257,29 @@ test("workspace tab light palette meets text and focus contrast thresholds", () 
 
   const disabled = cssBlocks(".view-tab:disabled")[0];
   assert.match(disabled, /cursor:\s*not-allowed/);
+});
+
+test("skip link is fixed, visible only on focus, and meets contrast thresholds", () => {
+  const pageBackground = "#ffffff";
+  const link = cssBlocks(".skip-to-content")[0];
+  const focus = cssBlocks(".skip-to-content:focus-visible")[0];
+  assert.match(link, /position:\s*fixed/);
+  assert.match(link, /max-width:\s*calc\(100vw - 24px\)/);
+  assert.match(link, /transform:\s*translate\(-50%,\s*calc\(-100% - 8px\)\)/);
+  assert.doesNotMatch(link, /display:\s*none|position:\s*(?:static|relative)/);
+  assert.match(focus, /transform:\s*translate\(-50%,\s*12px\)/);
+  assert.ok(
+    contrastRatio(
+      resolvedHex([".skip-to-content"], "color"),
+      resolvedHex([".skip-to-content"], "background"),
+    ) >= 4.5,
+    "skip-link text must meet 4.5:1",
+  );
+  assert.ok(
+    contrastRatio(
+      resolvedHex([".skip-to-content:focus-visible"], "outline"),
+      pageBackground,
+    ) >= 3,
+    "skip-link focus indicator must meet 3:1",
+  );
 });

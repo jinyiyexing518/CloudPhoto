@@ -42,3 +42,16 @@ export function activateWorkspaceTabWithFocus(
   focus(accepted ? target : current);
   return accepted;
 }
+
+interface WorkspacePanelFocusTarget {
+  hidden: boolean;
+  focus: (options?: FocusOptions) => void;
+  scrollIntoView: (options?: ScrollIntoViewOptions) => void;
+}
+
+export function focusWorkspacePanel(target: WorkspacePanelFocusTarget | null): boolean {
+  if (!target || target.hidden) return false;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: "start", inline: "nearest" });
+  return true;
+}

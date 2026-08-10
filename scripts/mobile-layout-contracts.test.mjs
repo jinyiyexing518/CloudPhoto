@@ -99,6 +99,25 @@ test("tab strip retains its own intentional horizontal scrolling", () => {
   assert.match(authenticatedApp, /ref=\{viewTabsRef\}[\s\S]*onScroll=/);
 });
 
+test("focused skip link stays fixed inside 320px and 390px viewports", () => {
+  const link = cssBlock(".skip-to-content");
+  assert.equal(declaration(link, "position"), "fixed");
+  assert.equal(declaration(link, "max-width"), "calc(100vw - 24px)");
+  assert.match(link, /left\s*:\s*50%/);
+  assert.match(
+    cssBlock(".skip-to-content:focus-visible"),
+    /transform\s*:\s*translate\(-50%,\s*12px\)/,
+  );
+
+  for (const viewport of [320, 390]) {
+    const maxWidth = viewport - 24;
+    const left = (viewport - maxWidth) / 2;
+    const rootMaxScrollX = Math.max(0, left + maxWidth - viewport);
+    assert.equal(left, 12, `${viewport}px skip link must keep a 12px inline inset`);
+    assert.equal(rootMaxScrollX, 0, `${viewport}px skip link must not widen the document`);
+  }
+});
+
 test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
   assert.match(workspaceFab, /const \[compactExpanded, setCompactExpanded\] = useState\(false\)/);
   assert.match(workspaceFab, /aria-expanded=\{compactExpanded\}/);
