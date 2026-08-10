@@ -1,5 +1,12 @@
 # 更新日志
 
+### 2026-08-11 — 清理前端部署运行时告警
+
+**工程修复**
+- **🚦 前端部署 Action 契约** — 移除 SWA upload 不生效的 `production_branch` 输入，生产仍只由 `main` hard condition 选择；同 workflow 的 `frontend-dist` 跨 job 传递升级到 Node 24 的 `upload-artifact@v7` / `download-artifact@v8`，名称、路径、1 天保留期、OIDC token、并发与 deployed SHA 健康检查保持不变
+
+---
+
 ### 2026-08-11 — 新上传照片位置闭环
 
 **Bug 修复**

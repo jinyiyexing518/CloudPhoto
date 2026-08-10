@@ -25,6 +25,8 @@ const frontendCancelInProgress =
 const frontendUploadCondition =
   "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')";
 const frontendUploadToken = "${{ steps.swa_token.outputs.deployment_token }}";
+const frontendArtifactName = "frontend-dist";
+const frontendArtifactPath = "packages/client/dist";
 const frontendDeploymentMarkerCommand =
   `printf '{"sha":"%s"}\\n' "$GITHUB_SHA" > packages/client/dist/deployment.json`;
 const frontendDispatchModes = ["validate", "production"];
@@ -222,6 +224,17 @@ function activeStepBlocks(text) {
     if (!stepsLine) continue;
 
     const stepsIndent = stepsLine[1].length;
+    let job = null;
+    for (let ownerIndex = index - 1; ownerIndex >= 0; ownerIndex -= 1) {
+      const ownerLine = lines[ownerIndex];
+      if (/^\s*(?:#.*)?$/.test(ownerLine)) continue;
+      const ownerIndent = indentation(ownerLine);
+      if (ownerIndent < stepsIndent - 2) break;
+      if (ownerIndent !== stepsIndent - 2) continue;
+      const owner = ownerLine.match(/^\s*([A-Za-z_][\w-]*):\s*(?:#.*)?$/);
+      if (owner) job = owner[1];
+      break;
+    }
     let stepIndent;
     let current;
     let cursor = index + 1;
@@ -240,7 +253,7 @@ function activeStepBlocks(text) {
         if (stepIndent === undefined) stepIndent = lineIndent;
         if (lineIndent === stepIndent) {
           if (current) steps.push(current);
-          current = { indent: stepIndent, lines: [line] };
+          current = { indent: stepIndent, job, lines: [line] };
           continue;
         }
       }
@@ -331,6 +344,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     "type",
   ]);
   const staticWebAppActions = [];
+  const artifactActions = [];
   const checkoutRefs = [];
   const activeSource = text
     .split(/\r?\n/)
@@ -388,8 +402,26 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         action: stepChildField(step, "with", "action"),
         path,
         condition: stepField(step, "if"),
+        job: step.job,
+        productionBranch: stepChildField(step, "with", "production_branch"),
         ref: staticWebApp[1],
         token: stepChildField(step, "with", "azure_static_web_apps_api_token"),
+      });
+    }
+
+    const artifact = uses?.match(/^actions\/(upload-artifact|download-artifact)@(.+)$/i);
+    if (artifact) {
+      artifactActions.push({
+        action: artifact[1].toLowerCase(),
+        condition: stepField(step, "if"),
+        ifNoFilesFound: stepChildField(step, "with", "if-no-files-found"),
+        job: step.job,
+        name: stepChildField(step, "with", "name"),
+        path: stepChildField(step, "with", "path"),
+        ref: artifact[2],
+        retentionDays: stepChildField(step, "with", "retention-days"),
+        stepName: name,
+        uses,
       });
     }
 
@@ -436,16 +468,19 @@ export function inspectWorkflow(text, path = "workflow.yml") {
       frontendDeploymentMarker = {
         condition: stepField(step, "if"),
         command: stepField(step, "run"),
+        job: step.job,
       };
     }
     if (stepField(step, "id") === "swa_token") {
       frontendTokenResolver = {
+        job: step.job,
         source: step.lines.join("\n"),
       };
     }
   }
 
   return {
+    artifactActions,
     azureLoginRefs,
     checkoutRefs,
     setupNodeVersions,
@@ -458,6 +493,10 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     stepWorkingDirectories,
     frontendTokenResolver,
     frontendDeploymentMarker,
+    frontendProductionJob: {
+      condition: nestedScalarValue(text, ["jobs", "deploy_production", "if"]),
+      needs: nestedScalarValue(text, ["jobs", "deploy_production", "needs"]),
+    },
     productionHealthClassification,
     productionHealthClassificationValidation,
     productionHealthCheck,
@@ -641,6 +680,51 @@ export function checkWorkflowRuntimeContracts(workflows) {
   if (!frontendPolicy) {
     issues.push(`${frontendWorkflow} is missing`);
   } else {
+    const artifactUploads = frontendPolicy.artifactActions.filter(
+      (action) => action.action === "upload-artifact"
+    );
+    const artifactDownloads = frontendPolicy.artifactActions.filter(
+      (action) => action.action === "download-artifact"
+    );
+    if (
+      artifactUploads.length !== 1
+      || artifactUploads[0]?.uses !== "actions/upload-artifact@v7"
+      || artifactUploads[0]?.job !== "build"
+      || artifactUploads[0]?.stepName !== "Stage production artifact"
+      || artifactUploads[0]?.condition !== frontendUploadCondition
+      || artifactUploads[0]?.name !== frontendArtifactName
+      || artifactUploads[0]?.path !== frontendArtifactPath
+      || artifactUploads[0]?.ifNoFilesFound !== "error"
+      || artifactUploads[0]?.retentionDays !== "1"
+    ) {
+      issues.push(
+        `${frontendWorkflow} must use actions/upload-artifact@v7 with the guarded frontend-dist path and one-day retention`
+      );
+    }
+    if (
+      artifactDownloads.length !== 1
+      || artifactDownloads[0]?.uses !== "actions/download-artifact@v8"
+      || artifactDownloads[0]?.job !== "deploy_production"
+      || artifactDownloads[0]?.stepName !== "Download production artifact"
+      || artifactDownloads[0]?.condition !== null
+      || artifactDownloads[0]?.name !== frontendArtifactName
+      || artifactDownloads[0]?.path !== frontendArtifactPath
+      || artifactDownloads[0]?.ifNoFilesFound !== null
+      || artifactDownloads[0]?.retentionDays !== null
+    ) {
+      issues.push(
+        `${frontendWorkflow} must use actions/download-artifact@v8 to restore frontend-dist at the original cross-job path`
+      );
+    }
+    if (
+      frontendPolicy.staticWebAppActions.some(
+        (action) => action.productionBranch !== null
+      )
+    ) {
+      issues.push(
+        `${frontendWorkflow} must not pass the unsupported production_branch input to Azure/static-web-apps-deploy`
+      );
+    }
     if (
       frontendPolicy.concurrency.group !== frontendProductionConcurrencyGroup
       || frontendPolicy.concurrency.cancelInProgress !== frontendCancelInProgress
@@ -661,12 +745,17 @@ export function checkWorkflowRuntimeContracts(workflows) {
       || frontendPolicy.staticWebAppActions.length !== 1
       || frontendPolicy.staticWebAppActions[0]?.action !== "upload"
       || frontendPolicy.staticWebAppActions[0]?.condition !== frontendUploadCondition
+      || frontendPolicy.staticWebAppActions[0]?.job !== "deploy_production"
       || frontendPolicy.staticWebAppActions[0]?.ref !== "v1"
       || frontendPolicy.staticWebAppActions[0]?.token !== frontendUploadToken
+      || frontendPolicy.frontendProductionJob.condition !== frontendUploadCondition
+      || frontendPolicy.frontendProductionJob.needs !== "build"
       || frontendPolicy.usesRepositorySwaToken
       || !frontendPolicy.frontendTokenResolver
+      || frontendPolicy.frontendTokenResolver?.job !== "deploy_production"
       || frontendPolicy.frontendDeploymentMarker?.condition !== frontendUploadCondition
       || frontendPolicy.frontendDeploymentMarker?.command !== frontendDeploymentMarkerCommand
+      || frontendPolicy.frontendDeploymentMarker?.job !== "build"
       || !frontendPolicy.frontendTokenResolver.source.includes(
         "az staticwebapp secrets list"
       )

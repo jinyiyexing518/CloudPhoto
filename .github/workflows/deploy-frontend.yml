@@ -121,7 +121,7 @@ jobs:
 
       - name: Stage production artifact
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: packages/client/dist
@@ -139,7 +139,7 @@ jobs:
 
     steps:
       - name: Download production artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: packages/client/dist
@@ -206,5 +206,4 @@ jobs:
           action: upload
           app_location: packages/client/dist   # deploy pre-built output directly
           output_location: ""
-          production_branch: main
           skip_app_build: true        # we built manually above to inject env vars

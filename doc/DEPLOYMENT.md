@@ -15,7 +15,8 @@
 
 - **前端**：推送 `packages/client/**` 或共享算法运行时代码/构建元数据变更时 `.github/workflows/deploy-frontend.yml` 自动触发，`VITE_API_BASE` 从 GitHub Secret 读取
 - **后端**：推送 `packages/server/**` 或共享算法运行时代码/构建元数据变更时 `.github/workflows/deploy-backend.yml` 自动触发
-- 部署与同步 Workflow 均使用 `actions/setup-node@v7`、基于 Node 24 的 `azure/login@v3` 和 **OIDC Federated Credential**，无任何长期密码；静态契约会阻止 Node 环境 Action、登录 Action 或目标 Node 运行时回退到弃用版本
+- 部署与同步 Workflow 均使用 `actions/setup-node@v7`、基于 Node 24 的 `azure/login@v3` 和 **OIDC Federated Credential**，无任何长期密码；前端跨 job 产物固定使用 Node 24 的 `actions/upload-artifact@v7` / `actions/download-artifact@v8`，保持 `frontend-dist` 名称、`packages/client/dist` 路径和 1 天 retention 不变；静态契约会阻止 Node 环境 Action、登录 Action、artifact Action 或目标 Node 运行时回退到弃用版本
+- 前端生产分支只由 `main` push 或 `main` 上显式 `workflow_dispatch mode=production` 的 workflow/job/step hard condition 选择；SWA Action 不传 `production_branch`，PR 与非 `main` 手动运行仍只验证且不会取得生产 artifact 或执行 Azure upload
 - 前端 Vite 配置使用 `.mts` ESM 入口并从 `import.meta.url` 解析源码别名；构建后的静态契约会拒绝旧 `.ts` 配置或 CommonJS `__dirname` 回归
 - 共享算法触发面严格限定为 `packages/algorithm/src/**`、`package.json` 和 `tsconfig.json`；README 等不会改变部署产物的文件不触发生产重建
 

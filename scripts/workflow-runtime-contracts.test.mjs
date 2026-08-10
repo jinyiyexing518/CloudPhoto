@@ -199,6 +199,46 @@ jobs:
   );
 });
 
+test("rejects the unsupported Static Web Apps production_branch input", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "          skip_app_build: true",
+    "          production_branch: main\n          skip_app_build: true"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("must not pass the unsupported production_branch input")
+    )
+  );
+});
+
+test("rejects Node 20 artifact action majors when Node 24 releases exist", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  )
+    .replace("actions/upload-artifact@v7", "actions/upload-artifact@v4")
+    .replace("actions/download-artifact@v8", "actions/download-artifact@v4");
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("actions/upload-artifact@v7")
+    )
+  );
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("actions/download-artifact@v8")
+    )
+  );
+});
+
 test("reads frontend dispatch and upload policy from active YAML only", () => {
   const inspected = inspectWorkflow(`
 on:
@@ -236,11 +276,124 @@ jobs:
       action: "upload",
       path: ".github/workflows/deploy-frontend.yml",
       condition: "github.ref == 'refs/heads/main'",
+      job: "deploy",
+      productionBranch: null,
       ref: "v1",
       token: "${{ steps.swa_token.outputs.deployment_token }}",
     },
   ]);
   assert.equal(inspected.usesRepositorySwaToken, false);
+});
+
+test("locks frontend artifact casing, refs, paths, retention, and cross-job handoff", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  );
+  const inspected = inspectWorkflow(frontend, path);
+
+  assert.deepEqual(inspected.artifactActions, [
+    {
+      action: "upload-artifact",
+      condition:
+        "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')",
+      ifNoFilesFound: "error",
+      job: "build",
+      name: "frontend-dist",
+      path: "packages/client/dist",
+      ref: "v7",
+      retentionDays: "1",
+      stepName: "Stage production artifact",
+      uses: "actions/upload-artifact@v7",
+    },
+    {
+      action: "download-artifact",
+      condition: null,
+      ifNoFilesFound: null,
+      job: "deploy_production",
+      name: "frontend-dist",
+      path: "packages/client/dist",
+      ref: "v8",
+      retentionDays: null,
+      stepName: "Download production artifact",
+      uses: "actions/download-artifact@v8",
+    },
+  ]);
+  assert.deepEqual(inspected.frontendProductionJob, {
+    condition:
+      "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')",
+    needs: "build",
+  });
+  assert.equal(inspected.staticWebAppActions[0].productionBranch, null);
+  assert.equal(inspected.staticWebAppActions[0].job, "deploy_production");
+});
+
+test("rejects artifact action casing or ref drift", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  )
+    .replace("actions/upload-artifact@v7", "Actions/Upload-Artifact@v7")
+    .replace("actions/download-artifact@v8", "actions/download-artifact@v7");
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) => issue.includes("actions/upload-artifact@v7"))
+  );
+  assert.ok(
+    result.issues.some((issue) => issue.includes("actions/download-artifact@v8"))
+  );
+});
+
+test("rejects deployment steps moved to the wrong jobs", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  );
+  const uploadBlock = frontend.match(
+    /      - name: Stage production artifact[\s\S]*?          retention-days: 1\n/
+  )?.[0];
+  const downloadBlock = frontend.match(
+    /      - name: Download production artifact[\s\S]*?          path: packages\/client\/dist\n/
+  )?.[0];
+  assert.ok(uploadBlock);
+  assert.ok(downloadBlock);
+
+  const artifactJobsSwapped = frontend
+    .replace(uploadBlock, "__UPLOAD_BLOCK__")
+    .replace(downloadBlock, uploadBlock)
+    .replace("__UPLOAD_BLOCK__", downloadBlock);
+  const swaBlock = frontend.match(
+    /      - name: Deploy to Azure Static Web Apps[\s\S]*$/
+  )?.[0];
+  assert.ok(swaBlock);
+  const swaMovedToBuild = frontend
+    .replace(swaBlock, "")
+    .replace("  deploy_production:", `${swaBlock}\n  deploy_production:`);
+
+  const artifactResult = checkWorkflowRuntimeContracts([
+    { path, text: artifactJobsSwapped },
+  ]);
+  const swaResult = checkWorkflowRuntimeContracts([{ path, text: swaMovedToBuild }]);
+
+  assert.ok(
+    artifactResult.issues.some((issue) =>
+      issue.includes("actions/upload-artifact@v7")
+    )
+  );
+  assert.ok(
+    artifactResult.issues.some((issue) =>
+      issue.includes("actions/download-artifact@v8")
+    )
+  );
+  assert.ok(
+    swaResult.issues.some((issue) =>
+      issue.includes("guard the production upload")
+    )
+  );
 });
 
 test("finds Static Web Apps actions regardless of ref or casing", () => {
@@ -252,10 +405,13 @@ jobs:
         with:
           azure_static_web_apps_api_token: \${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: upload
+          production_branch: main
 `, ".github/workflows/deploy-frontend.yml");
 
   assert.equal(inspected.staticWebAppActions.length, 1);
   assert.equal(inspected.staticWebAppActions[0].ref, "0123456789abcdef");
+  assert.equal(inspected.staticWebAppActions[0].job, "deploy");
+  assert.equal(inspected.staticWebAppActions[0].productionBranch, "main");
   assert.equal(inspected.usesRepositorySwaToken, true);
 });
 
