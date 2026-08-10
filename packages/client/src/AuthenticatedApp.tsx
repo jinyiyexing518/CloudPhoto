@@ -23,6 +23,8 @@ import { useToast } from "./contexts/ToastContext";
 import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { focusMenuItem, handleMenuKeyDown } from "./components/shared/menuKeyboard";
+import ShortcutsHelpDialog from "./components/auth/ShortcutsHelpDialog";
+import InstallGuideDialog from "./components/auth/InstallGuideDialog";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
 import { usePwaInstall } from "./pwa/usePwaInstall";
 import {
@@ -328,6 +330,7 @@ function AppContent() {
   currentGroupIdRef.current = currentGroupId;
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const settingsRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -359,6 +362,14 @@ function AppContent() {
     setUserMenuOpen(false);
     if (restoreFocus) userAvatarButtonRef.current?.focus();
   }, []);
+  const openShortcutsFromUserMenu = () => {
+    closeUserMenu(true);
+    setShowShortcutsHelp(true);
+  };
+  const openAddAdminFromUserMenu = () => {
+    closeUserMenu(true);
+    setShowAddAdmin(true);
+  };
   useEffect(() => {
     if (!groupsLoaded) return;
     const group = groups.find((g) => g.id === currentGroupId);
@@ -446,7 +457,6 @@ function AppContent() {
   const lastPhotoRefreshRef = useRef<number>(0);
   const lastPhotoRefreshWorkspaceRef = useRef<string | null>(null);
   const focusClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   // Deferred mount: FolderView is lazy-loaded, so we only mount it on the user's first visit
   // to the folder tab. Once mounted it stays mounted (tab-caching). Avoids a failed dynamic
@@ -2011,24 +2021,7 @@ function AppContent() {
 
       {/* Keyboard shortcuts help overlay */}
       {showShortcutsHelp && (
-        <div className="dialog-overlay" onClick={() => setShowShortcutsHelp(false)}>
-          <div className="shortcuts-help-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="shortcuts-help-header">
-              <span>⌨️ 键盘快捷键</span>
-              <button type="button" className="dialog-close-btn" onClick={() => setShowShortcutsHelp(false)} aria-label="关闭键盘快捷键">✕</button>
-            </div>
-            <ul className="shortcuts-list">
-              <li><kbd>R</kbd><span>刷新照片列表</span></li>
-              <li><kbd>?</kbd><span>显示 / 关闭本面板</span></li>
-              <li><kbd>1 / 2 / 3</kbd><span>切换时间线 / 文件夹 / 重要片段</span></li>
-              <li><kbd>4 / 5 / 6</kbd><span>记忆地图 / 时光胶囊 / 自动故事</span></li>
-              <li><kbd>S</kbd><span>开启 / 关闭侧边栏</span></li>
-              <li><kbd>⌫ Backspace</kbd><span>清空所有筛选条件</span></li>
-              <li><kbd>Esc</kbd><span>关闭侧边栏 / 弹框</span></li>
-              <li><kbd>← →</kbd><span>照片详情上一张 / 下一张</span></li>
-            </ul>
-          </div>
-        </div>
+        <ShortcutsHelpDialog onClose={() => setShowShortcutsHelp(false)} />
       )}
       {locationBanner && (
         <div className="location-banner" key={locationBanner}>
@@ -2104,18 +2097,21 @@ function AppContent() {
                 tabIndex={-1}
                 className="user-menu-item"
                 disabled={isStandalone}
-                onClick={() => { setUserMenuOpen(false); void handleInstallApp(); }}
+                onClick={() => {
+                  closeUserMenu(true);
+                  void handleInstallApp();
+                }}
               >
                 <span className="user-menu-item-icon">{isStandalone ? "✅" : "📲"}</span>
                 {isStandalone ? "已安装应用" : "安装应用"}
               </button>
-              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={() => { setShowShortcutsHelp(true); setUserMenuOpen(false); }}>
+              <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={openShortcutsFromUserMenu}>
                 <span className="user-menu-item-icon">⌨️</span> 快捷键
               </button>
               {user?.username === SUPER_ADMIN && (
                 <>
                   <div className="user-menu-divider" role="separator" />
-                  <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={() => { setShowAddAdmin(true); setUserMenuOpen(false); }}>
+                  <button type="button" role="menuitem" tabIndex={-1} className="user-menu-item" onClick={openAddAdminFromUserMenu}>
                     <span className="user-menu-item-icon">➕</span> 添加管理员
                   </button>
                 </>
@@ -2148,19 +2144,11 @@ function AppContent() {
       )}
       {inviteToken && <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>}
       {showInstallGuide && (
-        <div className="dialog-overlay" onClick={() => setShowInstallGuide(false)}>
-          <div className="add-admin-dialog install-guide-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="add-admin-header">
-              <span>安装使用指引</span>
-              <button type="button" className="dialog-close-btn" onClick={() => setShowInstallGuide(false)} aria-label="关闭安装使用指引">✕</button>
-            </div>
-            <p className="add-admin-hint">{isStandalone ? "当前已是 App 模式" : "可同时作为网站和 App 使用"}</p>
-            <ol className="install-guide-list">
-              {installGuideText.map((item) => <li key={item}>{item}</li>)}
-            </ol>
-            <p className="install-guide-note">提示：上传或下载过程中，请不要刷新页面或关闭应用窗口。</p>
-          </div>
-        </div>
+        <InstallGuideDialog
+          instructions={installGuideText}
+          isStandalone={isStandalone}
+          onClose={() => setShowInstallGuide(false)}
+        />
       )}
 
       <main className="app-main" data-workspace-policy={PHOTO_WORKSPACE_POLICY_MARKER}>

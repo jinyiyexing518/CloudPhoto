@@ -3165,7 +3165,7 @@ body {
   border-radius: 8px;
   padding: 7px 14px;
   font-size: 0.88rem;
-  color: #0078d4;
+  color: #0067b8;
   cursor: pointer;
   font-weight: 500;
   transition: background 0.15s;
@@ -3174,7 +3174,7 @@ body {
 
 .group-switcher-btn:hover { background: #dbeafe; }
 .group-switcher-btn:focus-visible {
-  outline: 2px solid #0078d4;
+  outline: 2px solid #0067b8;
   outline-offset: 2px;
 }
 
@@ -3221,7 +3221,7 @@ body {
   outline-offset: -2px;
   background: #eff6ff;
 }
-.group-dropdown-item.active { background: #f0f7ff; color: #0078d4; font-weight: 600; }
+.group-dropdown-item.active { background: #f0f7ff; color: #0067b8; font-weight: 600; }
 
 .group-dropdown-row {
   display: flex;
@@ -3229,7 +3229,7 @@ body {
 }
 .group-dropdown-row.active .group-dropdown-label {
   background: #f0f7ff;
-  color: #0078d4;
+  color: #0067b8;
   font-weight: 600;
 }
 
@@ -3264,7 +3264,7 @@ body {
   border: none;
   cursor: pointer;
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: #64748b;
   padding: 2px 4px;
   line-height: 1;
   margin-left: auto;
@@ -3280,14 +3280,14 @@ body {
 }
 
 .group-dropdown-create {
-  color: #0078d4 !important;
+  color: #0067b8 !important;
   font-weight: 500;
 }
 
 .group-dropdown-loading {
   padding: 10px 14px;
   font-size: 0.82rem;
-  color: #9ca3af;
+  color: #64748b;
 }
 
 .group-dropdown-error {
@@ -8127,11 +8127,12 @@ body {
 .shortcuts-help-dialog {
   background: #fff;
   border-radius: 16px;
-  width: min(400px, 92vw);
+  width: min(400px, 100%);
+  max-height: calc(100dvh - 32px);
   padding: 0;
   box-shadow: 0 20px 60px rgba(0,0,0,0.2);
   animation: slideUp 0.14s ease;
-  overflow: hidden;
+  overflow-y: auto;
 }
 .shortcuts-help-header {
   display: flex;
@@ -8142,6 +8143,12 @@ body {
   font-size: 1rem;
   font-weight: 700;
   color: #0f172a;
+}
+.shortcuts-help-description {
+  margin: 0;
+  padding: 12px 20px 4px;
+  font-size: 0.82rem;
+  color: #64748b;
 }
 .shortcuts-list {
   list-style: none;
