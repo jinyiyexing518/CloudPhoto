@@ -50,6 +50,16 @@
     "seq": 1786467000000
   },
   {
+    "id": "2026-08-11-private-storage-key-enumeration",
+    "date": "2026-08-11",
+    "icon": "🔒",
+    "title": "可靠清理浏览器私有存储键",
+    "type": "fix",
+    "desc": "注销、会话失效或切换账号时改用浏览器标准 Storage 键接口清理私有本地数据，避免枚举差异留下旧记录。",
+    "details": "清理会先通过 Storage.length 与 Storage.key() 建立稳定快照，再删除 owner 和 auth-scoped 私有键；测试覆盖不作为对象可枚举属性暴露的存储项，并继续证明网格、安装提示和工作区文件夹偏好不受影响。",
+    "seq": 1786412000000
+  },
+  {
     "id": "2026-08-11-card-contrast",
     "date": "2026-08-11",
     "icon": "◐",

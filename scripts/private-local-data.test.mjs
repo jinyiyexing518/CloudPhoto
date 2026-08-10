@@ -160,6 +160,7 @@ localStorage.setItem("cf_recent_share_links", JSON.stringify([{
   expiresAt: "2026-08-12T12:00:00.000Z",
   createdAt: "2026-08-10T12:00:00.000Z",
 }]));
+values.set("cloudphoto_private_data_v1:non-enumerable-private-record", "private");
 for (const [key, value] of [
   ["cf_grid_size", "lg"],
   ["fab-pos", JSON.stringify({ x: 10, y: 20 })],
@@ -174,6 +175,11 @@ await lifecycle.preparePrivatePhotoCachesForScope("account-a:viewer");
 assert.equal(values.has("cloudphoto_moments_insights_v1"), false, "legacy insights must be deleted, not adopted");
 assert.equal(values.has("cloudphoto_moments_diagnostics_v1"), false, "legacy diagnostics must be deleted, not adopted");
 assert.equal(values.has("cf_recent_share_links"), false, "legacy share links must be deleted, not adopted");
+assert.equal(
+  values.has("cloudphoto_private_data_v1:non-enumerable-private-record"),
+  false,
+  "cleanup must use the Storage key API rather than enumerable object properties",
+);
 assert.deepEqual(momentsStore.readPrivateMomentInsights("personal"), {}, "unowned legacy data must stay unreadable");
 assert.deepEqual(shareStore.listRecentShareLinks(), [], "unowned legacy share tokens must stay unreadable");
 for (const key of [

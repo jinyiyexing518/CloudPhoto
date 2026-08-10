@@ -37,7 +37,12 @@ export function registerPrivatePhotoCacheWrite(operation: Promise<void>): () => 
 
 function removeScopedPrivateLocalData(): void {
   try {
-    for (const key of Object.keys(localStorage)) {
+    const keys: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key) keys.push(key);
+    }
+    for (const key of keys) {
       if (key === CACHE_OWNER_KEY || key.startsWith(PRIVATE_LOCAL_DATA_PREFIX)) {
         localStorage.removeItem(key);
       }
