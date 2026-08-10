@@ -6,6 +6,7 @@ import ts from "typescript";
 const card = readFileSync(new URL("./PhotoCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../authenticated.css", import.meta.url), "utf8");
 const policySource = readFileSync(new URL("./photoCardContextMenu.ts", import.meta.url), "utf8");
+const sharedMenuSource = readFileSync(new URL("../shared/menuKeyboard.ts", import.meta.url), "utf8");
 const compiledPolicy = ts.transpileModule(policySource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2022,
@@ -14,7 +15,6 @@ const compiledPolicy = ts.transpileModule(policySource, {
 }).outputText;
 const policyModuleUrl = `data:text/javascript;base64,${Buffer.from(compiledPolicy).toString("base64")}`;
 const {
-  getNextPhotoContextMenuIndex,
   getPhotoContextMenuPosition,
   openPhotoOriginal,
 } = await import(policyModuleUrl);
@@ -53,15 +53,6 @@ test("photo context menu positioning preserves pointer intent and bounds keyboar
   );
 });
 
-test("photo context menu navigation wraps and supports Home and End", () => {
-  assert.equal(getNextPhotoContextMenuIndex(0, "ArrowDown", 4), 1);
-  assert.equal(getNextPhotoContextMenuIndex(3, "ArrowDown", 4), 0);
-  assert.equal(getNextPhotoContextMenuIndex(0, "ArrowUp", 4), 3);
-  assert.equal(getNextPhotoContextMenuIndex(2, "Home", 4), 0);
-  assert.equal(getNextPhotoContextMenuIndex(1, "End", 4), 3);
-  assert.equal(getNextPhotoContextMenuIndex(0, "ArrowDown", 0), null);
-});
-
 test("photo context menu uses native menuitem buttons without nested interactive content", () => {
   assert.match(card, /role="menu"/);
   assert.match(card, /aria-label=\{`照片 \$\{displayName\} 操作菜单`\}/);
@@ -85,9 +76,11 @@ test("opening the original photo isolates the app opener and referrer", () => {
 });
 
 test("photo context menu owns focus, complete navigation, and connected-only restoration", () => {
-  assert.match(card, /menuItemRefs\.current\[0\]\?\.focus\(\{ preventScroll: true \}\)/);
-  assert.match(card, /"ArrowDown", "ArrowUp", "Home", "End"/);
-  assert.match(card, /event\.key === "Escape"/);
+  assert.match(card, /import \{ focusMenuItem, handleMenuKeyDown \} from "\.\.\/shared\/menuKeyboard"/);
+  assert.match(card, /focusMenuItem\(menuRef\.current, "first"\)/);
+  assert.match(card, /handleMenuKeyDown\([\s\S]*menuRef\.current[\s\S]*document\.activeElement/);
+  assert.match(sharedMenuSource, /event\.key === "Tab"[\s\S]*dismiss\(false\)/);
+  assert.match(sharedMenuSource, /event\.key === "Escape"[\s\S]*dismiss\(true\)/);
   assert.match(card, /primaryActionRef\.current\?\.isConnected/);
   assert.match(card, /const activateContextMenuAction[\s\S]*primaryActionRef\.current\?\.isConnected[\s\S]*primaryActionRef\.current\.focus\(\{ preventScroll: true \}\);[\s\S]*setCtxMenu\(null\);[\s\S]*run\(\)/);
   assert.match(card, /key: "preview"[\s\S]*run: onClick/);

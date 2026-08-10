@@ -140,6 +140,16 @@
     "seq": 1786406400000
   },
   {
+    "id": "2026-08-11-photo-card-valid-primary",
+    "date": "2026-08-11",
+    "icon": "⌨️",
+    "title": "完善照片卡原生按钮与禁用态",
+    "type": "fix",
+    "desc": "共享照片卡现在保持有效原生按钮结构，并在批量选择或忙碌状态完整收起 GIF 变更控制。",
+    "details": "时间线、重要片段和文件夹共用的 PhotoCard 主按钮内部改用符合 button content model 的 phrasing content，不再包含 block descendants；媒体、文件名和日期布局保持不变。操作菜单复用 shared menuKeyboard，补齐 Tab 关闭并保留浏览器后续焦点顺序。批量选择或 interactionDisabled 时不再暴露 GIF 播放/暂停按钮，处理函数也防御性拒绝变更，已播放 GIF 立即切回 derivative-only 静态封面；删除 alertdialog、noopener/noreferrer 原图打开、44×44 兄弟操作、视频封面修复、拖放和 Header 安装入口约束保持不变。",
+    "seq": 1786390281218
+  },
+  {
     "id": "2026-08-11-photo-card-audio-placeholder",
     "date": "2026-08-11",
     "icon": "🎙️",

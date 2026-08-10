@@ -16,12 +16,11 @@ import {
   type PhotoCardLabelInput,
 } from "./photoCardAccessibility";
 import {
-  getNextPhotoContextMenuIndex,
   getPhotoContextMenuPosition,
   openPhotoOriginal,
-  type PhotoContextMenuNavigationKey,
 } from "./photoCardContextMenu";
 import { formatPhotoDate } from "../../utils/dateFormat";
+import { focusMenuItem, handleMenuKeyDown } from "../shared/menuKeyboard";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
 interface Props {
@@ -86,7 +85,6 @@ function PhotoCard({
   const [gifPaused, setGifPaused] = useState(isGif);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const [activeContextMenuIndex, setActiveContextMenuIndex] = useState(0);
   const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
   const videoThumbImgRef = useRef<HTMLImageElement>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
@@ -94,7 +92,7 @@ function PhotoCard({
   const confirmDialogRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const deleteDialogTriggerRef = useRef<HTMLElement | null>(null);
-  const menuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const menuRef = useRef<HTMLUListElement>(null);
   const mountedRef = useRef(true);
   const publishedRepairUrlRef = useRef<string | null>(null);
   const gifImgRef = useRef<HTMLImageElement>(null);
@@ -159,10 +157,14 @@ function PhotoCard({
     setGifDisplaySrc(gifPaused ? staticAnimatedSrc : originalImageUrl);
   }, [gifPaused, isGif, originalImageUrl, staticAnimatedSrc]);
 
+  const selectionMode = onSelect !== undefined;
+  const gifInteractionBlocked = selectionMode || interactionDisabled;
+
   // Toggle play/pause for GIFs. Uses src-swap instead of canvas
   // to avoid cross-origin (CORS) security errors on Azure SAS URLs.
   const toggleGifPause = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (gifInteractionBlocked) return;
     setImgLoaded(false);
     setGifPaused((paused) => !paused);
   };
@@ -175,7 +177,6 @@ function PhotoCard({
     : null;
   // Show taken date if it's different from upload date (or if upload date unknown)
   const showTakenDate = takenTime && takenTime !== uploadTime;
-  const selectionMode = onSelect !== undefined;
   const labelInput: PhotoCardLabelInput = {
     displayName,
     isVideo,
@@ -232,8 +233,8 @@ function PhotoCard({
     }
   };
 
-  const closeContextMenu = () => {
-    restorePrimaryFocus();
+  const closeContextMenu = (restoreFocus = true) => {
+    if (restoreFocus) restorePrimaryFocus();
     setCtxMenu(null);
   };
 
@@ -288,8 +289,6 @@ function PhotoCard({
     anchor: HTMLElement,
   ) => {
     if (interactionDisabled || selectionMode) return;
-    menuItemRefs.current = [];
-    setActiveContextMenuIndex(0);
     setCtxMenu(getPhotoContextMenuPosition({
       clientX,
       clientY,
@@ -300,36 +299,17 @@ function PhotoCard({
     }));
   };
 
-  const handleContextMenuKeyDown = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-    currentIndex: number,
-  ) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      closeContextMenu();
-      return;
-    }
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const nextIndex = getNextPhotoContextMenuIndex(
-      currentIndex,
-      event.key as PhotoContextMenuNavigationKey,
-      contextMenuActions.length,
-    );
-    if (nextIndex === null) return;
-    setActiveContextMenuIndex(nextIndex);
-    menuItemRefs.current[nextIndex]?.focus({ preventScroll: true });
-  };
-
   useEffect(() => {
     if (!ctxMenu) return;
     const frame = window.requestAnimationFrame(() => {
-      menuItemRefs.current[0]?.focus({ preventScroll: true });
+      focusMenuItem(menuRef.current, "first");
     });
     return () => window.cancelAnimationFrame(frame);
   }, [ctxMenu]);
+
+  useEffect(() => {
+    if (isGif && gifInteractionBlocked) setGifPaused(true);
+  }, [gifInteractionBlocked, isGif]);
 
   useEffect(() => {
     if (!ctxMenu || (!interactionDisabled && !selectionMode)) return;
@@ -378,6 +358,8 @@ function PhotoCard({
           aria-label={primaryActionLabel}
           aria-describedby={primaryDescriptionIds || undefined}
           aria-pressed={selectionMode ? !!selected : undefined}
+          aria-haspopup={!selectionMode && !interactionDisabled ? "menu" : undefined}
+          aria-expanded={!selectionMode && !interactionDisabled ? !!ctxMenu : undefined}
           disabled={interactionDisabled}
           onClick={handlePrimaryAction}
           onKeyDown={(event) => {
@@ -389,12 +371,12 @@ function PhotoCard({
             }
           }}
         >
-          <div
+          <span
             ref={videoRepairTargetRef}
             className="photo-thumbnail"
             data-media-policy={GRID_MEDIA_POLICY_MARKER}
           >
-            {!isAudio && !imgLoaded && (!isVideo || useVideoThumb) && <div className="photo-skeleton" />}
+            {!isAudio && !imgLoaded && (!isVideo || useVideoThumb) && <span className="photo-skeleton" />}
             {isAudio ? (
               <>
                 <span className="audio-thumb-placeholder" aria-hidden="true">
@@ -454,7 +436,7 @@ function PhotoCard({
             ) : isAnimated ? (
               <img
                 ref={gifImgRef}
-                src={isGif ? gifDisplaySrc : staticAnimatedSrc}
+                src={isGif ? (gifInteractionBlocked ? staticAnimatedSrc : gifDisplaySrc) : staticAnimatedSrc}
                 alt=""
                 loading={priority ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
@@ -483,30 +465,30 @@ function PhotoCard({
                 }}
               />
             )}
-            {isVideo && <div className="photo-video-badge">▶</div>}
-            {isHeic && <div className="photo-format-badge">HEIC</div>}
-            {photo.favorite && <div className="photo-favorite-badge" title="已收藏">★</div>}
+            {isVideo && <span className="photo-video-badge">▶</span>}
+            {isHeic && <span className="photo-format-badge">HEIC</span>}
+            {photo.favorite && <span className="photo-favorite-badge" title="已收藏">★</span>}
             {isAnimated && isMotionPhoto && (
-              <div className="photo-video-badge">动态照片 📱</div>
+              <span className="photo-video-badge">动态照片 📱</span>
             )}
-            {isGif && gifPaused && <div className="photo-gif-paused-overlay" />}
+            {isGif && gifPaused && <span className="photo-gif-paused-overlay" />}
             {isGif && !gifPaused && <span className="gif-animated-badge">GIF</span>}
             {isAnimated && !isMotionPhoto && !isGif && (
               <span className="gif-animated-badge">动图</span>
             )}
-          </div>
-          <div className="photo-info">
+          </span>
+          <span className="photo-info">
             <span className="photo-name" title={displayName}>
               {displayName}
             </span>
-          </div>
+          </span>
           {(uploadTime || takenTime || photo.createdBy || photo.subject) && (
-            <div className="photo-meta">
+            <span className="photo-meta">
               {photo.subject && <span id={`${descriptionId}-subject`} className="photo-subject-tag">{photo.subject}</span>}
               {photo.createdBy && <span id={`${descriptionId}-creator`} className="photo-meta-by">👤 {photo.createdBy}</span>}
               {showTakenDate && <span className="photo-meta-taken" title="拍摄时间">📷 {takenTime}</span>}
               {uploadTime && !showTakenDate && <span className="photo-meta-date">{uploadTime}</span>}
-            </div>
+            </span>
           )}
         </button>
         {isVideo && !useVideoThumb && (
@@ -514,7 +496,7 @@ function PhotoCard({
             {videoRepairStatus}
           </span>
         )}
-        {(isGif || (!selectionMode && !interactionDisabled)) && (
+        {!selectionMode && !interactionDisabled && (
           <div className="photo-card-controls">
             {isGif && (
               gifPaused ? (
@@ -543,9 +525,7 @@ function PhotoCard({
                 </button>
             )
           )}
-          {!selectionMode && !interactionDisabled && (
-            <>
-              {onMoveRequest && (
+            {onMoveRequest && (
                 <button
                   type="button"
                   className="move-btn"
@@ -558,8 +538,8 @@ function PhotoCard({
                 >
                   →
                 </button>
-              )}
-              {onToggleFavorite && (
+            )}
+            {onToggleFavorite && (
                 <button
                   type="button"
                   className={`favorite-btn${photo.favorite ? " favorite-btn--on" : ""}`}
@@ -573,8 +553,8 @@ function PhotoCard({
                 >
                   ★
                 </button>
-              )}
-              <button
+            )}
+            <button
                 type="button"
                 className="delete-btn"
                 aria-label={getPhotoActionLabel("delete", displayName)}
@@ -586,10 +566,8 @@ function PhotoCard({
                 }}
               >
                 <span aria-hidden="true">🗑︎</span>
-              </button>
-            </>
-          )}
-        </div>
+            </button>
+          </div>
         )}
       </div>
 
@@ -642,29 +620,36 @@ function PhotoCard({
       {ctxMenu && !interactionDisabled && !selectionMode && createPortal(
         <div
           className="photo-ctx-backdrop"
-          onClick={closeContextMenu}
+          onClick={() => closeContextMenu()}
           onContextMenu={(event) => {
             event.preventDefault();
             closeContextMenu();
           }}
         >
           <ul
+            ref={menuRef}
             className="photo-ctx-menu"
             role="menu"
             aria-label={`照片 ${displayName} 操作菜单`}
             style={{ top: ctxMenu.y, left: ctxMenu.x }}
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (!menuRef.current) return;
+              handleMenuKeyDown(
+                event,
+                menuRef.current,
+                document.activeElement,
+                (restoreFocus) => closeContextMenu(restoreFocus),
+              );
+            }}
           >
-            {contextMenuActions.map((action, index) => (
+            {contextMenuActions.map((action) => (
               <li role="none" key={action.key}>
                 <button
-                  ref={(element) => { menuItemRefs.current[index] = element; }}
                   type="button"
                   role="menuitem"
                   className={`photo-ctx-item${action.danger ? " photo-ctx-item--danger" : ""}`}
-                  tabIndex={index === activeContextMenuIndex ? 0 : -1}
-                  onFocus={() => setActiveContextMenuIndex(index)}
-                  onKeyDown={(event) => handleContextMenuKeyDown(event, index)}
+                  tabIndex={-1}
                   onClick={(event) => {
                     event.stopPropagation();
                     activateContextMenuAction(action.run);

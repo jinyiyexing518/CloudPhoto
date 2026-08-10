@@ -62,13 +62,32 @@ test("shared photo cards expose one native open or select target without nested 
   assert.match(primary, /onKeyDown=\{\(event\) => \{[\s\S]*event\.key === "ContextMenu"[\s\S]*event\.shiftKey && event\.key === "F10"/);
   assert.doesNotMatch(primary, /event\.key === "(?:Enter|Space| )"|onKeyUp/);
   assert.doesNotMatch(primary.slice(primary.indexOf(">") + 1), /<button/);
+  assert.doesNotMatch(
+    primary.slice(primary.indexOf(">") + 1, primary.lastIndexOf("</button>")),
+    /<(?:div|p|h[1-6]|section|article|ul|ol|li|table)\b/,
+    "native button content must remain phrasing content",
+  );
   assert.match(card, /className="photo-thumbnail"[\s\S]{0,180}data-media-policy=\{GRID_MEDIA_POLICY_MARKER\}/);
   assert.doesNotMatch(card, /className="photo-thumbnail"[\s\S]{0,180}onClick=/);
+  assert.match(styles, /\n\.photo-thumbnail\s*\{[^}]*display\s*:\s*block/);
   assert.match(markup.slice(favoriteStart, deleteStart), /e\.stopPropagation\(\)/);
   assert.match(markup.slice(deleteStart), /e\.stopPropagation\(\)/);
   assert.match(markup.slice(favoriteStart, deleteStart), /getPhotoActionLabel\(photo\.favorite \? "unfavorite" : "favorite", displayName\)/);
   assert.match(markup.slice(deleteStart), /getPhotoActionLabel\("delete", displayName\)/);
   assert.match(card, /className="photo-card-status" role="status"/);
+});
+
+test("selection and disabled PhotoCards cannot expose or mutate GIF playback", () => {
+  assert.match(
+    card,
+    /const gifInteractionBlocked = selectionMode \|\| interactionDisabled;[\s\S]*const toggleGifPause[\s\S]*e\.stopPropagation\(\);[\s\S]*if \(gifInteractionBlocked\) return;/,
+  );
+  assert.match(
+    card,
+    /\{!selectionMode && !interactionDisabled && \(\s*<div className="photo-card-controls">/,
+  );
+  assert.doesNotMatch(card, /\{\(isGif \|\| \(!selectionMode && !interactionDisabled\)\) && \(/);
+  assert.match(card, /src=\{isGif \? \(gifInteractionBlocked \? staticAnimatedSrc : gifDisplaySrc\) : staticAnimatedSrc\}/);
 });
 
 test("timeline, moments, and folder surfaces share the accessible PhotoCard", () => {

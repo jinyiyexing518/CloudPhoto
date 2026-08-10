@@ -1,5 +1,3 @@
-export type PhotoContextMenuNavigationKey = "ArrowDown" | "ArrowUp" | "Home" | "End";
-
 interface PhotoContextMenuPositionInput {
   clientX: number;
   clientY: number;
@@ -42,17 +40,4 @@ export function getPhotoContextMenuPosition({
     x: Math.min(Math.max(requestedX, VIEWPORT_MARGIN), maxX),
     y: Math.min(Math.max(requestedY, VIEWPORT_MARGIN), maxY),
   };
-}
-
-export function getNextPhotoContextMenuIndex(
-  currentIndex: number,
-  key: PhotoContextMenuNavigationKey,
-  itemCount: number,
-): number | null {
-  if (itemCount <= 0) return null;
-  if (key === "Home") return 0;
-  if (key === "End") return itemCount - 1;
-  if (key === "ArrowDown") return (currentIndex + 1 + itemCount) % itemCount;
-  if (key === "ArrowUp") return (currentIndex - 1 + itemCount) % itemCount;
-  return null;
 }

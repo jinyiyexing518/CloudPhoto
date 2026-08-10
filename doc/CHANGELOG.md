@@ -1,5 +1,13 @@
 # 更新日志
 
+### 2026-08-11 — 完善照片卡原生按钮与禁用态
+
+**体验修复**
+- **⌨️ 照片卡有效语义与统一菜单键盘模型** — 共享 PhotoCard 主按钮内部改为有效 phrasing content，保持整卡原生 Enter/Space 与现有布局；操作菜单复用 shared menuKeyboard，Tab 关闭后继续浏览器焦点顺序，Escape 与 action 仍只向 connected 主按钮恢复
+- **🎞️ GIF 禁用态隔离** — 批量选择或 interactionDisabled 时隐藏并防御性阻止播放/暂停控制，已播放 GIF 立即切回 derivative-only 静态封面；删除 alertdialog、安全原图打开、44×44 兄弟操作、视频封面修复、拖放和 Header 安装入口保持不变
+
+---
+
 ### 2026-08-11 — 清理前端部署运行时告警
 
 **工程修复**
