@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { meetsMinimumTarget } from "./auth-layout-geometry.mjs";
+import { waitForCondition } from "./auth-layout-wait.mjs";
 
 const cdpPort = process.env.CDP_PORT ?? "9333";
 const pageUrl = process.env.AUTH_PREVIEW_URL ?? "http://127.0.0.1:4173/";
@@ -111,19 +112,26 @@ async function evaluate(expression) {
   return result.result.value;
 }
 
-async function waitForSelector(selector) {
-  const deadline = Date.now() + 15_000;
-  do {
-    if (
-      await evaluate(
-        `Boolean(document.querySelector(${JSON.stringify(selector)}))`,
-      )
-    ) {
-      return;
-    }
-    await sleep(100);
-  } while (Date.now() < deadline);
-  throw new Error(`Selector did not render: ${selector}`);
+async function waitForSelector(selector, { retryPageLoad = false } = {}) {
+  const found = await waitForCondition(
+    () => evaluate(
+      `Boolean(document.querySelector(${JSON.stringify(selector)}))`,
+    ),
+    {
+      attempts: retryPageLoad ? 2 : 1,
+      onRetry: () => send("Page.reload", { ignoreCache: true }),
+    },
+  );
+  if (found) return;
+
+  const diagnostic = await evaluate(`(() => ({
+    href: location.href,
+    readyState: document.readyState,
+    rootText: document.querySelector("#root")?.textContent?.slice(0, 200) ?? "",
+  }))()`);
+  throw new Error(
+    `Selector did not render: ${selector}; ${JSON.stringify(diagnostic)}`,
+  );
 }
 
 const snapshotExpression = `(() => {
@@ -222,7 +230,7 @@ for (const viewport of viewports) {
     mobile: true,
   });
   await send("Page.reload", { ignoreCache: true });
-  await waitForSelector("#login-username");
+  await waitForSelector("#login-username", { retryPageLoad: true });
   await sleep(200);
 
   const initial = await evaluate(snapshotExpression);
