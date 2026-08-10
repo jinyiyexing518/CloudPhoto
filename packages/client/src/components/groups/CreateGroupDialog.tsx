@@ -32,7 +32,7 @@ export default function CreateGroupDialog({ onClose, onCreated }: Props) {
       <div className="add-admin-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="add-admin-header">
           <span>新建群组</span>
-          <button className="dialog-close-btn" onClick={onClose}>✕</button>
+          <button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭新建群组">✕</button>
         </div>
 
         {error && <div className="auth-error">{error}</div>}

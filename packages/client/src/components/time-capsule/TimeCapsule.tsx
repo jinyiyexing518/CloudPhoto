@@ -192,7 +192,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
           <div className="capsule-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="capsule-dialog-header">
               <span>💌 新建时光胶囊</span>
-              <button className="dialog-close-btn" onClick={() => setShowCreate(false)}>✕</button>
+              <button type="button" className="dialog-close-btn" onClick={() => setShowCreate(false)} aria-label="关闭新建时光胶囊">✕</button>
             </div>
             <div className="capsule-dialog-body">
               <label className="capsule-label">胶囊名称</label>
@@ -232,7 +232,10 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
                   return (
                     <button
                       key={p.name}
+                      type="button"
                       className={`capsule-photo-thumb${sel ? " selected" : ""}`}
+                      aria-label={`${sel ? "取消选择" : "选择"}照片${p.originalName ?? p.name}`}
+                      aria-pressed={sel}
                       onClick={() => {
                         const next = new Set(selectedNames);
                         sel ? next.delete(p.name) : next.add(p.name);
@@ -270,7 +273,7 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
           <div className="capsule-view-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="capsule-view-header">
               <span>🎁 {openedCapsule.title}</span>
-              <button className="dialog-close-btn" onClick={() => setOpenedCapsuleId(null)}>✕</button>
+              <button type="button" className="dialog-close-btn" onClick={() => setOpenedCapsuleId(null)} aria-label="关闭时光胶囊">✕</button>
             </div>
             <p className="capsule-view-meta">
               创建于 {openedCapsule.createdAt} · 解锁于 {openedCapsule.unlockDate} · {openedCapsule.photoNames.length} 张照片
@@ -279,8 +282,10 @@ export default function TimeCapsule({ photos, userId, onViewPhoto }: Props) {
               {openedPhotos.map((p) => (
                 <button
                   key={p.name}
+                  type="button"
                   className="capsule-view-thumb"
                   onClick={() => { setOpenedCapsuleId(null); onViewPhoto?.(p.name); }}
+                  aria-label={`查看照片${p.originalName ?? p.name}`}
                   title={p.originalName ?? p.name}
                 >
                   <MediaThumb

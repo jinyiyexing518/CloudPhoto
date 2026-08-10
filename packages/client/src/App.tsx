@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
 import { scorePhotoImportance, MOMENTS_MAX_PHOTOS } from "@cloudphoto/algorithm";
 import PhotoGallery from "./components/gallery/PhotoGallery";
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
@@ -23,6 +23,13 @@ const InviteAcceptPage = lazy(() => import("./components/invites/InviteAcceptPag
 
 const SUPER_ADMIN = "zhangchi";
 const INSTALL_BANNER_DISMISSED_KEY = "cf_install_banner_dismissed";
+
+class UploadWorkspaceChangedError extends Error {
+  constructor() {
+    super("空间已切换，上传已停止");
+    this.name = "UploadWorkspaceChangedError";
+  }
+}
 
 // ─── Video metadata extraction (MP4 / MOV / 3GP) ────────────────────────────
 // Parses binary MP4 container to extract creation time (mvhd box) and GPS
@@ -202,6 +209,8 @@ interface BeforeInstallPromptEvent extends Event {
 function AppContent() {
   const { user, logout } = useAuth();
   const { currentGroupId, groups, groupsLoaded } = useGroup();
+  const currentGroupIdRef = useRef(currentGroupId);
+  currentGroupIdRef.current = currentGroupId;
   const showToast = useToast();
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -332,6 +341,10 @@ function AppContent() {
   const [uploadSpeed, setUploadSpeed] = useState("");
   const pausedRef = useRef(false);
   const resumeCallbackRef = useRef<(() => void) | null>(null);
+  const uploadBatchRef = useRef<{
+    controller: AbortController;
+    workspaceId: string;
+  } | null>(null);
   const speedRef = useRef<{ ts: number; bytes: number; ema: number }>({ ts: 0, bytes: 0, ema: 0 });
   const [weeklyCardExpanded, setWeeklyCardExpanded] = useState(false);
   const [photoSortAsc, setPhotoSortAsc] = useState(false);
@@ -340,6 +353,23 @@ function AppContent() {
   const handleGridSizeChange = (size: GridSize) => { setGridSize(size); localStorage.setItem("cf_grid_size", size); };
   const uploadToFolderRef = useRef<((files: FileList, folder: string, subject?: string) => Promise<void>) | null>(null);
   const transferring = uploadProgress !== null || downloading || deleteProgress !== null;
+
+  useEffect(() => {
+    const batch = uploadBatchRef.current;
+    if (
+      batch
+      && batch.workspaceId !== currentGroupId
+      && !batch.controller.signal.aborted
+    ) {
+      batch.controller.abort(new UploadWorkspaceChangedError());
+    }
+  }, [currentGroupId]);
+
+  useEffect(() => () => {
+    uploadBatchRef.current?.controller.abort(
+      new DOMException("页面已关闭，上传已停止", "AbortError"),
+    );
+  }, []);
 
   const switchTab = (tab: ViewTab) => {
     setActiveTab(tab);
@@ -613,7 +643,7 @@ function AppContent() {
     fetchAbortRef.current = controller;
     lastPhotoRefreshRef.current = Date.now();
 
-    const cacheScope = user?.id ?? "";
+    const cacheScope = user ? `${user.id}:${user.role}` : "";
     let stale = getCachedPhotos(currentGroupId, cacheScope);
     let hasStale = stale !== null && stale.length > 0;
     if (hasStale) {
@@ -657,7 +687,7 @@ function AppContent() {
         setLoading(false);
       }
     }
-  }, [currentGroupId, showToast, user?.id]);
+  }, [currentGroupId, showToast, user?.id, user?.role]);
 
   useEffect(() => {
     void fetchPhotos();
@@ -989,6 +1019,85 @@ function AppContent() {
       return f.size <= (VIDEO_TYPES.has(f.type) ? VIDEO_MAX : IMAGE_MAX);
     });
     if (valid.length === 0) return;
+    if (uploadBatchRef.current) {
+      showToast("已有上传任务正在进行，请等待完成后再试", "error");
+      return;
+    }
+    const uploadAuthGeneration = getAuthGeneration();
+    const uploadDisplayName = user?.displayName || undefined;
+    const uploadWorkspaceId = currentGroupId;
+    const uploadGroupId = uploadWorkspaceId || undefined;
+    const batchController = new AbortController();
+    uploadBatchRef.current = {
+      controller: batchController,
+      workspaceId: uploadWorkspaceId,
+    };
+    const unsubscribeAuth = subscribeToAuthChanges(() => {
+      if (
+        uploadAuthGeneration !== getAuthGeneration()
+        && !batchController.signal.aborted
+      ) {
+        batchController.abort(new AuthSessionChangedError());
+      }
+    });
+    const batchAbortReason = () => (
+      batchController.signal.reason instanceof Error
+        ? batchController.signal.reason
+        : new AuthSessionChangedError()
+    );
+    const ownsUploadBatch = () => uploadBatchRef.current?.controller === batchController;
+    const isBatchCancellation = (error: unknown) => (
+      error instanceof AuthSessionChangedError
+      || (error instanceof DOMException && error.name === "AbortError")
+      || batchController.signal.aborted
+    );
+    const waitForRetry = (delayMs: number | null): Promise<void> => new Promise((resolve, reject) => {
+      let timerId: ReturnType<typeof setTimeout> | null = null;
+      const cleanup = () => {
+        if (timerId) clearTimeout(timerId);
+        window.removeEventListener("online", complete);
+        batchController.signal.removeEventListener("abort", abort);
+      };
+      const complete = () => {
+        cleanup();
+        resolve();
+      };
+      const abort = () => {
+        cleanup();
+        reject(batchAbortReason());
+      };
+      if (batchController.signal.aborted) {
+        abort();
+        return;
+      }
+      batchController.signal.addEventListener("abort", abort, { once: true });
+      if (delayMs === null) {
+        if (navigator.onLine) complete();
+        else window.addEventListener("online", complete, { once: true });
+      } else {
+        timerId = setTimeout(complete, delayMs);
+      }
+    });
+    const waitForResume = (): Promise<void> => new Promise((resolve, reject) => {
+      const cleanup = () => batchController.signal.removeEventListener("abort", abort);
+      const abort = () => {
+        cleanup();
+        resumeCallbackRef.current = null;
+        reject(batchAbortReason());
+      };
+      if (batchController.signal.aborted) {
+        abort();
+        return;
+      }
+      batchController.signal.addEventListener("abort", abort, { once: true });
+      resumeCallbackRef.current = () => {
+        cleanup();
+        resumeCallbackRef.current = null;
+        resolve();
+      };
+    });
+    let batchCancelled = false;
+    try {
     const bytesTotal = valid.reduce((sum, f) => sum + f.size, 0);
     const totalMB = (bytesTotal / (1024 * 1024)).toFixed(1);
     setUploadTotalSize(`${valid.length} 个 · ${totalMB} MB`);
@@ -1003,13 +1112,26 @@ function AppContent() {
     const failed: string[] = [];
     let completedBytes = 0;
     for (let i = 0; i < valid.length; i++) {
+      if (currentGroupIdRef.current !== uploadWorkspaceId) {
+        batchController.abort(new UploadWorkspaceChangedError());
+      }
+      if (batchController.signal.aborted) {
+        batchCancelled = true;
+        break;
+      }
       // ── Pause gate: wait here until resumed ──────────────────────────────
       if (pausedRef.current) {
-        await new Promise<void>(resolve => { resumeCallbackRef.current = resolve; });
+        try {
+          await waitForResume();
+        } catch {
+          batchCancelled = true;
+          break;
+        }
       }
 
       setUploadProgress({ bytesLoaded: completedBytes, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
       const fileBase = completedBytes;
+      const uploadId = crypto.randomUUID();
       try {
         // Extract GPS from EXIF (images) or MP4/MOV container (videos)
         let gpsLat: string | undefined;
@@ -1038,7 +1160,6 @@ function AppContent() {
         let lastErr: unknown;
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const controller = new AbortController();
             const uploadedPhoto = await uploadPhotoWithProgress(
               valid[i],
               (loaded) => {
@@ -1051,31 +1172,57 @@ function AppContent() {
                   speedRef.current.ema = speedRef.current.ema === 0 ? rawBps : speedRef.current.ema * 0.7 + rawBps * 0.3;
                   speedRef.current.ts = now;
                   speedRef.current.bytes = totalLoaded;
-                  setUploadSpeed(formatSpeed(speedRef.current.ema));
+                  if (currentGroupIdRef.current === uploadWorkspaceId) {
+                    setUploadSpeed(formatSpeed(speedRef.current.ema));
+                  }
                 }
-                setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
+                if (
+                  !batchController.signal.aborted
+                  && currentGroupIdRef.current === uploadWorkspaceId
+                ) {
+                  setUploadProgress({ bytesLoaded: fileBase + loaded, bytesTotal, filesDone: i, filesTotal: valid.length, folder, currentFile: valid[i].name });
+                }
               },
-              user?.displayName || undefined,
+              uploadDisplayName,
               subject || undefined,
               folder || undefined,
-              currentGroupId || undefined,
+              uploadGroupId,
               gpsLat,
               gpsLon,
-              controller.signal,
+              batchController.signal,
               videoTakenAt,
+              uploadId,
             );
             // Immediately add the uploaded photo so the folder view refreshes live
-            setPhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
+            if (
+              !batchController.signal.aborted
+              && currentGroupIdRef.current === uploadWorkspaceId
+            ) {
+              setPhotos(prev => prev.some(p => p.name === uploadedPhoto.name) ? prev : [...prev, uploadedPhoto]);
+            }
 
             // For videos: extract a thumbnail frame client-side and persist it.
             // Fire-and-forget — failure is non-fatal, card falls back to <video> seek.
             if (valid[i].type.startsWith("video/")) {
               extractVideoThumbnail(valid[i]).then(async (thumb) => {
                 if (!thumb) return;
+                if (
+                  uploadAuthGeneration !== getAuthGeneration()
+                  || currentGroupIdRef.current !== uploadWorkspaceId
+                ) return;
                 const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumb);
-                if (thumbnailUrl) {
+                if (
+                  thumbnailUrl
+                  && uploadAuthGeneration === getAuthGeneration()
+                  && currentGroupIdRef.current === uploadWorkspaceId
+                ) {
                   setPhotos(prev => prev.map(p =>
-                    p.name === uploadedPhoto.name ? { ...p, thumbnailUrl } : p,
+                    p.name === uploadedPhoto.name
+                      ? {
+                          ...p,
+                          thumbnailUrl: selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl),
+                        }
+                      : p,
                   ));
                 }
               }).catch(() => { /* best-effort */ });
@@ -1085,18 +1232,16 @@ function AppContent() {
             break; // success — exit retry loop
           } catch (e) {
             lastErr = e;
+            if (isBatchCancellation(e)) break;
             if (attempt < 2) {
               if (!navigator.onLine) {
                 // Wait until network comes back before retrying
                 setUploadSpeed("等待网络…");
-                await new Promise<void>(resolve => {
-                  const h = () => { window.removeEventListener("online", h); resolve(); };
-                  window.addEventListener("online", h);
-                });
+                await waitForRetry(null);
                 setUploadSpeed("");
               } else {
                 // Brief back-off between retries
-                await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+                await waitForRetry(3000 * (attempt + 1));
               }
             }
           }
@@ -1104,10 +1249,35 @@ function AppContent() {
         if (lastErr) throw lastErr;
 
         completedBytes += valid[i].size;
-      } catch {
+      } catch (error) {
+        if (isBatchCancellation(error)) {
+          batchCancelled = true;
+          break;
+        }
         failed.push(valid[i].name);
         completedBytes += valid[i].size;
       }
+    }
+    if (currentGroupIdRef.current !== uploadWorkspaceId) {
+      batchController.abort(new UploadWorkspaceChangedError());
+      batchCancelled = true;
+    }
+    if (batchCancelled) {
+      if (ownsUploadBatch()) {
+        setUploadProgress(null);
+        setUploadTotalSize(null);
+        setUploadSpeed("");
+        setUploadPaused(false);
+        pausedRef.current = false;
+      }
+      const reason = batchAbortReason();
+      showToast(
+        reason instanceof UploadWorkspaceChangedError
+          ? reason.message
+          : "登录状态已变更，上传已停止",
+        "error",
+      );
+      return;
     }
     setUploadProgress({ bytesLoaded: bytesTotal, bytesTotal, filesDone: valid.length, filesTotal: valid.length, folder });
     await fetchPhotos();
@@ -1121,6 +1291,13 @@ function AppContent() {
     } else {
       const hasVideo = valid.some((f) => VIDEO_TYPES.has(f.type));
       showToast(`成功上传 ${valid.length} 个${hasVideo ? "文件" : "张照片"}`, "success");
+    }
+    } finally {
+      unsubscribeAuth();
+      if (ownsUploadBatch()) {
+        resumeCallbackRef.current = null;
+        uploadBatchRef.current = null;
+      }
     }
   };
   // Keep ref up to date so paste handler always calls latest version
@@ -1377,7 +1554,7 @@ function AppContent() {
           <div className="shortcuts-help-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="shortcuts-help-header">
               <span>⌨️ 键盘快捷键</span>
-              <button className="dialog-close-btn" onClick={() => setShowShortcutsHelp(false)}>✕</button>
+              <button type="button" className="dialog-close-btn" onClick={() => setShowShortcutsHelp(false)} aria-label="关闭键盘快捷键">✕</button>
             </div>
             <ul className="shortcuts-list">
               <li><kbd>R</kbd><span>刷新照片列表</span></li>
@@ -1419,6 +1596,7 @@ function AppContent() {
             onClick={() => setUserMenuOpen((v) => !v)}
             aria-haspopup="true"
             aria-expanded={userMenuOpen}
+            aria-label={`${userMenuOpen ? "关闭" : "打开"}用户菜单：${user?.displayName ?? "用户"}`}
             title={user?.displayName}
           >
             {user?.displayName?.[0]?.toUpperCase() ?? "U"}
@@ -1475,7 +1653,7 @@ function AppContent() {
           <div className="add-admin-dialog install-guide-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="add-admin-header">
               <span>安装使用指引</span>
-              <button className="dialog-close-btn" onClick={() => setShowInstallGuide(false)}>✕</button>
+              <button type="button" className="dialog-close-btn" onClick={() => setShowInstallGuide(false)} aria-label="关闭安装使用指引">✕</button>
             </div>
             <p className="add-admin-hint">{isStandalone ? "当前已是 App 模式" : "可同时作为网站和 App 使用"}</p>
             <ol className="install-guide-list">
@@ -1529,8 +1707,10 @@ function AppContent() {
                     )}
                   </div>
                   <button
+                    type="button"
                     className="transfer-banner-pause"
                     onClick={handleToggleUploadPause}
+                    aria-label={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
                     title={uploadPaused ? "继续上传" : "暂停上传（当前文件传完后暂停）"}
                   >
                     {uploadPaused ? (

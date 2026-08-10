@@ -138,7 +138,7 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
       <div className="group-settings-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="add-admin-header">
           <span>群组设置</span>
-          <button className="dialog-close-btn" onClick={onClose}>✕</button>
+          <button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭群组设置">✕</button>
         </div>
 
         {error && <div className="auth-error">{error}</div>}
@@ -186,7 +186,13 @@ export default function GroupSettings({ groupId, onClose, onDeleted, onUpdated }
                       {m.role === "admin" ? "管理员" : "成员"}
                     </span>
                     {m.userId !== user?.id && (
-                      <button className="group-remove-btn" onClick={() => handleRemove(m)} title="移除">✕</button>
+                      <button
+                        type="button"
+                        className="group-remove-btn"
+                        onClick={() => handleRemove(m)}
+                        aria-label={`移除成员${m.displayName}`}
+                        title="移除"
+                      >✕</button>
                     )}
                   </li>
                 ))}

@@ -21,7 +21,7 @@ cat > /etc/nginx/sites-available/cloudphoto <<EOF
 server {
     listen 80;
     listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN} cn.${DOMAIN};
     location /.well-known/acme-challenge/ { root /var/www/html; }
     location / { return 200 'ok'; }
 }
@@ -35,6 +35,7 @@ echo "==> [4/5] Issue Let's Encrypt certificate for ${DOMAIN}"
 certbot certonly --nginx \
     -d "${DOMAIN}" \
     -d "www.${DOMAIN}" \
+    -d "cn.${DOMAIN}" \
     --non-interactive \
     --agree-tos \
     --email "${EMAIL}"
@@ -50,4 +51,5 @@ systemctl enable --now certbot.timer
 
 echo ""
 echo "✅  Done!  https://${DOMAIN} is live."
+echo "    Certificate SANs: ${DOMAIN}, www.${DOMAIN}, cn.${DOMAIN}"
 echo "    Certbot will auto-renew before expiry — no action needed."

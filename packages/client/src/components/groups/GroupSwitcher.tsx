@@ -61,7 +61,9 @@ export default function GroupSwitcher() {
                 </span>
                 {g.myRole === "admin" && (
                   <button
+                    type="button"
                     className="group-settings-btn"
+                    aria-label={`打开${g.name}的群组设置`}
                     title="群组设置"
                     onClick={(e) => { e.stopPropagation(); setSettingsGroupId(g.id); setOpen(false); }}
                   >

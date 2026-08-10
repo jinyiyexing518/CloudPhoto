@@ -334,7 +334,11 @@ export async function fetchMediaWithFallback(
         }
         return response;
       }
-      if (index < candidates.length - 1) await response.body?.cancel();
+      // A server that ignores Range can otherwise keep streaming the entire
+      // video after the caller rejects its 200 response.
+      if (requiresPartialContent || index < candidates.length - 1) {
+        await response.body?.cancel().catch(() => undefined);
+      }
     } catch (error) {
       if (init?.signal?.aborted) throw error;
       lastError = error;
@@ -405,22 +409,33 @@ export async function resolveMediaUrlWithFallback(
   url: string,
   timeoutMs = 5_000,
 ): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchMediaWithFallback(url, {
-      method: "HEAD",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`Media route failed with ${response.status}`);
-    await response.body?.cancel();
-    return response.url || getPreferredMediaUrl(url);
-  } catch {
-    // A native navigation may still succeed when cross-origin HEAD is blocked
-    // by browser CORS, so preserve the original download path after preflight.
-    return getPreferredMediaUrl(url);
-  } finally {
-    clearTimeout(timeoutId);
+  const candidates = mediaCandidates([url]);
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index];
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(candidate, {
+        method: "HEAD",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        continue;
+      }
+      await response.body?.cancel();
+      if (index > 0) {
+        const route = mediaRouteForUrl(candidate);
+        if (route) rememberRoute(route);
+      }
+      return response.url || candidate;
+    } catch {
+      // A failed or timed-out preferred route must not consume the alternate's budget.
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
+  // Native navigation may still succeed when cross-origin HEAD is blocked by CORS.
+  return getPreferredMediaUrl(url);
 }

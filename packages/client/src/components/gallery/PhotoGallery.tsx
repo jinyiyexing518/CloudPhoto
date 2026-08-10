@@ -1412,14 +1412,19 @@ function PhotoGallery({
             onClick={(e) => e.stopPropagation()}
           >
             <button
+              type="button"
               className="modal-close"
               onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); setIsFullscreen(false); }}
+              aria-label="关闭照片详情"
             >
               ✕
             </button>
             <button
+              type="button"
               className="modal-fullscreen-btn"
               onClick={() => setIsFullscreen((v) => !v)}
+              aria-label={isFullscreen ? "退出全屏" : "进入全屏"}
+              aria-pressed={isFullscreen}
               title={isFullscreen ? "退出全屏" : "全屏"}
             >
               {isFullscreen ? "✕✕" : "⛶"}
@@ -1428,10 +1433,22 @@ function PhotoGallery({
               <span className="modal-nav-counter">{selectedIdx + 1} / {modalPhotos.length}</span>
             )}
             {selectedIdx !== null && selectedIdx > 0 && (
-              <button className="modal-nav modal-nav--prev" onClick={() => navigateToPhoto(selectedIdx - 1)} title={`上一张：${modalPhotos[selectedIdx - 1]?.originalName || (modalPhotos[selectedIdx - 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")} (←)`}>‹</button>
+              <button
+                type="button"
+                className="modal-nav modal-nav--prev"
+                onClick={() => navigateToPhoto(selectedIdx - 1)}
+                aria-label={`上一张：${modalPhotos[selectedIdx - 1]?.originalName || (modalPhotos[selectedIdx - 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")}`}
+                title={`上一张：${modalPhotos[selectedIdx - 1]?.originalName || (modalPhotos[selectedIdx - 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")} (←)`}
+              >‹</button>
             )}
             {selectedIdx !== null && selectedIdx < modalPhotos.length - 1 && (
-              <button className="modal-nav modal-nav--next" onClick={() => navigateToPhoto(selectedIdx + 1)} title={`下一张：${modalPhotos[selectedIdx + 1]?.originalName || (modalPhotos[selectedIdx + 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")} (→)`}>›</button>
+              <button
+                type="button"
+                className="modal-nav modal-nav--next"
+                onClick={() => navigateToPhoto(selectedIdx + 1)}
+                aria-label={`下一张：${modalPhotos[selectedIdx + 1]?.originalName || (modalPhotos[selectedIdx + 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")}`}
+                title={`下一张：${modalPhotos[selectedIdx + 1]?.originalName || (modalPhotos[selectedIdx + 1]?.name.split("/").pop() ?? "").replace(/^\d+-/, "")} (→)`}
+              >›</button>
             )}
             <div className="modal-image-pane"
               onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
@@ -1622,7 +1639,7 @@ function PhotoGallery({
                     <button className="modal-subject-save" onClick={() => void saveName()} disabled={savingName}>
                       {savingName ? "..." : "保存"}
                     </button>
-                    <button className="modal-subject-cancel" onClick={() => setEditingName(false)}>✕</button>
+                    <button type="button" className="modal-subject-cancel" onClick={() => setEditingName(false)} aria-label="取消重命名">✕</button>
                   </span>
                 ) : (
                   <span className="modal-filename">
@@ -1789,12 +1806,12 @@ function PhotoGallery({
                       <button className="modal-subject-save" onClick={() => void saveSubject()} disabled={savingSubject}>
                         {savingSubject ? "..." : "Save"}
                       </button>
-                      <button className="modal-subject-cancel" onClick={() => setEditingSubject(false)}>✕</button>
+                      <button type="button" className="modal-subject-cancel" onClick={() => setEditingSubject(false)} aria-label="取消编辑备注">✕</button>
                     </>
                   ) : (
                     <>
                       <span>{selectedPhoto.subject || <em className="modal-empty">None</em>}</span>
-                      <button className="modal-edit-btn" onClick={() => setEditingSubject(true)}>✏</button>
+                      <button type="button" className="modal-edit-btn" onClick={() => setEditingSubject(true)} aria-label="编辑备注">✏</button>
                     </>
                   )}
                 </span>
@@ -1835,7 +1852,7 @@ function PhotoGallery({
                     <span className="modal-detail-label">拍摄时间</span>
                     <span className="modal-detail-value modal-subject-cell">
                       <span>{selectedPhoto.takenAt ? formatDate(selectedPhoto.takenAt) : <em className="modal-empty">未记录</em>}</span>
-                      <button className="modal-edit-btn" onClick={() => setEditingTakenAt(true)}>✏</button>
+                      <button type="button" className="modal-edit-btn" onClick={() => setEditingTakenAt(true)} aria-label="修改拍摄时间">✏</button>
                     </span>
                     {editingTakenAt && (
                       <PhotoTimeEditDialog
@@ -1881,9 +1898,16 @@ function PhotoGallery({
                               target="_blank"
                               rel="noreferrer"
                               className="modal-edit-btn"
+                              aria-label="在 Google 地图中查看"
                               title="在 Google 地图中查看"
                             >🗺</a>
-                            <button className="modal-edit-btn" title={editingGps ? "关闭位置搜索" : "修改位置"} onClick={() => setEditingGps((v) => !v)}>{editingGps ? "✕" : "✏"}</button>
+                            <button
+                              type="button"
+                              className="modal-edit-btn"
+                              aria-label={editingGps ? "关闭位置搜索" : "修改位置"}
+                              title={editingGps ? "关闭位置搜索" : "修改位置"}
+                              onClick={() => setEditingGps((v) => !v)}
+                            >{editingGps ? "✕" : "✏"}</button>
                           </span>
                           {editingGps && (
                             <LocationSearchPanel
@@ -1901,7 +1925,13 @@ function PhotoGallery({
                         <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <em className="modal-empty">未记录</em>
-                            <button className="modal-edit-btn" title={editingGps ? "关闭位置搜索" : "添加位置"} onClick={() => setEditingGps((v) => !v)}>{editingGps ? "✕" : "+ 添加"}</button>
+                            <button
+                              type="button"
+                              className="modal-edit-btn"
+                              aria-label={editingGps ? "关闭位置搜索" : "添加位置"}
+                              title={editingGps ? "关闭位置搜索" : "添加位置"}
+                              onClick={() => setEditingGps((v) => !v)}
+                            >{editingGps ? "✕" : "+ 添加"}</button>
                           </span>
                           {editingGps && (
                             <LocationSearchPanel
@@ -1924,7 +1954,7 @@ function PhotoGallery({
       {selectedPhoto && showOriginalPreview && (
         <div className="modal-preview-overlay" onClick={() => setShowOriginalPreview(false)}>
           <div className="modal-preview-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowOriginalPreview(false)}>✕</button>
+            <button type="button" className="modal-close" onClick={() => setShowOriginalPreview(false)} aria-label="关闭原图预览">✕</button>
             <a className="modal-preview-open" href={selectedPhoto.url} target="_blank" rel="noreferrer">
               在新窗口打开原图
             </a>
@@ -1944,7 +1974,7 @@ function PhotoGallery({
       {showShortcutHelp && (
         <div className="shortcut-help-overlay" onClick={() => setShowShortcutHelp(false)}>
           <div className="shortcut-help-panel" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowShortcutHelp(false)}>✕</button>
+            <button type="button" className="modal-close" onClick={() => setShowShortcutHelp(false)} aria-label="关闭键盘快捷键">✕</button>
             <h3 className="shortcut-help-title">键盘快捷键</h3>
             <table className="shortcut-help-table">
               <tbody>

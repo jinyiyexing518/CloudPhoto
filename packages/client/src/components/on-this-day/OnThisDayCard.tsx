@@ -80,8 +80,10 @@ export default function OnThisDayCard({ photos, onJumpToPhoto }: Props) {
         })}
         {!expanded && matched.length > 6 && (
           <button
+            type="button"
             className="otd-thumb-btn otd-thumb-more"
             onClick={() => setExpanded(true)}
+            aria-label={`显示其余 ${matched.length - 6} 张历史照片`}
           >
             <span>+{matched.length - 6}</span>
           </button>

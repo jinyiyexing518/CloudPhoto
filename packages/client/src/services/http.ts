@@ -111,6 +111,24 @@ function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boole
   return request?.suffix === "/auth/login" || request?.suffix === "/auth/refresh";
 }
 
+const EXPENSIVE_GET_PATHS = new Set([
+  "/photos",
+  "/photos/locations",
+  "/photos/motion-video",
+  "/photos/trash",
+  "/geocode/search",
+]);
+
+function canUseTimedRouteFallback(input: RequestInfo, init?: RequestInit): boolean {
+  const method = (
+    init?.method ??
+    (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")
+  ).toUpperCase();
+  if (method !== "GET") return true;
+  const request = parseApiRequest(input);
+  return !request || !EXPENSIVE_GET_PATHS.has(request.suffix);
+}
+
 function keepCancellationUntilBodyCompletes(
   response: Response,
   cleanup: () => void,
@@ -160,15 +178,27 @@ function keepCancellationUntilBodyCompletes(
   return wrapped;
 }
 
-let sameOriginProxyProbe: Promise<boolean> | null = null;
+const SAME_ORIGIN_PROXY_PROBE_TTL_MS = 30_000;
+let sameOriginProxyProbe: { expiresAt: number; result: Promise<boolean> } | null = null;
+
+export function invalidateApiProxyProbe(): void {
+  sameOriginProxyProbe = null;
+}
+
+export function toDirectApiUrl(input: string): string {
+  const request = parseApiRequest(input);
+  return request ? buildApiUrl(DIRECT_API_BASE, request) : input;
+}
 
 function detectSameOriginProxy(): Promise<boolean> {
   if (typeof window === "undefined") return Promise.resolve(false);
   if (isProxySiteHost(window.location.hostname)) return Promise.resolve(true);
   if (window.location.hostname !== "www.cloudphotos.top") return Promise.resolve(false);
-  if (sameOriginProxyProbe) return sameOriginProxyProbe;
+  if (sameOriginProxyProbe && sameOriginProxyProbe.expiresAt > Date.now()) {
+    return sameOriginProxyProbe.result;
+  }
 
-  sameOriginProxyProbe = (async () => {
+  const result = (async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1_200);
     try {
@@ -188,7 +218,11 @@ function detectSameOriginProxy(): Promise<boolean> {
       clearTimeout(timeoutId);
     }
   })();
-  return sameOriginProxyProbe;
+  sameOriginProxyProbe = {
+    expiresAt: Date.now() + SAME_ORIGIN_PROXY_PROBE_TTL_MS,
+    result,
+  };
+  return result;
 }
 
 async function resolvePrimaryApiInput(input: RequestInfo, init?: RequestInit): Promise<RequestInfo> {
@@ -246,6 +280,22 @@ async function fetchWithProxyFallback(
     if (!fallbackUrl) throw networkError;
     return fetch(fallbackUrl, init);
   }
+  const primaryRequest = parseApiRequest(primaryInput);
+  const contentType = res.headers.get("content-type") ?? "";
+  const sameOriginRouteMissing = (
+    primaryRequest?.kind === "same-origin"
+    && (
+      res.status === 404
+      || res.status === 405
+      || (res.ok && contentType.includes("text/html"))
+    )
+  );
+  if (sameOriginRouteMissing && primaryRequest && !init?.signal?.aborted) {
+    invalidateApiProxyProbe();
+    cleanupPrimary();
+    if (res.body) await res.body.cancel().catch(() => undefined);
+    return fetch(buildApiUrl(DIRECT_API_BASE, primaryRequest), init);
+  }
   // Retry gateway/edge failures through the other route.
   if ([502, 503, 504, 521, 522, 523, 524].includes(res.status)) {
     if (fallbackUrl && !init?.signal?.aborted) {
@@ -275,18 +325,50 @@ async function fetchWithProxyFallback(
 const TOKEN_KEY = "cloudphoto_token";
 const REFRESH_TOKEN_KEY = "cloudphoto_refresh_token";
 
-export function saveStoredAuth(token: string, refreshToken?: string): void {
+function storeAuth(token: string, refreshToken?: string): void {
   localStorage.setItem(TOKEN_KEY, token);
   if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
+export function saveStoredAuth(token: string, refreshToken?: string): void {
+  const previousScope = getTokenAuthScope();
+  const nextScope = getTokenAuthScope(token);
+  if (!previousScope || !nextScope || previousScope !== nextScope) {
+    invalidateAuthRefresh();
+  } else {
+    cancelTokenRefresh();
+  }
+  storeAuth(token, refreshToken);
+}
+
 export function clearStoredAuth(): void {
+  invalidateAuthRefresh();
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getTokenAuthScope(token = getToken()): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const normalized = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const decoded = JSON.parse(atob(normalized)) as { userId?: unknown; role?: unknown };
+    return typeof decoded.userId === "string" && typeof decoded.role === "string"
+      ? `${decoded.userId}:${decoded.role}`
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getAuthGeneration(): number {
+  return _authGeneration;
 }
 
 // ── 401 auto-logout callback ──────────────────────────────────────────────
@@ -296,12 +378,38 @@ export function setUnauthorizedHandler(fn: () => void): void {
 }
 
 // ── Token refresh (concurrency-safe mutex) ────────────────────────────────
-let _refreshPromise: Promise<string | null> | null = null;
+interface RefreshState {
+  controller: AbortController;
+  promise: Promise<string | null>;
+}
 
-async function _doRefresh(): Promise<string | null> {
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-  if (!refreshToken) return null;
-  const controller = new AbortController();
+let _authGeneration = 0;
+let _refreshState: RefreshState | null = null;
+const _authChangeListeners = new Set<() => void>();
+
+export function subscribeToAuthChanges(listener: () => void): () => void {
+  _authChangeListeners.add(listener);
+  return () => _authChangeListeners.delete(listener);
+}
+
+function cancelTokenRefresh(): void {
+  const state = _refreshState;
+  _refreshState = null;
+  state?.controller.abort(new DOMException("Authentication token rotated", "AbortError"));
+}
+
+/** Invalidates an older session without changing the currently stored tokens. */
+export function invalidateAuthRefresh(): void {
+  _authGeneration += 1;
+  cancelTokenRefresh();
+  for (const listener of _authChangeListeners) listener();
+}
+
+async function _doRefresh(
+  refreshToken: string,
+  generation: number,
+  controller: AbortController,
+): Promise<string | null> {
   const timeoutId = setTimeout(() => controller.abort(), 15_000);
   const res = await fetchWithProxyFallback(`${API_BASE}/auth/refresh`, {
     signal: controller.signal,
@@ -310,21 +418,52 @@ async function _doRefresh(): Promise<string | null> {
   }, 5_000).catch(() => null);
   if (!res?.ok) {
     clearTimeout(timeoutId);
+    await res?.body?.cancel().catch(() => undefined);
     return null;
   }
   const data = await res.json()
-    .finally(() => clearTimeout(timeoutId)) as { token?: string; refreshToken?: string };
-  if (!data.token) return null;
-  saveStoredAuth(data.token, data.refreshToken);
+    .catch(() => null)
+    .finally(() => clearTimeout(timeoutId)) as { token?: string; refreshToken?: string } | null;
+  if (!data?.token) return null;
+  if (
+    controller.signal.aborted
+    || generation !== _authGeneration
+    || localStorage.getItem(REFRESH_TOKEN_KEY) !== refreshToken
+  ) {
+    return null;
+  }
+  const previousScope = getTokenAuthScope();
+  const nextScope = getTokenAuthScope(data.token);
+  if (previousScope && nextScope && previousScope !== nextScope) {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    invalidateAuthRefresh();
+    _onUnauthorized?.();
+    return null;
+  }
+  // This is the same authenticated session, so keep the shared refresh state
+  // alive until all current callers receive the rotated token.
+  storeAuth(data.token, data.refreshToken);
   return data.token;
 }
 
 /** Returns a single shared in-flight refresh promise to avoid duplicate requests. */
 export function getRefreshedToken(): Promise<string | null> {
-  if (!_refreshPromise) {
-    _refreshPromise = _doRefresh().finally(() => { _refreshPromise = null; });
-  }
-  return _refreshPromise;
+  if (_refreshState) return _refreshState.promise;
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!refreshToken) return Promise.resolve(null);
+
+  const state: RefreshState = {
+    controller: new AbortController(),
+    promise: Promise.resolve(null),
+  };
+  const generation = _authGeneration;
+  state.promise = _doRefresh(refreshToken, generation, state.controller)
+    .finally(() => {
+      if (_refreshState === state) _refreshState = null;
+    });
+  _refreshState = state;
+  return state.promise;
 }
 
 // ── Core fetch helpers ────────────────────────────────────────────────────
@@ -349,6 +488,10 @@ export function fetchWithTimeout(
   init?: RequestInit,
   ms = 15_000,
 ): Promise<Response> {
+  const requestAuthGeneration = _authGeneration;
+  const requestToken = new Headers(init?.headers).get("Authorization")?.replace(/^Bearer\s+/i, "")
+    ?? getToken();
+  const requestRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
   const controller = new AbortController();
   const callerSignal = init?.signal;
   const abortFromCaller = () => controller.abort(callerSignal?.reason);
@@ -359,7 +502,9 @@ export function fetchWithTimeout(
   }
   const id = setTimeout(() => controller.abort(), ms);
   const requestInit = { ...init, signal: controller.signal };
-  const routeTimeoutMs = Math.min(5_000, Math.max(750, Math.floor(ms / 3)));
+  const routeTimeoutMs = canUseTimedRouteFallback(input, init)
+    ? Math.min(5_000, Math.max(750, Math.floor(ms / 3)))
+    : undefined;
   const cleanup = () => {
     clearTimeout(id);
     callerSignal?.removeEventListener("abort", abortFromCaller);
@@ -367,9 +512,11 @@ export function fetchWithTimeout(
   return fetchWithProxyFallback(input, requestInit, routeTimeoutMs)
     .then(async (res) => {
       if (res.status === 401) {
+        // Never refresh or replay a request that belongs to a replaced account.
+        if (requestAuthGeneration !== _authGeneration) return res;
         const newToken = await getRefreshedToken();
-        if (newToken) {
-          if (res.body) await res.body.cancel().catch(() => undefined);
+        if (newToken && requestAuthGeneration === _authGeneration) {
+          if (res.body) void res.body.cancel().catch(() => undefined);
           const retryHeaders = {
             ...(init?.headers as Record<string, string> ?? {}),
             Authorization: `Bearer ${newToken}`,
@@ -380,7 +527,33 @@ export function fetchWithTimeout(
             routeTimeoutMs,
           );
         }
-        _onUnauthorized?.();
+        const replacementToken = getToken();
+        const credentialsChanged = (
+          replacementToken !== requestToken
+          || localStorage.getItem(REFRESH_TOKEN_KEY) !== requestRefreshToken
+        );
+        const sameScopeReplacement = (
+          credentialsChanged
+          && replacementToken
+          && getTokenAuthScope(replacementToken) === getTokenAuthScope(requestToken)
+        );
+        if (sameScopeReplacement && requestAuthGeneration === _authGeneration) {
+          if (replacementToken !== requestToken) {
+            if (res.body) void res.body.cancel().catch(() => undefined);
+            const retryHeaders = new Headers(init?.headers);
+            retryHeaders.set("Authorization", `Bearer ${replacementToken}`);
+            return fetchWithProxyFallback(
+              input,
+              { ...requestInit, headers: retryHeaders },
+              routeTimeoutMs,
+            );
+          }
+          // A replacement refresh token can recover the next request. Do not let
+          // this superseded refresh sign out an otherwise valid same-scope session.
+          return res;
+        }
+        // A 401 from an older request must not sign out a newer login.
+        if (requestAuthGeneration === _authGeneration) _onUnauthorized?.();
       }
       return res;
     })

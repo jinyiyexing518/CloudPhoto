@@ -51,14 +51,16 @@ function PhotoCard({
     (photo.contentType === "image/jpeg" || photo.contentType === "image/jpg");
   const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
     photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
-  const lowDataImageSources = photo.thumbnailUrl || photo.previewUrl
-    ? [photo.thumbnailUrl, photo.previewUrl]
+  const derivativeImageSources = [photo.thumbnailUrl, photo.previewUrl]
+    .filter((source): source is string => Boolean(source));
+  const lowDataImageSources = derivativeImageSources.length > 0
+    ? derivativeImageSources
     : isHeic
       ? []
       : [photo.url];
   const lowDataImageSrc = lowDataImageSources[0] ?? BLANK_GIF;
   const staticAnimatedSrc = photo.thumbnailUrl ?? photo.previewUrl ?? BLANK_GIF;
-  const videoPosterSources = [photo.thumbnailUrl, photo.previewUrl];
+  const videoPosterSources = derivativeImageSources;
   const videoPosterSrc = photo.thumbnailUrl ?? photo.previewUrl;
 
   const [showConfirm, setShowConfirm] = useState(false);
@@ -127,6 +129,8 @@ function PhotoCard({
     if (!isVideo || useVideoThumb) return; // <img> is handling it; no <video> in DOM
     const el = videoRef.current;
     if (!el) return;
+    const controller = new AbortController();
+    let disposed = false;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
@@ -139,17 +143,24 @@ function PhotoCard({
         //   b) the fallback path below — src is reset to photo.url
         // For non-faststart MP4 a full download means the browser streams the
         // entire file (10-200 MB) looking for the moov atom at the end.
-        void fetchMediaWithFallback(photo.url, { headers: { Range: `bytes=0-${VIDEO_THUMB_RANGE_BYTES}` } })
+        void fetchMediaWithFallback(photo.url, {
+          headers: { Range: `bytes=0-${VIDEO_THUMB_RANGE_BYTES}` },
+          signal: controller.signal,
+        })
           .then(async (res) => {
             if (res.status === 206) {
               const blob = await res.blob();
               const url = URL.createObjectURL(blob);
+              if (disposed) {
+                URL.revokeObjectURL(url);
+                return;
+              }
               videoBlobRef.current = url;
               setVideoThumbSrc(url);
               // rAF: wait for React to commit the updated src before load()
-              requestAnimationFrame(() => { videoRef.current?.load(); });
-            } else {
-              await res.body?.cancel();
+              requestAnimationFrame(() => {
+                if (!disposed) videoRef.current?.load();
+              });
             }
             // Range not supported or error status: leave src as photo.url but
             // do NOT call load() — that would download the full video.
@@ -160,7 +171,9 @@ function PhotoCard({
     );
     observer.observe(el);
     return () => {
+      disposed = true;
       observer.disconnect();
+      controller.abort();
       // Revoke the partial blob URL now that the card is unmounting or the
       // photo URL has changed.  This is the correct place to release the
       // memory — NOT inside handleVideoSeeked which fires before unmount.
@@ -342,8 +355,8 @@ function PhotoCard({
               <>
                 <div className="photo-gif-paused-overlay" />
                 <div className="gif-play-center">
-                  <button className="gif-play-center-btn" onClick={toggleGifPause} title="继续播放">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <button type="button" className="gif-play-center-btn" onClick={toggleGifPause} aria-label="继续播放动图" title="继续播放">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                       <path d="M8 5v14l11-7z" />
                     </svg>
                   </button>
@@ -352,8 +365,8 @@ function PhotoCard({
             ) : (
               <>
                 <span className="gif-animated-badge">{isGif ? "GIF" : "动图"}</span>
-                <button className="gif-pause-corner-btn" onClick={toggleGifPause} title="暂停动图">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                <button type="button" className="gif-pause-corner-btn" onClick={toggleGifPause} aria-label="暂停动图" title="暂停动图">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                   </svg>
                 </button>
@@ -372,7 +385,9 @@ function PhotoCard({
             <>
               {onMoveRequest && (
                 <button
+                  type="button"
                   className="move-btn"
+                  aria-label="移动照片"
                   title="移动照片"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -384,7 +399,10 @@ function PhotoCard({
               )}
               {onToggleFavorite && (
                 <button
+                  type="button"
                   className={`favorite-btn${photo.favorite ? " favorite-btn--on" : ""}`}
+                  aria-label={photo.favorite ? "取消收藏" : "收藏"}
+                  aria-pressed={photo.favorite}
                   title={photo.favorite ? "取消收藏" : "收藏"}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -395,7 +413,9 @@ function PhotoCard({
                 </button>
               )}
               <button
+                type="button"
                 className="delete-btn"
+                aria-label="删除照片"
                 title="删除照片"
                 onClick={(e) => {
                   e.stopPropagation();

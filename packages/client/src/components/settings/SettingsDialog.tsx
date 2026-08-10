@@ -2,9 +2,7 @@ import { useState, useMemo, useCallback, useEffect, FormEvent, useRef } from "re
 import { useAuth } from "../../contexts/AuthContext";
 import { useGroup } from "../../contexts/GroupContext";
 import {
-  updateProfileApi,
   changePasswordApi,
-  saveStoredAuth,
   listManagedShareLinks,
   updateManagedShareLink,
   ManagedShareLink,
@@ -60,7 +58,7 @@ export default function SettingsDialog({
   const appBuildTimeText = Number.isNaN(appBuildTime.getTime())
     ? __APP_BUILD_TIME__
     : appBuildTime.toLocaleString("zh-CN");
-  const { user, updateUser } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { currentGroupId } = useGroup();
   const showToast = useToast();
   const [tab, setTab] = useState<SettingsEntryTab>(initialTab);
@@ -257,9 +255,7 @@ export default function SettingsDialog({
     setProfileSaving(true);
     setProfileError("");
     try {
-      const resp = await updateProfileApi({ displayName: displayName.trim() });
-      saveStoredAuth(resp.token, resp.refreshToken);
-      updateUser(resp.user);
+      await updateProfile(displayName.trim());
       showToast("昵称已更新", "success");
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : "保存失败");
@@ -325,7 +321,7 @@ export default function SettingsDialog({
         {/* Header */}
         <div className="settings-header">
           <span>设置</span>
-          <button className="dialog-close-btn" onClick={onClose}>✕</button>
+          <button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭设置">✕</button>
         </div>
 
         {/* Tab bar */}

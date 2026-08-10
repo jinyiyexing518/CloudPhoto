@@ -9,7 +9,15 @@
  */
 
 import { API_BASE } from "../utils/apiBase";
-import { fetchWithTimeout, authHeaders, resolveApiUrl } from "./http";
+import {
+  authHeaders,
+  fetchWithTimeout,
+  getAuthGeneration,
+  invalidateApiProxyProbe,
+  resolveApiUrl,
+  subscribeToAuthChanges,
+  toDirectApiUrl,
+} from "./http";
 import type { Photo } from "./photoApi";
 import { getPreferredMediaUrl, routeMediaUrls } from "./mediaRoute";
 
@@ -19,6 +27,13 @@ function proxyPhoto(photo: Photo): Photo {
     ...photo,
     ...routed,
   };
+}
+
+export class AuthSessionChangedError extends Error {
+  constructor(message = "登录状态已变更，上传已停止") {
+    super(message);
+    this.name = "AuthSessionChangedError";
+  }
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────
@@ -75,6 +90,7 @@ export async function uploadPhotoWithProgress(
   gpsLon?: string,
   signal?: AbortSignal,
   takenAt?: string,
+  uploadId?: string,
 ): Promise<Photo> {
   const params = new URLSearchParams({ filename: file.name });
   if (uploadedBy) params.set("uploadedBy", uploadedBy);
@@ -84,48 +100,104 @@ export async function uploadPhotoWithProgress(
   if (gpsLat) params.set("gpsLat", gpsLat);
   if (gpsLon) params.set("gpsLon", gpsLon);
   if (takenAt) params.set("takenAt", takenAt);
-  const uploadUrl = await resolveApiUrl(
-    `${API_BASE}/photos/upload?${params.toString()}`,
-    signal,
-  );
+  if (uploadId) params.set("uploadId", uploadId);
+  const authGeneration = getAuthGeneration();
+  const headers = authHeaders({ "Content-Type": file.type || "application/octet-stream" });
+  const requestUrl = `${API_BASE}/photos/upload?${params.toString()}`;
+  const uploadUrl = await resolveApiUrl(requestUrl, signal);
+  const directUploadUrl = toDirectApiUrl(requestUrl);
   if (signal?.aborted) throw new DOMException("上传已取消", "AbortError");
+  if (authGeneration !== getAuthGeneration()) throw new AuthSessionChangedError();
 
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", uploadUrl);
-
-    const headers = authHeaders({ "Content-Type": file.type || "application/octet-stream" });
-    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
-
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable) onProgress(e.loaded, e.total);
-    });
-
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try { resolve(proxyPhoto(JSON.parse(xhr.responseText) as Photo)); }
-        catch { reject(new Error(`上传失败: ${file.name}`)); }
-      } else {
-        try {
-          const msg = JSON.parse(xhr.responseText) as { error?: string };
-          reject(new Error(msg.error ?? `上传失败: ${file.name}`));
-        } catch {
-          reject(new Error(`上传失败: ${file.name}`));
-        }
+  const uploadOnce = (targetUrl: string, recoverMisroutedProxy: boolean): Promise<Photo> => (
+    new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException("上传已取消", "AbortError"));
+        return;
       }
-    });
+      if (authGeneration !== getAuthGeneration()) {
+        reject(new AuthSessionChangedError());
+        return;
+      }
 
-    xhr.addEventListener("error", () => reject(new Error("网络错误")));
-    xhr.addEventListener("timeout", () => reject(new Error(`上传超时: ${file.name}`)));
-    xhr.timeout = 600_000; // 10 min for large videos
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", targetUrl);
 
-    signal?.addEventListener("abort", () => {
-      xhr.abort();
-      reject(new DOMException("上传已取消", "AbortError"));
-    });
+      Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
 
-    xhr.send(file);
-  });
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total);
+      });
+
+      let unsubscribeAuth = () => {};
+      const cleanup = () => {
+        signal?.removeEventListener("abort", abort);
+        unsubscribeAuth();
+      };
+      const fallbackToDirect = (): boolean => {
+        if (!recoverMisroutedProxy || !uploadId || targetUrl === directUploadUrl) return false;
+        cleanup();
+        invalidateApiProxyProbe();
+        void uploadOnce(directUploadUrl, false).then(resolve, reject);
+        return true;
+      };
+      const abort = () => {
+        cleanup();
+        xhr.abort();
+        reject(signal?.reason instanceof Error
+          ? signal.reason
+          : new DOMException("上传已取消", "AbortError"));
+      };
+      const abortForAuthChange = () => {
+        if (authGeneration === getAuthGeneration()) return;
+        cleanup();
+        xhr.abort();
+        reject(new AuthSessionChangedError());
+      };
+      unsubscribeAuth = subscribeToAuthChanges(abortForAuthChange);
+
+      xhr.addEventListener("load", () => {
+        const contentType = xhr.getResponseHeader("content-type") ?? "";
+        const routeMissing = recoverMisroutedProxy && (
+          xhr.status === 404
+          || xhr.status === 405
+          || (xhr.status >= 200 && xhr.status < 300 && contentType.includes("text/html"))
+        );
+        const gatewayFailure = [502, 503, 504, 521, 522, 523, 524].includes(xhr.status);
+        if ((routeMissing || gatewayFailure) && fallbackToDirect()) return;
+        cleanup();
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(proxyPhoto(JSON.parse(xhr.responseText) as Photo)); }
+          catch { reject(new Error(`上传失败: ${file.name}`)); }
+        } else {
+          try {
+            const msg = JSON.parse(xhr.responseText) as { error?: string };
+            reject(new Error(msg.error ?? `上传失败: ${file.name}`));
+          } catch {
+            reject(new Error(`上传失败: ${file.name}`));
+          }
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        if (fallbackToDirect()) return;
+        cleanup();
+        reject(new Error("网络错误"));
+      });
+      xhr.addEventListener("timeout", () => {
+        if (fallbackToDirect()) return;
+        cleanup();
+        reject(new Error(`上传超时: ${file.name}`));
+      });
+      xhr.timeout = 600_000; // 10 min for large videos
+
+      signal?.addEventListener("abort", abort, { once: true });
+      xhr.send(file);
+    })
+  );
+
+  return uploadOnce(uploadUrl, uploadUrl !== directUploadUrl);
 }
 
 // ── Video thumbnail extraction ────────────────────────────────────────────

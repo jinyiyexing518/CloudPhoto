@@ -35,7 +35,7 @@ export default function PhotoTimeEditDialog({ currentIso, saving, onSave, onClos
       <div className="time-edit-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="time-edit-header">
           <span className="time-edit-title">修改拍摄时间</span>
-          <button className="time-edit-close" onClick={onClose} disabled={saving}>✕</button>
+          <button type="button" className="time-edit-close" onClick={onClose} disabled={saving} aria-label="关闭拍摄时间编辑">✕</button>
         </div>
 
         <div className="time-edit-shortcuts">

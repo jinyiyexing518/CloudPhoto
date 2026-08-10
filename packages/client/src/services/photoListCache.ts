@@ -165,22 +165,22 @@ export function clearPrivatePhotoCaches(): Promise<void> {
 }
 
 /**
- * Adopts private caches for one authenticated account. Unknown legacy ownership
- * and account switches are handled conservatively by deleting private data.
+ * Adopts private caches for one authorization scope (`userId:role`). Unknown
+ * legacy ownership, account switches, and role changes delete private data.
  */
-export async function preparePrivatePhotoCachesForUser(userId: string): Promise<void> {
-  if (typeof window === "undefined" || !userId) return;
+export async function preparePrivatePhotoCachesForScope(authScope: string): Promise<void> {
+  if (typeof window === "undefined" || !authScope) return;
   let owner: string | null = null;
   try {
     owner = localStorage.getItem(CACHE_OWNER_KEY);
   } catch {
     // Treat storage failures as unknown ownership.
   }
-  if (owner !== userId) await clearPrivatePhotoCaches();
+  if (owner !== authScope) await clearPrivatePhotoCaches();
   await cleanupChain;
   try {
-    localStorage.setItem(CACHE_OWNER_KEY, userId);
+    localStorage.setItem(CACHE_OWNER_KEY, authScope);
   } catch {
-    // User-id cache keys still isolate memory and Cache Storage entries.
+    // Authorization-scoped cache keys still isolate memory and Cache Storage entries.
   }
 }

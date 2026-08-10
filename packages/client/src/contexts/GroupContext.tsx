@@ -19,6 +19,7 @@ const GroupContext = createContext<GroupContextValue>({
   loadingGroups: false,
   groupsLoaded: false,
 });
+const EMPTY_GROUPS: Group[] = [];
 
 export function GroupProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -27,66 +28,117 @@ export function GroupProvider({ children }: { children: ReactNode }) {
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const restoredRef = useRef(false);
+  const refreshGenerationRef = useRef(0);
+  const refreshAbortRef = useRef<AbortController | null>(null);
+  const groupsOwnerIdRef = useRef<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(user?.id ?? null);
+  currentUserIdRef.current = user?.id ?? null;
 
   // Public setter — also persists to localStorage
   const setCurrentGroupId = useCallback((id: string) => {
     _setCurrentGroupId(id);
     if (user) localStorage.setItem(`cf_group_${user.username}`, id);
-  }, [user]);
+  }, [user?.username]);
 
   const refreshGroups = useCallback(async () => {
-    if (!user) { setGroups([]); return; }
+    const userId = user?.id ?? null;
+    if (userId !== currentUserIdRef.current) return;
+    const generation = ++refreshGenerationRef.current;
+    refreshAbortRef.current?.abort();
+    if (!userId) {
+      refreshAbortRef.current = null;
+      setGroups([]);
+      setGroupsLoaded(false);
+      setLoadingGroups(false);
+      return;
+    }
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
     setLoadingGroups(true);
     try {
-      const list = await listGroupsApi();
+      const list = await listGroupsApi(controller.signal);
+      if (
+        controller.signal.aborted
+        || generation !== refreshGenerationRef.current
+        || userId !== currentUserIdRef.current
+      ) return;
+      groupsOwnerIdRef.current = userId;
       setGroups(list);
       setGroupsLoaded(true);
     } catch {
+      if (
+        controller.signal.aborted
+        || generation !== refreshGenerationRef.current
+        || userId !== currentUserIdRef.current
+      ) return;
+      groupsOwnerIdRef.current = userId;
       setGroups([]);
       setGroupsLoaded(true);
     } finally {
-      setLoadingGroups(false);
+      if (
+        generation === refreshGenerationRef.current
+        && userId === currentUserIdRef.current
+      ) {
+        setLoadingGroups(false);
+        if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
+      }
     }
-  }, [user]);
+  }, [user?.id]);
 
   // Reload groups when user changes
   useEffect(() => {
-    void refreshGroups();
-  }, [refreshGroups]);
+    refreshGenerationRef.current++;
+    refreshAbortRef.current?.abort();
+    refreshAbortRef.current = null;
+    groupsOwnerIdRef.current = null;
+    _setCurrentGroupId("");
+    setGroups([]);
+    setGroupsLoaded(false);
+    setLoadingGroups(false);
+    restoredRef.current = false;
+    if (user) void refreshGroups();
+    return () => {
+      refreshGenerationRef.current++;
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
+    };
+  }, [user?.id, refreshGroups]);
+
+  const groupsAreCurrent = Boolean(user && groupsOwnerIdRef.current === user.id);
+  const visibleGroups = groupsAreCurrent ? groups : EMPTY_GROUPS;
+  const visibleGroupId = groupsAreCurrent ? currentGroupId : "";
+  const visibleGroupsLoaded = groupsAreCurrent && groupsLoaded;
 
   // After groups load for the first time per login, restore last-used group
   useEffect(() => {
-    if (!user || !groupsLoaded || restoredRef.current) return;
+    if (!user || !visibleGroupsLoaded || restoredRef.current) return;
     restoredRef.current = true;
     const stored = localStorage.getItem(`cf_group_${user.username}`);
     // Only restore if the group still exists (handles deleted groups gracefully)
-    if (stored && stored !== "" && groups.find((g) => g.id === stored)) {
+    if (stored && stored !== "" && visibleGroups.find((g) => g.id === stored)) {
       _setCurrentGroupId(stored); // Bypass persisting setter to avoid a redundant write
     }
     // "" or unknown → stay at personal (default "")
-  }, [user, groupsLoaded, groups]);
-
-  // When user logs out, reset everything
-  useEffect(() => {
-    if (!user) {
-      _setCurrentGroupId("");
-      setGroups([]);
-      setGroupsLoaded(false);
-      restoredRef.current = false;
-    }
-  }, [user]);
+  }, [user, visibleGroupsLoaded, visibleGroups]);
 
   // If the currently-selected group was deleted, fall back to personal
   // Guard with groupsLoaded to avoid resetting during initial load
   useEffect(() => {
-    if (!groupsLoaded) return;
-    if (currentGroupId && !groups.find((g) => g.id === currentGroupId)) {
+    if (!visibleGroupsLoaded) return;
+    if (visibleGroupId && !visibleGroups.find((g) => g.id === visibleGroupId)) {
       setCurrentGroupId(""); // Uses persisting setter (clears stored value too)
     }
-  }, [groups, groupsLoaded, currentGroupId, setCurrentGroupId]);
+  }, [visibleGroups, visibleGroupsLoaded, visibleGroupId, setCurrentGroupId]);
 
   return (
-    <GroupContext.Provider value={{ groups, currentGroupId, setCurrentGroupId, refreshGroups, loadingGroups, groupsLoaded }}>
+    <GroupContext.Provider value={{
+      groups: visibleGroups,
+      currentGroupId: visibleGroupId,
+      setCurrentGroupId,
+      refreshGroups,
+      loadingGroups,
+      groupsLoaded: visibleGroupsLoaded,
+    }}>
       {children}
     </GroupContext.Provider>
   );

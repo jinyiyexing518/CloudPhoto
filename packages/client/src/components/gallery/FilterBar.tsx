@@ -92,11 +92,12 @@ export default function FilterBar({
             type="search"
             className="search-input"
             placeholder="搜索名称..."
+            aria-label="按名称搜索照片"
             value={localName}
             onChange={(e) => handleNameChange(e.target.value)}
           />
           {localName && (
-            <button className="search-clear" onClick={() => handleNameChange("")}>✕</button>
+            <button type="button" className="search-clear" onClick={() => handleNameChange("")} aria-label="清空名称搜索">✕</button>
           )}
         </div>
 
@@ -147,8 +148,11 @@ export default function FilterBar({
             {(["sm", "md", "lg"] as GridSize[]).map((size) => (
               <button
                 key={size}
+                type="button"
                 className={`grid-size-btn${gridSize === size ? " active" : ""}`}
                 onClick={() => onGridSizeChange(size)}
+                aria-label={size === "sm" ? "小缩略图" : size === "md" ? "中缩略图" : "大缩略图"}
+                aria-pressed={gridSize === size}
                 title={size === "sm" ? "小缩略图" : size === "md" ? "中缩略图" : "大缩略图"}
               >
                 {size === "sm" ? "⊞" : size === "md" ? "⊟" : "▣"}
@@ -164,7 +168,12 @@ export default function FilterBar({
           {activeChips.map((chip) => (
             <span key={chip.key} className="filter-chip">
               {chip.label}
-              <button className="filter-chip-remove" onClick={() => set(chip.key, chip.key === "favoriteOnly" ? false : "")}>✕</button>
+              <button
+                type="button"
+                className="filter-chip-remove"
+                onClick={() => set(chip.key, chip.key === "favoriteOnly" ? false : "")}
+                aria-label={`移除${chip.label}筛选`}
+              >✕</button>
             </span>
           ))}
         </div>

@@ -41,7 +41,8 @@
 ### 流量优化
 
 - **IntersectionObserver 无限滚动** — 首屏仅渲染 40 张，sentinel 节点触发分批加载；首屏流量减少 **66%**
-- **2048px WebP 预览图** — 上传时服务端（sharp）同步生成 2048px WebP 预览；查看器加载预览而非原图，流量减少 **95%+**；历史照片通过「回填」端点批量补生成
+- **2048px WebP 预览图** — 上传时服务端（sharp）同步生成 2048px WebP 预览；查看器加载预览而非原图，流量减少 **95%+**；缩略图和 EXIF 历史回填都按游标分批且单次最多读取一个 Blob 页，不把完整图库保留在 Function 内存，也不会在空/视频库中无界扫描
+- **SAS 安全复用** — Workbox 仍以完整 SAS 查询作为私有缓存键；仅当同一资源的旧 URL 尚有 10 分钟以上有效期且不早于新 URL 过期时才复用，绝不以缓存命中换取更短可用期
 - **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px→thumbnail，≤2200px→preview，>2200px→original；手机避免加载多余像素
 - **视频封面体积压缩** — `setVideoThumbnail` 端点用 sharp 将 canvas 截帧（最大 1920×1080，~500KB）缩至 400px 再存储，体积缩小 **10–15×**
 - **视频按需加载** — `preload="none"` + IntersectionObserver，进入视口才调 `video.load()`；修复了 `useEffect` deps 遗漏 `useVideoThumb` 导致缩略图 404 后 Observer 永远不注册的 bug
@@ -52,13 +53,13 @@
 
 ### 渲染优化
 
-- **Service Worker 媒体缓存**（SAS 令牌穿透缓存）  
-  - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），每 2h 轮换 → URL 变化 → 浏览器缓存失效，每次访问重新下载全部图片（200 张 ≈ 90MB/次）  
+- **Service Worker 私有媒体缓存**
+  - 问题：Azure SAS 令牌在 URL query string 中（`?sv=...&sig=...&se=...`），媒体缓存既要减少同一会话重复下载，也不能跨越账号授权边界
   - 大公司做法：CDN（Cloudflare / CloudFront）+ 稳定 content-addressed URL + `Cache-Control: immutable, max-age=31536000`  
-  - 我们的方案：Workbox `CacheFirst` + `matchOptions: { ignoreSearch: true }`；只接收可验证的 `200 GET`，opaque、Range 和 HEAD 不进入缓存，避免把过期 SAS 的 403/状态 0 固化
-  - 结构边界：600 条目 / 7 天 / `purgeOnQuotaError`；注销、自动注销或切号清除私有 `photo-media-v1`，不清应用壳/precache
+  - 我们的方案：Workbox `CacheFirst` 保留 SAS 查询作为缓存键的一部分；只接收可验证的 `200 GET`，opaque、Range 和 HEAD 不进入缓存，避免把过期 SAS 的 403/状态 0 固化
+  - 结构边界：600 条目 / 1 小时 / `purgeOnQuotaError`；注销、自动注销或切号清除私有 `photo-media-v1`，迟到写入也无法被其他账号的不同 SAS 请求命中
 - **nginx 浏览器缓存头** — `Cache-Control: private, max-age=3600, immutable`，freshness 短于 2h SAS，不提供越过授权期的 stale window
-- **HTTP Range Request 视频截帧**（`bandwidth.ts`）— 视频封面改为 `Range: bytes=0-524287`（512 KB）替代全量下载；iOS/Android 默认 faststart MP4 的 moov 原子在文件开头，512KB 足以解码元数据 + 截第一帧；首次访问 10 个视频：从 **1-2 GB → 5 MB**（-99.5%）
+- **HTTP Range Request 视频截帧**（`bandwidth.ts`）— 视频封面改为 `Range: bytes=0-524287`（512 KB）替代全量下载；iOS/Android 默认 faststart MP4 的 moov 原子在文件开头，512KB 足以解码元数据 + 截第一帧；非 `206` 响应主动取消响应体，避免忽略 Range 的线路继续传完整视频；首次访问 10 个视频：从 **1-2 GB → 5 MB**（-99.5%）
 - **视频封面一次生成复用**（`bandwidth.ts`）— 首次 gallery 浏览时 canvas 截帧后自动 POST 到 `/api/photos/set-thumbnail`；derivative 上传成功后才以 ETag 条件合并 `thumbnailName`，session-level `Set` 防重复上传
 - **原生浏览器下载，零 JS 文件缓冲**（`render.ts`）— 服务端返回带 `Content-Disposition: attachment` 的 SAS；客户端以有界 HEAD 换线预检后交给 `<a>` 下载，大文件不进入 JS heap
 - **Tab 切换零重载** — 时间线常驻；重要片段和文件夹首次访问时才挂载，此后用 `display:none` 保持状态；Map/TimeCapsule/Story 等重型 Tab 仍按需加载
@@ -89,7 +90,7 @@
 ## 🔐 安全与鉴权
 
 - **零密钥架构** — 存储与数据库全部通过 Azure Managed Identity（`DefaultAzureCredential`）访问，代码库无任何账户密钥
-- **JWT 双令牌 + 并发刷新互斥锁** — 2h access + 30d rolling refresh；并发 401 时 Promise mutex 保证只发一次刷新，所有挂起请求共享新令牌自动重试
+- **JWT 双令牌 + 并发刷新互斥锁** — 2h access + 30d rolling refresh；并发 401 时 Promise mutex 保证只发一次刷新；认证 generation + AbortController 防止旧刷新在注销/切号后恢复旧账号，迟到 401 也不能退出新账号
 - **IP 滑动窗口限流** — 登录 10/分、注册 5/分、刷新 20/分；超限 `429 + Retry-After: 60`
 - **OIDC 无密码 CI/CD** — GitHub Actions 通过 Azure Federated Credential 认证，无长期密码
 - **用户委托 SAS** — Blob 访问凭证由 Managed Identity 签发（无账户密钥），2h 有效期，最小权限
@@ -117,6 +118,7 @@
 - **传输守卫** — 上传/下载中阻止 Tab 关闭，`beforeunload` 拦截
 - **PWA** — Service Worker + Manifest，可安装到桌面/手机
 - **14 个键盘快捷键** + 快捷键速查表
+- **图标控件无障碍语义** — 关闭、清空、导航、播放、收藏与编辑按钮具备明确 ARIA 名称，状态型控件同步暴露 pressed 状态
 
 ---
 

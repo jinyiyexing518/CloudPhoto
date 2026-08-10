@@ -40,8 +40,10 @@ export default function MediaThumb({
   loading = "lazy",
 }: Props) {
   const isVideo = contentType?.startsWith("video/") ?? false;
-  const imageSources = thumbnailUrl || previewUrl
-    ? [thumbnailUrl, previewUrl]
+  const derivativeSources = [thumbnailUrl, previewUrl]
+    .filter((source): source is string => Boolean(source));
+  const imageSources = derivativeSources.length > 0
+    ? derivativeSources
     : [url];
 
   if (!isVideo) {

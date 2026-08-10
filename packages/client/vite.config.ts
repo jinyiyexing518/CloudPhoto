@@ -66,11 +66,11 @@ export default defineConfig({
           },
           {
             // Cache only verifiable successful GET responses. Opaque status-0
-            // responses and Range/HEAD probes must never enter this ignore-SAS cache.
-            // KEY: matchOptions.ignoreSearch strips SAS token query params from the cache
-            // key — so a re-issued SAS URL still hits the cached response.
-            // Eligible repeat visits can reuse immutable media by path without
-            // checking the network until Workbox expiration/eviction.
+            // responses and Range/HEAD probes must never enter this private cache.
+            // Keep the SAS query in the key: a service-worker write that finishes
+            // after logout then cannot satisfy another account's guessed media path.
+            // The list layer reuses the same still-valid SAS URL across refreshes,
+            // preserving cache hits without weakening this authorization boundary.
             urlPattern: ({ url, request }) =>
               request.method === "GET" &&
               !request.headers.has("range") &&
@@ -81,10 +81,10 @@ export default defineConfig({
             handler: "CacheFirst" as const,
             options: {
               cacheName: "photo-media-v1",
-              matchOptions: { ignoreSearch: true }, // ignore SAS ?sv=...&sig=...&se=...
+              matchOptions: { ignoreSearch: false },
               expiration: {
                 maxEntries: 600,           // ~200 photos × 3 sizes (thumb+preview+orig)
-                maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+                maxAgeSeconds: 60 * 60,    // never outlive the one-hour private freshness window
                 purgeOnQuotaError: true,   // auto-evict oldest if storage quota exceeded
               },
               cacheableResponse: { statuses: [200] },

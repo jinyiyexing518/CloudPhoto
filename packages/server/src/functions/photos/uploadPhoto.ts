@@ -10,7 +10,9 @@ import {
   generateSasUrl,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
-import { getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
+import type { BlockBlobClient } from "@azure/storage-blob";
 import exifr from "exifr";
 // sharp is loaded lazily via require() so a missing/incompatible native binary
 // does not crash the entire function app on startup (would break login, etc.).
@@ -44,6 +46,76 @@ const ALLOWED_AUDIO_MIME = new Set([
 const ALLOWED_UPLOAD_MIME = new Set([...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME, ...ALLOWED_AUDIO_MIME]);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;   // 20 MB
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;  // 200 MB
+
+function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
+  if (!metadata) return undefined;
+  return metadata[key] ?? metadata[key.toLowerCase()];
+}
+
+function decodeMeta(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    return Buffer.from(raw, "base64").toString("utf8") || undefined;
+  } catch {
+    return raw;
+  }
+}
+
+function statusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as { statusCode?: unknown; code?: unknown }).statusCode
+    ?? (error as { code?: unknown }).code;
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  return undefined;
+}
+
+async function buildUploadResponse(
+  blockBlobClient: BlockBlobClient,
+  blobName: string,
+  folder: string,
+  groupId: string,
+  scope: string,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  try {
+    await syncPhotoLocationFromBlob(blockBlobClient, blobName, scope);
+  } catch (error) {
+    context.warn("photoLocations reconciliation failed (non-fatal):", error);
+  }
+  const props = await blockBlobClient.getProperties();
+  const metadata = props.metadata;
+  const thumbnailName = decodeMeta(getMeta(metadata, "thumbnailName"));
+  const previewName = decodeMeta(getMeta(metadata, "previewName"));
+  return {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: blobName,
+      originalName: decodeMeta(getMeta(metadata, "originalName")),
+      subject: decodeMeta(getMeta(metadata, "subject")),
+      folder: folder === "_" ? "" : folder,
+      groupId: groupId || undefined,
+      url: await generateSasUrl(blobName),
+      ...(thumbnailName && { thumbnailUrl: await generateSasUrl(thumbnailName) }),
+      ...(previewName && { previewUrl: await generateSasUrl(previewName) }),
+      size: props.contentLength ?? 0,
+      lastModified: props.lastModified?.toISOString()
+        ?? getMeta(metadata, "lastModifiedAt")
+        ?? getMeta(metadata, "createdAt")
+        ?? new Date().toISOString(),
+      contentType: props.contentType ?? "application/octet-stream",
+      createdBy: decodeMeta(getMeta(metadata, "createdBy")),
+      createdAt: getMeta(metadata, "createdAt"),
+      lastModifiedBy: decodeMeta(getMeta(metadata, "lastModifiedBy")),
+      lastModifiedAt: getMeta(metadata, "lastModifiedAt"),
+      ...(getMeta(metadata, "isAnimated") === "1" && { isAnimated: true }),
+      ...(getMeta(metadata, "gpsLat") && { gpsLat: getMeta(metadata, "gpsLat") }),
+      ...(getMeta(metadata, "gpsLon") && { gpsLon: getMeta(metadata, "gpsLon") }),
+      ...(getMeta(metadata, "takenAt") && { takenAt: getMeta(metadata, "takenAt") }),
+    }),
+  };
+}
 
 /**
  * Detect animated/motion photos that are not standard GIF.
@@ -112,6 +184,13 @@ app.http("uploadPhoto", {
       const groupId = request.query.get("groupId") ?? "";
       const gpsLat = request.query.get("gpsLat") ?? "";
       const gpsLon = request.query.get("gpsLon") ?? "";
+      const rawUploadId = request.query.get("uploadId") ?? "";
+      if (rawUploadId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawUploadId)) {
+        return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Invalid uploadId" }) };
+      }
+      if (groupId && !await isGroupMember(groupId, payload.userId)) {
+        return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Not a member of this group" }) };
+      }
 
       const safeName = filename.replace(/[\/\\\0]/g, "_");
       // Path-based with sub-folder support: personal/{userId}/{folderPath}/{ts}-{name}
@@ -124,8 +203,8 @@ app.http("uploadPhoto", {
             .join("/")
         : "_";
       const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
-      const ts = Date.now();
-      const blobName = `${scope}/${safeFolderPath}/${ts}-${safeName}`;
+      const objectId = rawUploadId || String(Date.now());
+      const blobName = `${scope}/${safeFolderPath}/${objectId}-${safeName}`;
       const now = new Date().toISOString();
 
       // Pre-compute thumbnail blob name so it can be stored in original's metadata.
@@ -136,9 +215,9 @@ app.http("uploadPhoto", {
         !ALLOWED_AUDIO_MIME.has(mimeType) &&
         THUMBNAIL_MIME.has(mimeType);
       // isAnimated is computed later; re-check after buf is available
-      const thumbnailBlobName = `${scope}/${safeFolderPath}/_th_${ts}-${safeName}.webp`;
+      const thumbnailBlobName = `${scope}/${safeFolderPath}/_th_${objectId}-${safeName}.webp`;
       // 2048 px preview — same conditions as thumbnail, stored with -prev suffix
-      const previewBlobName = `${scope}/${safeFolderPath}/_th_${ts}-${safeName}-prev.webp`;
+      const previewBlobName = `${scope}/${safeFolderPath}/_th_${objectId}-${safeName}-prev.webp`;
 
       const blobServiceClient = getBlobServiceClient();
       const containerClient =
@@ -146,6 +225,9 @@ app.http("uploadPhoto", {
       await containerClient.createIfNotExists();
 
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      if (rawUploadId && await blockBlobClient.exists()) {
+        return buildUploadResponse(blockBlobClient, blobName, safeFolderPath, groupId, scope, context);
+      }
       const arrayBuffer = await request.arrayBuffer();
       const isVideoUpload = ALLOWED_VIDEO_MIME.has(mimeType);
       const isAudioUpload = ALLOWED_AUDIO_MIME.has(mimeType);
@@ -206,14 +288,23 @@ app.http("uploadPhoto", {
         ...(resolvedLon && { gpsLon: resolvedLon }),
         ...(takenAt && { takenAt }),
         ...(isAnimated && { isAnimated: "1" }),
+        ...(rawUploadId && { uploadId: rawUploadId }),
       };
-      await blockBlobClient.uploadData(buf, {
-        blobHTTPHeaders: {
-          blobContentType: contentType,
-          blobCacheControl: "private, max-age=3600, immutable",
-        },
-        metadata: originalMetadata,
-      });
+      try {
+        await blockBlobClient.uploadData(buf, {
+          blobHTTPHeaders: {
+            blobContentType: contentType,
+            blobCacheControl: "private, max-age=3600, immutable",
+          },
+          metadata: originalMetadata,
+          ...(rawUploadId ? { conditions: { ifNoneMatch: "*" } } : {}),
+        });
+      } catch (error) {
+        if (rawUploadId && statusCode(error) === 412) {
+          return buildUploadResponse(blockBlobClient, blobName, safeFolderPath, groupId, scope, context);
+        }
+        throw error;
+      }
 
       // Generate 400 px WebP thumbnail — best-effort, failure is non-fatal
       let thumbnailGenerated = false;
@@ -297,54 +388,7 @@ app.http("uploadPhoto", {
         }
       }
 
-      // Cache GPS coordinates in Cosmos for fast map queries
-      const latNum = parseFloat(resolvedLat ?? "");
-      const lonNum = parseFloat(resolvedLon ?? "");
-      if (resolvedLat && resolvedLon && isFinite(latNum) && isFinite(lonNum)) {
-        try {
-          const locsContainer = await getPhotoLocationsContainer();
-          const doc: PhotoLocationDoc = {
-            id: encodeURIComponent(blobName),
-            scope,
-            name: blobName,
-            lat: latNum,
-            lon: lonNum,
-            originalName: filename,
-            contentType: mimeType,
-            uploadedAt: now,
-          };
-          await locsContainer.items.upsert(doc);
-        } catch (e) {
-          context.warn("photoLocations upsert failed (non-fatal):", e);
-        }
-      }
-
-      return {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: blobName,
-          originalName: filename,
-          subject,
-          folder: safeFolderPath === "_" ? "" : safeFolderPath,
-          groupId: groupId || undefined,
-          url: await generateSasUrl(blobName),
-          ...(thumbnailGenerated && { thumbnailUrl: await generateSasUrl(thumbnailBlobName) }),
-          ...(previewGenerated && { previewUrl: await generateSasUrl(previewBlobName) }),
-          size: arrayBuffer.byteLength,
-          contentType,
-          createdBy: uploadedBy,
-          createdAt: now,
-          lastModifiedBy: uploadedBy,
-          lastModifiedAt: now,
-          ...(isAnimated && { isAnimated: true }),
-          // Return resolved GPS/takenAt so the client can immediately show them
-          // without waiting for the next full photo list refresh.
-          ...(resolvedLat && { gpsLat: resolvedLat }),
-          ...(resolvedLon && { gpsLon: resolvedLon }),
-          ...(takenAt && { takenAt }),
-        }),
-      };
+      return buildUploadResponse(blockBlobClient, blobName, safeFolderPath, groupId, scope, context);
     } catch (error) {
       context.error("Upload error:", error);
       return {

@@ -55,9 +55,9 @@ export async function createGroupApi(data: { name: string; description?: string 
   );
 }
 
-export async function listGroupsApi(): Promise<Group[]> {
+export async function listGroupsApi(signal?: AbortSignal): Promise<Group[]> {
   return handleResponse(
-    await fetchWithTimeout(`${API_BASE}/groups`, { headers: authHeaders() })
+    await fetchWithTimeout(`${API_BASE}/groups`, { headers: authHeaders(), signal })
   );
 }
 

@@ -114,7 +114,7 @@ export default function WorkspaceSidebar({
               <span className="workspace-sidebar-kicker">{activeTab === "timeline" ? "Timeline" : "Moments"}</span>
               <h2>{activeTab === "timeline" ? "侧边工具栏" : "片段侧边栏"}</h2>
             </div>
-            <button className="workspace-sidebar-close" onClick={onClose}>✕</button>
+            <button type="button" className="workspace-sidebar-close" onClick={onClose} aria-label="关闭侧边工具栏">✕</button>
           </div>
 
           <div className="workspace-sidebar-content" ref={contentRef}>

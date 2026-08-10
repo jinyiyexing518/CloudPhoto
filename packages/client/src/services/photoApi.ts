@@ -14,7 +14,12 @@
  */
 
 import { API_BASE } from "../utils/apiBase";
-import { fetchWithTimeout, authHeaders, parseApiError } from "./http";
+import {
+  authHeaders,
+  fetchWithTimeout,
+  getAuthGeneration,
+  parseApiError,
+} from "./http";
 import {
   getPrivatePhotoCacheGeneration,
   readMemoryPhotoListCache,
@@ -27,6 +32,7 @@ import {
   resolveMediaUrlWithFallback,
   routeMediaUrls,
   selectFastestMediaRoute,
+  toDirectMediaUrl,
 } from "./mediaRoute";
 import type { MomentInsight } from "./shareApi";
 import { ManagedMomentsUnavailableError } from "./shareApi";
@@ -38,12 +44,19 @@ import {
 
 // ── Re-exports for backward compatibility ─────────────────────────────────
 export {
-  saveStoredAuth, clearStoredAuth, getToken, setUnauthorizedHandler,
+  saveStoredAuth, clearStoredAuth, getToken, getTokenAuthScope, getAuthGeneration,
+  setUnauthorizedHandler, subscribeToAuthChanges, invalidateAuthRefresh,
   fetchWithTimeout, authHeaders,
 } from "./http";
 export type { AuthUser, AuthResponse } from "./authApi";
 export { loginApi, registerApi, getMeApi, addAdminApi, updateProfileApi, changePasswordApi } from "./authApi";
-export { uploadPhoto, uploadPhotoWithProgress, extractVideoThumbnail, setVideoThumbnail } from "./uploadApi";
+export {
+  AuthSessionChangedError,
+  uploadPhoto,
+  uploadPhotoWithProgress,
+  extractVideoThumbnail,
+  setVideoThumbnail,
+} from "./uploadApi";
 export type { ManagedShareLink, MomentInsight } from "./shareApi";
 export { ManagedMomentsUnavailableError, createPhotoShareLink, createFolderShareLink, listManagedShareLinks, updateManagedShareLink } from "./shareApi";
 
@@ -131,11 +144,76 @@ export async function fetchMotionVideoBlob(photoName: string): Promise<MotionVid
 }
 
 // ── Photo list SWR cache ──────────────────────────────────────────────────
-// A cache key is never created without an authenticated user id. This prevents
-// anonymous/session keys from being reused when accounts change in one browser.
+// A cache key is never created without a user+role authorization scope. This
+// prevents anonymous, replacement-account, and stale-admin entries from reuse.
 function photoListCacheKey(groupId: string, cacheScope: string): string | null {
   if (!cacheScope) return null;
   return `user:${cacheScope}:group:${groupId || "personal"}`;
+}
+
+const MEDIA_URL_REUSE_MIN_MS = 10 * 60 * 1000;
+type PhotoMediaUrlKey = "url" | "thumbnailUrl" | "previewUrl" | "voiceMemoUrl";
+const PHOTO_MEDIA_URL_KEYS: PhotoMediaUrlKey[] = [
+  "url",
+  "thumbnailUrl",
+  "previewUrl",
+  "voiceMemoUrl",
+];
+
+function mediaResourcePath(url: string): string | null {
+  try {
+    return new URL(toDirectMediaUrl(url), window.location.origin).pathname;
+  } catch {
+    return null;
+  }
+}
+
+function sasExpiry(url: string): number | null {
+  try {
+    const expiresAt = Date.parse(new URL(url, window.location.origin).searchParams.get("se") ?? "");
+    return Number.isFinite(expiresAt) ? expiresAt : null;
+  } catch {
+    return null;
+  }
+}
+
+export function selectFresherMediaUrl(
+  currentUrl: string | undefined,
+  candidateUrl: string,
+): string {
+  if (!currentUrl || mediaResourcePath(currentUrl) !== mediaResourcePath(candidateUrl)) {
+    return candidateUrl;
+  }
+  const currentExpiry = sasExpiry(currentUrl);
+  const candidateExpiry = sasExpiry(candidateUrl);
+  return currentExpiry !== null
+    && candidateExpiry !== null
+    && currentExpiry > candidateExpiry
+    ? currentUrl
+    : candidateUrl;
+}
+
+function reuseFreshMediaUrls(next: Photo, previous: Photo | undefined): Photo {
+  if (!previous) return next;
+  const merged = { ...next };
+  for (const key of PHOTO_MEDIA_URL_KEYS) {
+    const previousUrl = previous[key];
+    const nextUrl = next[key];
+    const previousExpiry = previousUrl ? sasExpiry(previousUrl) : null;
+    const nextExpiry = nextUrl ? sasExpiry(nextUrl) : null;
+    if (
+      previousUrl
+      && nextUrl
+      && previousExpiry !== null
+      && nextExpiry !== null
+      && previousExpiry - Date.now() > MEDIA_URL_REUSE_MIN_MS
+      && previousExpiry >= nextExpiry
+      && mediaResourcePath(previousUrl) === mediaResourcePath(nextUrl)
+    ) {
+      merged[key] = previousUrl;
+    }
+  }
+  return merged;
 }
 
 /** Returns the in-memory photo list for a user/group (may be stale). */
@@ -178,8 +256,12 @@ export async function listPhotos(groupId = "", options: ListPhotosOptions = {}):
   if (!response.ok) throw new Error("Failed to fetch photos");
   const rawPhotos = parsePhotoListPayload(await response.json() as unknown);
   await selectFastestMediaRoute(rawPhotos[0]?.url);
-  const photos = rawPhotos.map(proxyPhoto);
   const key = photoListCacheKey(groupId, options.cacheScope ?? "");
+  const previousPhotos = key ? readMemoryPhotoListCache<Photo>(key) : null;
+  const previousByName = new Map(previousPhotos?.map((photo) => [photo.name, photo]));
+  const photos = rawPhotos
+    .map(proxyPhoto)
+    .map((photo) => reuseFreshMediaUrls(photo, previousByName.get(photo.name)));
   if (key && cacheGeneration === getPrivatePhotoCacheGeneration()) {
     writeMemoryPhotoListCache(key, photos);
     void writePhotoListCache(key, photos, cacheGeneration);
@@ -273,19 +355,43 @@ export async function permanentlyDeletePhoto(name: string): Promise<void> {
 
 // ── Backfill ──────────────────────────────────────────────────────────────
 export async function backfillPhotoMetadata(groupId = ""): Promise<{ processed: number; updated: number; failed: number }> {
-  const url = `${API_BASE}/photos/backfill${groupId ? `?groupId=${encodeURIComponent(groupId)}` : ""}`;
-  const response = await fetchWithTimeout(url, { method: "POST", headers: authHeaders() }, 300_000);
-  if (!response.ok) throw new Error(await parseApiError(response, "回填历史照片元数据失败"));
-  return response.json() as Promise<{ processed: number; updated: number; failed: number }>;
+  const totals = { processed: 0, updated: 0, failed: 0 };
+  const authGeneration = getAuthGeneration();
+  let hasMore = true;
+  let cursor = "";
+  while (hasMore) {
+    if (authGeneration !== getAuthGeneration()) throw new Error("登录状态已变更，照片元数据回填已停止");
+    const qp = new URLSearchParams(); if (groupId) qp.set("groupId", groupId); qp.set("limit", "30"); if (cursor) qp.set("cursor", cursor);
+    const response = await fetchWithTimeout(`${API_BASE}/photos/backfill?${qp}`, { method: "POST", headers: authHeaders() }, 120_000);
+    if (authGeneration !== getAuthGeneration()) {
+      await response.body?.cancel();
+      throw new Error("登录状态已变更，照片元数据回填已停止");
+    }
+    if (!response.ok) throw new Error(await parseApiError(response, "回填历史照片元数据失败"));
+    const result = await response.json() as { processed: number; updated: number; failed: number; hasMore: boolean; cursor?: string; };
+    totals.processed += result.processed; totals.updated += result.updated; totals.failed += result.failed;
+    hasMore = result.hasMore;
+    if (hasMore) {
+      if (!result.cursor || result.cursor === cursor) throw new Error("照片元数据回填未能继续分页");
+      cursor = result.cursor;
+    }
+  }
+  return totals;
 }
 
 export async function backfillThumbnails(groupId = ""): Promise<{ processed: number; generated: number; skipped: number; failed: number }> {
   const totals = { processed: 0, generated: 0, skipped: 0, failed: 0 };
+  const authGeneration = getAuthGeneration();
   let hasMore = true;
   let cursor = "";
   while (hasMore) {
+    if (authGeneration !== getAuthGeneration()) throw new Error("登录状态已变更，缩略图回填已停止");
     const qp = new URLSearchParams(); if (groupId) qp.set("groupId", groupId); qp.set("limit", "30"); if (cursor) qp.set("cursor", cursor);
     const response = await fetchWithTimeout(`${API_BASE}/photos/backfill-thumbnails?${qp}`, { method: "POST", headers: authHeaders() }, 120_000);
+    if (authGeneration !== getAuthGeneration()) {
+      await response.body?.cancel();
+      throw new Error("登录状态已变更，缩略图回填已停止");
+    }
     if (!response.ok) throw new Error(await parseApiError(response, "缩略图回填失败"));
     const result = await response.json() as { processed: number; generated: number; skipped: number; failed: number; hasMore: boolean; cursor?: string; };
     totals.processed += result.processed; totals.generated += result.generated; totals.skipped += result.skipped; totals.failed += result.failed;

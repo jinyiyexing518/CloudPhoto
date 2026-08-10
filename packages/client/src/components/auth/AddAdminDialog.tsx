@@ -40,7 +40,7 @@ export default function AddAdminDialog({ onClose }: Props) {
       <div className="add-admin-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="add-admin-header">
           <span>添加 Admin</span>
-          <button className="dialog-close-btn" onClick={onClose}>✕</button>
+          <button type="button" className="dialog-close-btn" onClick={onClose} aria-label="关闭添加管理员">✕</button>
         </div>
 
         <p className="add-admin-hint">邮箱或用户名填一项即可，两项都填更精准</p>

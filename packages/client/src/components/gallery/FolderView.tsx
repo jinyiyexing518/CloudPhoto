@@ -173,7 +173,9 @@ function FolderCard({
       <div className="folder-card-count">{count} 张</div>
       {onRename && !editing && (
         <button
+          type="button"
           className="folder-card-rename-btn"
+          aria-label={`重命名文件夹${name || UNCATEGORIZED}`}
           title="重命名文件夹"
           onClick={(e) => { e.stopPropagation(); setEditVal(name); setEditing(true); }}
         >
@@ -182,7 +184,9 @@ function FolderCard({
       )}
       {onDelete && !editing && (
         <button
+          type="button"
           className="folder-card-delete-btn"
+          aria-label={`删除文件夹${name || UNCATEGORIZED}`}
           title="删除文件夹（照片移入回收站）"
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
         >
@@ -558,7 +562,13 @@ export default function FolderView({
           <div className="share-folder-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="add-admin-header">
               <span>分享当前文件夹</span>
-              <button className="dialog-close-btn" onClick={() => !sharingFolder && setShowShareFolderDialog(false)}>✕</button>
+              <button
+                type="button"
+                className="dialog-close-btn"
+                onClick={() => setShowShareFolderDialog(false)}
+                disabled={sharingFolder}
+                aria-label="关闭文件夹分享"
+              >✕</button>
             </div>
             <p className="add-admin-hint">选择这个文件夹分享链接的有效期。</p>
             <div className="share-folder-summary">
@@ -1436,8 +1446,10 @@ function FolderContent({
               {/* Prev / Next navigation */}
               {selectedIdx !== null && selectedIdx > 0 && (
                 <button
+                  type="button"
                   className="modal-nav modal-nav--prev"
                   onClick={() => navigateToPhoto(selectedIdx - 1, directPhotos)}
+                  aria-label="上一张"
                   title="上一张 (←)"
                 >
                   ‹
@@ -1445,8 +1457,10 @@ function FolderContent({
               )}
               {selectedIdx !== null && selectedIdx < directPhotos.length - 1 && (
                 <button
+                  type="button"
                   className="modal-nav modal-nav--next"
                   onClick={() => navigateToPhoto(selectedIdx + 1, directPhotos)}
+                  aria-label="下一张"
                   title="下一张 (→)"
                 >
                   ›
@@ -1605,7 +1619,13 @@ function FolderContent({
                 <div className="modal-nav-hint">← → 切换 · Esc 关闭</div>
               )}
             </div>
-            <button className="modal-close" onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }} title="关闭 (Esc)">✕</button>
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => { setSelectedIdx(null); setSelectedPhoto(null); setShowOriginalPreview(false); }}
+              aria-label="关闭照片详情"
+              title="关闭 (Esc)"
+            >✕</button>
             {selectedIdx !== null && (
               <span className="modal-nav-counter">{selectedIdx + 1} / {directPhotos.length}</span>
             )}
@@ -1632,7 +1652,7 @@ function FolderContent({
                     <button className="modal-subject-save" onClick={() => void saveName()} disabled={savingName}>
                       {savingName ? "..." : "保存"}
                     </button>
-                    <button className="modal-subject-cancel" onClick={() => setEditingName(false)}>✕</button>
+                    <button type="button" className="modal-subject-cancel" onClick={() => setEditingName(false)} aria-label="取消重命名">✕</button>
                   </span>
                 ) : (
                   <span className="modal-filename">
@@ -1769,12 +1789,12 @@ function FolderContent({
                       <button className="modal-subject-save" onClick={() => void saveSubject()} disabled={savingSubject}>
                         {savingSubject ? "..." : "保存"}
                       </button>
-                      <button className="modal-subject-cancel" onClick={() => setEditingSubject(false)}>✕</button>
+                      <button type="button" className="modal-subject-cancel" onClick={() => setEditingSubject(false)} aria-label="取消编辑主题">✕</button>
                     </>
                   ) : (
                     <>
                       <span>{selectedPhoto.subject || <em className="modal-empty">无</em>}</span>
-                      <button className="modal-edit-btn" onClick={() => setEditingSubject(true)}>✏</button>
+                      <button type="button" className="modal-edit-btn" onClick={() => setEditingSubject(true)} aria-label="编辑主题">✏</button>
                     </>
                   )}
                 </span>
@@ -1803,12 +1823,12 @@ function FolderContent({
                       >
                         移动
                       </button>
-                      <button className="modal-subject-cancel" onClick={() => setShowMovePanel(false)}>✕</button>
+                      <button type="button" className="modal-subject-cancel" onClick={() => setShowMovePanel(false)} aria-label="取消移动">✕</button>
                     </>
                   ) : (
                     <>
                       <span>{selectedPhoto.folder || UNCATEGORIZED}</span>
-                      <button className="modal-edit-btn" title="移动到其他文件夹" onClick={() => setShowMovePanel(true)}>→</button>
+                      <button type="button" className="modal-edit-btn" aria-label="移动到其他文件夹" title="移动到其他文件夹" onClick={() => setShowMovePanel(true)}>→</button>
                     </>
                   )}
                 </span>
@@ -1816,7 +1836,7 @@ function FolderContent({
                 <span className="modal-detail-label">拍摄时间</span>
                 <span className="modal-detail-value modal-subject-cell">
                   <span>{selectedPhoto.takenAt ? formatDate(selectedPhoto.takenAt) : <em className="modal-empty">未记录</em>}</span>
-                  <button className="modal-edit-btn" onClick={() => setEditingTakenAt(true)}>✏</button>
+                  <button type="button" className="modal-edit-btn" onClick={() => setEditingTakenAt(true)} aria-label="修改拍摄时间">✏</button>
                 </span>
                 {editingTakenAt && (
                   <PhotoTimeEditDialog
@@ -1858,9 +1878,16 @@ function FolderContent({
                           target="_blank"
                           rel="noreferrer"
                           className="modal-edit-btn"
+                          aria-label="在 Google 地图中查看"
                           title="在 Google 地图中查看"
                         >🗺</a>
-                        <button className="modal-edit-btn" title={editingGps ? "关闭位置搜索" : "修改位置"} onClick={() => setEditingGps((v) => !v)}>{editingGps ? "✕" : "✏"}</button>
+                        <button
+                          type="button"
+                          className="modal-edit-btn"
+                          aria-label={editingGps ? "关闭位置搜索" : "修改位置"}
+                          title={editingGps ? "关闭位置搜索" : "修改位置"}
+                          onClick={() => setEditingGps((v) => !v)}
+                        >{editingGps ? "✕" : "✏"}</button>
                       </span>
                       {editingGps && (
                         <LocationSearchPanel
@@ -1878,7 +1905,13 @@ function FolderContent({
                     <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <em className="modal-empty">未记录</em>
-                        <button className="modal-edit-btn" title={editingGps ? "关闭位置搜索" : "添加位置"} onClick={() => setEditingGps((v) => !v)}>{editingGps ? "✕" : "+ 添加"}</button>
+                        <button
+                          type="button"
+                          className="modal-edit-btn"
+                          aria-label={editingGps ? "关闭位置搜索" : "添加位置"}
+                          title={editingGps ? "关闭位置搜索" : "添加位置"}
+                          onClick={() => setEditingGps((v) => !v)}
+                        >{editingGps ? "✕" : "+ 添加"}</button>
                       </span>
                       {editingGps && (
                         <LocationSearchPanel
@@ -1899,7 +1932,7 @@ function FolderContent({
       {selectedPhoto && showOriginalPreview && (
         <div className="modal-preview-overlay" onClick={() => setShowOriginalPreview(false)}>
           <div className="modal-preview-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowOriginalPreview(false)}>✕</button>
+            <button type="button" className="modal-close" onClick={() => setShowOriginalPreview(false)} aria-label="关闭原图预览">✕</button>
             <a className="modal-preview-open" href={selectedPhoto.url} target="_blank" rel="noreferrer">
               在新窗口打开原图
             </a>

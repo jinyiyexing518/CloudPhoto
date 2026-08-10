@@ -7,7 +7,11 @@ import {
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
-import type { BlobItem } from "@azure/storage-blob";
+import {
+  BACKFILL_PAGE_SIZE,
+  decodeBackfillCursor,
+  encodeBackfillCursor,
+} from "./backfillCursor";
 import type sharpT from "sharp";
 
 // Lazy-load sharp so a missing native binary doesn't crash the function app
@@ -77,29 +81,41 @@ app.http("backfillThumbnails", {
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
       ? Math.min(parsedLimit, 100)
       : 30;
-    const cursor = request.query.get("cursor") ?? "";
-
     const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
+    const cursorContext = `thumbnails:${scope}`;
+    const cursor = decodeBackfillCursor(request.query.get("cursor") ?? "", cursorContext);
+    if (!cursor) {
+      return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Invalid cursor" }) };
+    }
+
     const prefix = `${scope}/`;
 
     const containerClient = getBlobServiceClient().getContainerClient(containerName);
-    let processed = 0, generated = 0, skipped = 0, failed = 0, remaining = 0;
+    let processed = 0, generated = 0, skipped = 0, failed = 0;
     let lastProcessedName = "";
+    let hasMore = false;
+    let nextCursor = "";
 
-      // The same listing already includes derivative blobs. Keep their names so
-      // stale metadata can be detected without issuing two HEAD requests per photo.
-      const blobs: BlobItem[] = [];
-      const blobNames = new Set<string>();
-      for await (const blob of containerClient.listBlobsFlat({ prefix, includeMetadata: true })) {
-        blobs.push(blob);
-        blobNames.add(blob.name);
-      }
-
-      for (const blob of blobs) {
-        // Azure flat listings are lexicographically ordered. A cursor lets one
-        // backfill run progress past a permanently broken item instead of
-        // retrying the same first page forever and starving later photos.
-        if (cursor && blob.name <= cursor) continue;
+      const listing = containerClient.listBlobsFlat({ prefix, includeMetadata: true });
+      const pageStartToken = cursor.token || undefined;
+      const afterName = cursor.after;
+      pages: for await (const page of listing.byPage({
+        continuationToken: pageStartToken,
+        maxPageSize: BACKFILL_PAGE_SIZE,
+      })) {
+        for (const blob of page.segment.blobItems) {
+        // A cursor that stopped inside a page resumes that same bounded page,
+        // then skips only the entries already inspected there.
+        if (afterName && blob.name <= afterName) continue;
+        if (processed >= limit) {
+          hasMore = true;
+          nextCursor = encodeBackfillCursor({
+            token: pageStartToken ?? "",
+            after: lastProcessedName,
+            context: cursorContext,
+          });
+          break pages;
+        }
         // Skip soft-deleted and internal blobs
         if (getMeta(blob.metadata, "deletedAt")) continue;
         const segs = blob.name.split("/");
@@ -121,16 +137,29 @@ app.http("backfillThumbnails", {
         const previewName = `${dir}_th_${filename}-prev.webp`;
         const storedThumbName = decodeMeta(getMeta(blob.metadata, "thumbnailName"));
         const storedPreviewName = decodeMeta(getMeta(blob.metadata, "previewName"));
-        const needsThumb = storedThumbName !== thumbName || !blobNames.has(thumbName);
-        const needsPreview = storedPreviewName !== previewName || !blobNames.has(previewName);
+
+        // Bound each request by inspected originals, including healthy ones.
+        processed++;
+        lastProcessedName = blob.name;
+
+        let thumbExists: boolean;
+        let previewExists: boolean;
+        try {
+          [thumbExists, previewExists] = await Promise.all([
+            containerClient.getBlockBlobClient(thumbName).exists(),
+            containerClient.getBlockBlobClient(previewName).exists(),
+          ]);
+        } catch (error) {
+          failed++;
+          context.warn(`Derivative check failed for ${blob.name}:`, error);
+          continue;
+        }
+
+        const needsThumb = storedThumbName !== thumbName || !thumbExists;
+        const needsPreview = storedPreviewName !== previewName || !previewExists;
         // Skip blobs that already have both thumbnail and preview
         if (!needsThumb && !needsPreview) { skipped++; continue; }
 
-        // Stop at the first remaining candidate; the cursor resumes after the
-        // last attempted item without rescanning/counting later blobs twice.
-        if (processed >= limit) { remaining = 1; break; }
-        processed++;
-        lastProcessedName = blob.name;
         try {
           const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
           const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
@@ -141,7 +170,7 @@ app.http("backfillThumbnails", {
           };
 
           if (needsThumb) {
-            if (!blobNames.has(thumbName)) {
+            if (!thumbExists) {
               const thumbBuf = await sharp(await getSourceBuffer())
                 .resize({ width: 400, withoutEnlargement: true })
                 .webp({ quality: 75 })
@@ -154,13 +183,13 @@ app.http("backfillThumbnails", {
                 },
                 metadata: { isThumb: "1" },
               });
-              blobNames.add(thumbName);
+              thumbExists = true;
             }
             context.log(`Thumbnail generated: ${thumbName}`);
           }
 
           if (needsPreview) {
-            if (!blobNames.has(previewName)) {
+            if (!previewExists) {
               // 2048 px preview — used by the viewer instead of the full original
               const previewBuf = await sharp(await getSourceBuffer())
                 .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
@@ -174,7 +203,7 @@ app.http("backfillThumbnails", {
                 },
                 metadata: { isThumb: "1" },
               });
-              blobNames.add(previewName);
+              previewExists = true;
             }
             context.log(`Preview generated: ${previewName}`);
           }
@@ -214,6 +243,19 @@ app.http("backfillThumbnails", {
           failed++;
           context.warn(`Thumbnail/preview failed for ${blob.name}:`, e);
         }
+       }
+
+       // Never scan more than one raw Azure page per invocation. Empty, video-only,
+       // and derivative-heavy libraries must yield back to the Function runtime too.
+       if (page.continuationToken) {
+         hasMore = true;
+         nextCursor = encodeBackfillCursor({
+           token: page.continuationToken,
+           after: "",
+           context: cursorContext,
+         });
+       }
+       break;
       }
 
       return {
@@ -224,8 +266,8 @@ app.http("backfillThumbnails", {
           generated,
           skipped,
           failed,
-          hasMore: remaining > 0,
-          ...(remaining > 0 && lastProcessedName ? { cursor: lastProcessedName } : {}),
+          hasMore,
+          ...(hasMore && nextCursor ? { cursor: nextCursor } : {}),
         }),
       };
     } catch (error) {

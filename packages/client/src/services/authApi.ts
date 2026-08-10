@@ -81,9 +81,10 @@ export async function registerApi(data: {
   return res.json() as Promise<AuthResponse>;
 }
 
-export async function getMeApi(): Promise<AuthUser> {
+export async function getMeApi(signal?: AbortSignal): Promise<AuthUser> {
   const res = await fetchWithTimeout(`${API_BASE}/auth/me`, {
     headers: authHeaders(),
+    signal,
   }).catch(() => { throw new Error("Unauthorized"); });
   if (!res.ok) throw new Error("Unauthorized");
   return res.json() as Promise<AuthUser>;

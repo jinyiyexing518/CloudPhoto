@@ -87,6 +87,8 @@ sudo bash ~/infra/setup.sh cloudphotos.top
 5. 部署完整反向代理配置（见 `infra/nginx.conf`）
 6. 启用 systemd certbot.timer 自动续签（每日两次检查）
 
+安装脚本会为裸域名、`www` 和 `cn` 同时申请证书 SAN；部署前必须确保三个 DNS 记录均能完成 ACME 校验。
+
 ### ⚠️ Nginx 配置变更必须手动部署到 VM
 
 **Git 仓库里修改 `infra/nginx.conf` 不会自动应用到 VM，没有 Pipeline。**  
@@ -129,7 +131,7 @@ https://cloudphoto-api.azurewebsites.net/api
 运行时行为：
 - 在 `cloudphotos.top` 下，前端优先走同源 `/api`（VM Nginx 反代）
 - 在 `cn.cloudphotos.top` 下同样优先走同源 `/api` 和 `/media`
-- 若首选线路发生网络/网关失败，可安全重试的读取及认证请求自动回退；非幂等写请求不重复发送
+- 若首选线路发生网络/网关失败，可安全重试的读取及认证请求自动回退；照片列表、动态视频、回收站和地理搜索等高成本读取不因短时慢响应自动重放，非幂等写请求也不重复发送
 - 直接访问 Azure Static Web Apps 域名时，也使用该直连地址
 - 媒体使用 Blob 与 `/media` 的无响应体 HEAD 竞速；Range 请求和 HEAD 探测不进入 PWA 媒体缓存
 

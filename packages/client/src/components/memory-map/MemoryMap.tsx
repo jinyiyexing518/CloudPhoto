@@ -326,7 +326,7 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
       {selected && (
         <div className="memory-map-detail" onClick={() => setSelectedName(null)}>
           <div className="memory-map-detail-card" onClick={(e) => e.stopPropagation()}>
-            <button className="memory-map-detail-close" onClick={() => setSelectedName(null)}>✕</button>
+            <button type="button" className="memory-map-detail-close" onClick={() => setSelectedName(null)} aria-label="关闭照片位置详情">✕</button>
             {selected.photo ? (
               <img
                 src={selected.photo.previewUrl ?? selected.photo.thumbnailUrl ?? selected.photo.url}
@@ -379,7 +379,7 @@ export default function MemoryMap({ photos, groupId = "", onViewPhoto, onGpsUpda
           <div className="map-gps-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="map-gps-header">
               <span>📍 设置位置</span>
-              <button className="map-gps-close" onClick={closeEdit}>✕</button>
+              <button type="button" className="map-gps-close" onClick={closeEdit} aria-label="关闭位置设置">✕</button>
             </div>
 
             <div className="map-gps-photo-row">

@@ -212,16 +212,20 @@ export default function AutoStory({ photos }: Props) {
 
           {/* Controls */}
           <div className="story-player-controls">
-            <button className="story-ctrl-btn" onClick={prev} title="上一张">‹</button>
+            <button type="button" className="story-ctrl-btn" onClick={prev} aria-label="上一张" title="上一张">‹</button>
             <button
+              type="button"
               className="story-ctrl-btn story-ctrl-pause"
               onClick={() => setPlaying((v) => !v)}
+              aria-label={playing ? "暂停播放" : "继续播放"}
               title="暂停/继续"
             >{playing ? "⏸" : "▶"}</button>
-            <button className="story-ctrl-btn" onClick={next} title="下一张">›</button>
+            <button type="button" className="story-ctrl-btn" onClick={next} aria-label="下一张" title="下一张">›</button>
             <button
+              type="button"
               className="story-ctrl-btn story-ctrl-close"
               onClick={() => setPlaying(false)}
+              aria-label="关闭自动故事"
               title="关闭 (Esc)"
             >✕</button>
           </div>
