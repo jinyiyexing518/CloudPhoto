@@ -28,6 +28,12 @@ import {
   type MaintenanceTaskKind,
   type MaintenanceTaskState,
 } from "../../transfer/maintenanceTaskState";
+import {
+  isTrashMutationActive,
+  reduceTrashMutationEvent,
+  type TrashMutationEvent,
+  type TrashMutationState,
+} from "../../transfer/trashMutationState";
 
 type SettingsTab = "profile" | "security" | "trash" | "diagnostics";
 type SettingsEntryTab = SettingsTab | "app";
@@ -56,6 +62,7 @@ interface Props {
   initialFocusItemId?: string;
   onInstallApp?: () => void;
   onMaintenanceStateChange?: (event: MaintenanceTaskEvent) => void;
+  onTrashMutationStateChange?: (event: TrashMutationEvent) => void;
 }
 
 export default function SettingsDialog({
@@ -69,6 +76,7 @@ export default function SettingsDialog({
   initialFocusItemId,
   onInstallApp,
   onMaintenanceStateChange,
+  onTrashMutationStateChange,
 }: Props) {
   const appVersion = __APP_VERSION__;
   const appBuildTime = new Date(__APP_BUILD_TIME__);
@@ -126,15 +134,21 @@ export default function SettingsDialog({
   const [extendHours, setExtendHours] = useState("24");
 
   const [maintenanceTask, setMaintenanceTask] = useState<MaintenanceTaskState | null>(null);
+  const [trashMutation, setTrashMutation] = useState<TrashMutationState | null>(null);
   const maintenanceTaskRef = useRef<MaintenanceTaskState | null>(null);
+  const trashMutationRef = useRef<TrashMutationState | null>(null);
   const maintenanceGateRef = useRef<MaintenanceTaskGate>({ current: null });
   const maintenanceControllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const currentGroupIdRef = useRef(currentGroupId ?? "");
   const onMaintenanceStateChangeRef = useRef(onMaintenanceStateChange);
+  const onTrashMutationStateChangeRef = useRef(onTrashMutationStateChange);
   currentGroupIdRef.current = currentGroupId ?? "";
   onMaintenanceStateChangeRef.current = onMaintenanceStateChange;
+  onTrashMutationStateChangeRef.current = onTrashMutationStateChange;
   const maintenanceActive = isMaintenanceTaskActive(maintenanceTask);
+  const trashMutationActive = isTrashMutationActive(trashMutation);
+  const settingsActivityActive = maintenanceActive || trashMutationActive;
 
   const applyMaintenanceEvent = useCallback((event: MaintenanceTaskEvent) => {
     const next = reduceMaintenanceTaskEvent(maintenanceTaskRef.current, event);
@@ -143,7 +157,18 @@ export default function SettingsDialog({
     onMaintenanceStateChangeRef.current?.(event);
   }, []);
 
+  const handleTrashMutationStateChange = useCallback((event: TrashMutationEvent) => {
+    const next = reduceTrashMutationEvent(trashMutationRef.current, event);
+    trashMutationRef.current = next;
+    if (mountedRef.current) setTrashMutation(next);
+    onTrashMutationStateChangeRef.current?.(event);
+  }, []);
+
   const runMaintenanceTask = async (kind: MaintenanceTaskKind) => {
+    if (isTrashMutationActive(trashMutationRef.current)) {
+      showToast("回收站任务运行中，请先点击“停止任务”", "info");
+      return;
+    }
     const operationId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -231,6 +256,10 @@ export default function SettingsDialog({
   };
 
   const handleProtectedClose = () => {
+    if (isTrashMutationActive(trashMutationRef.current)) {
+      showToast("回收站任务运行中，请先点击“停止任务”", "info");
+      return;
+    }
     if (isMaintenanceTaskActive(maintenanceTaskRef.current)) {
       showToast("维护任务运行中，请先点击“停止任务”", "info");
       return;
@@ -454,11 +483,11 @@ export default function SettingsDialog({
 
         {/* Tab bar */}
         <div className="settings-tabs" ref={settingsTabsRef}>
-          <button className={`settings-tab${tab === "profile" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("profile"); scrollTabToCenter(e.currentTarget); }}>👤 个人信息</button>
-          <button className={`settings-tab${tab === "security" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("security"); scrollTabToCenter(e.currentTarget); }}>🔒 安全</button>
-          <button className={`settings-tab${tab === "app" ? " active" : ""}`} onClick={(e) => { setTab("app"); scrollTabToCenter(e.currentTarget); }}>📱 应用</button>
-          <button className={`settings-tab${tab === "diagnostics" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("diagnostics"); scrollTabToCenter(e.currentTarget); }}>🩺 诊断</button>
-          <button className={`settings-tab${tab === "trash" ? " active" : ""}`} disabled={maintenanceActive} onClick={(e) => { setTab("trash"); scrollTabToCenter(e.currentTarget); }}>🗑️ 回收站</button>
+          <button className={`settings-tab${tab === "profile" ? " active" : ""}`} disabled={settingsActivityActive} onClick={(e) => { setTab("profile"); scrollTabToCenter(e.currentTarget); }}>👤 个人信息</button>
+          <button className={`settings-tab${tab === "security" ? " active" : ""}`} disabled={settingsActivityActive} onClick={(e) => { setTab("security"); scrollTabToCenter(e.currentTarget); }}>🔒 安全</button>
+          <button className={`settings-tab${tab === "app" ? " active" : ""}`} disabled={settingsActivityActive} onClick={(e) => { setTab("app"); scrollTabToCenter(e.currentTarget); }}>📱 应用</button>
+          <button className={`settings-tab${tab === "diagnostics" ? " active" : ""}`} disabled={settingsActivityActive} onClick={(e) => { setTab("diagnostics"); scrollTabToCenter(e.currentTarget); }}>🩺 诊断</button>
+          <button className={`settings-tab${tab === "trash" ? " active" : ""}`} disabled={settingsActivityActive} onClick={(e) => { setTab("trash"); scrollTabToCenter(e.currentTarget); }}>🗑️ 回收站</button>
         </div>
 
         {/* Tab content */}
@@ -589,7 +618,7 @@ export default function SettingsDialog({
                   type="button"
                   className="settings-save-btn"
                   onClick={() => void runMaintenanceTask("thumbnails")}
-                  disabled={maintenanceActive}
+                  disabled={settingsActivityActive}
                 >
                   {maintenanceTask?.kind === "thumbnails" && maintenanceActive ? "正在生成…" : "开始生成缩略图"}
                 </button>
@@ -620,7 +649,7 @@ export default function SettingsDialog({
                   type="button"
                   className="settings-save-btn"
                   onClick={() => void runMaintenanceTask("metadata")}
-                  disabled={maintenanceActive}
+                  disabled={settingsActivityActive}
                 >
                   {maintenanceTask?.kind === "metadata" && maintenanceActive ? "正在回填…" : "开始回填"}
                 </button>
@@ -876,7 +905,12 @@ export default function SettingsDialog({
           {/* ── 回收站 ── */}
           {tab === "trash" && (
             <div className="settings-section settings-trash">
-              <TrashView groupId={currentGroupId} onRestored={onPhotosRestored} />
+              <TrashView
+                groupId={currentGroupId}
+                onRestored={onPhotosRestored}
+                onMutationStateChange={handleTrashMutationStateChange}
+                blocked={maintenanceActive}
+              />
             </div>
           )}
 

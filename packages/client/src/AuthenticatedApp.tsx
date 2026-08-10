@@ -53,6 +53,15 @@ import {
   type MaintenanceTaskEvent,
   type MaintenanceTaskState,
 } from "./transfer/maintenanceTaskState";
+import {
+  getTrashMutationBannerText,
+  getTrashMutationGuardMessage,
+  getTrashMutationPercent,
+  isTrashMutationActive,
+  reduceTrashMutationEvent,
+  type TrashMutationEvent,
+  type TrashMutationState,
+} from "./transfer/trashMutationState";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
 const AutoStory = lazy(() => import("./components/auto-story/AutoStory"));
@@ -368,6 +377,7 @@ function AppContent() {
   const [voiceTransferStates, setVoiceTransferStates] = useState(createInitialVoiceTransferStates);
   const [batchMutationStates, setBatchMutationStates] = useState(createInitialBatchMutationStates);
   const [maintenanceTask, setMaintenanceTask] = useState<MaintenanceTaskState | null>(null);
+  const [trashMutation, setTrashMutation] = useState<TrashMutationState | null>(null);
   const [filters, setFilters] = useState<FilterState>(emptyFilter);
   const [momentsShareViews, setMomentsShareViews] = useState<Record<string, number>>({});
   const [momentsDisplayCount, setMomentsDisplayCount] = useState<number | null>(null);
@@ -424,6 +434,7 @@ function AppContent() {
     || deleteProgress !== null
     || voiceTransferState !== "idle"
     || activeBatchMutation !== null
+    || isTrashMutationActive(trashMutation)
     || isMaintenanceTaskActive(maintenanceTask);
 
   const handleVoiceStateChange = useCallback((source: VoiceTransferSource, state: VoiceTransferState) => {
@@ -459,7 +470,12 @@ function AppContent() {
   const handleMaintenanceStateChange = useCallback((event: MaintenanceTaskEvent) => {
     setMaintenanceTask((current) => reduceMaintenanceTaskEvent(current, event));
   }, []);
-  const transferGuardMessage = voiceTransferState === "recording"
+  const handleTrashMutationStateChange = useCallback((event: TrashMutationEvent) => {
+    setTrashMutation((current) => reduceTrashMutationEvent(current, event));
+  }, []);
+  const transferGuardMessage = isTrashMutationActive(trashMutation) && trashMutation
+    ? getTrashMutationGuardMessage(trashMutation)
+    : voiceTransferState === "recording"
     ? "录音中，请先结束录音"
     : voiceTransferState === "uploading"
       ? "语音备注上传中，请勿离开当前页面"
@@ -1843,6 +1859,7 @@ function AppContent() {
           initialFocusItemId={settingsFocusItemId}
           onInstallApp={() => void handleInstallApp()}
           onMaintenanceStateChange={handleMaintenanceStateChange}
+          onTrashMutationStateChange={handleTrashMutationStateChange}
         /></Suspense>
       )}
       {inviteToken && <Suspense fallback={null}><InviteAcceptPage token={inviteToken} onDone={dismissInvite} /></Suspense>}
@@ -1865,7 +1882,26 @@ function AppContent() {
       <main className="app-main">
         {transferring && (
           <div className="transfer-banner">
-            {deleteProgress ? (
+            {isTrashMutationActive(trashMutation) && trashMutation ? (
+              <>
+                <div className="transfer-banner-row">
+                  <span className="transfer-banner-icon">🗑️</span>
+                  <div className="transfer-banner-body">
+                    <span className="transfer-banner-text">{getTrashMutationBannerText(trashMutation)}</span>
+                    {trashMutation.failed > 0 && (
+                      <span className="transfer-banner-size">失败 {trashMutation.failed} 张</span>
+                    )}
+                  </div>
+                  <span className="transfer-banner-pct">{getTrashMutationPercent(trashMutation)}%</span>
+                </div>
+                <div className="transfer-banner-track">
+                  <div
+                    className="transfer-banner-fill"
+                    style={{ width: `${getTrashMutationPercent(trashMutation)}%` }}
+                  />
+                </div>
+              </>
+            ) : deleteProgress ? (
               <>
                 <div className="transfer-banner-row">
                   <span className="transfer-banner-icon">🗑️</span>

@@ -52,6 +52,7 @@
 2.59 已登录 Header 安装入口约束：AuthenticatedApp 的 `.app-header` 禁止渲染 PWA 安装按钮或保留 `.header-install-button` 样式，避免挤压群组切换、照片数量和用户菜单。PWA 安装仍需在登录页、用户菜单与「设置 → 应用」中可发现，取消原生安装提示后的文案必须指向这些真实入口。
 2.60 批量照片 mutation 全局守卫：新增纯逻辑 `batchMutationState.ts`，source 固定为 timeline/moments/folder，operation 至少携带 id、kind(rename/time/location/move)、done、total、failed。start 可替换同 source 的旧 token；progress/finally 只有 token 匹配才可更新或清理，因此一个 source 完成不得影响其他 source，旧操作迟到事件不得清理新操作。PhotoGallery 覆盖 rename/time/location，FolderView root 必须向 FolderContent 透传并覆盖 move/rename/time/location；第一条请求前上报 start，所有 item settled 后的 finally 上报 finish，卸载 cleanup 不得提前报 idle，卸载后不得 setState。同步 ref gate 阻止双击重入；BatchOperationsBar 通过真实 disabled/aria-busy 禁用选择、全选、rename/time/location/delete/LocationSearchPanel，FolderView 同时禁用移动选择/确认和添加原图。移动最大并发为 4，reject 与 resolved false 均计失败且不提前中止；重命名、时间、位置保持串行。顶层把任一 active batch mutation 纳入既有 transferring，复用 Tab、群组、beforeunload 与 PWA 更新闸门；横幅与 guard 文案必须显示具体操作、done/total、failed 和百分比。
 2.61 Settings 历史维护任务守卫：`maintenanceTaskState.ts` 必须以 operationId、kind(thumbnails/metadata)、workspaceId、processed、changed、skipped、failed、hasMore、phase 建立纯状态边界，所有 progress/complete/stop/clear 仅在 token 匹配时生效。`backfillPhotoMetadata` 与 `backfillThumbnails` 保持旧调用兼容并接受可选 AbortSignal/onProgress，每个已验证页面立即上报累计值，abort 不得发下一页，缺失/重复 cursor、auth generation 漂移和 HTTP 错误继续显式失败。SettingsDialog 通过同步 ref gate + 单一 AbortController 禁止双击与跨类型重入，两按钮共享 disabled，aria-live/aria-busy 展示累计进度并提供停止按钮；停止、卸载或 workspace 漂移会 abort，保留完成页统计且 mounted/token guard 禁止迟到更新。运行中遮罩和关闭按钮不得卸载设置。AuthenticatedApp 通过 onMaintenanceStateChange 聚合 active 状态并纳入 Tab、GroupSwitcher、beforeunload、PWA 更新与 transfer banner 守卫；总数未知时只显示计数，不显示百分比。已登录 Header 继续禁止 `header-install-button` 与顶部安装文案。
+2.62 回收站 mutation 守卫：新增纯逻辑 `trashMutationState.ts`，kind 固定覆盖 item-restore/item-delete/restore-all/empty-trash/restore-folder/delete-folder，状态携带 operationId/token、workspaceId、label、done、total、failed 与 running/stopping/stopped/completed phase；所有 progress/final 事件必须 token 匹配，旧任务迟到事件不得覆盖新任务。TrashView 的六类入口共用一个同步 ref gate 与可测试串行 runner，按点击时稳定快照逐项执行，普通失败计入 failed 后继续，Abort 不计失败且不得启动下一项；`restorePhoto`/`permanentlyDeletePhoto` 保持旧调用兼容并将可选 AbortSignal 传入 `fetchWithTimeout`。停止、真正卸载或 workspace 漂移必须 abort 当前请求并重新读取远端回收站，保留部分 done/failed 且不伪造已完成永久删除的回滚。顶部、文件夹、卡片和移动端固定恢复/删除按钮在 active 时均使用原生 disabled，进度状态通过独立 aria-live 区域展示。TrashView 通过 SettingsDialog 向 AuthenticatedApp 上报事件；Settings 关闭与维护任务互斥，顶层把 active trash mutation 纳入既有 Tab、GroupSwitcher、beforeunload 与 PWA 更新守卫，并优先展示准确 label、done/total、failed 和 percent。已登录 Header 的安装入口删除约束保持不变。
 
 ## 1. 目标
 
@@ -125,7 +126,9 @@
 2. 回收站列表、恢复、彻底删除
 3. 支持“全部恢复”和“清空回收站”
 4. 恢复后相册自动刷新
-5. 恢复后显示上传日期（createdAt），不是恢复时间6. 批量删除（PhotoGallery/FolderView）和清空回收站（TrashView）必须显示逐步进度：批量删除复用顶部 transfer-banner；清空回收站在 TrashView 内渲染内联进度块；操作期间相关按钮禁用
+5. 恢复后显示上传日期（createdAt），不是恢复时间
+6. 单张、全部、文件夹级恢复和永久删除必须共用同步 gate 与串行可停止 runner；运行中所有桌面/移动入口禁用，并显示操作名称、done/total、failed 与百分比
+7. 停止、卸载或空间漂移后取消当前请求，不启动下一项，重新读取远端回收站并保留已停止统计；已完成的永久删除不得显示为已回滚
 ### 3.4 群组与邀请
 
 1. 创建/编辑/删除群组

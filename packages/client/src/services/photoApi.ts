@@ -465,13 +465,13 @@ export async function listTrashPhotos(groupId = ""): Promise<Photo[]> {
   return parsePhotoListPayload(await response.json() as unknown).map(proxyPhoto);
 }
 
-export async function restorePhoto(name: string): Promise<void> {
-  const response = await fetchWithTimeout(`${API_BASE}/photos/trash/restore?name=${encodeURIComponent(name)}`, { method: "POST", headers: authHeaders() });
+export async function restorePhoto(name: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetchWithTimeout(`${API_BASE}/photos/trash/restore?name=${encodeURIComponent(name)}`, { method: "POST", headers: authHeaders(), signal });
   if (!response.ok) throw new Error(await parseApiError(response, "恢复照片失败"));
 }
 
-export async function permanentlyDeletePhoto(name: string): Promise<void> {
-  const response = await fetchWithTimeout(`${API_BASE}/photos/trash?name=${encodeURIComponent(name)}`, { method: "DELETE", headers: authHeaders() });
+export async function permanentlyDeletePhoto(name: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetchWithTimeout(`${API_BASE}/photos/trash?name=${encodeURIComponent(name)}`, { method: "DELETE", headers: authHeaders(), signal });
   if (!response.ok) throw new Error(await parseApiError(response, "彻底删除照片失败"));
 }
 

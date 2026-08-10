@@ -24,7 +24,7 @@ test("settings uses one controller and synchronous gate for both task kinds", ()
   assert.match(settings, /finishMaintenanceTask/);
   assert.match(settings, /runMaintenanceTask\("thumbnails"/);
   assert.match(settings, /runMaintenanceTask\("metadata"/);
-  assert.ok((settings.match(/disabled=\{maintenanceActive\}/g) ?? []).length >= 2);
+  assert.ok((settings.match(/disabled=\{settingsActivityActive\}/g) ?? []).length >= 2);
 });
 
 test("settings exposes progress, stop, protected close, unmount abort, and workspace drift", () => {
