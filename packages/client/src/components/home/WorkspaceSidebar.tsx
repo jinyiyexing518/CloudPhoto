@@ -130,6 +130,7 @@ export default function WorkspaceSidebar({
                     filtered={filteredPhotos}
                     gridSize={gridSize}
                     onGridSizeChange={onGridSizeChange}
+                    variant="sidebar"
                   />
                 </SidebarSection>
 

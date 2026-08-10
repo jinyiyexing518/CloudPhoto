@@ -38,6 +38,7 @@ interface Props {
   filtered: number;
   gridSize?: GridSize;
   onGridSizeChange?: (size: GridSize) => void;
+  variant?: "default" | "sidebar";
 }
 
 export default function FilterBar({
@@ -49,6 +50,7 @@ export default function FilterBar({
   filtered,
   gridSize = "md",
   onGridSizeChange,
+  variant = "default",
 }: Props) {
   // Debounced name search: local state updates immediately; parent notified after 300ms
   const [localName, setLocalName] = useState(filters.name);
@@ -81,85 +83,89 @@ export default function FilterBar({
   if (filters.folder) activeChips.push({ label: `📁 ${filters.folder}`, key: "folder" });
 
   return (
-    <div className="filter-bar">
+    <div className={`filter-bar filter-bar--${variant}`}>
       <div className="filter-main-row">
-        <div className="search-input-wrap">
-          <svg className="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="8.5" cy="8.5" r="5" stroke="#9ca3af" strokeWidth="1.6"/>
-            <line x1="12.5" y1="12.5" x2="16.5" y2="16.5" stroke="#9ca3af" strokeWidth="1.6" strokeLinecap="round"/>
-          </svg>
-          <input
-            type="search"
-            className="search-input"
-            placeholder="搜索名称..."
-            aria-label="按名称搜索照片"
-            value={localName}
-            onChange={(e) => handleNameChange(e.target.value)}
-          />
-          {localName && (
-            <button type="button" className="search-clear" onClick={() => handleNameChange("")} aria-label="清空名称搜索">✕</button>
+        <div className="filter-search-row">
+          <div className="search-input-wrap">
+            <svg className="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="8.5" cy="8.5" r="5" stroke="#9ca3af" strokeWidth="1.6"/>
+              <line x1="12.5" y1="12.5" x2="16.5" y2="16.5" stroke="#9ca3af" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+            <input
+              type="search"
+              className="search-input"
+              placeholder="搜索名称..."
+              aria-label="按名称搜索照片"
+              value={localName}
+              onChange={(e) => handleNameChange(e.target.value)}
+            />
+            {localName && (
+              <button type="button" className="search-clear" onClick={() => handleNameChange("")} aria-label="清空名称搜索">✕</button>
+            )}
+          </div>
+
+          {hasAny && (
+            <button className="filter-clear-btn" onClick={() => { onChange(emptyFilter); setLocalName(""); }}>
+              清空全部
+            </button>
           )}
         </div>
 
-        {hasAny && (
-          <button className="filter-clear-btn" onClick={() => { onChange(emptyFilter); setLocalName(""); }}>
-            清空全部
+        <div className="filter-quick-controls">
+          <button
+            className={`filter-toggle-btn${filters.favoriteOnly ? " active" : ""}`}
+            onClick={() => set("favoriteOnly", !filters.favoriteOnly)}
+            type="button"
+          >
+            ★ 仅收藏
           </button>
-        )}
 
-        <button
-          className={`filter-toggle-btn${filters.favoriteOnly ? " active" : ""}`}
-          onClick={() => set("favoriteOnly", !filters.favoriteOnly)}
-          type="button"
-        >
-          ★ 仅收藏
-        </button>
+          <button
+            className={`filter-toggle-btn${filters.missingSubjectOnly ? " active" : ""}`}
+            onClick={() => set("missingSubjectOnly", !filters.missingSubjectOnly)}
+            type="button"
+          >
+            🏷 无主题
+          </button>
 
-        <button
-          className={`filter-toggle-btn${filters.missingSubjectOnly ? " active" : ""}`}
-          onClick={() => set("missingSubjectOnly", !filters.missingSubjectOnly)}
-          type="button"
-        >
-          🏷 无主题
-        </button>
+          <button
+            className={`filter-toggle-btn${filters.uncategorizedOnly ? " active" : ""}`}
+            onClick={() => set("uncategorizedOnly", !filters.uncategorizedOnly)}
+            type="button"
+          >
+            📂 未分类
+          </button>
 
-        <button
-          className={`filter-toggle-btn${filters.uncategorizedOnly ? " active" : ""}`}
-          onClick={() => set("uncategorizedOnly", !filters.uncategorizedOnly)}
-          type="button"
-        >
-          📂 未分类
-        </button>
+          <button
+            className={`filter-toggle-btn${filters.noGpsOnly ? " active" : ""}`}
+            onClick={() => set("noGpsOnly", !filters.noGpsOnly)}
+            type="button"
+          >
+            📍 无GPS
+          </button>
 
-        <button
-          className={`filter-toggle-btn${filters.noGpsOnly ? " active" : ""}`}
-          onClick={() => set("noGpsOnly", !filters.noGpsOnly)}
-          type="button"
-        >
-          📍 无GPS
-        </button>
+          {hasAny && (
+            <span className="search-count">{filtered} / {total}</span>
+          )}
 
-        {hasAny && (
-          <span className="search-count">{filtered} / {total}</span>
-        )}
-
-        {onGridSizeChange && (
-          <div className="grid-size-toggle">
-            {(["sm", "md", "lg"] as GridSize[]).map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={`grid-size-btn${gridSize === size ? " active" : ""}`}
-                onClick={() => onGridSizeChange(size)}
-                aria-label={size === "sm" ? "小缩略图" : size === "md" ? "中缩略图" : "大缩略图"}
-                aria-pressed={gridSize === size}
-                title={size === "sm" ? "小缩略图" : size === "md" ? "中缩略图" : "大缩略图"}
-              >
-                {size === "sm" ? "⊞" : size === "md" ? "⊟" : "▣"}
-              </button>
-            ))}
-          </div>
-        )}
+          {onGridSizeChange && (
+            <div className="grid-size-toggle">
+              {(["sm", "md", "lg"] as GridSize[]).map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  className={`grid-size-btn${gridSize === size ? " active" : ""}`}
+                  onClick={() => onGridSizeChange(size)}
+                  aria-label={size === "sm" ? "小缩略图" : size === "md" ? "中缩略图" : "大缩略图"}
+                  aria-pressed={gridSize === size}
+                  title={size === "sm" ? "小缩略图" : size === "md" ? "中缩略图" : "大缩略图"}
+                >
+                  {size === "sm" ? "⊞" : size === "md" ? "⊟" : "▣"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Active filter chips */}
@@ -167,7 +173,7 @@ export default function FilterBar({
         <div className="filter-chips">
           {activeChips.map((chip) => (
             <span key={chip.key} className="filter-chip">
-              {chip.label}
+              <span className="filter-chip-label">{chip.label}</span>
               <button
                 type="button"
                 className="filter-chip-remove"

@@ -3717,6 +3717,8 @@ body {
      auto row = topbar; 1fr row = scrollable content area. */
   display: grid;
   grid-template-rows: auto 1fr;
+  min-width: 0;
+  max-width: 100%;
   height: 100vh; /* fallback */
   height: -webkit-fill-available; /* iOS Safari < 15 */
   height: 100dvh;
@@ -3725,6 +3727,7 @@ body {
 .workspace-sidebar-content {
   /* Grid child: 1fr row gives explicit height, so iOS Safari scroll works */
   min-height: 0;
+  min-width: 0;
   overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
@@ -3776,8 +3779,9 @@ body {
   border: none;
   background: #f8fafc;
   color: #475569;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
   border-radius: 999px;
   cursor: pointer;
 }
@@ -3789,6 +3793,8 @@ body {
 .workspace-sidebar-section {
   padding: 18px;
   border-top: 1px solid #f1f5f9;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .workspace-sidebar-section:first-of-type {
@@ -5186,6 +5192,25 @@ body {
   gap: 10px;
 }
 
+.filter-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-search-row .search-input-wrap {
+  min-width: 0;
+}
+
+.filter-quick-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
 .filter-toggle-btn {
   background: #fff;
   border: 1px solid #d1d5db;
@@ -5273,6 +5298,144 @@ body {
 .filter-field input:focus,
 .filter-field select:focus {
   border-color: #0078d4;
+}
+
+/* Sidebar FilterBar uses its own container width, independent of viewport size. */
+.filter-bar--sidebar {
+  container-type: inline-size;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.filter-bar--sidebar .filter-main-row {
+  display: grid;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+}
+
+.filter-bar--sidebar .filter-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filter-bar--sidebar .filter-quick-controls {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filter-bar--sidebar .search-input-wrap {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding-right: 4px;
+}
+
+.filter-bar--sidebar .search-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.filter-bar--sidebar .search-clear {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.filter-bar--sidebar .filter-clear-btn {
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.filter-bar--sidebar .filter-toggle-btn {
+  flex: 1 1 112px;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.filter-bar--sidebar .search-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.filter-bar--sidebar .grid-size-toggle {
+  flex: 0 0 auto;
+  margin-left: 0;
+}
+
+.filter-bar--sidebar .grid-size-btn {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
+.filter-bar--sidebar .filter-chips {
+  max-width: 100%;
+  padding: 0;
+}
+
+.filter-bar--sidebar .filter-chip {
+  box-sizing: border-box;
+  align-items: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+
+.filter-bar--sidebar .filter-chip-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.filter-bar--sidebar .filter-chip-remove {
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.filter-bar--sidebar .filter-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.filter-bar--sidebar .filter-field {
+  width: 100%;
+  min-width: 0;
+}
+
+.filter-bar--sidebar .filter-field input,
+.filter-bar--sidebar .filter-field select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+@container (max-width: 260px) {
+  .filter-bar--sidebar .filter-search-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filter-bar--sidebar .filter-clear-btn {
+    width: 100%;
+  }
 }
 
 /* Search bar (keep for compatibility) */
@@ -6640,6 +6803,8 @@ body {
 
   /* ── Filter bar ── */
   .filter-main-row { flex-wrap: wrap; }
+  .filter-search-row { flex: 1 1 100%; }
+  .filter-quick-controls { flex: 1 1 100%; flex-wrap: wrap; }
   .filter-panel { flex-direction: column; gap: 8px; }
   .filter-field { min-width: unset; width: 100%; }
 
