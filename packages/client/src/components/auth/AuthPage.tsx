@@ -22,6 +22,15 @@ const loadRegisterForm = () => {
   return registerFormPromise;
 };
 const RegisterForm = lazy(loadRegisterForm);
+const PwaInstallEntry = lazy(() =>
+  import("../../pwa/PwaInstallEntry").catch(() => ({
+    default: () => (
+      <div className="auth-install-guide">
+        请从浏览器菜单安装 CloudPhoto；iOS Safari 请使用“分享 → 添加到主屏幕”。
+      </div>
+    ),
+  }))
+);
 
 export default function AuthPage({ onAuthIntent }: AuthPageProps) {
   const { login } = useAuth();
@@ -215,6 +224,9 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
               <RegisterForm active={tab === "register"} onAuthIntent={onAuthIntent} />
             </Suspense>
           )}
+          <Suspense fallback={null}>
+            <PwaInstallEntry />
+          </Suspense>
         </section>
       </div>
     </main>

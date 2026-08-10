@@ -12,6 +12,7 @@ const legacyViteConfig = join(root, "packages", "client", "vite.config.ts");
 const entryCssPath = join(root, "packages", "client", "src", "index.css");
 const authenticatedCssPath = join(root, "packages", "client", "src", "authenticated.css");
 const authenticatedAppPath = join(root, "packages", "client", "src", "AuthenticatedApp.tsx");
+const authPagePath = join(root, "packages", "client", "src", "components", "auth", "AuthPage.tsx");
 const configPaths = process.argv.slice(2).map((configPath) => resolve(configPath));
 if (configPaths.length === 0) configPaths.push(defaultConfig);
 
@@ -75,6 +76,7 @@ function checkAuthenticatedStyleBoundary() {
   const entryCss = readFileSync(entryCssPath, "utf8");
   const authenticatedCss = readFileSync(authenticatedCssPath, "utf8");
   const authenticatedApp = readFileSync(authenticatedAppPath, "utf8");
+  const authPage = readFileSync(authPagePath, "utf8");
   const authStart = "/* ===== Auth Page ===== */";
   const entryAuthEnd = "/* ===== End Auth Page ===== */";
   const workspaceAuthEnd = "/* ============================================================";
@@ -89,6 +91,12 @@ function checkAuthenticatedStyleBoundary() {
   }
   if (entryCss.includes("authenticated.css")) {
     fail(entryCssPath, "login entry must not import authenticated workspace styles");
+  }
+  if (
+    !authPage.includes('import("../../pwa/PwaInstallEntry")')
+    || !authPage.includes("<PwaInstallEntry />")
+  ) {
+    fail(authPagePath, "signed-out shell must keep its deferred PWA install entry");
   }
   if (Buffer.byteLength(entryCss) > 20_000) {
     fail(entryCssPath, "login entry stylesheet must stay below 20 kB before minification");
@@ -240,6 +248,12 @@ function checkHashedAssets(configPath) {
   if (registerFormChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred RegisterForm chunk");
   }
+  const pwaInstallEntryChunks = assets.filter((asset) =>
+    /^PwaInstallEntry-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (pwaInstallEntryChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred PWA install entry chunk");
+  }
   const entryStylesheets = assets.filter((asset) =>
     /^index-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
   );
@@ -261,11 +275,15 @@ function checkHashedAssets(configPath) {
   const entryStyles = readFileSync(entryStylesheets[0], "utf8");
   const authenticatedStyles = readFileSync(authenticatedStylesheets[0], "utf8");
   const entryScript = readFileSync(entryScripts[0], "utf8");
+  const pwaInstallEntryScript = readFileSync(pwaInstallEntryChunks[0], "utf8");
   if (statSync(entryStylesheets[0]).size > 12_000) {
     fail(configPath, "built login entry stylesheet must stay below 12 kB");
   }
-  if (statSync(entryScripts[0]).size > 27_600) {
-    fail(configPath, "built login entry script must stay below 27.6 kB");
+  if (statSync(entryScripts[0]).size > 28_000) {
+    fail(configPath, "built login entry script must stay below 28 kB");
+  }
+  if (!pwaInstallEntryScript.includes("安装应用")) {
+    fail(configPath, "deferred signed-out entry must expose the install application action");
   }
   for (const workspaceMarker of [
     "Media route timed out",
@@ -305,6 +323,9 @@ function checkHashedAssets(configPath) {
   }
   if (serviceWorker.includes(`assets/${basename(registerFormChunks[0])}`)) {
     fail(configPath, "deferred RegisterForm chunk must not be downloaded by the precache");
+  }
+  if (serviceWorker.includes(`assets/${basename(pwaInstallEntryChunks[0])}`)) {
+    fail(configPath, "PWA install entry must stay out of the app-shell precache");
   }
   if (serviceWorker.includes(`assets/${basename(authenticatedStylesheets[0])}`)) {
     fail(configPath, "deferred AuthenticatedApp styles must not be downloaded by the precache");

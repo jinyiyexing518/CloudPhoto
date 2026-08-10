@@ -137,6 +137,16 @@ test("updates to installed and removes the native action after appinstalled", as
   controller.dispose();
 });
 
+test("retains appinstalled when it fires before the UI controller mounts", async () => {
+  const environment = createEnvironment();
+  environment.initialAppInstalled = true;
+  const controller = createPwaInstallController(environment);
+
+  assert.equal(controller.getSnapshot().mode, "installed");
+  assert.deepEqual(await controller.requestInstall(), { status: "installed" });
+  controller.dispose();
+});
+
 test("detects browser and iOS standalone sessions immediately", () => {
   const displayModeEnvironment = createEnvironment({ standalone: true });
   const displayModeController = createPwaInstallController(displayModeEnvironment);

@@ -4,15 +4,15 @@ import App from "./App";
 import "./index.css";
 
 const installWindow = window as Window & {
-  __CF_INSTALL_PROMPT__?: Event;
-  __CF_APP_INSTALLED__?: boolean;
+  __CF_PWA__?: Event;
+  __CF_PWA_INSTALLED__?: boolean;
 };
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
-  installWindow.__CF_INSTALL_PROMPT__ = event;
+  installWindow.__CF_PWA__ = event;
 });
 window.addEventListener("appinstalled", () => {
-  installWindow.__CF_APP_INSTALLED__ = true;
+  installWindow.__CF_PWA_INSTALLED__ = true;
 });
 
 const isStandaloneMode = () =>

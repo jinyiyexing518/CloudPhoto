@@ -226,8 +226,8 @@ let browserController: PwaInstallController | undefined;
 
 export function initializePwaInstallController(): PwaInstallController {
   const installWindow = window as Window & {
-    __CF_INSTALL_PROMPT__?: Event;
-    __CF_APP_INSTALLED__?: boolean;
+    __CF_PWA__?: Event;
+    __CF_PWA_INSTALLED__?: boolean;
   };
   const displayModeQuery = window.matchMedia("(display-mode: standalone)");
   browserController ??= createPwaInstallController({
@@ -235,8 +235,8 @@ export function initializePwaInstallController(): PwaInstallController {
     displayModeQuery,
     subscribeToDisplayModeChange: (listener) =>
       subscribeToMediaQueryChanges(displayModeQuery, listener),
-    initialPrompt: installWindow.__CF_INSTALL_PROMPT__,
-    initialAppInstalled: installWindow.__CF_APP_INSTALLED__,
+    initialPrompt: installWindow.__CF_PWA__,
+    initialAppInstalled: installWindow.__CF_PWA_INSTALLED__,
     navigatorStandalone: (navigator as Navigator & { standalone?: boolean }).standalone === true,
     userAgent: navigator.userAgent,
     platform: navigator.platform,

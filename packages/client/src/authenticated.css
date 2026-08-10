@@ -6105,6 +6105,49 @@ body {
   cursor: wait;
 }
 
+.auth-install-entry {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.auth-install-button {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-install-button:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.auth-install-button:disabled {
+  color: #64748b;
+  background: #f8fafc;
+  cursor: default;
+}
+
+.auth-install-guide {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.auth-install-guide ol {
+  margin: 7px 0 8px 20px;
+}
+
 .auth-error {
   background: #fef2f2;
   border: 1px solid #fecaca;
