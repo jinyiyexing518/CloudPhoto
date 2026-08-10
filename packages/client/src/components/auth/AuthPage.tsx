@@ -8,6 +8,10 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  clearNativeValidation,
+  setChineseNativeValidation,
+} from "./nativeValidation";
 import PasswordField from "./PasswordField";
 
 type AuthTab = "login" | "register";
@@ -176,6 +180,8 @@ export default function AuthPage({ onAuthIntent }: AuthPageProps) {
                     type="text"
                     value={loginUsername}
                     onChange={(event) => setLoginUsername(event.target.value)}
+                    onInput={(event) => clearNativeValidation(event.currentTarget)}
+                    onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
                     placeholder="请输入用户名"
                     required
                     autoComplete="username"

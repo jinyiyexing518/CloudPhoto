@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  clearNativeValidation,
+  setChineseNativeValidation,
+} from "./nativeValidation";
 import PasswordField from "./PasswordField";
 
 interface RegisterFormProps {
@@ -77,6 +81,8 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               type="text"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
+              onInput={(event) => clearNativeValidation(event.currentTarget)}
+              onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
               placeholder="请输入用户名"
               required
               autoComplete="username"
@@ -92,6 +98,8 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               type="text"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
+              onInput={(event) => clearNativeValidation(event.currentTarget)}
+              onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
               placeholder="输入希望显示的名称"
               required
               autoComplete="nickname"
@@ -104,6 +112,8 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              onInput={(event) => clearNativeValidation(event.currentTarget)}
+              onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
               placeholder="name@example.com"
               required
               autoComplete="email"

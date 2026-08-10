@@ -1,4 +1,8 @@
 import { useState, type RefObject } from "react";
+import {
+  clearNativeValidation,
+  setChineseNativeValidation,
+} from "./nativeValidation";
 
 interface PasswordFieldProps {
   id: string;
@@ -35,6 +39,8 @@ export default function PasswordField({
           type={visible ? "text" : "password"}
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onInput={(event) => clearNativeValidation(event.currentTarget)}
+          onInvalid={(event) => setChineseNativeValidation(event.currentTarget)}
           placeholder={placeholder}
           required
           autoComplete={autoComplete}
