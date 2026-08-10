@@ -10,6 +10,9 @@ export interface ModalTimerHandles {
 interface FocusTarget {
   focus: () => void;
   isConnected: boolean;
+  hidden?: boolean;
+  getAttribute?: (name: string) => string | null;
+  getClientRects?: () => ArrayLike<unknown>;
 }
 
 interface TabEvent {
@@ -81,6 +84,14 @@ export function focusElement(element: FocusTarget | null): boolean {
 }
 
 export function restoreFocus(element: FocusTarget | null): boolean {
+  if (
+    !element?.isConnected
+    || element.hidden
+    || element.getAttribute?.("aria-hidden") === "true"
+    || (typeof element.getClientRects === "function" && element.getClientRects().length === 0)
+  ) {
+    return false;
+  }
   return focusElement(element);
 }
 

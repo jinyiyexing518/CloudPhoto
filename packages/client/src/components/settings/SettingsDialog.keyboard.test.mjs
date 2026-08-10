@@ -8,9 +8,10 @@ const modalFocus = import("../shared/modalFocus.ts");
 const closeGuard = import("./settingsCloseGuard.ts");
 
 class FakeElement {
-  constructor(name, { connected = true } = {}) {
+  constructor(name, { connected = true, visible = true } = {}) {
     this.name = name;
     this.isConnected = connected;
+    this.visible = visible;
     this.focusCount = 0;
     this.focusable = [];
   }
@@ -21,6 +22,10 @@ class FakeElement {
 
   querySelectorAll() {
     return this.focusable;
+  }
+
+  getClientRects() {
+    return this.visible ? [{}] : [];
   }
 }
 
@@ -108,15 +113,18 @@ test("Tab and Shift+Tab dynamically cycle through current enabled controls", asy
   assert.equal(dynamicControl.focusCount, 1);
 });
 
-test("focus restoration is connected-only and Settings cleans it up on unmount", async () => {
+test("focus restoration requires a connected visible target and Settings cleans it up on unmount", async () => {
   const { restoreFocus } = await modalFocus;
   const connected = new FakeElement("connected");
   const disconnected = new FakeElement("disconnected", { connected: false });
+  const hidden = new FakeElement("hidden", { visible: false });
 
   assert.equal(restoreFocus(connected), true);
   assert.equal(restoreFocus(disconnected), false);
+  assert.equal(restoreFocus(hidden), false);
   assert.equal(connected.focusCount, 1);
   assert.equal(disconnected.focusCount, 0);
+  assert.equal(hidden.focusCount, 0);
   assert.match(
     settingsSource,
     /return \(\) => \{[\s\S]*restoreFocus\(previousFocusRef\.current\);[\s\S]*previousFocusRef\.current = null;/,
