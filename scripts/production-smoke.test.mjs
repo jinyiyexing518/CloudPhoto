@@ -104,7 +104,7 @@ test("rejects a proxy health route that falls through to the SPA", async () => {
   );
   await assert.rejects(
     healthCheck.validate(Response.json({ status: "ok", route: "wrong-route" })),
-    /does not identify the CloudPhoto proxy/,
+    /does not identify a CloudPhoto entry route/,
   );
 });
 
@@ -116,7 +116,7 @@ test("passes the primary and Azure production contracts with timings", async () 
         response.end("<!doctype html><title>Cloud Photo</title>");
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
-        response.end('{"status":"ok","route":"cloudphoto-proxy"}');
+        response.end('{"status":"ok","route":"cloudphoto-frontend"}');
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
@@ -165,7 +165,7 @@ test("retries and fails when either changelog response is not an array", async (
         response.end("<!doctype html><title>Cloud Photo</title>");
       } else if (request.url === "/primary/healthz") {
         response.writeHead(200, { "content-type": "application/json" });
-        response.end('{"status":"ok","route":"cloudphoto-proxy"}');
+        response.end('{"status":"ok","route":"cloudphoto-frontend"}');
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
@@ -218,7 +218,7 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       throw new Error("controlled failure");
     }
     if (url.endsWith("/healthz")) {
-      return Response.json({ status: "ok", route: "cloudphoto-proxy" });
+      return Response.json({ status: "ok", route: "cloudphoto-frontend" });
     }
     if (url.endsWith("/api/auth/me")) {
       return new Response('{"error":"Unauthorized"}', { status: 401 });

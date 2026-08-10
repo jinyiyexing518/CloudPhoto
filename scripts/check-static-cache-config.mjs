@@ -12,6 +12,7 @@ if (configPaths.length === 0) configPaths.push(defaultConfig);
 const immutableCache = "public, max-age=31536000, immutable";
 const shellRoutes = ["/", "/index.html", "/sw.js", "/registerSW.js"];
 const mutableRoutes = [
+  "/healthz",
   "/manifest.webmanifest",
   "/changelog.json",
   "/favicon.svg",
@@ -107,6 +108,17 @@ for (const configPath of configPaths) {
     const value = cacheControl(requireRoute(configPath, config.routes, route));
     if (!value || /\bimmutable\b/i.test(value)) {
       fail(configPath, `${route} must have an explicit non-immutable cache policy`);
+    }
+
+    const healthRoute = requireRoute(configPath, config.routes, "/healthz");
+    if (healthRoute.rewrite !== "/healthz.json") {
+      fail(configPath, "/healthz must rewrite to the static JSON fallback");
+    }
+    if (cacheControl(healthRoute) !== "no-store") {
+      fail(configPath, "/healthz must never be cached");
+    }
+    if (!healthRoute.headers?.["Content-Type"]?.includes("application/json")) {
+      fail(configPath, "/healthz must be served as JSON");
     }
   }
 

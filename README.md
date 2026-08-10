@@ -79,7 +79,7 @@ Blob 与 Nginx `/media` 的浏览器缓存均为 `private, max-age=3600, immutab
 | `www.cloudphotos.top`（中国大陆线路） | `CNAME cn.cloudphotos.top` | 智能 DNS 大陆解析 |
 | `www.cloudphotos.top`（境外线路） | `CNAME global.cloudphotos.top` | 智能 DNS 境外解析 |
 
-`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，可作为智能 DNS 健康检查，定时线上 smoke 也会校验其 JSON 路由标识。`www` 同时落到两个平台时必须使用可自动续签的 DNS-01 插件签发证书，避免 HTTP-01 校验被地域解析到另一端；`infra/setup.sh` 会拒绝缺少 DNS 插件参数或不可续签的 `--manual` 模式。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
+`infra/nginx.conf` 提供不落入 SPA 的 `/healthz`，返回 `cloudphoto-proxy` 供智能 DNS 与客户端识别；SWA 同一路径提供 `cloudphoto-frontend` JSON 兜底，保持旧 Nginx 配置可被监控但不会让客户端误判为 API 代理。定时线上 smoke 会校验入口标识并分别检查两套 API。`www` 同时落到两个平台时必须使用可自动续签的 DNS-01 插件签发证书，避免 HTTP-01 校验被地域解析到另一端；`infra/setup.sh` 会拒绝缺少 DNS 插件参数或不可续签的 `--manual` 模式。裸域名 `cloudphotos.top` 可继续作为稳定的代理兜底入口。
 
 ---
 

@@ -35,6 +35,8 @@ const setVideoThumb = read("packages/server/src/functions/photos/setVideoThumbna
 const trash = read("packages/server/src/functions/trash/listTrash.ts");
 const restore = read("packages/server/src/functions/trash/restorePhoto.ts");
 const productionSmoke = read("scripts/production-smoke.mjs");
+const staticWebApp = JSON.parse(read("packages/client/public/staticwebapp.config.json"));
+const frontendHealth = JSON.parse(read("packages/client/public/healthz.json"));
 
 // Cold list + persisted paint + one shared focus/visibility throttle.
 assert.equal((app.match(/\blistPhotos\(currentGroupId,/g) ?? []).length, 1);
@@ -257,7 +259,17 @@ assert(!nginx.includes("*.azurestaticapps.net"), "wildcard SWA origin is forbidd
 requireText(nginx, "proxy_set_header      Range             $http_range;", "Range forwarding");
 requireText(nginx, 'Access-Control-Expose-Headers "Accept-Ranges, Content-Length, Content-Range"', "Range exposure");
 requireText(productionSmoke, 'name: "healthz"', "production proxy health check");
-requireText(productionSmoke, 'body?.route !== "cloudphoto-proxy"', "production proxy route marker");
+requireText(productionSmoke, '"cloudphoto-proxy", "cloudphoto-frontend"', "production entry route markers");
+assert.deepEqual(frontendHealth, { status: "ok", route: "cloudphoto-frontend" });
+const staticHealthRoute = staticWebApp.routes.find((route) => route.route === "/healthz");
+assert.equal(staticHealthRoute?.rewrite, "/healthz.json", "SWA health fallback rewrite");
+assert.equal(staticHealthRoute?.headers?.["Cache-Control"], "no-store", "SWA health fallback cache policy");
+assert.equal(
+  staticHealthRoute?.headers?.["Content-Type"],
+  "application/json; charset=utf-8",
+  "SWA health fallback content type",
+);
+requireText(loadingPolicy, 'return input.route === "cloudphoto-proxy" ? "proxy" : "not-proxy"', "frontend marker remains non-proxy");
 requireText(setup, "server_name ${DOMAIN} www.${DOMAIN} cn.${DOMAIN};", "China hostname ACME route");
 requireText(setup, '-d "cn.${DOMAIN}"', "China hostname certificate SAN");
 requireText(setup, 'CERTBOT_DNS_ARGS=("$@")', "split-DNS certificate arguments");

@@ -19,6 +19,14 @@
       }
     },
     {
+      "route": "/healthz",
+      "rewrite": "/healthz.json",
+      "headers": {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8"
+      }
+    },
+    {
       "route": "/sw.js",
       "headers": {
         "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -75,7 +83,7 @@
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/*.{js,css,ico,png,jpg,jpeg,webp,svg,woff,woff2}"]
+    "exclude": ["/assets/*", "/healthz", "/healthz.json", "/*.{js,css,ico,png,jpg,jpeg,webp,svg,woff,woff2}"]
   },
   "globalHeaders": {
     "Cache-Control": "no-cache, must-revalidate"

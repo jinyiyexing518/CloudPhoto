@@ -62,8 +62,9 @@ async function validateProxyHealth(response) {
     throw new Error("response is not JSON");
   }
   const body = await response.json();
-  if (body?.status !== "ok" || body?.route !== "cloudphoto-proxy") {
-    throw new Error("response does not identify the CloudPhoto proxy");
+  const knownRoutes = new Set(["cloudphoto-proxy", "cloudphoto-frontend"]);
+  if (body?.status !== "ok" || !knownRoutes.has(body?.route)) {
+    throw new Error("response does not identify a CloudPhoto entry route");
   }
 }
 
