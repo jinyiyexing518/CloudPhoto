@@ -34,7 +34,6 @@ export interface DeploymentChunkFailure {
 
 interface RecoveryRecord {
   attempts: string[];
-  chunks: string[];
 }
 
 interface RecoveryNavigationIntent {
@@ -163,20 +162,17 @@ export function classifyDeploymentChunkFailure(
 }
 
 function readRecord(storage: RecoveryStorage | null): RecoveryRecord {
-  if (!storage) return { attempts: [], chunks: [] };
+  if (!storage) return { attempts: [] };
   try {
     const parsed = JSON.parse(storage.getItem(RECOVERY_STORAGE_KEY) ?? "{}") as Partial<RecoveryRecord>;
     return {
       attempts: Array.isArray(parsed.attempts)
         ? parsed.attempts.filter((value): value is string => typeof value === "string").slice(-8)
         : [],
-      chunks: Array.isArray(parsed.chunks)
-        ? parsed.chunks.filter((value): value is string => typeof value === "string").slice(-8)
-        : [],
     };
   } catch (error) {
     console.error("[DeploymentRecovery] Cannot read recovery record:", error);
-    return { attempts: [], chunks: [] };
+    return { attempts: [] };
   }
 }
 
@@ -185,7 +181,6 @@ function writeRecord(storage: RecoveryStorage | null, record: RecoveryRecord): b
   try {
     storage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify({
       attempts: record.attempts.slice(-8),
-      chunks: record.chunks.slice(-8),
     }));
     return true;
   } catch (error) {
@@ -211,17 +206,16 @@ function saveIntent(storage: RecoveryStorage | null, intent: RecoveryNavigationI
 export function consumeDeploymentRecoveryIntent(
   storage?: Pick<Storage, "getItem" | "removeItem">,
 ): RecoveryNavigationIntent | null {
-  let resolvedStorage: Pick<Storage, "getItem" | "removeItem"> | undefined;
   try {
-    resolvedStorage = storage ?? sessionStorage;
+    storage ??= sessionStorage;
     const parsed = JSON.parse(
-      resolvedStorage.getItem(RECOVERY_INTENT_KEY) ?? "null",
+      storage.getItem(RECOVERY_INTENT_KEY) ?? "null",
     ) as RecoveryNavigationIntent | null;
-    resolvedStorage.removeItem(RECOVERY_INTENT_KEY);
+    storage.removeItem(RECOVERY_INTENT_KEY);
     return safeIntent(parsed);
   } catch (error) {
     try {
-      resolvedStorage?.removeItem(RECOVERY_INTENT_KEY);
+      storage?.removeItem(RECOVERY_INTENT_KEY);
     } catch {
       // The caller already receives a fail-closed null intent.
     }
@@ -287,7 +281,6 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
     if (!manual && failure && attemptId) {
       const persisted = writeRecord(options.storage, {
         attempts: [...record.attempts, attemptId],
-        chunks: record.chunks,
       });
       if (!persisted) {
         recoveryInFlight = false;
