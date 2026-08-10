@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-10-folder-card-action-targets",
+    "date": "2026-08-10",
+    "icon": "👆",
+    "title": "扩大文件夹操作触控区域",
+    "type": "fix",
+    "desc": "文件夹重命名和删除按钮现在具备至少 44×44 的桌面与移动端触控区域。",
+    "details": "重命名和删除图标保持紧凑，但共享 44×44 最小命中区域、清晰 focus-visible 和独立 z-index；两个 action 区域保留间距且互不重叠，点击不会落到下层主打开按钮。操作按钮继续作为主打开按钮的兄弟控件，事件隔离、busy disabled 与拖放行为保持不变，根目录和子目录使用同一实现。",
+    "seq": 1786378200000
+  },
+  {
     "id": "2026-08-10-viewer-modal-focus-isolation",
     "date": "2026-08-10",
     "icon": "⌨️",
@@ -58,6 +68,16 @@
     "desc": "文件夹重命名现在拒绝覆盖已有目标，并在离开或空间变化时保护当前操作。",
     "details": "服务端用有界分页完整检查源和目标，并为整批 copy 复用一次可取消的 delegation-key 请求，再用 Azure Blob 目标 no-overwrite 与源 ETag 条件复制全部原图及派生媒体；copy/delete 采用独立 4 路有界并发，故障 rollback 降为 2 路，首个 copy 失败立即停止派发。单次最多 100 个 Blob，copy phase 120 秒后按 copyId 终止在途 copy，rollback 60 秒且总请求 210 秒；60 秒目标租约内的源删除关键区限制为 20 秒。429/503 只使用 Azure SDK 退避，避免流量与重试风暴。copy 后复核完整 inventory，删除每个源前验证对应目标的 copyId + final ETag，再按源 ETag 条件删除。失败时保留源，并仅回滚仍可证明归属本操作的目标；任何并发变化、部分删除或不确定 copy initiation 都明确返回需对账状态。客户端新增同级冲突与非法名称校验、同步防双击 gate、AbortSignal、成功/失败/超时后的当前空间对账，以及 Tab、群组、关闭页面、PWA 更新和所有冲突文件夹控件的统一保护。文件夹卡片新增原生键盘进入按钮和含名称、照片数的可访问名称，重命名/删除保持独立可聚焦。已登录 Header 布局与安装入口约束保持不变。",
     "seq": 1786376400000
+  },
+  {
+    "id": "2026-08-10-header-menu-keyboard-accessibility",
+    "date": "2026-08-10",
+    "icon": "⌨️",
+    "title": "补齐头部菜单与群组弹窗键盘访问",
+    "type": "fix",
+    "desc": "修复已登录顶部空间切换、用户菜单和群组弹窗无法完整使用键盘或正确管理焦点的问题。",
+    "details": "空间切换和用户菜单现在提供一致的 menu 语义，支持方向键、Home/End、Enter/Space、Escape、Tab、外部点击和焦点恢复，并跳过禁用项。个人空间、群组、新建和设置入口全部改为真实按钮，当前空间会被读屏识别。新建群组和群组设置复用共享 modal focus boundary，提供 dialog 标注、动态焦点循环、嵌套隔离和异步操作关闭保护，并在 320px、390px 与 200% 缩放下保持内容可访问。",
+    "seq": 1786375600000
   },
   {
     "id": "2026-08-10-sidebar-filter-reflow",

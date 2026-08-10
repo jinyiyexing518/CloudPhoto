@@ -25,8 +25,7 @@ function cssBlock(selector, source = styles) {
   return match[1];
 }
 
-function mediaBlock(maxWidth) {
-  const marker = `@media (max-width: ${maxWidth}px)`;
+function conditionalBlock(marker) {
   const start = styles.indexOf(marker);
   assert.notEqual(start, -1, `missing ${marker}`);
   const open = styles.indexOf("{", start);
@@ -37,6 +36,10 @@ function mediaBlock(maxWidth) {
     if (depth === 0) return styles.slice(open + 1, index);
   }
   assert.fail(`unterminated ${marker}`);
+}
+
+function mediaBlock(maxWidth) {
+  return conditionalBlock(`@media (max-width: ${maxWidth}px)`);
 }
 
 function declaration(block, property) {
@@ -124,6 +127,36 @@ test("narrow FAB defaults to one safe-area-aware 48px launcher", () => {
   const defaultFabArea = 48 * 48;
   const formerFabArea = 200 * (58 + 10 + 48);
   assert(defaultFabArea < formerFabArea / 10);
+});
+
+test("folder card actions keep 44px touch targets on desktop and mobile", () => {
+  const action = cssBlock(".folder-card-rename-btn,\n.folder-card-delete-btn");
+  assert(px(declaration(action, "min-width")) >= 44);
+  assert(px(declaration(action, "min-height")) >= 44);
+  assert.match(action, /display\s*:\s*inline-flex/);
+  assert.match(action, /z-index\s*:\s*2/);
+  assert.match(action, /touch-action\s*:\s*manipulation/);
+  assert.match(
+    cssBlock(".folder-card-rename-btn:focus-visible,\n.folder-card-delete-btn:focus-visible"),
+    /outline\s*:\s*3px solid #005a9e/,
+  );
+  assert.match(
+    cssBlock(
+      ".folder-card-rename-btn,\n  .folder-card-delete-btn",
+      conditionalBlock("@media (hover: none), (pointer: coarse)"),
+    ),
+    /opacity\s*:\s*1/,
+  );
+
+  for (const selector of [".folder-card-rename-btn", ".folder-card-delete-btn"]) {
+    for (const maxWidth of [680, 360]) {
+      assert.doesNotMatch(
+        mediaBlock(maxWidth),
+        new RegExp(`${selector.replaceAll(".", "\\.")}\\s*\\{[^}]*(?:min-)?(?:width|height)\\s*:`),
+        `${selector} must inherit the shared 44px target at ${maxWidth}px`,
+      );
+    }
+  }
 });
 
 test("PWA capability metadata is present in source and build output", () => {
