@@ -441,6 +441,13 @@ body {
   transform: translateY(-110%);
 }
 
+.header-pinned .view-tabs-shell-wrap,
+.view-tabs-shell-wrap:focus-within {
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  transform: translateY(0);
+  transition-duration: 0s;
+}
+
 .view-tabs-shell {
   display: flex;
   flex-direction: column;

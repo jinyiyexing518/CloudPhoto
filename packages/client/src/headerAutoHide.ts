@@ -2,7 +2,7 @@ export interface HeaderAutoHideSnapshot {
   scrollY: number;
   delta: number;
   sidebarOpen: boolean;
-  headerFocusWithin: boolean;
+  navigationFocusWithin: boolean;
   headerMenuOpen: boolean;
   headerDialogActive: boolean;
 }
@@ -13,14 +13,14 @@ export function getHeaderVisibilityAction({
   scrollY,
   delta,
   sidebarOpen,
-  headerFocusWithin,
+  navigationFocusWithin,
   headerMenuOpen,
   headerDialogActive,
 }: HeaderAutoHideSnapshot): HeaderVisibilityAction {
   if (
     scrollY < 60
     || sidebarOpen
-    || headerFocusWithin
+    || navigationFocusWithin
     || headerMenuOpen
     || headerDialogActive
   ) {

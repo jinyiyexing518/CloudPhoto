@@ -194,6 +194,36 @@ test("tab activation stays behind modal and transfer guards and keeps mobile foc
   assert.doesNotMatch(stylesSource, /(?:html|body)\s*(?:,\s*(?:html|body)\s*)?\{[^}]*overflow-x\s*:\s*(?:hidden|clip)/s);
 });
 
+test("auto-hidden header and tabs synchronously reveal keyboard focus", () => {
+  assert.match(appSource, /const viewTabsShellRef = useRef<HTMLDivElement \| null>\(null\)/);
+  assert.match(
+    appSource,
+    /const handleNavigationFocusCapture = useCallback\([\s\S]*revealHeader\(\)[\s\S]*requestAnimationFrame[\s\S]*document\.activeElement !== target[\s\S]*scrollIntoView\(\{ block: "nearest", inline: "nearest" \}\)/,
+  );
+  assert.match(
+    appSource,
+    /<header[\s\S]*onFocusCapture=\{handleNavigationFocusCapture\}[\s\S]*onKeyDownCapture=\{revealHeader\}/,
+  );
+  assert.match(
+    appSource,
+    /className="view-tabs-shell-wrap"[\s\S]*ref=\{viewTabsShellRef\}[\s\S]*onFocusCapture=\{handleNavigationFocusCapture\}[\s\S]*onKeyDownCapture=\{revealHeader\}/,
+  );
+  assert.match(
+    appSource,
+    /navigationFocusWithin: Boolean\([\s\S]*headerRef\.current\?\.contains\(document\.activeElement\)[\s\S]*viewTabsShellRef\.current\?\.contains\(document\.activeElement\)/,
+  );
+  assert.match(appSource, /headerDialogActive:[\s\S]*hasOpenAriaModal\(document\)/);
+  assert.match(appSource, /const headerInteractionActive = sidebarOpen/);
+  assert.match(
+    appSource,
+    /const handleWorkspaceTabKeyDown =[\s\S]*const targetTab =[\s\S]*revealHeader\(\)[\s\S]*activateWorkspaceTab\(targetTab\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.header-pinned \.view-tabs-shell-wrap,\s*\.view-tabs-shell-wrap:focus-within\s*\{[\s\S]*top:\s*calc\(52px \+ env\(safe-area-inset-top, 0px\)\)[\s\S]*transform:\s*translateY\(0\)/,
+  );
+});
+
 test("workspace tab light palette meets text and focus contrast thresholds", () => {
   const pageBackground = "#ffffff";
 

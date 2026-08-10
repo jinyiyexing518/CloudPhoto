@@ -76,11 +76,12 @@ test("header auto-hide reveals focused triggers and respects menu and dialog loc
   assert.match(authenticatedApp, /const revealHeader = useCallback\(\(\) => setHeaderHidden\(false\), \[\]\)/);
   assert.match(
     authenticatedApp,
-    /<header className="app-header" ref=\{headerRef\} onFocusCapture=\{revealHeader\}>/,
+    /<header[\s\S]*className="app-header"[\s\S]*ref=\{headerRef\}[\s\S]*onFocusCapture=\{handleNavigationFocusCapture\}[\s\S]*onKeyDownCapture=\{revealHeader\}/,
   );
   assert.match(authenticatedApp, /headerRef\.current\?\.contains\(document\.activeElement\)/);
+  assert.match(authenticatedApp, /viewTabsShellRef\.current\?\.contains\(document\.activeElement\)/);
   assert.match(authenticatedApp, /headerMenuOpen:\s*userMenuOpen \|\| groupMenuOpen/);
-  assert.match(authenticatedApp, /headerDialogActive:\s*userMenuDialogActive \|\| groupDialogOpen/);
+  assert.match(authenticatedApp, /headerDialogActive:\s*userMenuDialogActive[\s\S]*hasOpenAriaModal\(document\)/);
   assert.match(authenticatedApp, /onMenuOpenChange=\{setGroupMenuOpen\}/);
   assert.match(authenticatedApp, /onDialogOpenChange=\{setGroupDialogOpen\}/);
   assert.match(groupSwitcher, /onMenuOpenChange\?\.\(open\)/);

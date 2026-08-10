@@ -7,6 +7,7 @@ import {
   useRef,
   lazy,
   Suspense,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -404,6 +405,7 @@ function AppContent() {
   const [locationIndexRevision, setLocationIndexRevision] = useState(0);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewTabsRef = useRef<HTMLDivElement | null>(null);
+  const viewTabsShellRef = useRef<HTMLDivElement | null>(null);
   const [viewTabsScrollable, setViewTabsScrollable] = useState(false);
   const [viewTabsShowLeft, setViewTabsShowLeft] = useState(false);
   const [viewTabsShowRight, setViewTabsShowRight] = useState(false);
@@ -411,6 +413,15 @@ function AppContent() {
   const headerRef = useRef<HTMLElement | null>(null);
   const scrollHideRef = useRef(0);
   const revealHeader = useCallback(() => setHeaderHidden(false), []);
+  const handleNavigationFocusCapture = useCallback((event: ReactFocusEvent<HTMLElement>) => {
+    const target = event.target;
+    revealHeader();
+    if (!(target instanceof HTMLElement)) return;
+    window.requestAnimationFrame(() => {
+      if (!target.isConnected || document.activeElement !== target) return;
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }, [revealHeader]);
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [userMenuDialogActive, setUserMenuDialogActive] = useState(false);
@@ -477,7 +488,12 @@ function AppContent() {
     }
   }, []);
 
-  const headerInteractionActive = userMenuOpen
+  const headerInteractionActive = sidebarOpen
+    || showAddAdmin
+    || showShortcutsHelp
+    || showSettings
+    || showInstallGuide
+    || userMenuOpen
     || groupMenuOpen
     || userMenuDialogActive
     || groupDialogOpen;
@@ -485,6 +501,14 @@ function AppContent() {
   useEffect(() => {
     if (headerInteractionActive) revealHeader();
   }, [headerInteractionActive, revealHeader]);
+
+  useEffect(() => {
+    const handleModalFocusIn = () => {
+      if (hasOpenAriaModal(document)) revealHeader();
+    };
+    document.addEventListener("focusin", handleModalFocusIn, true);
+    return () => document.removeEventListener("focusin", handleModalFocusIn, true);
+  }, [revealHeader]);
 
   useEffect(() => {
     if (!groupsLoaded) return;
@@ -767,6 +791,7 @@ function AppContent() {
     if (hasOpenAriaModal(document)) return;
     const targetTab = getWorkspaceTabFromKey(tab, event.key);
     if (!targetTab) return;
+    revealHeader();
     event.preventDefault();
     activateWorkspaceTab(targetTab);
   };
@@ -796,11 +821,14 @@ function AppContent() {
         scrollY: y,
         delta,
         sidebarOpen,
-        headerFocusWithin: Boolean(
-          headerRef.current?.contains(document.activeElement),
+        navigationFocusWithin: Boolean(
+          headerRef.current?.contains(document.activeElement)
+          || viewTabsShellRef.current?.contains(document.activeElement),
         ),
         headerMenuOpen: userMenuOpen || groupMenuOpen,
-        headerDialogActive: userMenuDialogActive || groupDialogOpen,
+        headerDialogActive: userMenuDialogActive
+          || groupDialogOpen
+          || hasOpenAriaModal(document),
       });
       if (action === "hide") {
         setHeaderHidden(true);
@@ -2277,7 +2305,12 @@ function AppContent() {
           {locationBanner}
         </div>
       )}
-      <header className="app-header" ref={headerRef} onFocusCapture={revealHeader}>
+      <header
+        className="app-header"
+        ref={headerRef}
+        onFocusCapture={handleNavigationFocusCapture}
+        onKeyDownCapture={revealHeader}
+      >
         <svg className="app-logo-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M12 15.2c1.77 0 3.2-1.43 3.2-3.2s-1.43-3.2-3.2-3.2S8.8 10.23 8.8 12s1.43 3.2 3.2 3.2zM9 3L7.17 5H4C2.9 5 2 5.9 2 7v13c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 8.5 12 8.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5z"/>
         </svg>
@@ -2607,7 +2640,12 @@ function AppContent() {
         )}
 
         {/* Tab bar */}
-        <div className="view-tabs-shell-wrap">
+        <div
+          className="view-tabs-shell-wrap"
+          ref={viewTabsShellRef}
+          onFocusCapture={handleNavigationFocusCapture}
+          onKeyDownCapture={revealHeader}
+        >
         <div className={`view-tabs-shell${viewTabsScrollable ? " view-tabs-shell--scrollable" : ""}`}>
           {viewTabsScrollable && (
             <div className="view-tabs-meta">

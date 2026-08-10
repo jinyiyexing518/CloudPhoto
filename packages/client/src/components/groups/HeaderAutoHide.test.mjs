@@ -6,14 +6,14 @@ const scrollingDown = {
   scrollY: 240,
   delta: 12,
   sidebarOpen: false,
-  headerFocusWithin: false,
+  navigationFocusWithin: false,
   headerMenuOpen: false,
   headerDialogActive: false,
 };
 
-test("focus, either header menu, and a header dialog pin the header visible", () => {
+test("header or tab focus, either header menu, and a dialog pin navigation visible", () => {
   for (const lock of [
-    "headerFocusWithin",
+    "navigationFocusWithin",
     "headerMenuOpen",
     "headerDialogActive",
   ]) {
