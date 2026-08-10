@@ -994,6 +994,7 @@ function FolderContent({
   const [batchGpsLat, setBatchGpsLat] = useState("");
   const [batchGpsLon, setBatchGpsLon] = useState("");
   const { address: geoAddress, loading: geoLoading } = usePhotoLocationAddress(selectedPhoto);
+  const selectedGps = readGpsCoordinates(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
   const [downloading, setDownloading] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
@@ -1765,7 +1766,6 @@ function FolderContent({
               {/* Prev / Next navigation */}
               {selectedIdx !== null && selectedIdx > 0 && (
                 <button
-                  ref={gpsEditButtonRef}
                   type="button"
                   className="modal-nav modal-nav--prev"
                   onClick={() => navigateToPhoto(selectedIdx - 1, directPhotos)}
@@ -2173,17 +2173,16 @@ function FolderContent({
                 <span className="modal-detail-label">格式</span>
                 <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
 
-                {selectedPhoto.gpsLat && selectedPhoto.gpsLon &&
-                  isFinite(parseFloat(selectedPhoto.gpsLat)) && isFinite(parseFloat(selectedPhoto.gpsLon)) && (
+                {selectedGps && (
                   <>
                     <span className="modal-detail-label">位置</span>
                     <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span>
-                          {geoLoading ? "正在定位..." : (geoAddress ?? `${parseFloat(selectedPhoto.gpsLat).toFixed(4)}°, ${parseFloat(selectedPhoto.gpsLon).toFixed(4)}°`)}
+                          {geoLoading ? "正在定位..." : (geoAddress ?? `${selectedGps.lat.toFixed(4)}°, ${selectedGps.lon.toFixed(4)}°`)}
                         </span>
                         <a
-                          href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
+                          href={`https://maps.google.com/?q=${selectedGps.lat},${selectedGps.lon}`}
                           target="_blank"
                           rel="noreferrer"
                           className="modal-edit-btn"
@@ -2191,6 +2190,7 @@ function FolderContent({
                           title="在 Google 地图中查看"
                         >🗺</a>
                         <button
+                          ref={gpsEditButtonRef}
                           type="button"
                           className="modal-edit-btn"
                           aria-label={editingGps ? "关闭位置搜索" : "修改位置"}
@@ -2209,7 +2209,7 @@ function FolderContent({
                     </span>
                   </>
                 )}
-                {!selectedPhoto.gpsLat && (
+                {!selectedGps && (
                   <>
                     <span className="modal-detail-label">位置</span>
                     <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>

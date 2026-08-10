@@ -353,6 +353,7 @@ function PhotoGallery({
   const [editingGps, setEditingGps] = useState(false);
   const [savingGps, setSavingGps] = useState(false);
   const { address: geoAddress, loading: geoLoading } = usePhotoLocationAddress(selectedPhoto);
+  const selectedGps = readGpsCoordinates(selectedPhoto?.gpsLat, selectedPhoto?.gpsLon);
   const [downloading, setDownloading] = useState(false);
   const [copyingImage, setCopyingImage] = useState(false);
   const [showOriginalPreview, setShowOriginalPreview] = useState(false);
@@ -1604,7 +1605,6 @@ function PhotoGallery({
               ✕
             </button>
             <button
-              ref={gpsEditButtonRef}
               type="button"
               className="modal-fullscreen-btn"
               onClick={() => setIsFullscreen((v) => !v)}
@@ -2057,17 +2057,16 @@ function PhotoGallery({
                     <span className="modal-detail-label">文件类型</span>
                     <span className="modal-detail-value">{selectedPhoto.contentType ?? "—"}</span>
 
-                    {selectedPhoto.gpsLat && selectedPhoto.gpsLon &&
-                      isFinite(parseFloat(selectedPhoto.gpsLat)) && isFinite(parseFloat(selectedPhoto.gpsLon)) && (
+                    {selectedGps && (
                       <>
                         <span className="modal-detail-label">位置</span>
                         <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span>
-                              {geoLoading ? "正在定位..." : (geoAddress ?? `${parseFloat(selectedPhoto.gpsLat).toFixed(4)}°, ${parseFloat(selectedPhoto.gpsLon).toFixed(4)}°`)}
+                              {geoLoading ? "正在定位..." : (geoAddress ?? `${selectedGps.lat.toFixed(4)}°, ${selectedGps.lon.toFixed(4)}°`)}
                             </span>
                             <a
-                              href={`https://maps.google.com/?q=${selectedPhoto.gpsLat},${selectedPhoto.gpsLon}`}
+                              href={`https://maps.google.com/?q=${selectedGps.lat},${selectedGps.lon}`}
                               target="_blank"
                               rel="noreferrer"
                               className="modal-edit-btn"
@@ -2075,6 +2074,7 @@ function PhotoGallery({
                               title="在 Google 地图中查看"
                             >🗺</a>
                             <button
+                              ref={gpsEditButtonRef}
                               type="button"
                               className="modal-edit-btn"
                               aria-label={editingGps ? "关闭位置搜索" : "修改位置"}
@@ -2093,7 +2093,7 @@ function PhotoGallery({
                         </span>
                       </>
                     )}
-                    {!selectedPhoto.gpsLat && (
+                    {!selectedGps && (
                       <>
                         <span className="modal-detail-label">位置</span>
                         <span className="modal-detail-value" style={{ display: "flex", flexDirection: "column", gap: 4 }}>

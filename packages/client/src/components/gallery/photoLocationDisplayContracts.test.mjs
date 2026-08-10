@@ -29,7 +29,10 @@ test("an unavailable address still renders the current photo coordinates", async
     source("FolderView.tsx"),
   ]);
   for (const surface of [timeline, folders]) {
-    assert.match(surface, /geoAddress \?\? `\$\{parseFloat\(selectedPhoto\.gpsLat\)\.toFixed\(4\)\}°/);
+    assert.match(surface, /const selectedGps = readGpsCoordinates\(selectedPhoto\?\.gpsLat, selectedPhoto\?\.gpsLon\)/);
+    assert.match(surface, /geoAddress \?\? `\$\{selectedGps\.lat\.toFixed\(4\)\}°/);
+    assert.match(surface, /\{selectedGps && \(/);
+    assert.match(surface, /\{!selectedGps && \(/);
   }
 });
 

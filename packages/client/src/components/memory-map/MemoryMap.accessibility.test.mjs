@@ -58,7 +58,7 @@ test("manual coordinates and no-GPS photo controls expose complete contracts", a
   assert.match(memoryMap, /aria-label=\{`为照片 \$\{displayName\(p\)\} 设置位置`\}/);
   assert.match(memoryMap, /alt=""/);
   assert.match(memoryMap, /ref=\{manualLatRef\}/);
-  assert.match(memoryMap, /showToast\("更新位置失败",\s*"error"\)/);
+  assert.match(memoryMap, /showToast\(error instanceof Error \? error\.message : "更新照片位置失败",\s*"error"\)/);
   assert.match(memoryMap, /workspaceRef\.current = groupId/);
   assert.match(memoryMap, /useEffect\(\(\) => \{[\s\S]*mountedRef\.current = true;[\s\S]*mountedRef\.current = false;[\s\S]*editSessionRef\.current \+= 1/);
   assert.match(memoryMap, /target\.workspace !== workspaceRef\.current/);

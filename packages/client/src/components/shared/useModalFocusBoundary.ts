@@ -42,7 +42,7 @@ export function useModalFocusBoundary({
     const container = containerRef.current;
     if (!layer || !container) return;
 
-    previousFocusRef.current = restoreFocusRef?.current ?? restoreFocusTo ?? (
+    previousFocusRef.current = restoreFocusTo ?? restoreFocusRef?.current ?? (
       document.activeElement instanceof HTMLElement ? document.activeElement : null
     );
     activateModalLayer(layer, document);
