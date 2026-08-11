@@ -140,7 +140,9 @@ test("listPhotos hydrates its response from one scoped location inventory", asyn
     new URL("../src/functions/photos/listPhotos.ts", import.meta.url),
     "utf8",
   );
-  assert.match(listSource, /hasGpsMetadata: hasGpsMetadataKeys\(blob\.metadata\)/);
+  assert.match(listSource, /gpsMetadataPresent = hasGpsMetadataKeys\(blob\.metadata\)/);
+  assert.match(listSource, /gpsMetadataPresent,/);
+  assert.match(listSource, /hasGpsMetadata: gpsMetadataPresent/);
   assert.match(listSource, /blobEtag: blob\.properties\.etag/);
   assert.match(listSource, /await listAuthorizedPhotoLocationRows\(/);
   assert.match(listSource, /hydrateListedPhotoLocations\(locationSources, locationRows\)/);

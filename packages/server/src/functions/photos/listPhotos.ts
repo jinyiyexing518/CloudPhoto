@@ -66,6 +66,7 @@ interface ListedPhoto extends HydratablePhoto {
   voiceMemoName: string | undefined;
   voiceMemoUrl: string | undefined;
   blobEtag: string | undefined;
+  gpsMetadataPresent: boolean;
   takenAt: string | undefined;
   isAnimated: boolean;
 }
@@ -142,6 +143,7 @@ app.http("listPhotos", {
         });
 
         const gps = readGpsMetadata(blob.metadata);
+        const gpsMetadataPresent = hasGpsMetadataKeys(blob.metadata);
         const photo: ListedPhoto = {
           name: blob.name,
           originalName: decodeMeta(getMeta(blob.metadata, "originalName")),
@@ -162,6 +164,7 @@ app.http("listPhotos", {
           voiceMemoName,
           voiceMemoUrl: voiceMemoName ? generateSasUrlWithKey(voiceMemoName, delegationKey) : undefined,
           blobEtag: blob.properties.etag,
+          gpsMetadataPresent,
           gpsLat: gps?.gpsLat,
           gpsLon: gps?.gpsLon,
           takenAt: getMeta(blob.metadata, "takenAt"),
@@ -172,7 +175,7 @@ app.http("listPhotos", {
           photo,
           scope: `${segs[0]}/${segs[1]}`,
           blobEtag: photo.blobEtag,
-          hasGpsMetadata: hasGpsMetadataKeys(blob.metadata),
+          hasGpsMetadata: gpsMetadataPresent,
         });
       }
 
