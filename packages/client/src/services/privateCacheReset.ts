@@ -194,25 +194,31 @@ export async function resetPrivateCaches(
   activePersistentWrites: ReadonlySet<Promise<void>>,
   fencePrivateMediaWrites: boolean,
   resumeCaching: boolean,
+  isCurrent: () => boolean = () => true,
 ): Promise<void> {
   const reset = await beginPrivateCacheReset(
     cacheNames,
     activePersistentWrites,
     fencePrivateMediaWrites,
   );
+  if (!isCurrent()) return;
   const failures: unknown[] = [];
   try {
     const cleanup = await import("./privateCachePurge.ts");
     for (let pass = 0; pass < 2; pass += 1) {
+      if (!isCurrent()) return;
       await cleanup.purgePrivateWorkboxExpirationMetadata(
         typeof indexedDB === "undefined" ? undefined : indexedDB,
         cacheNames,
       );
+      if (!isCurrent()) return;
     }
   } catch (error) {
     failures.push(error);
   }
+  if (!isCurrent()) return;
   await deletePrivateCacheStorage(reset, cacheNames, activePersistentWrites);
+  if (!isCurrent()) return;
   await completePrivateCacheReset(
     reset,
     resumeCaching,
