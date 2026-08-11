@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-11-auth-api-hedge-lazy-boundary",
+    "date": "2026-08-11",
+    "icon": "⚡",
+    "title": "登录页延后加载 API 竞速引擎",
+    "type": "improvement",
+    "desc": "默认登录页不再提前下载认证后安全读取使用的双线路竞速状态机，已有会话和登录/注册提交仍会提前并行准备。",
+    "details": "primary/fallback 竞速、timer、AbortSignal、loser cancel 与 response-body release 迁入独立 apiHedgePolicy lazy chunk；http 只在请求满足安全重放、alternate route 和 hedge 条件后动态加载，首次模块加载也复用 caller signal/总超时，App 在已有 token 或认证 intent 时与工作区并行预热并把失败交给部署恢复。该 1,510 B chunk 不进入 HTML preload 或 service worker precache；生产配置登录入口由 35,855 B 降至 34,501 B，在不修改 36,000 B 硬门禁的前提下把余量从 145 B 提升到 1,499 B。源码、data-URL 行为和构建合同锁定 slow-primary、fallback、slow-chunk abort、cancel、release 与昂贵读取排除。",
+    "seq": 1786483000000
+  },
+  {
     "id": "2026-08-11-photo-path-authorization",
     "date": "2026-08-11",
     "icon": "🛡️",

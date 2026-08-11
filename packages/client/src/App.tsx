@@ -4,11 +4,12 @@ import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { reportLazyBoundaryFailure } from "./pwa/deploymentRecovery";
-import { getToken } from "./services/http";
+import { getToken, preloadApiHedgePolicy } from "./services/http";
 
 let authenticatedAppPromise: Promise<typeof import("./AuthenticatedApp")> | undefined;
 
 function loadAuthenticatedApp() {
+  void preloadApiHedgePolicy().catch(reportLazyBoundaryFailure);
   authenticatedAppPromise ??= import("./AuthenticatedApp");
   return authenticatedAppPromise;
 }

@@ -25,10 +25,11 @@ import {
   classifyProxyProbe,
   isSafeReplayMethod,
   proxyProbeTtlMs,
-  raceHedgedAttempts,
   shouldHedgeApiRequest,
   type ProxyProbeResult,
 } from "./apiRoutingPolicy";
+
+export const preloadApiHedgePolicy = () => import("./apiHedgePolicy");
 
 type ApiRouteKind = "direct" | "proxy" | "same-origin";
 
@@ -355,6 +356,10 @@ async function fetchWithProxyFallback(
       release: () => init?.signal?.removeEventListener("abort", abortFromCaller),
     };
   };
+  const { raceHedgedAttempts } = await waitForResult(
+    preloadApiHedgePolicy(),
+    init?.signal ?? undefined,
+  );
   const outcome = await raceHedgedAttempts({
     startPrimary: () => startAttempt(primaryInput),
     startFallback: () => startAttempt(fallbackUrl),

@@ -68,10 +68,14 @@ const photoPolicyUrl = await compileTypeScript(
 const routingPolicyUrl = await compileTypeScript(
   "packages/client/src/services/apiRoutingPolicy.ts",
 );
+const hedgePolicyUrl = await compileTypeScript(
+  "packages/client/src/services/apiHedgePolicy.ts",
+);
 const policy = {
   ...await import(authScopeUrl),
   ...await import(photoPolicyUrl),
   ...await import(routingPolicyUrl),
+  ...await import(hedgePolicyUrl),
 };
 const renderPolicy = await importTypeScript("packages/algorithm/src/render.ts");
 
@@ -518,9 +522,53 @@ const httpUrl = await compileTypeScript(
   (source) => source
     .replace('"../utils/apiBase"', JSON.stringify(apiBaseUrl))
     .replace('"./authScope"', JSON.stringify(authScopeUrl))
-    .replace('"./apiRoutingPolicy"', JSON.stringify(routingPolicyUrl)),
+    .replace('"./apiRoutingPolicy"', JSON.stringify(routingPolicyUrl))
+    .replace('"./apiHedgePolicy"', JSON.stringify(hedgePolicyUrl)),
 );
 const http = await import(httpUrl);
+
+{
+  const slowHedgePolicyUrl = `data:text/javascript;base64,${Buffer.from(`
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    export function raceHedgedAttempts() {
+      throw new Error("slow hedge policy must not start after caller timeout");
+    }
+  `).toString("base64")}`;
+  const slowHttpUrl = await compileTypeScript(
+    "packages/client/src/services/http.ts",
+    (source) => source
+      .replace('"../utils/apiBase"', JSON.stringify(apiBaseUrl))
+      .replace('"./authScope"', JSON.stringify(authScopeUrl))
+      .replace('"./apiRoutingPolicy"', JSON.stringify(routingPolicyUrl))
+      .replace('"./apiHedgePolicy"', JSON.stringify(slowHedgePolicyUrl)),
+  );
+  const slowHttp = await import(slowHttpUrl);
+  const previousOrigin = window.location.origin;
+  const previousHostname = window.location.hostname;
+  window.location.origin = "https://cloudphotos.top";
+  window.location.hostname = "cloudphotos.top";
+  let apiCalls = 0;
+  globalThis.fetch = async () => {
+    apiCalls += 1;
+    return Response.json({});
+  };
+  const startedAt = Date.now();
+  await assert.rejects(
+    slowHttp.fetchWithTimeout(
+      "https://cloudphoto-api.azurewebsites.net/api/groups",
+      { method: "GET" },
+      20,
+    ),
+    { name: "AbortError" },
+  );
+  assert(
+    Date.now() - startedAt < 80,
+    "caller timeout must not wait for a first-load hedge chunk",
+  );
+  assert.equal(apiCalls, 0, "an aborted hedge chunk load must not start either route");
+  window.location.origin = previousOrigin;
+  window.location.hostname = previousHostname;
+}
 
 {
   let healthCalls = 0;
@@ -1156,7 +1204,7 @@ assert(nginxSource.includes("add_header Accept-Ranges bytes always;"));
 
 console.log("photo-loading behavior: PASS");
 console.log("evidence auth-user-role-group-isolation=true stale-publish-blocked=true ordered-cache-writes=true");
-console.log("evidence slow-primary-survives=true fallback-wins=true caller-cancel=true unsafe-replay=false expensive-read-hedge=false");
+console.log("evidence slow-primary-survives=true fallback-wins=true caller-cancel=true hedge-load-abort=true unsafe-replay=false expensive-read-hedge=false");
 console.log("evidence health-explicit-ttl-ms=300000 health-transient-ttl-ms=5000");
 console.log("evidence cold-list-miss=true persisted-first-paint=true focus-visibility-requests=1");
 console.log("evidence media-primary-fail-alternate-pass=true media-route-timeout=true range-sw-cache=false opaque-cache=false");

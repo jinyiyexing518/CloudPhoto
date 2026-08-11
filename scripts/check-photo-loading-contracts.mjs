@@ -23,6 +23,7 @@ const groupApi = read("packages/client/src/services/groupApi.ts");
 const http = read("packages/client/src/services/http.ts");
 const authScope = read("packages/client/src/services/authScope.ts");
 const routingPolicy = read("packages/client/src/services/apiRoutingPolicy.ts");
+const hedgePolicy = read("packages/client/src/services/apiHedgePolicy.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
 const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const workboxCleanup = read("packages/client/src/services/privateCachePurge.ts");
@@ -262,7 +263,21 @@ assert(
 requireText(http, 'from "./authScope"', "direct auth-scope policy boundary");
 requireText(http, 'from "./apiRoutingPolicy"', "direct API-routing policy boundary");
 requireText(authScope, "decodeAuthorizationSnapshot", "auth identity decoder");
-requireText(routingPolicy, "raceHedgedAttempts", "API hedge boundary");
+requireText(hedgePolicy, "raceHedgedAttempts", "lazy API hedge boundary");
+assert(
+  !routingPolicy.includes("raceHedgedAttempts"),
+  "the synchronous API routing policy must not hoist hedge machinery",
+);
+requireText(http, 'import("./apiHedgePolicy")', "dynamic API hedge boundary");
+assert(
+  !http.includes('from "./apiHedgePolicy"'),
+  "shared HTTP must not statically import API hedge machinery",
+);
+requireText(
+  authGate,
+  "preloadApiHedgePolicy().catch(reportLazyBoundaryFailure)",
+  "authenticated-intent API hedge preload",
+);
 assert(
   !routingPolicy.includes("privatePhotoListCacheKey"),
   "API routing policy must not absorb photo-list policy",
@@ -292,7 +307,8 @@ requireText(http, "canHedgeOnAlternateRoute", "safe route hedge guard");
 requireText(http, "canRetryOnAlternateRoute", "failure-only route retry guard");
 requireText(http, "isSafeReplayMethod(method)", "unsafe route replay exclusion");
 requireText(http, "const safeToReplay = canReplayRequest", "endpoint-aware misrouted request replay guard");
-requireText(http, "raceHedgedAttempts", "non-destructive route hedge");
+requireText(http, "await waitForResult(", "abortable deferred route hedge");
+requireText(http, "preloadApiHedgePolicy(),", "deferred non-destructive route hedge");
 for (const path of ["/photos", "/photos/locations", "/photos/motion-video", "/photos/trash", "/geocode/search"]) {
   requireText(routingPolicy, `"${path}"`, `expensive GET hedge exclusion ${path}`);
 }

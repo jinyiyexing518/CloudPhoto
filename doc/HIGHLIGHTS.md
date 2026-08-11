@@ -65,7 +65,8 @@
 - **私有缓存生命周期分层** — `AuthContext` 只同步持有账号归属、generation 失效、同步 reset 与 owner 键删除；Workbox IndexedDB schema/open/cursor/定向删除按需加载，并由注销、401、恢复失败和跨标签切号路径等待完成。登录入口由 37,529 B 降至 35,701 B（gzip 13,595 B → 13,121 B），保持 36,000 B raw 硬门禁及跨账号/角色隔离
 - **重要片段本地数据授权隔离** — moments 离线统计与诊断按用户、角色、个人/群组工作区派生键，并复用 owner/generation 与延迟写入围栏；注销、401、切号或降权在 UI 更新前同步清理私有照片、媒体和 moments，旧无归属全局键 fail closed 删除，应用壳与 app-code 保留
 - **近期分享链接授权隔离** — 浏览器近期公开链接按用户+角色派生键；分享请求捕获 auth generation，注销/401/切号后的迟到响应写回为 **0**。旧全局键与损坏/超限 JSON fail closed 删除，云端托管分享和应用缓存不受影响
-- **照片策略边界分层** — 账号 JWT 解析、通用 API 路由/hedge 与照片列表刷新、媒体缓存规则拆为独立模块；`http` 不再把 `:group:` 列表键等照片专用策略提升到登录入口，入口由 28.84 kB 降至 28.48 kB（gzip 10.44 kB → 10.31 kB）
+- **照片策略边界分层** — 账号 JWT 解析、通用 API 路由分类与照片列表刷新、媒体缓存规则拆为独立模块；`http` 不再把 `:group:` 列表键等照片专用策略提升到登录入口，入口由 28.84 kB 降至 28.48 kB（gzip 10.44 kB → 10.31 kB）
+- **API hedge 按认证意图加载** — 安全 GET 的 primary/fallback 竞速、取消和 release 状态机迁入独立 1,510 B lazy chunk；默认登录页、HTML preload 与 service worker precache 均不携带它，已有 token 或登录/注册提交会提前并行加载。生产配置入口由 35,855 B 降至 34,501 B，在不修改 36,000 B 硬门禁的前提下把余量从 145 B 提升到 1,499 B
 - **注册表单按意图加载** — 默认登录页不再携带注册字段、校验和提交逻辑；注册 Tab hover/focus 预载同一个 lazy Promise，打开后保持表单状态并继续在提交前预载工作区。入口由 28.48 kB 降至 26.58 kB（gzip 10.31 kB → 9.91 kB），注册逻辑成为独立 2.79 kB chunk
 - **更新弹窗 Idle 延后加载** — `WhatsNewPopup` 从 `AuthenticatedApp` 拆为独立 lazy chunk，照片列表 `loading=true` 时不挂载也不请求 changelog；`loading` 结束后仅在 `requestIdleCallback({ timeout: 2000 })`（含 `setTimeout` 兼容 fallback）空闲窗口挂载，且切回 loading/卸载会取消旧任务，避免迟到弹窗覆盖加载态。`AuthenticatedApp` 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB），并新增 `WhatsNewPopup-*.js` 3.81 kB chunk
 - **最近更新完整模态键盘路径** — 打开后显式聚焦关闭按钮，Escape 关闭，Tab/Shift+Tab 基于每次按键时的可见控件动态循环；键盘聚焦/交互会 pin 弹窗并清空自动淡出计时器，关闭动画完成或组件卸载后仅向仍连接的原控件恢复焦点。更新摘要使用原生 `button` 与稳定 `aria-expanded`/`aria-controls` 关联
