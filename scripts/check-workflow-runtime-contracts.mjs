@@ -16,7 +16,7 @@ const requiredContractWorkflows = [
 const productionHealthWorkingDirectory = ".deployment";
 const productionHealthWorkflow = ".github/workflows/production-health.yml";
 const productionHealthConcurrencyGroup =
-  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}";
+  "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-event-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}";
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const frontendProductionConcurrencyGroup =
   "deploy-frontend-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && 'production' || github.event_name == 'pull_request' && format('validation-pr-{0}', github.event.pull_request.number) || format('validation-{0}', github.ref_name) }}";
@@ -24,6 +24,16 @@ const frontendCancelInProgress =
   "${{ !((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) }}";
 const frontendUploadCondition =
   "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')";
+const frontendActualUploadCondition =
+  `(${frontendUploadCondition}) && steps.deployment_ownership_final.outputs.should_deploy == 'true'`;
+const frontendOwnershipCommand = "node scripts/check-frontend-deployment-ownership.mjs";
+const frontendInitialOwnershipCondition = null;
+const frontendFinalOwnershipCondition =
+  "steps.deployment_ownership_initial.outputs.should_deploy == 'true'";
+const frontendReceiptCommand =
+  'echo "::notice::Canonical frontend deployment receipt for ${GITHUB_SHA} from run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}."';
+const frontendRequeueCommand =
+  "gh workflow run deploy-frontend.yml --ref main -f mode=production";
 const frontendUploadToken = "${{ steps.swa_token.outputs.deployment_token }}";
 const frontendArtifactName = "frontend-dist";
 const frontendArtifactPath = "packages/client/dist";
@@ -58,7 +68,7 @@ const productionHealthExpectedSha =
 const productionHealthIdentityCondition =
   "github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && steps.deployment_event.outputs.should_check == 'true'";
 const productionHealthClassificationValidationCommand = [
-  'for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do',
+  'for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_RECEIPT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do',
   '  case "$value" in',
   "    true|false) ;;",
   '    *) echo "::error::Deployment classifier did not emit a complete boolean contract."; exit 1 ;;',
@@ -70,6 +80,10 @@ const productionHealthClassificationValidationCommand = [
   "fi",
   'if [[ "$SHOULD_CHECK" == "true" && "$SHOULD_REJECT" == "true" ]]; then',
   '  echo "::error::Deployment classifier emitted contradictory actions."',
+  "  exit 1",
+  "fi",
+  'if [[ "$DEPLOYMENT_RECEIPT" == "true" && "$DEPLOYMENT_STARTED" != "true" ]]; then',
+  '  echo "::error::Deployment classifier emitted a receipt without an Azure upload attempt."',
   "  exit 1",
   "fi",
   'if [[ "$DEPLOYMENT_STARTED" == "true" && "$SHOULD_CHECK" != "true" && "$SHOULD_REJECT" != "true" ]]; then',
@@ -96,13 +110,6 @@ const runtimeAlgorithmPaths = [
   "packages/algorithm/src/**",
   "packages/algorithm/package.json",
   "packages/algorithm/tsconfig.json",
-];
-const frontendGatePaths = [
-  "scripts/auth-layout-cdp.mjs",
-  "scripts/deployment-asset-retention.test.mjs",
-  "scripts/deployment-assets.mjs",
-  "scripts/stale-deployment-browser.test.mjs",
-  "scripts/test-photo-loading-behavior.mjs",
 ];
 const frontendGateCommands = ["node scripts/test-photo-loading-behavior.mjs"];
 
@@ -374,6 +381,9 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const stepWorkingDirectories = {};
   let frontendTokenResolver = null;
   let frontendDeploymentMarker = null;
+  const frontendDeploymentOwnershipChecks = [];
+  let frontendDeploymentReceipt = null;
+  const frontendDeploymentRequeues = [];
   let productionHealthClassification = null;
   let productionHealthClassificationValidation = null;
   let productionHealthCheck = null;
@@ -501,6 +511,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         condition: stepField(step, "if"),
         canonicalDeployment: stepChildField(step, "env", "CANONICAL_DEPLOYMENT"),
         deployedSha: stepChildField(step, "env", "DEPLOYED_SHA"),
+        deploymentReceipt: stepChildField(step, "env", "DEPLOYMENT_RECEIPT"),
         deploymentStarted: stepChildField(step, "env", "DEPLOYMENT_STARTED"),
         shouldCheck: stepChildField(step, "env", "SHOULD_CHECK"),
         shouldReject: stepChildField(step, "env", "SHOULD_REJECT"),
@@ -513,6 +524,35 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         command: stepField(step, "run"),
         job: step.job,
       };
+    }
+    if (name === "Check deployment ownership" || name === "Recheck deployment ownership") {
+      frontendDeploymentOwnershipChecks.push({
+        command: stepField(step, "run"),
+        condition: stepField(step, "if"),
+        ghToken: stepChildField(step, "env", "GITHUB_TOKEN"),
+        id: stepField(step, "id"),
+        job: step.job,
+        name,
+      });
+    }
+    if (name === "Record canonical deployment receipt") {
+      frontendDeploymentReceipt = {
+        command: stepField(step, "run"),
+        condition: stepField(step, "if"),
+        job: step.job,
+      };
+    }
+    if (
+      name === "Requeue current main tip after initial check"
+      || name === "Requeue current main tip after final check"
+    ) {
+      frontendDeploymentRequeues.push({
+        command: stepField(step, "run"),
+        condition: stepField(step, "if"),
+        ghToken: stepChildField(step, "env", "GH_TOKEN"),
+        job: step.job,
+        name,
+      });
     }
     if (stepField(step, "id") === "swa_token") {
       frontendTokenResolver = {
@@ -540,7 +580,16 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     stepWorkingDirectories,
     frontendTokenResolver,
     frontendDeploymentMarker,
+    frontendDeploymentOwnershipChecks,
+    frontendDeploymentReceipt,
+    frontendDeploymentRequeues,
     frontendProductionJob: {
+      actionsPermission: nestedScalarValue(text, [
+        "jobs",
+        "deploy_production",
+        "permissions",
+        "actions",
+      ]),
       condition: nestedScalarValue(text, ["jobs", "deploy_production", "if"]),
       needs: nestedScalarValue(text, ["jobs", "deploy_production", "needs"]),
     },
@@ -751,6 +800,8 @@ export function checkWorkflowRuntimeContracts(workflows) {
       !== "${{ steps.deployment_event.outputs.canonical_deployment }}"
     || healthPolicy.productionHealthClassificationValidation.deployedSha
       !== "${{ steps.deployment_event.outputs.deployed_sha }}"
+    || healthPolicy.productionHealthClassificationValidation.deploymentReceipt
+      !== "${{ steps.deployment_event.outputs.deployment_receipt }}"
     || healthPolicy.productionHealthClassificationValidation.deploymentStarted
       !== "${{ steps.deployment_event.outputs.deployment_started }}"
     || healthPolicy.productionHealthClassificationValidation.shouldCheck
@@ -857,11 +908,12 @@ export function checkWorkflowRuntimeContracts(workflows) {
       )
       || frontendPolicy.staticWebAppActions.length !== 1
       || frontendPolicy.staticWebAppActions[0]?.action !== "upload"
-      || frontendPolicy.staticWebAppActions[0]?.condition !== frontendUploadCondition
+      || frontendPolicy.staticWebAppActions[0]?.condition !== frontendActualUploadCondition
       || frontendPolicy.staticWebAppActions[0]?.job !== "deploy_production"
       || frontendPolicy.staticWebAppActions[0]?.ref !== "v1"
       || frontendPolicy.staticWebAppActions[0]?.token !== frontendUploadToken
       || frontendPolicy.frontendProductionJob.condition !== frontendUploadCondition
+      || frontendPolicy.frontendProductionJob.actionsPermission !== "write"
       || frontendPolicy.frontendProductionJob.needs !== "build"
       || frontendPolicy.usesRepositorySwaToken
       || !frontendPolicy.frontendTokenResolver
@@ -883,10 +935,65 @@ export function checkWorkflowRuntimeContracts(workflows) {
         `${frontendWorkflow} must keep non-main workflow_dispatch runs validation-only and guard the production upload`
       );
     }
+    const ownershipChecks = Object.fromEntries(
+      frontendPolicy.frontendDeploymentOwnershipChecks.map((check) => [check.name, check])
+    );
+    if (
+      frontendPolicy.frontendDeploymentOwnershipChecks.length !== 2
+      || ownershipChecks["Check deployment ownership"]?.id !== "deployment_ownership_initial"
+      || ownershipChecks["Check deployment ownership"]?.job !== "deploy_production"
+      || ownershipChecks["Check deployment ownership"]?.condition
+        !== frontendInitialOwnershipCondition
+      || ownershipChecks["Check deployment ownership"]?.ghToken
+        !== "${{ secrets.GITHUB_TOKEN }}"
+      || ownershipChecks["Check deployment ownership"]?.command !== frontendOwnershipCommand
+      || ownershipChecks["Recheck deployment ownership"]?.id !== "deployment_ownership_final"
+      || ownershipChecks["Recheck deployment ownership"]?.job !== "deploy_production"
+      || ownershipChecks["Recheck deployment ownership"]?.condition
+        !== frontendFinalOwnershipCondition
+      || ownershipChecks["Recheck deployment ownership"]?.ghToken
+        !== "${{ secrets.GITHUB_TOKEN }}"
+      || ownershipChecks["Recheck deployment ownership"]?.command !== frontendOwnershipCommand
+      || frontendPolicy.frontendDeploymentReceipt?.job !== "deploy_production"
+      || frontendPolicy.frontendDeploymentReceipt?.condition !== frontendActualUploadCondition
+      || frontendPolicy.frontendDeploymentReceipt?.command !== frontendReceiptCommand
+    ) {
+      issues.push(
+        `${frontendWorkflow} must coalesce stale and duplicate production runs with two ownership checks and an explicit deployment receipt`
+      );
+    }
+    const requeueSteps = Object.fromEntries(
+      frontendPolicy.frontendDeploymentRequeues.map((step) => [step.name, step])
+    );
+    if (
+      frontendPolicy.frontendDeploymentRequeues.length !== 2
+      || requeueSteps["Requeue current main tip after initial check"]?.condition
+        !== "steps.deployment_ownership_initial.outputs.reason == 'stale-main'"
+      || requeueSteps["Requeue current main tip after final check"]?.condition
+        !== "steps.deployment_ownership_final.outputs.reason == 'stale-main'"
+      || frontendPolicy.frontendDeploymentRequeues.some(
+        (step) =>
+          step.job !== "deploy_production"
+          || step.ghToken !== "${{ secrets.GITHUB_TOKEN }}"
+          || step.command !== frontendRequeueCommand
+      )
+    ) {
+      issues.push(
+        `${frontendWorkflow} must requeue the current main tip when a stale run replaces the only pending production candidate`
+      );
+    }
   }
   for (const [path, pushPaths] of Object.entries(deployPushPaths)) {
     if (!pushPaths) {
       issues.push(`${path} is missing`);
+      continue;
+    }
+    if (path === frontendWorkflow) {
+      if (pushPaths.length !== 0) {
+        issues.push(
+          `${frontendWorkflow} must run for every main advancement so only the remote main tip can deploy`
+        );
+      }
       continue;
     }
     for (const requiredPath of runtimeAlgorithmPaths) {
@@ -903,11 +1010,6 @@ export function checkWorkflowRuntimeContracts(workflows) {
           `${path} must use only runtime algorithm paths, found ${configuredPath}`
         );
       }
-    }
-  }
-  for (const requiredPath of frontendGatePaths) {
-    if (!deployPushPaths[frontendWorkflow]?.includes(requiredPath)) {
-      issues.push(`${frontendWorkflow} must include frontend gate path ${requiredPath}`);
     }
   }
   for (const requiredCommand of frontendGateCommands) {
@@ -943,7 +1045,7 @@ function main() {
   }
 
   console.log(
-    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress} frontend-production=serialized frontend-dispatch=validation-guarded algorithm-runtime-paths=${runtimeAlgorithmPaths.length}x${deployWorkflows.length}`
+    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress} frontend-production=main-tip+serialized+coalesced frontend-dispatch=validation-guarded backend-algorithm-runtime-paths=${runtimeAlgorithmPaths.length}`
   );
 }
 

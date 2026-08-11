@@ -6,6 +6,11 @@ import {
   classifyDeploymentStarted,
 } from "./classify-deployment-event.mjs";
 import {
+  checkDeploymentOwnership,
+  classifyFrontendDeploymentJob,
+  parseDeploymentMarker,
+} from "./check-frontend-deployment-ownership.mjs";
+import {
   checkWorkflowRuntimeContracts,
   inspectWorkflow,
 } from "./check-workflow-runtime-contracts.mjs";
@@ -119,7 +124,7 @@ test("rejects generic health runs that can cancel frontend SHA verification", ()
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
+    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-event-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
     "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || 'latest' }}"
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
@@ -131,14 +136,14 @@ test("rejects generic health runs that can cancel frontend SHA verification", ()
   );
 });
 
-test("rejects frontend validation runs that can cancel deployment SHA verification", () => {
+test("rejects frontend events that share a health concurrency identity", () => {
   const path = ".github/workflows/production-health.yml";
   const health = readFileSync(
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}",
-    "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}"
+    "format('frontend-event-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt)",
+    "'frontend-deployment'"
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
@@ -173,8 +178,8 @@ test("rejects frontend nondeployment reruns that share a health concurrency iden
     new URL("../.github/workflows/production-health.yml", import.meta.url),
     "utf8"
   ).replace(
-    "format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt)",
-    "format('frontend-nondeployment-{0}', github.event.workflow_run.id)"
+    "format('frontend-event-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt)",
+    "format('frontend-event-{0}', github.event.workflow_run.id)"
   );
   const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
 
@@ -207,6 +212,61 @@ jobs:
   assert.ok(
     result.issues.some((issue) =>
       issue.includes("serialize the production target")
+    )
+  );
+});
+
+test("requires deployment ownership and receipt gates beyond serialization", () => {
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  );
+
+  for (const required of [
+    "Check deployment ownership",
+    "Recheck deployment ownership",
+    "node scripts/check-frontend-deployment-ownership.mjs",
+    "Record canonical deployment receipt",
+    "steps.deployment_ownership_final.outputs.should_deploy == 'true'",
+    "Requeue current main tip",
+    "gh workflow run deploy-frontend.yml --ref main -f mode=production",
+  ]) {
+    assert.match(frontend, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("rejects production concurrency without stale-main requeue recovery", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "      - name: Requeue current main tip after initial check",
+    "      - name: Disabled current main tip requeue"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("requeue the current main tip")
+    )
+  );
+});
+
+test("rejects a serialized frontend workflow without final ownership coalescing", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "      - name: Recheck deployment ownership",
+    "      - name: Disabled deployment ownership recheck"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("coalesce stale and duplicate production runs")
     )
   );
 });
@@ -359,6 +419,7 @@ test("locks frontend artifact casing, refs, paths, retention, and cross-job hand
     },
   ]);
   assert.deepEqual(inspected.frontendProductionJob, {
+    actionsPermission: "write",
     condition:
       "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')",
     needs: "build",
@@ -586,6 +647,24 @@ test("rejects production health that can silently accept missing classifier outp
   );
 });
 
+test("rejects production health that does not validate the deployment receipt", () => {
+  const path = ".github/workflows/production-health.yml";
+  const health = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "          DEPLOYMENT_RECEIPT: ${{ steps.deployment_event.outputs.deployment_receipt }}",
+    "          DEPLOYMENT_RECEIPT: false"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: health }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("fail closed when classifier outputs are missing")
+    )
+  );
+});
+
 test("rejects production health without a controller-owned artifact identity gate", () => {
   const path = ".github/workflows/production-health.yml";
   const health = readFileSync(
@@ -640,7 +719,7 @@ test("rejects mutable run-name as the deployment workflow identity", () => {
   );
 });
 
-test("classifies only a started non-skipped frontend production job as deployment", () => {
+test("classifies an explicit Azure upload step as a frontend deployment attempt", () => {
   const workflow = ".github/workflows/deploy-frontend.yml";
 
   assert.equal(
@@ -650,6 +729,9 @@ test("classifies only a started non-skipped frontend production job as deploymen
           name: "Deploy production",
           started_at: "2026-08-11T00:00:00Z",
           conclusion: "failure",
+          steps: [
+            { name: "Deploy to Azure Static Web Apps", conclusion: "failure" },
+          ],
         },
       ],
     }),
@@ -662,6 +744,10 @@ test("classifies only a started non-skipped frontend production job as deploymen
           name: "Deploy production",
           started_at: "2026-08-11T00:00:00Z",
           conclusion: "success",
+          steps: [
+            { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+            { name: "Record canonical deployment receipt", conclusion: "success" },
+          ],
         },
       ],
     }),
@@ -682,6 +768,452 @@ test("classifies only a started non-skipped frontend production job as deploymen
   assert.equal(classifyDeploymentStarted(workflow, { jobs: [] }), false);
 });
 
+test("blocks an older SHA before querying prior deployment receipts", async () => {
+  const requests = [];
+  const result = await checkDeploymentOwnership({
+    currentRunAttempt: "1",
+    currentRunId: "22",
+    expectedSha: "a".repeat(40),
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      requests.push(path);
+      return { object: { sha: "b".repeat(40) } };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "stale-main",
+    receiptRunAttempt: "",
+    receiptRunId: "",
+    shouldDeploy: false,
+  });
+  assert.deepEqual(requests, ["/repos/owner/repo/git/ref/heads/main"]);
+});
+
+test("coalesces a duplicate SHA with a successful canonical deployment receipt", async () => {
+  const sha = "c".repeat(40);
+  const requests = [];
+  const result = await checkDeploymentOwnership({
+    currentRunAttempt: "1",
+    currentRunId: "42",
+    expectedSha: sha,
+    markerAttempts: 1,
+    readDeploymentMarker: async () => sha,
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      requests.push(path);
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { sha } };
+      }
+      if (path.includes("/actions/workflows/deploy-frontend.yml/runs?")) {
+        return {
+          total_count: 1,
+          workflow_runs: [{
+            event: "push",
+            head_branch: "main",
+            head_sha: sha,
+            id: 41,
+            path: ".github/workflows/deploy-frontend.yml",
+            run_attempt: 1,
+          }],
+        };
+      }
+      return {
+        jobs: [{
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: "success",
+          steps: [
+            { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+            { name: "Record canonical deployment receipt", conclusion: "success" },
+          ],
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "already-deployed",
+    receiptRunAttempt: "1",
+    receiptRunId: "41",
+    shouldDeploy: false,
+  });
+  assert.ok(requests[1].includes("head_sha=cccccccccccccccccccccccccccccccccccccccc"));
+  assert.ok(requests[1].includes("page=1"));
+  assert.equal(
+    requests[2],
+    "/repos/owner/repo/actions/runs/41/attempts/1/jobs?per_page=100"
+  );
+});
+
+test("does not treat a successful coalesced job as a deployment receipt", async () => {
+  const sha = "d".repeat(40);
+  const result = await checkDeploymentOwnership({
+    currentRunAttempt: "1",
+    currentRunId: "52",
+    expectedSha: sha,
+    markerAttempts: 1,
+    readDeploymentMarker: async () => sha,
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { sha } };
+      }
+      if (path.includes("/actions/workflows/deploy-frontend.yml/runs?")) {
+        return {
+          total_count: 1,
+          workflow_runs: [{
+            event: "workflow_dispatch",
+            head_branch: "main",
+            head_sha: sha,
+            id: 51,
+            path: ".github/workflows/deploy-frontend.yml",
+            run_attempt: 2,
+          }],
+        };
+      }
+      return {
+        jobs: [{
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: "success",
+          steps: [
+            { name: "Deploy to Azure Static Web Apps", conclusion: "skipped" },
+            { name: "Record canonical deployment receipt", conclusion: "skipped" },
+          ],
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "owned",
+    receiptRunAttempt: "",
+    receiptRunId: "",
+    shouldDeploy: true,
+  });
+});
+
+test("coalesces a rerun against a successful receipt from its prior attempt", async () => {
+  const sha = "e".repeat(40);
+  const requests = [];
+  const result = await checkDeploymentOwnership({
+    currentRunAttempt: "2",
+    currentRunId: "61",
+    expectedSha: sha,
+    markerAttempts: 1,
+    readDeploymentMarker: async () => sha,
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      requests.push(path);
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { sha } };
+      }
+      return {
+        jobs: [{
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: "success",
+          steps: [
+            { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+            { name: "Record canonical deployment receipt", conclusion: "success" },
+          ],
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "already-deployed",
+    receiptRunAttempt: "1",
+    receiptRunId: "61",
+    shouldDeploy: false,
+  });
+  assert.deepEqual(requests, [
+    "/repos/owner/repo/git/ref/heads/main",
+    "/repos/owner/repo/actions/runs/61/attempts/1/jobs?per_page=100",
+  ]);
+});
+
+test("finds a receipt in an earlier attempt of another run", async () => {
+  const sha = "5".repeat(40);
+  const requestedAttempts = [];
+  const result = await checkDeploymentOwnership({
+    currentRunAttempt: "1",
+    currentRunId: "102",
+    expectedSha: sha,
+    markerAttempts: 1,
+    readDeploymentMarker: async () => sha,
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { sha } };
+      }
+      if (path.includes("/actions/workflows/deploy-frontend.yml/runs?")) {
+        return {
+          total_count: 1,
+          workflow_runs: [{
+            conclusion: "failure",
+            event: "push",
+            head_branch: "main",
+            head_sha: sha,
+            id: 101,
+            path: ".github/workflows/deploy-frontend.yml",
+            run_attempt: 2,
+          }],
+        };
+      }
+      requestedAttempts.push(path);
+      const receipt = path.includes("/attempts/1/");
+      return {
+        jobs: [{
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: receipt ? "success" : "failure",
+          steps: [
+            {
+              name: "Deploy to Azure Static Web Apps",
+              conclusion: receipt ? "success" : "failure",
+            },
+            {
+              name: "Record canonical deployment receipt",
+              conclusion: receipt ? "success" : "skipped",
+            },
+          ],
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "already-deployed",
+    receiptRunAttempt: "1",
+    receiptRunId: "101",
+    shouldDeploy: false,
+  });
+  assert.deepEqual(requestedAttempts, [
+    "/repos/owner/repo/actions/runs/101/attempts/1/jobs?per_page=100",
+  ]);
+});
+
+test("redeploys when a historical receipt no longer matches live production", async () => {
+  const sha = "f".repeat(40);
+  const result = await checkDeploymentOwnership({
+    currentRunAttempt: "2",
+    currentRunId: "71",
+    expectedSha: sha,
+    markerAttempts: 1,
+    readDeploymentMarker: async () => "a".repeat(40),
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { sha } };
+      }
+      return {
+        jobs: [{
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: "success",
+          steps: [
+            { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+            { name: "Record canonical deployment receipt", conclusion: "success" },
+          ],
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "deployment-drift",
+    receiptRunAttempt: "1",
+    receiptRunId: "71",
+    shouldDeploy: true,
+  });
+});
+
+test("paginates successful same-SHA runs before declaring ownership", async () => {
+  const sha = "1".repeat(40);
+  const requests = [];
+  const result = await checkDeploymentOwnership({
+    currentRunAttempt: "1",
+    currentRunId: "82",
+    expectedSha: sha,
+    markerAttempts: 1,
+    readDeploymentMarker: async () => sha,
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      requests.push(path);
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { sha } };
+      }
+      if (/[?&]page=1(?:&|$)/.test(path)) {
+        return {
+          total_count: 101,
+          workflow_runs: Array.from({ length: 100 }, (_, index) => ({
+            conclusion: "success",
+            event: "push",
+            head_branch: "main",
+            head_sha: sha,
+            id: 1_000 + index,
+            path: ".github/workflows/old-frontend.yml",
+            run_attempt: 1,
+          })),
+        };
+      }
+      if (/[?&]page=2(?:&|$)/.test(path)) {
+        return {
+          total_count: 101,
+          workflow_runs: [{
+            conclusion: "success",
+            event: "push",
+            head_branch: "main",
+            head_sha: sha,
+            id: 81,
+            path: ".github/workflows/deploy-frontend.yml",
+            run_attempt: 3,
+          }],
+        };
+      }
+      return {
+        jobs: [{
+          name: "Deploy production",
+          started_at: "2026-08-11T00:00:00Z",
+          conclusion: "success",
+          steps: [
+            { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+            { name: "Record canonical deployment receipt", conclusion: "success" },
+          ],
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "already-deployed",
+    receiptRunAttempt: "1",
+    receiptRunId: "81",
+    shouldDeploy: false,
+  });
+  assert.ok(requests.some((path) => path.includes("page=2")));
+});
+
+test("fails closed when same-SHA history exceeds GitHub's filtered result cap", async () => {
+  const sha = "3".repeat(40);
+  await assert.rejects(() => checkDeploymentOwnership({
+    currentRunAttempt: "1",
+    currentRunId: "91",
+    expectedSha: sha,
+    markerAttempts: 1,
+    readDeploymentMarker: async () => sha,
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { sha } };
+      }
+      return { total_count: 1_001, workflow_runs: [] };
+    },
+  }), /1000-result limit/);
+});
+
+test("requires both the Azure upload and receipt step to succeed", () => {
+  assert.deepEqual(classifyFrontendDeploymentJob({
+    jobs: [{
+      name: "Deploy production",
+      started_at: "2026-08-11T00:00:00Z",
+      conclusion: "success",
+      steps: [
+        { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+        { name: "Record canonical deployment receipt", conclusion: "success" },
+      ],
+    }],
+  }), {
+    deploymentReceipt: true,
+    deploymentStarted: true,
+  });
+});
+
+test("accepts only an exact no-store deployment marker", () => {
+  const sha = "2".repeat(40);
+  assert.equal(parseDeploymentMarker({
+    body: JSON.stringify({ sha }),
+    cacheControl: "public, no-store",
+    origin: "https://example.test",
+  }), sha);
+  assert.throws(() => parseDeploymentMarker({
+    body: JSON.stringify({ sha }),
+    cacheControl: "max-age=60",
+    origin: "https://example.test",
+  }), /cacheable/);
+  assert.throws(() => parseDeploymentMarker({
+    body: JSON.stringify({ sha, url: "https://example.test/private" }),
+    cacheControl: "no-store",
+    origin: "https://example.test",
+  }), /invalid shape/);
+  assert.throws(() => parseDeploymentMarker({
+    body: JSON.stringify({ sha }),
+    cacheControl: "max-age=3600, x-no-store-cache=true",
+    origin: "https://example.test",
+  }), /cacheable/);
+});
+
+test("ignores a serialized frontend job that skipped the Azure upload", () => {
+  const workflow = ".github/workflows/deploy-frontend.yml";
+  const jobs = [{
+    name: "Deploy production",
+    started_at: "2026-08-11T00:00:00Z",
+    conclusion: "success",
+    steps: [
+      { name: "Deploy to Azure Static Web Apps", conclusion: "skipped" },
+      { name: "Record canonical deployment receipt", conclusion: "skipped" },
+    ],
+  }];
+
+  assert.equal(classifyDeploymentStarted(workflow, { jobs }), false);
+  assert.deepEqual(classifyDeploymentEvent({
+    workflowName: workflow,
+    workflowEvent: "push",
+    headBranch: "main",
+    headSha: "a".repeat(40),
+    conclusion: "success",
+    jobs,
+  }), {
+    canonicalDeployment: false,
+    deployedSha: "a".repeat(40),
+    deploymentReceipt: false,
+    deploymentStarted: false,
+    shouldCheck: false,
+    shouldReject: false,
+  });
+});
+
+test("fails closed when Azure upload succeeds without a canonical receipt", () => {
+  const result = classifyDeploymentEvent({
+    workflowName: ".github/workflows/deploy-frontend.yml",
+    workflowEvent: "push",
+    headBranch: "main",
+    headSha: "b".repeat(40),
+    conclusion: "success",
+    jobs: [{
+      name: "Deploy production",
+      started_at: "2026-08-11T00:00:00Z",
+      conclusion: "success",
+      steps: [
+        { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+        { name: "Record canonical deployment receipt", conclusion: "skipped" },
+      ],
+    }],
+  });
+
+  assert.deepEqual(result, {
+    canonicalDeployment: false,
+    deployedSha: "b".repeat(40),
+    deploymentReceipt: false,
+    deploymentStarted: true,
+    shouldCheck: false,
+    shouldReject: true,
+  });
+});
+
 test("keeps backend workflow failures classified as deployment events", () => {
   assert.equal(
     classifyDeploymentStarted(".github/workflows/deploy-backend.yml", {
@@ -691,12 +1223,27 @@ test("keeps backend workflow failures classified as deployment events", () => {
   );
 });
 
+test("rejects unsupported workflow paths instead of treating them as backend", () => {
+  assert.throws(() => classifyDeploymentEvent({
+    workflowName: ".github/workflows/not-a-deploy.yml",
+    workflowEvent: "push",
+    headBranch: "main",
+    headSha: "4".repeat(40),
+    conclusion: "success",
+    jobs: [],
+  }), /Unsupported deployment workflow/);
+});
+
 test("binds each successful deployment health event to its triggering SHA", () => {
   const workflowName = ".github/workflows/deploy-frontend.yml";
   const jobs = [{
     name: "Deploy production",
     started_at: "2026-08-11T16:43:00Z",
     conclusion: "success",
+    steps: [
+      { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+      { name: "Record canonical deployment receipt", conclusion: "success" },
+    ],
   }];
   const aaSha = `aa029f4${"0".repeat(33)}`;
   const laterSha = `7e2862c${"1".repeat(33)}`;
@@ -721,6 +1268,7 @@ test("binds each successful deployment health event to its triggering SHA", () =
   assert.deepEqual(first, {
     canonicalDeployment: true,
     deployedSha: aaSha,
+    deploymentReceipt: true,
     deploymentStarted: true,
     shouldCheck: true,
     shouldReject: false,
@@ -736,6 +1284,10 @@ test("fails closed for a non-main or malformed deployment identity", () => {
     name: "Deploy production",
     started_at: "2026-08-11T16:43:00Z",
     conclusion: "success",
+    steps: [
+      { name: "Deploy to Azure Static Web Apps", conclusion: "success" },
+      { name: "Record canonical deployment receipt", conclusion: "success" },
+    ],
   }];
 
   for (const input of [
@@ -833,17 +1385,20 @@ jobs:
   );
 });
 
-test("requires frontend gate script changes to trigger frontend validation", () => {
+test("requires frontend deployment for every main advancement", () => {
   const path = ".github/workflows/deploy-frontend.yml";
   const frontend = readFileSync(
     new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
     "utf8"
-  ).replace(/\s+- "scripts\/auth-layout-cdp\.mjs"\r?\n/, "\n");
+  ).replace(
+    "  pull_request:",
+    '    paths:\n      - "packages/client/**"\n  pull_request:'
+  );
   const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
 
   assert.ok(
     result.issues.some((issue) =>
-      issue.includes("must include frontend gate path scripts/auth-layout-cdp.mjs")
+      issue.includes("every main advancement")
     )
   );
 });

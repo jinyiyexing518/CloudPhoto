@@ -12,6 +12,7 @@
 
 **工程修复**
 - **🚦 前端部署 Action 契约** — 移除 SWA upload 不生效的 `production_branch` 输入，生产仍只由 `main` hard condition 选择；同 workflow 的 `frontend-dist` 跨 job 传递升级到 Node 24 的 `upload-artifact@v7` / `download-artifact@v8`，名称、路径、1 天保留期、OIDC token、并发与 deployed SHA 健康检查保持不变
+- **🧾 前端部署所有权与幂等 receipt** — production upload 前双重确认触发 SHA 仍是远端 main tip，并拒绝同 workflow/同 SHA或同 run 早期 attempt 已有成功 receipt 的重复上传；Health 只为 actual Azure upload+receipt 产生部署 verdict，coalesced success 不再取消或伪造第二条生产检查
 
 ---
 

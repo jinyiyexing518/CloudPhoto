@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyFrontendDeploymentJob } from "./check-frontend-deployment-ownership.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
@@ -14,17 +15,7 @@ export function classifyDeploymentStarted(workflowName, payload) {
   if (workflowName !== frontendWorkflow) {
     throw new Error(`Unsupported deployment workflow: ${workflowName}`);
   }
-  if (!Array.isArray(payload?.jobs)) {
-    throw new TypeError("GitHub jobs response must contain a jobs array");
-  }
-
-  return payload.jobs.some(
-    (job) =>
-      job?.name === "Deploy production"
-      && typeof job.started_at === "string"
-      && job.started_at.length > 0
-      && job.conclusion !== "skipped"
-  );
+  return classifyFrontendDeploymentJob(payload).deploymentStarted;
 }
 
 export function classifyDeploymentEvent({
@@ -35,12 +26,19 @@ export function classifyDeploymentEvent({
   conclusion,
   jobs,
 }) {
-  const deploymentStarted = classifyDeploymentStarted(workflowName, { jobs });
+  if (workflowName !== frontendWorkflow && workflowName !== backendWorkflow) {
+    throw new Error(`Unsupported deployment workflow: ${workflowName}`);
+  }
+  const frontendDeployment = workflowName === frontendWorkflow
+    ? classifyFrontendDeploymentJob({ jobs })
+    : { deploymentReceipt: true, deploymentStarted: true };
+  const { deploymentReceipt, deploymentStarted } = frontendDeployment;
   const deployedSha = commitShaPattern.test(headSha ?? "")
     ? headSha.toLowerCase()
     : "";
   const canonicalDeployment = (
     deploymentStarted
+    && deploymentReceipt
     && headBranch === "main"
     && (workflowEvent === "push" || workflowEvent === "workflow_dispatch")
     && deployedSha.length > 0
@@ -49,6 +47,7 @@ export function classifyDeploymentEvent({
   return {
     canonicalDeployment,
     deployedSha,
+    deploymentReceipt,
     deploymentStarted,
     shouldCheck: canonicalDeployment && conclusion === "success",
     shouldReject: deploymentStarted && (
@@ -79,6 +78,7 @@ function main() {
   process.stdout.write([
     `canonical_deployment=${result.canonicalDeployment}`,
     `deployed_sha=${result.deployedSha}`,
+    `deployment_receipt=${result.deploymentReceipt}`,
     `deployment_started=${result.deploymentStarted}`,
     `should_check=${result.shouldCheck}`,
     `should_reject=${result.shouldReject}`,

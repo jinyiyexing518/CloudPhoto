@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.display_title == 'Deploy frontend production · main')) && 'frontend-deployment' || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-nondeployment-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}
+  group: production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-event-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}
   cancel-in-progress: true
 
 jobs:
@@ -63,11 +63,12 @@ jobs:
         env:
           CANONICAL_DEPLOYMENT: ${{ steps.deployment_event.outputs.canonical_deployment }}
           DEPLOYED_SHA: ${{ steps.deployment_event.outputs.deployed_sha }}
+          DEPLOYMENT_RECEIPT: ${{ steps.deployment_event.outputs.deployment_receipt }}
           DEPLOYMENT_STARTED: ${{ steps.deployment_event.outputs.deployment_started }}
           SHOULD_CHECK: ${{ steps.deployment_event.outputs.should_check }}
           SHOULD_REJECT: ${{ steps.deployment_event.outputs.should_reject }}
         run: |
-          for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do
+          for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_RECEIPT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do
             case "$value" in
               true|false) ;;
               *) echo "::error::Deployment classifier did not emit a complete boolean contract."; exit 1 ;;
@@ -79,6 +80,10 @@ jobs:
           fi
           if [[ "$SHOULD_CHECK" == "true" && "$SHOULD_REJECT" == "true" ]]; then
             echo "::error::Deployment classifier emitted contradictory actions."
+            exit 1
+          fi
+          if [[ "$DEPLOYMENT_RECEIPT" == "true" && "$DEPLOYMENT_STARTED" != "true" ]]; then
+            echo "::error::Deployment classifier emitted a receipt without an Azure upload attempt."
             exit 1
           fi
           if [[ "$DEPLOYMENT_STARTED" == "true" && "$SHOULD_CHECK" != "true" && "$SHOULD_REJECT" != "true" ]]; then

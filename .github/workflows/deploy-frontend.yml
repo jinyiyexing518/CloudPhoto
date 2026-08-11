@@ -4,23 +4,6 @@ run-name: "${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/h
 on:
   push:
     branches: [main]
-    paths:
-      - "packages/algorithm/src/**"
-      - "packages/algorithm/package.json"
-      - "packages/algorithm/tsconfig.json"
-      - "packages/client/**"
-      - "infra/nginx.conf"
-      - "package.json"
-      - "scripts/auth-layout-cdp.mjs"
-      - "scripts/private-cache-lazy-contract.test.mjs"
-      - "scripts/private-local-data.test.mjs"
-      - "scripts/check-static-cache-config.mjs"
-      - "scripts/deployment-asset-retention.test.mjs"
-      - "scripts/deployment-assets.mjs"
-      - "scripts/security-headers.test.mjs"
-      - "scripts/stale-deployment-browser.test.mjs"
-      - "scripts/test-photo-loading-behavior.mjs"
-      - ".github/workflows/deploy-frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
@@ -156,18 +139,35 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: read
       id-token: write
 
     steps:
+      - name: Checkout deployment controller
+        uses: actions/checkout@v5
+
       - name: Download production artifact
         uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: packages/client/dist
 
+      - name: Check deployment ownership
+        id: deployment_ownership_initial
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-frontend-deployment-ownership.mjs
+
+      - name: Requeue current main tip after initial check
+        if: steps.deployment_ownership_initial.outputs.reason == 'stale-main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-frontend.yml --ref main -f mode=production
+
       - name: Azure Login (attempt 1)
         id: azure_login_first
+        if: steps.deployment_ownership_initial.outputs.should_deploy == 'true'
         uses: azure/login@v3
         continue-on-error: true
         with:
@@ -177,7 +177,7 @@ jobs:
 
       - name: Azure Login (attempt 2)
         id: azure_login_second
-        if: steps.azure_login_first.outcome == 'failure'
+        if: steps.deployment_ownership_initial.outputs.should_deploy == 'true' && steps.azure_login_first.outcome == 'failure'
         uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -185,13 +185,14 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Verify Azure Login
-        if: steps.azure_login_first.outcome == 'failure' && steps.azure_login_second.outcome == 'failure'
+        if: steps.deployment_ownership_initial.outputs.should_deploy == 'true' && steps.azure_login_first.outcome == 'failure' && steps.azure_login_second.outcome == 'failure'
         run: |
           echo "Azure login failed twice. Verify the main-branch OIDC credential."
           exit 1
 
       - name: Resolve deployment token
         id: swa_token
+        if: steps.deployment_ownership_initial.outputs.should_deploy == 'true'
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
@@ -219,8 +220,22 @@ jobs:
           echo "::add-mask::$DEPLOYMENT_TOKEN"
           echo "deployment_token=$DEPLOYMENT_TOKEN" >> "$GITHUB_OUTPUT"
 
+      - name: Recheck deployment ownership
+        id: deployment_ownership_final
+        if: steps.deployment_ownership_initial.outputs.should_deploy == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-frontend-deployment-ownership.mjs
+
+      - name: Requeue current main tip after final check
+        if: steps.deployment_ownership_final.outputs.reason == 'stale-main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-frontend.yml --ref main -f mode=production
+
       - name: Deploy to Azure Static Web Apps
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')
+        id: swa_upload
+        if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && steps.deployment_ownership_final.outputs.should_deploy == 'true'
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ steps.swa_token.outputs.deployment_token }}
@@ -229,3 +244,14 @@ jobs:
           app_location: packages/client/dist   # deploy pre-built output directly
           output_location: ""
           skip_app_build: true        # we built manually above to inject env vars
+
+      - name: Record canonical deployment receipt
+        if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && steps.deployment_ownership_final.outputs.should_deploy == 'true'
+        run: echo "::notice::Canonical frontend deployment receipt for ${GITHUB_SHA} from run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}."
+
+      - name: Report coalesced deployment
+        if: steps.deployment_ownership_initial.outputs.should_deploy != 'true' || steps.deployment_ownership_final.outputs.should_deploy == 'false'
+        env:
+          INITIAL_REASON: ${{ steps.deployment_ownership_initial.outputs.reason }}
+          FINAL_REASON: ${{ steps.deployment_ownership_final.outputs.reason }}
+        run: echo "::notice::Azure upload skipped by deployment ownership gate (${FINAL_REASON:-$INITIAL_REASON})."
