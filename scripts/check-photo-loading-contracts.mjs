@@ -251,16 +251,17 @@ assert(
 for (const name of ["cloudphoto-photo-lists-v1", "photo-media-v1", "cf-media-v1"]) {
   requireText(cacheLifecycle, name, "private cache cleanup");
 }
-assert(
-  cacheLifecycle.indexOf("cacheGeneration += 1;")
-    < cacheLifecycle.indexOf("for (const reset of resetListeners) reset(clearOwner);"),
-  "private-cache invalidation must advance the generation before resetting consumers",
-);
-requireText(
-  cacheLifecycle,
-  "for (const reset of resetListeners) reset(clearOwner);",
-  "scope-aware private reset",
-);
+for (const scopeReset of ["true", "false"]) {
+  const resetMarker = `for (const reset of resetListeners) reset(${scopeReset});`;
+  const resetIndex = cacheLifecycle.indexOf(resetMarker);
+  const generationIndex = cacheLifecycle.lastIndexOf("cacheGeneration += 1;", resetIndex);
+  assert(
+    resetIndex >= 0
+      && generationIndex >= 0
+      && generationIndex < resetIndex,
+    `private-cache ${scopeReset} invalidation must advance generation before resetting consumers`,
+  );
+}
 requireText(
   app,
   'console.error("[PrivateDataCleanup] Photo list cache invalidation failed:", error)',
@@ -277,8 +278,8 @@ requireText(auth, "getTokenAuthScope(resp.token) !== nextScope", "login token/us
 requireText(auth, "preparePrivatePhotoCachesForScope(nextScope)", "account/role ownership");
 requireText(
   auth,
-  "if (!await preparePrivatePhotoCachesForScope(nextScope)) return;",
-  "cross-tab cleanup success gate",
+  "if (await preparePrivatePhotoCachesForScope(nextScope) === false) return;",
+  "cross-tab cleanup stale-auth gate",
 );
 assert.equal(
   (auth.match(/restoreCurrentUser\(controller, generation\)/g) ?? []).length,

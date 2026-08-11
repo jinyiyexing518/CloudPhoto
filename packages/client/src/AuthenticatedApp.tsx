@@ -23,7 +23,9 @@ import {
   readPrivateMomentInsights,
   readPrivateMomentsDiagnostics,
 } from "./services/privateMomentsStore";
-import { registerPrivatePhotoCacheReset } from "./services/privatePhotoCacheLifecycle";
+import {
+  registerPrivatePhotoCacheReset,
+} from "./services/privatePhotoCacheLifecycle";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
 import {
   detectUploadMediaType,
@@ -358,6 +360,19 @@ function AppContent() {
   const resolvedPhotoWorkspaceIdRef = useRef(resolvedPhotoWorkspaceId);
   resolvedPhotoWorkspaceIdRef.current = resolvedPhotoWorkspaceId;
   const showToast = useToast();
+  useEffect(() => {
+    const target = window as Window & { __CF_CACHE_ERROR__?: unknown };
+    const notify = () => {
+      const error = target.__CF_CACHE_ERROR__;
+      if (!error) return;
+      delete target.__CF_CACHE_ERROR__;
+      console.error("[PrivateDataCleanup] Cache preparation deferred:", error);
+      showToast("本地私有缓存暂不可用；在线内容可继续使用，下次打开时将重试", "info");
+    };
+    notify();
+    window.addEventListener("cf-private-cache-error", notify);
+    return () => window.removeEventListener("cf-private-cache-error", notify);
+  }, [showToast]);
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);

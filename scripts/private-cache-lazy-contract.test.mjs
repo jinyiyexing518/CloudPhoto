@@ -33,7 +33,8 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
   assert.match(reset, /await beginPrivateCacheReset\(/);
   assert.match(reset, /await cleanup\.purgePrivateWorkboxExpirationMetadata\(/);
   assert.match(reset, /await completePrivateCacheReset\(/);
-  assert.ok(reset.includes("caches.delete(name)"));
+  assert.ok(reset.includes("cacheStorage.delete(name)"));
+  assert.match(reset, /typeof cacheStorage\.delete !== "function"/);
   assert.ok(
     reset.indexOf("await beginPrivateCacheReset(")
       < reset.indexOf('import("./privateCachePurge.ts")'),
@@ -50,7 +51,10 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
     "chunk-load failures must reject the lifecycle cleanup promise",
   );
   assert.match(reset, /failures\.push\(error\)/);
-  assert.match(reset, /await completePrivateCacheReset\(reset, resumeCaching, failures\)/);
+  assert.match(
+    reset,
+    /await completePrivateCacheReset\(\s*reset,\s*resumeCaching,\s*failures,\s*fencePrivateMediaWrites,\s*\)/,
+  );
 });
 
 test("API hedge machinery stays behind an authenticated intent boundary", async () => {

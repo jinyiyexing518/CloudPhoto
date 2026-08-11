@@ -46,6 +46,7 @@ globalThis.localStorage = {
 
 const availableCacheNames = new Set(["workbox-precache-v2", "photo-media-v1"]);
 let cacheDeleteFailure = null;
+const lifecycleEvents = [];
 globalThis.window = {
   caches: {
     async delete(name) {
@@ -53,6 +54,10 @@ globalThis.window = {
       availableCacheNames.delete(name);
       return true;
     },
+  },
+  dispatchEvent(event) {
+    lifecycleEvents.push(event.type);
+    return true;
   },
 };
 globalThis.caches = globalThis.window.caches;
@@ -94,7 +99,9 @@ for (const implementationMarker of [
     `${implementationMarker} must stay out of the precached Cache Storage fallback`,
   );
 }
-assert(resetSource.includes("caches.delete(name)"));
+assert(resetSource.includes("cacheStorage.delete(name)"));
+assert(resetSource.includes('typeof cacheStorage.delete !== "function"'));
+assert(resetSource.includes("markCleanupComplete = true"));
 assert(resetSource.includes("beginPrivateCacheFence"));
 for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
   assert(
@@ -1084,6 +1091,8 @@ localStorage.removeItem(quotaKey);
 }
 
 availableCacheNames.add("photo-media-v1");
+localStorage.setItem("cloudphoto_private_cache_owner_v1", "stale-pwa-owner:admin");
+localStorage.setItem("cloudphoto_private_cleanup_v1", "1");
 globalThis.indexedDB = {
   async databases() {
     throw new Error("metadata inventory unavailable");
@@ -1122,6 +1131,174 @@ assert.equal(
 assert.ok(
   cacheFailureDb.openCount() >= 2,
   "Cache Storage failure must not skip the second late-write cleanup pass",
+);
+
+availableCacheNames.add("photo-media-v1");
+globalThis.indexedDB = {
+  async databases() {
+    return [{ name: "workbox-expiration", version: 1 }];
+  },
+  open() {
+    throw new DOMException("Mobile storage is blocked", "SecurityError");
+  },
+};
+const blockedMobilePreparation = await lifecycle.preparePrivatePhotoCachesForScope(
+  "mobile-account:viewer",
+);
+assert.equal(
+  blockedMobilePreparation,
+  "degraded",
+  "blocked mobile IndexedDB must degrade the private cache without blocking the session",
+);
+assert.match(
+  window.__CF_CACHE_ERROR__.message,
+  /Private cache cleanup failed/,
+  "degraded preparation must retain the explicit cleanup failure",
+);
+assert.equal(lifecycleEvents.at(-1), "cf-private-cache-error");
+assert.equal(
+  lifecycle.getPrivatePhotoCacheOwner(),
+  null,
+  "a degraded session must not adopt private local cache ownership",
+);
+assert.equal(
+  localStorage.getItem("cloudphoto_private_cleanup_v2"),
+  null,
+  "a degraded session must remain marked for a later cleanup retry",
+);
+assert.equal(
+  localStorage.getItem("cloudphoto_private_cache_owner_v1"),
+  null,
+  "stale PWA ownership must be removed before a degraded session is published",
+);
+assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v1"), null);
+assert.equal(
+  availableCacheNames.has("photo-media-v1"),
+  false,
+  "available Cache Storage must still be cleared when IndexedDB is blocked",
+);
+
+const completeCacheStorage = window.caches;
+const partialCacheStorage = {};
+window.caches = partialCacheStorage;
+globalThis.caches = partialCacheStorage;
+globalThis.indexedDB = createFakeWorkboxExpirationDb([]).factory;
+const partialCachePreparation = await lifecycle.preparePrivatePhotoCachesForScope(
+  "mobile-account:viewer",
+);
+assert.equal(
+  partialCachePreparation,
+  "degraded",
+  "an iOS-style partial CacheStorage implementation must not lock out the session",
+);
+const partialCacheError = window.__CF_CACHE_ERROR__;
+assert.match(
+  String(partialCacheError),
+  /Private cache cleanup failed/,
+  "partial CacheStorage must remain an explicit incomplete cleanup",
+);
+assert.equal(partialCacheError.errors.length, 2);
+assert.equal(lifecycle.getPrivatePhotoCacheOwner(), null);
+assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v2"), null);
+
+const repeatedPartialPreparation = await lifecycle.preparePrivatePhotoCachesForScope(
+  "mobile-account:viewer",
+);
+assert.equal(repeatedPartialPreparation, "degraded");
+const repeatedPartialError = window.__CF_CACHE_ERROR__;
+assert.equal(
+  repeatedPartialError.errors.length,
+  2,
+  "repeated startup retries must not accumulate prior cleanup failures",
+);
+
+const quotaCacheStorage = {
+  async delete() {
+    throw new DOMException("Mobile quota blocked cleanup", "QuotaExceededError");
+  },
+};
+window.caches = quotaCacheStorage;
+globalThis.caches = quotaCacheStorage;
+const quotaPreparation = await lifecycle.preparePrivatePhotoCachesForScope(
+  "mobile-account:viewer",
+);
+assert.equal(quotaPreparation, "degraded");
+const quotaError = window.__CF_CACHE_ERROR__;
+assert.equal(
+  quotaError.errors.length,
+  privateCacheNames.length * 2,
+  "quota failures must stay bounded to the two targeted deletion passes",
+);
+assert(
+  quotaError.errors.every((error) =>
+    error.message.includes("Cache Storage deletion")
+  ),
+  "each quota failure must identify its explicit cleanup step",
+);
+
+window.caches = completeCacheStorage;
+globalThis.caches = completeCacheStorage;
+globalThis.indexedDB = createFakeWorkboxExpirationDb([]).factory;
+await lifecycle.invalidatePhotoListCaches();
+assert.equal(
+  localStorage.getItem("cloudphoto_private_cleanup_v2"),
+  null,
+  "list-only invalidation must not mark a failed full private cleanup complete",
+);
+await assert.rejects(
+  lifecycle.waitForPrivatePhotoCacheCleanup(),
+  /Private cache cleanup failed/,
+  "list-only invalidation must not release the degraded persistence barrier",
+);
+assert.equal(
+  await lifecycle.preparePrivatePhotoCachesForScope("mobile-account:viewer"),
+  true,
+  "a later startup/session retry must recover after transient mobile storage failures",
+);
+assert.equal(lifecycle.getPrivatePhotoCacheOwner(), "mobile-account:viewer");
+assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v2"), "1");
+await lifecycle.invalidatePhotoListCaches();
+assert.equal(
+  localStorage.getItem("cloudphoto_private_cleanup_v2"),
+  "1",
+  "list-only invalidation must preserve an already-successful full cleanup marker",
+);
+
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+Object.defineProperty(globalThis, "navigator", {
+  configurable: true,
+  value: {
+    serviceWorker: {
+      controller: {
+        postMessage(_message, ports) {
+          ports[0].postMessage({ ok: false, generation: 0 });
+        },
+      },
+    },
+  },
+});
+assert.equal(
+  await lifecycle.preparePrivatePhotoCachesForScope("mobile-account:viewer"),
+  "degraded",
+  "a matching owner must degrade rather than retain ownership when SW enable fails",
+);
+assert.equal(lifecycle.getPrivatePhotoCacheOwner(), null);
+assert.equal(localStorage.getItem("cloudphoto_private_cache_owner_v1"), null);
+assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v2"), null);
+await assert.rejects(
+  lifecycle.waitForPrivatePhotoCacheCleanup(),
+  /service worker fence/,
+  "SW enable failure must keep persistent private data behind the degraded barrier",
+);
+if (originalNavigator) {
+  Object.defineProperty(globalThis, "navigator", originalNavigator);
+} else {
+  delete globalThis.navigator;
+}
+assert.equal(
+  await lifecycle.preparePrivatePhotoCachesForScope("mobile-account:viewer"),
+  true,
+  "a later full cleanup must recover the SW-enable degradation",
 );
 
 let recreatedLateEntry = false;
@@ -1173,6 +1350,7 @@ for (const key of [
 }
 
 const auth = await read("packages/client/src/contexts/AuthContext.tsx");
+const app = await read("packages/client/src/AuthenticatedApp.tsx");
 const logoutStart = auth.indexOf("const logout = useCallback");
 const logoutBody = auth.slice(logoutStart, auth.indexOf("useEffect", logoutStart));
 assert(
@@ -1212,9 +1390,15 @@ assert(
   "restored sessions must validate and prepare the exact account/role scope before publishing the user",
 );
 assert(
-  auth.includes("await preparePrivatePhotoCachesForScope(nextScope)")
-  && auth.includes("if (!await preparePrivatePhotoCachesForScope(nextScope)) return;"),
-  "login and cross-tab replacement must block authenticated UI when cleanup is incomplete",
+  auth.includes("await preparePrivatePhotoCachesForScope(nextScope) === false")
+  && auth.includes("await preparePrivatePhotoCachesForScope(nextScope) !== false"),
+  "login and cross-tab replacement must publish a fenced degraded session but reject stale auth",
+);
+assert(
+  lifecycleSource.includes("__CF_CACHE_ERROR__")
+  && app.includes("Cache preparation deferred:")
+  && app.includes("在线内容可继续使用，下次打开时将重试"),
+  "degraded cleanup must remain explicit through the existing error and toast channels",
 );
 assert(
   auth.includes("replacementScope && replacementScope === currentScope"),
@@ -1225,7 +1409,6 @@ const gallery = await read("packages/client/src/components/gallery/PhotoGallery.
 const folderView = await read("packages/client/src/components/gallery/FolderView.tsx");
 const clipboard = await read("packages/client/src/services/share/clipboard.ts");
 const http = await read("packages/client/src/services/http.ts");
-const app = await read("packages/client/src/AuthenticatedApp.tsx");
 const settings = await read("packages/client/src/components/settings/SettingsDialog.tsx");
 for (const [label, source] of [["gallery", gallery], ["home", app], ["settings", settings]]) {
   assert(!source.includes('"cloudphoto_moments_insights_v1"'), `${label} must not read the global legacy insights key`);

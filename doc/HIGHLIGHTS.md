@@ -62,7 +62,7 @@
 - **认证工作区整体分包** — `App.tsx` 只保留鉴权门与恢复 UI，2,200 行工作区迁入 `AuthenticatedApp.tsx`；入口进一步从 120.83 kB 降至 36.21 kB（约 -70%，gzip 12.82 kB，相对原始入口约 -80%），已有 token 与登录/注册提交都会提前并行下载
 - **认证前样式分包** — 8,170 行工作区样式由 `AuthenticatedApp` 延迟加载，登录页仅保留完全一致的鉴权、会话恢复和 chunk 错误样式；首屏 CSS 从 128.56 kB 降至 9.38 kB（约 -93%，gzip 23.58 kB → 2.77 kB）
 - **认证服务直接导入** — `AuthContext` 不再通过 `photoApi` 兼容 barrel 获取登录与 token API，照片线路、媒体 fallback 等工作区代码不再被 Rollup 提升到登录入口；入口由 36.25 kB 降至 30.45 kB（约 -16%，gzip 12.84 kB → 11.03 kB）
-- **私有缓存生命周期分层** — `AuthContext` 只同步持有账号归属、generation 失效、同步 reset 与 owner 键删除；Workbox IndexedDB schema/open/cursor/定向删除按需加载，并由注销、401、恢复失败和跨标签切号路径等待完成。登录入口由 37,529 B 降至 35,701 B（gzip 13,595 B → 13,121 B），保持 36,000 B raw 硬门禁及跨账号/角色隔离
+- **私有缓存生命周期分层** — `AuthContext` 只同步持有账号归属、generation 失效、同步 reset 与 owner 键删除；Workbox IndexedDB schema/open/cursor/定向删除按需加载，并由注销、401、恢复失败和跨标签切号路径等待完成。移动端 CacheStorage/IndexedDB 被阻断时保持 owner 为空、持久缓存关闭和 marker 未完成，在线会话可继续并提示下次启动重试，不再因原始清理错误锁死登录；36,000 B raw 登录入口硬门禁及跨账号/角色隔离保持不变
 - **重要片段本地数据授权隔离** — moments 离线统计与诊断按用户、角色、个人/群组工作区派生键，并复用 owner/generation 与延迟写入围栏；注销、401、切号或降权在 UI 更新前同步清理私有照片、媒体和 moments，旧无归属全局键 fail closed 删除，应用壳与 app-code 保留
 - **近期分享链接授权隔离** — 浏览器近期公开链接按用户+角色派生键；分享请求捕获 auth generation，注销/401/切号后的迟到响应写回为 **0**。旧全局键与损坏/超限 JSON fail closed 删除，云端托管分享和应用缓存不受影响
 - **照片策略边界分层** — 账号 JWT 解析、通用 API 路由分类与照片列表刷新、媒体缓存规则拆为独立模块；`http` 不再把 `:group:` 列表键等照片专用策略提升到登录入口，入口由 28.84 kB 降至 28.48 kB（gzip 10.44 kB → 10.31 kB）

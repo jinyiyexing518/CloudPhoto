@@ -104,10 +104,12 @@ export async function beginPrivateCacheReset(
   fencePrivateMediaWrites: boolean,
 ): Promise<PrivateCacheReset> {
   removeLegacyPrivateLocalData();
-  try {
-    localStorage.removeItem(PRIVATE_CLEANUP_MARKER_KEY);
-  } catch {
-    // In-memory ownership still gates private writes when storage is unavailable.
+  if (fencePrivateMediaWrites) {
+    try {
+      localStorage.removeItem(PRIVATE_CLEANUP_MARKER_KEY);
+    } catch {
+      // In-memory ownership still gates private writes when storage is unavailable.
+    }
   }
 
   const reset: PrivateCacheReset = { fence: null, failures: [] };
@@ -128,12 +130,31 @@ async function deletePrivateCacheStorage(
   activePersistentWrites: ReadonlySet<Promise<void>>,
 ): Promise<void> {
   await Promise.allSettled([...activePersistentWrites]);
-  if (typeof caches === "undefined") return;
+  let cacheStorage: CacheStorage | undefined;
+  try {
+    cacheStorage = globalThis.caches;
+  } catch (error) {
+    reset.failures.push(cleanupFailure("Cache Storage access", error));
+    return;
+  }
+  if (!cacheStorage) return;
+  if (typeof cacheStorage.delete !== "function") {
+    reset.failures.push(cleanupFailure(
+      "Cache Storage deletion",
+      new TypeError("CacheStorage.delete is unavailable"),
+    ));
+    return;
+  }
   const results = await Promise.allSettled(
-    cacheNames.map((name) => caches.delete(name)),
+    cacheNames.map(async (name) => cacheStorage.delete(name)),
   );
-  for (const result of results) {
-    if (result.status === "rejected") reset.failures.push(result.reason);
+  for (const [index, result] of results.entries()) {
+    if (result.status === "rejected") {
+      reset.failures.push(cleanupFailure(
+        `Cache Storage deletion (${cacheNames[index]})`,
+        result.reason,
+      ));
+    }
   }
 }
 
@@ -141,6 +162,7 @@ export async function completePrivateCacheReset(
   reset: PrivateCacheReset,
   resumeCaching: boolean,
   additionalFailures: readonly unknown[],
+  markCleanupComplete = true,
 ): Promise<void> {
   const failures = [...reset.failures, ...additionalFailures];
   if (failures.length === 0 && reset.fence) {
@@ -155,10 +177,12 @@ export async function completePrivateCacheReset(
     }
   }
   if (failures.length === 0) {
-    try {
-      localStorage.setItem(PRIVATE_CLEANUP_MARKER_KEY, "1");
-    } catch {
-      // The caller still receives the in-memory completion result.
+    if (markCleanupComplete) {
+      try {
+        localStorage.setItem(PRIVATE_CLEANUP_MARKER_KEY, "1");
+      } catch {
+        // The caller still receives the in-memory completion result.
+      }
     }
     return;
   }
@@ -189,5 +213,10 @@ export async function resetPrivateCaches(
     failures.push(error);
   }
   await deletePrivateCacheStorage(reset, cacheNames, activePersistentWrites);
-  await completePrivateCacheReset(reset, resumeCaching, failures);
+  await completePrivateCacheReset(
+    reset,
+    resumeCaching,
+    failures,
+    fencePrivateMediaWrites,
+  );
 }
