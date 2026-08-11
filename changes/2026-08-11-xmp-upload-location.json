@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-xmp-upload-location",
+  "date": "2026-08-11",
+  "icon": "📍",
+  "title": "修复 XMP 照片上传位置",
+  "type": "fix",
+  "desc": "仅在标准 XMP 中保存 GPS 的照片上传后也会保留位置。",
+  "details": "服务端上传回退现在会先读取 TIFF/HEIC EXIF GPS，并在缺失或无效时从同一张照片的单段或 Extended Adobe/Microsoft XMP 中解析经纬度。数值、方向和度分秒统一严格校验，缺失、异常、方向冲突或越界坐标不会写入 Blob metadata；后续 Cosmos、照片列表和记忆地图继续复用现有即时发布链路。",
+  "seq": 1786416600000
+}

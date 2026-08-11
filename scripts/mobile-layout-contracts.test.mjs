@@ -139,6 +139,62 @@ test("focused skip link stays fixed inside 320px and 390px viewports", () => {
   }
 });
 
+test("320px and 360px keep Timeline and Folder galleries at exactly two columns", () => {
+  const twoColumns = "repeat(2, minmax(0, 1fr))";
+  const mobileSection = mediaBlock(680);
+  const timelineColumns = declaration(
+    cssBlock(".photo-grid", mobileSection),
+    "grid-template-columns",
+  );
+  const folderColumns = declaration(
+    cssBlock(".folder-section-grid.photo-grid", mobileSection),
+    "grid-template-columns",
+  );
+
+  assert.equal(
+    timelineColumns,
+    twoColumns,
+    "the mobile Timeline gallery must establish two columns",
+  );
+  assert.equal(
+    folderColumns,
+    twoColumns,
+    "the mobile Folder gallery must establish two columns",
+  );
+  const reflowBreakpoint = 319;
+  const narrowSection = mediaBlock(reflowBreakpoint);
+  assert(
+    styles.indexOf(`@media (max-width: ${reflowBreakpoint}px)`)
+      > styles.indexOf("/* ── Photo grid: 2 columns on mobile ── */"),
+    "the sub-320px reflow safeguard must remain later than the mobile gallery rules",
+  );
+
+  assert.equal(
+    declaration(
+      cssBlock(
+        ".photo-grid,\n  .folder-section-grid.photo-grid",
+        narrowSection,
+      ),
+      "grid-template-columns",
+    ),
+    "minmax(0, 1fr)",
+    "only sub-320px reflow may collapse galleries to one column",
+  );
+  for (const viewport of [320, 360]) {
+    assert(viewport > reflowBreakpoint);
+    for (const [gallery, columns] of [
+      ["Timeline", timelineColumns],
+      ["Folder", folderColumns],
+    ]) {
+      assert.equal(
+        columns,
+        twoColumns,
+        `${viewport}px ${gallery} gallery must resolve to two columns`,
+      );
+    }
+  }
+});
+
 test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
   assert.match(workspaceFab, /const \[compactExpanded, setCompactExpanded\] = useState\(false\)/);
   assert.match(workspaceFab, /aria-expanded=\{compactExpanded\}/);
@@ -187,9 +243,9 @@ test("phone FAB defaults to one safe-area-aware 48px launcher", () => {
   const formerFabArea = 200 * (58 + 10 + 48);
   assert(defaultFabArea < formerFabArea / 10);
   assert.doesNotMatch(
-    mediaBlock(360),
+    mediaBlock(319),
     /workspace-fab/,
-    "the 360px folder-card reflow must not reintroduce a competing FAB breakpoint",
+    "the sub-320px gallery reflow must not reintroduce a competing FAB breakpoint",
   );
 });
 
@@ -222,9 +278,9 @@ test("folder card actions keep 44px touch targets on desktop and mobile", () => 
     /outline\s*:\s*3px solid #005a9e/,
   );
   assert(
-    styles.lastIndexOf("@media (max-width: 360px)")
+    styles.lastIndexOf("@media (max-width: 319px)")
       > styles.indexOf("@media (display-mode: standalone)"),
-    "the narrow single-column safeguard must override standalone two-column grids",
+    "the sub-320px single-column safeguard must override standalone gallery grids",
   );
   assert.match(
     cssBlock(
@@ -235,7 +291,7 @@ test("folder card actions keep 44px touch targets on desktop and mobile", () => 
   );
 
   for (const selector of [".folder-card-rename-btn", ".folder-card-delete-btn"]) {
-    for (const maxWidth of [680, 360]) {
+    for (const maxWidth of [680, 319]) {
       assert.doesNotMatch(
         mediaBlock(maxWidth),
         new RegExp(`${selector.replaceAll(".", "\\.")}\\s*\\{[^}]*(?:min-)?(?:width|height)\\s*:`),
@@ -255,7 +311,7 @@ test("photo card actions keep 44px targets on timeline and moments mobile grids"
     /outline\s*:\s*3px solid #005a9e/,
   );
   for (const selector of [".move-btn", ".favorite-btn", ".delete-btn"]) {
-    for (const maxWidth of [680, 360]) {
+    for (const maxWidth of [680, 319]) {
       assert.doesNotMatch(
         mediaBlock(maxWidth),
         new RegExp(`${selector.replaceAll(".", "\\.")}\\s*\\{[^}]*(?:min-)?(?:width|height)\\s*:`),

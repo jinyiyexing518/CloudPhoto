@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-historical-photo-location-recovery",
+  "date": "2026-08-11",
+  "icon": "📍",
+  "title": "历史照片位置恢复",
+  "type": "fix",
+  "desc": "旧照片即使 Blob 列表缺少 GPS，也会从当前授权空间的合法位置索引恢复到时间线、文件夹详情和记忆地图。",
+  "details": "照片列表使用一次 scope 限定的 Cosmos 查询补齐完全缺少 GPS metadata 的旧照片；当前 Blob GPS 优先，带来源 ETag 的索引必须匹配当前 Blob，跨空间、孤儿、重复、非法和过期行全部拒绝。列表显式返回 GPS metadata 是否存在以及当前 Blob ETag，位置接口返回来源 ETag，地图只有在服务端确认两个 GPS 键都不存在时才允许 Cosmos-only fallback；合法旧版无来源 ETag 数据仍兼容，部分或非法 metadata fail closed，并保持有位置/无位置分区闭合。持久化照片列表升级为 schema v2 路径，旧 payload 不会继续遮蔽修复。",
+  "seq": 1786420400000
+}

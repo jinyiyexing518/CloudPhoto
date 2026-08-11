@@ -2,6 +2,61 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { partitionPhotoLocations } from "./memoryMapLocationPartitions.ts";
 
+test("a current historical photo uses its valid legacy Cosmos location when Blob GPS metadata is absent", () => {
+  const oldPhoto = { name: "old.jpg", gpsMetadataPresent: false };
+  const result = partitionPhotoLocations(
+    [oldPhoto],
+    [{ name: "old.jpg", lat: 31.2304, lon: 121.4737 }],
+  );
+
+  assert.deepEqual(
+    result.geoPhotos.map(({ name, lat, lon }) => ({ name, lat, lon })),
+    [{ name: "old.jpg", lat: 31.2304, lon: 121.4737 }],
+  );
+  assert.deepEqual(result.noGpsPhotos, []);
+});
+
+test("invalid Blob GPS metadata cannot be revived from an unversioned Cosmos row", () => {
+  const result = partitionPhotoLocations(
+    [{ name: "invalid.jpg", gpsMetadataPresent: true }],
+    [{ name: "invalid.jpg", lat: 31.2304, lon: 121.4737 }],
+  );
+
+  assert.deepEqual(result.geoPhotos, []);
+  assert.deepEqual(result.noGpsPhotos.map(({ name }) => name), ["invalid.jpg"]);
+  assert.equal(result.diagnostics.staleCosmosIntersections, 1);
+});
+
+test("an ETag-bound Cosmos row cannot bypass the current Blob version", () => {
+  const result = partitionPhotoLocations(
+    [{ name: "replaced.jpg", blobEtag: '"blob-v2"' }],
+    [{
+      name: "replaced.jpg",
+      lat: 31.2304,
+      lon: 121.4737,
+      sourceBlobEtag: '"blob-v1"',
+    }],
+  );
+
+  assert.deepEqual(result.geoPhotos, []);
+  assert.deepEqual(result.noGpsPhotos.map(({ name }) => name), ["replaced.jpg"]);
+  assert.equal(result.diagnostics.staleCosmosIntersections, 1);
+});
+
+test("ambiguous same-photo Cosmos rows fail closed", () => {
+  const result = partitionPhotoLocations(
+    [{ name: "duplicate.jpg" }],
+    [
+      { name: "duplicate.jpg", lat: 1, lon: 2 },
+      { name: "duplicate.jpg", lat: 3, lon: 4 },
+    ],
+  );
+
+  assert.deepEqual(result.geoPhotos, []);
+  assert.deepEqual(result.noGpsPhotos.map(({ name }) => name), ["duplicate.jpg"]);
+  assert.equal(result.diagnostics.ambiguousCosmos, 2);
+});
+
 test("photo location partitions are exclusive, exhaustive, and reject stale Cosmos rows", () => {
   const photos = [
     { name: "valid-indexed", gpsLat: "10", gpsLon: "20" },
@@ -62,5 +117,6 @@ test("photo location partitions are exclusive, exhaustive, and reject stale Cosm
     staleCosmosIntersections: 2,
     orphanedCosmos: 1,
     invalidCosmos: 1,
+    ambiguousCosmos: 0,
   });
 });

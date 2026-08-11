@@ -87,6 +87,8 @@ export interface Photo {
   deletedAt?: string; deletedBy?: string; deletedByName?: string;
   voiceMemoName?: string; voiceMemoUrl?: string;
   gpsLat?: string; gpsLon?: string;
+  blobEtag?: string;
+  gpsMetadataPresent?: boolean;
   locationIndexPending?: boolean; warning?: string;
   isAnimated?: boolean;
   takenAt?: string;
@@ -97,7 +99,7 @@ export interface MotionVideoResult {
 }
 
 export interface PhotoLocation {
-  name: string; lat: number; lon: number; originalName?: string; contentType?: string;
+  name: string; lat: number; lon: number; sourceBlobEtag?: string; originalName?: string; contentType?: string;
 }
 
 function isPhotoPayload(value: unknown): value is Photo {
@@ -112,6 +114,7 @@ function isPhotoPayload(value: unknown): value is Photo {
     && candidate.name.length > 0
     && typeof candidate.url === "string"
     && candidate.url.length > 0
+    && (candidate.blobEtag === undefined || typeof candidate.blobEtag === "string")
     && optionalUrls.every((url) => url === undefined || typeof url === "string");
 }
 

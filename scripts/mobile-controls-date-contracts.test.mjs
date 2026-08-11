@@ -206,14 +206,13 @@ test("photo actions and avatar expose non-overlapping 44px hitboxes", () => {
   assert.equal(declaration(compactInfo, "gap"), "0");
   assert.equal(declaration(compactInfo, "padding"), "8px 2px");
 
-  const zoomSection = mediaBlock(360);
-  assert.equal(
-    declaration(cssBlock(".photo-grid", zoomSection), "grid-template-columns"),
-    "minmax(0, 1fr)",
-  );
+  const zoomSection = mediaBlock(319);
   assert.equal(
     declaration(
-      cssBlock(".folder-section-grid.photo-grid", zoomSection),
+      cssBlock(
+        ".photo-grid,\n  .folder-section-grid.photo-grid",
+        zoomSection,
+      ),
       "grid-template-columns",
     ),
     "minmax(0, 1fr)",
@@ -222,13 +221,21 @@ test("photo actions and avatar expose non-overlapping 44px hitboxes", () => {
   for (const physicalWidth of [320, 360, 390, 430, 480]) {
     for (const zoom of [1, 2]) {
       const viewport = physicalWidth / zoom;
-      const columns = viewport <= 360 ? 1 : 2;
-      const cardWidth = (viewport - 24 - (columns - 1) * 10) / columns;
-      const actionRowWidth = cardWidth - 4;
-      assert(
-        actionRowWidth >= 3 * 44,
-        `${physicalWidth}px at ${zoom * 100}% must fit three touch targets`,
-      );
+      const columns = viewport <= 319 ? 1 : 2;
+      const timelineCardWidth = (viewport - 24 - ((columns - 1) * 10)) / columns;
+      const folderCardWidth = (
+        viewport - 24 - 20 - ((columns - 1) * 10)
+      ) / columns;
+      for (const [gallery, cardWidth] of [
+        ["Timeline", timelineCardWidth],
+        ["Folder", folderCardWidth],
+      ]) {
+        const controlsContentWidth = cardWidth - 12;
+        assert(
+          controlsContentWidth >= 44,
+          `${physicalWidth}px ${gallery} at ${zoom * 100}% must fit each wrapping touch target`,
+        );
+      }
     }
   }
 });

@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-xmp-library-location-recovery",
+  "date": "2026-08-11",
+  "icon": "📍",
+  "title": "恢复历史照片的 XMP 位置",
+  "type": "fix",
+  "desc": "历史照片维护现在也能恢复仅保存在标准 XMP 中的位置，并会安全重试此前未识别的位置扫描。",
+  "details": "上传与历史照片维护共用 TIFF/HEIC、标准 XMP 和 Extended XMP GPS reader。GPS scan version 提升到 3，使 version 2 曾因 TIFF-only 解析而标记为无位置的原图重新进入有界 Range 扫描；恢复成功后仍以 ETag 条件写入 Blob metadata，再使用同一来源版本同步 photoLocations Cosmos。已有合法 GPS 不下载原图，不完整扫描不会清理或标记位置。",
+  "seq": 1786484200000
+}

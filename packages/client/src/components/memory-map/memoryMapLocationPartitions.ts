@@ -8,6 +8,8 @@ interface PhotoWithLocation {
   name: string;
   gpsLat?: string;
   gpsLon?: string;
+  blobEtag?: string;
+  gpsMetadataPresent?: boolean;
   originalName?: string;
   contentType?: string;
 }
@@ -16,6 +18,7 @@ interface IndexedPhotoLocation {
   name: string;
   lat: number;
   lon: number;
+  sourceBlobEtag?: string;
   originalName?: string;
   contentType?: string;
 }
@@ -38,6 +41,7 @@ export interface LocationPartitionDiagnostics {
   staleCosmosIntersections: number;
   orphanedCosmos: number;
   invalidCosmos: number;
+  ambiguousCosmos: number;
 }
 
 export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
@@ -57,9 +61,14 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
     staleCosmosIntersections: 0,
     orphanedCosmos: 0,
     invalidCosmos: 0,
+    ambiguousCosmos: 0,
   };
   const photoMap = new Map(photos.map((photo) => [photo.name, photo]));
   const validPhotoGps = new Map<string, GpsCoordinates>();
+  const cosmosRowsByName = new Map<string, number>();
+  for (const location of cosmosLocations) {
+    cosmosRowsByName.set(location.name, (cosmosRowsByName.get(location.name) ?? 0) + 1);
+  }
 
   for (const photo of photos) {
     const classification = classifyGpsCoordinates(photo.gpsLat, photo.gpsLon);
@@ -83,9 +92,8 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
       diagnostics.orphanedCosmos += 1;
       continue;
     }
-    const photoGps = validPhotoGps.get(location.name);
-    if (!photoGps) {
-      diagnostics.staleCosmosIntersections += 1;
+    if ((cosmosRowsByName.get(location.name) ?? 0) > 1) {
+      diagnostics.ambiguousCosmos += 1;
       continue;
     }
     const indexedGps = readGpsCoordinates(String(location.lat), String(location.lon));
@@ -94,9 +102,22 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
       continue;
     }
     if (
-      Math.abs(indexedGps.lat - photoGps.lat) > GPS_COORDINATE_EPSILON
-      || Math.abs(indexedGps.lon - photoGps.lon) > GPS_COORDINATE_EPSILON
+      location.sourceBlobEtag !== undefined
+      && (!photo.blobEtag || location.sourceBlobEtag !== photo.blobEtag)
     ) {
+      diagnostics.staleCosmosIntersections += 1;
+      continue;
+    }
+    const photoGps = validPhotoGps.get(location.name);
+    if (photoGps) {
+      if (
+        Math.abs(indexedGps.lat - photoGps.lat) > GPS_COORDINATE_EPSILON
+        || Math.abs(indexedGps.lon - photoGps.lon) > GPS_COORDINATE_EPSILON
+      ) {
+        diagnostics.staleCosmosIntersections += 1;
+        continue;
+      }
+    } else if (photo.gpsMetadataPresent !== false) {
       diagnostics.staleCosmosIntersections += 1;
       continue;
     }
@@ -128,7 +149,7 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
 
   return {
     geoPhotos,
-    noGpsPhotos: photos.filter((photo) => !validPhotoGps.has(photo.name)),
+    noGpsPhotos: photos.filter((photo) => !locatedNames.has(photo.name)),
     diagnostics,
   };
 }

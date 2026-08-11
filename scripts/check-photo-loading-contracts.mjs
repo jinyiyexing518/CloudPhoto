@@ -208,6 +208,16 @@ requireText(
   "list-only invalidation must not resume the private media fence",
 );
 requireText(
+  listCache,
+  "PHOTO_LIST_CACHE_SCHEMA_VERSION = 2",
+  "historical photo-list cache schema invalidation",
+);
+requireText(
+  listCache,
+  "photo-lists/v${PHOTO_LIST_CACHE_SCHEMA_VERSION}",
+  "versioned persisted photo-list cache path",
+);
+requireText(
   cacheLifecycle,
   "await reset.enablePrivateCacheWrites()",
   "matching authenticated owner must reopen a restarted fail-closed worker",

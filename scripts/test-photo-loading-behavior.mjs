@@ -1089,6 +1089,17 @@ const listCache = await importTypeScript(
     JSON.stringify(cacheLifecycleUrl),
   ),
 );
+responses.set(
+  "https://www.cloudphotos.top/__cloudphoto-cache__/photo-lists/legacy-schema",
+  new Response(JSON.stringify([{ version: "pre-location-hydration" }]), {
+    headers: { "x-cloudphoto-cached-at": String(Date.now()) },
+  }),
+);
+assert.equal(
+  await listCache.readPhotoListCache("legacy-schema"),
+  null,
+  "the v2 photo-list schema must never restore a pre-hydration cache entry",
+);
 assert.equal(
   await listCache.readPhotoListCache("cold-start"),
   null,

@@ -8821,7 +8821,7 @@ body {
   }
 }
 
-@media (max-width: 360px) {
+@media (max-width: 319px) {
   .photo-grid,
   .folder-section-grid.photo-grid {
     grid-template-columns: minmax(0, 1fr);

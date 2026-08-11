@@ -107,7 +107,7 @@ test("mobile action and avatar focus rings are visible", () => {
 });
 
 test(
-  "390px real CSS geometry has non-overlapping 44px actions and no document overflow",
+  "320px through 430px gallery geometry keeps two bounded columns and 44px actions",
   { skip: !existsSync(edge) },
   async () => {
     const evidenceDir =
@@ -116,9 +116,9 @@ test(
     const phase = process.env.MOBILE_TOUCH_PHASE ?? "contract";
     mkdirSync(evidenceDir, { recursive: true });
     const htmlPath = join(evidenceDir, `mobile-touch-${phase}.html`);
-    const screenshotPath = join(
+    const screenshotPathFor = (width) => join(
       evidenceDir,
-      `mobile-touch-${phase}.png`,
+      `mobile-gallery-${phase}-${width}px.png`,
     );
     const metricsPath = join(
       evidenceDir,
@@ -140,8 +140,10 @@ test(
     body { margin: 0; background: #f5f7fb; }
     .app-header { position: static; }
     .app-main { padding-top: 16px; }
-    .photo-card { width: 100%; max-width: 360px; margin: 0 auto; }
-    .photo-thumbnail { height: 300px; background: linear-gradient(135deg,#bfdbfe,#e0e7ff); }
+    .audit-gallery + .audit-gallery { margin-top: 16px; }
+    .audit-gallery h2 { margin: 0 0 8px; font: 700 14px/1.4 system-ui; color: #334155; }
+    .photo-card { width: 100%; margin: 0 auto; }
+    .photo-thumbnail { background: linear-gradient(135deg,#bfdbfe,#e0e7ff); }
     .audit-caption { padding: 12px; color: #475569; font: 13px/1.4 system-ui; }
   </style>
 </head>
@@ -153,18 +155,66 @@ test(
   </header>
   <main class="app-main">
     <div class="audit-caption">390 × 844 · surgical touch-target audit</div>
-    <div class="photo-grid folder-section-grid">
-      <article class="photo-card">
-        <div class="photo-thumbnail"></div>
-        <div class="photo-info">
-          <span class="photo-name">家庭相册 2026 Family archive</span>
-          <button class="move-btn" type="button" aria-label="移动照片">→</button>
-          <button class="favorite-btn" type="button" aria-label="收藏">★</button>
-          <button class="delete-btn" type="button" aria-label="删除照片">🗑</button>
-        </div>
-        <div class="photo-meta"><span>2026年8月10日</span></div>
-      </article>
-    </div>
+    <section class="audit-gallery">
+      <h2>Timeline</h2>
+      <div class="photo-grid" data-audit-grid="timeline">
+        <article class="photo-card photo-card--selected">
+          <span class="photo-select-badge photo-select-badge--on">✓</span>
+          <button class="photo-card-primary" type="button">
+            <span class="photo-thumbnail"><span class="photo-format-badge">HEIC</span></span>
+            <span class="photo-info"><span class="photo-name">家庭相册 2026 Family archive with a long label</span></span>
+            <span class="photo-meta"><span class="photo-subject-tag">家庭旅行 Family trip</span><span class="photo-meta-by">👤 timeline-owner@example.com</span><span class="photo-meta-taken">📷 2026年8月10日</span></span>
+          </button>
+          <div class="photo-card-controls">
+            <button class="move-btn" type="button" aria-label="移动时间线照片">→</button>
+            <button class="favorite-btn" type="button" aria-label="收藏时间线照片">★</button>
+            <button class="delete-btn" type="button" aria-label="删除时间线照片">🗑</button>
+          </div>
+        </article>
+        <article class="photo-card">
+          <button class="photo-card-primary" type="button">
+            <span class="photo-thumbnail"><span class="photo-favorite-badge">★</span><span class="photo-video-badge">▶</span></span>
+            <span class="photo-info"><span class="photo-name">第二张时间线照片 Timeline item</span></span>
+            <span class="photo-meta"><span class="photo-meta-by">👤 timeline-owner@example.com</span><span class="photo-meta-date">2026年8月9日</span></span>
+          </button>
+          <div class="photo-card-controls">
+            <button class="move-btn" type="button" aria-label="移动第二张时间线照片">→</button>
+            <button class="favorite-btn" type="button" aria-label="收藏第二张时间线照片">★</button>
+            <button class="delete-btn" type="button" aria-label="删除第二张时间线照片">🗑</button>
+          </div>
+        </article>
+      </div>
+    </section>
+    <section class="audit-gallery">
+      <h2>Folder</h2>
+      <div class="photo-grid folder-section-grid" data-audit-grid="folder">
+        <article class="photo-card photo-card--selected">
+          <span class="photo-select-badge photo-select-badge--on">✓</span>
+          <button class="photo-card-primary" type="button">
+            <span class="photo-thumbnail"><span class="photo-format-badge">PNG</span></span>
+            <span class="photo-info"><span class="photo-name">文件夹照片 Folder archive with a long label</span></span>
+            <span class="photo-meta"><span class="photo-subject-tag">归档文件 Archive</span><span class="photo-meta-date">2026年8月8日</span></span>
+          </button>
+          <div class="photo-card-controls">
+            <button class="move-btn" type="button" aria-label="移动文件夹照片">→</button>
+            <button class="favorite-btn" type="button" aria-label="收藏文件夹照片">★</button>
+            <button class="delete-btn" type="button" aria-label="删除文件夹照片">🗑</button>
+          </div>
+        </article>
+        <article class="photo-card">
+          <button class="photo-card-primary" type="button">
+            <span class="photo-thumbnail"><span class="photo-favorite-badge">★</span><span class="photo-video-badge">▶</span></span>
+            <span class="photo-info"><span class="photo-name">第二张文件夹照片 Folder item</span></span>
+            <span class="photo-meta"><span class="photo-meta-by">👤 folder-owner@example.com</span><span class="photo-meta-taken">📷 2026年8月7日</span></span>
+          </button>
+          <div class="photo-card-controls">
+            <button class="move-btn" type="button" aria-label="移动第二张文件夹照片">→</button>
+            <button class="favorite-btn" type="button" aria-label="收藏第二张文件夹照片">★</button>
+            <button class="delete-btn" type="button" aria-label="删除第二张文件夹照片">🗑</button>
+          </div>
+        </article>
+      </div>
+    </section>
   </main>
   <aside class="workspace-sidebar workspace-sidebar--open" data-audit-sidebar style="pointer-events:none">
     <div class="workspace-sidebar-shell">
@@ -281,11 +331,11 @@ test(
       const collectGeometry = async () => {
         const evaluation = await command("Runtime.evaluate", {
         expression: `(() => {
-          const rect = (selector) => {
-            const element = document.querySelector(selector);
+          const boxOf = (element) => {
             const box = element.getBoundingClientRect();
             return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
           };
+          const rect = (selector) => boxOf(document.querySelector(selector));
           const overlapArea = (a, b) =>
             Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
             Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
@@ -299,6 +349,36 @@ test(
           const avatar = rect(".user-avatar-btn");
           const card = rect(".photo-card");
           const move = rect(".move-btn");
+          const gridGeometry = Object.fromEntries(
+            [...document.querySelectorAll("[data-audit-grid]")].map((grid) => [
+              grid.dataset.auditGrid,
+              {
+                templateColumns: getComputedStyle(grid).gridTemplateColumns,
+                bounds: boxOf(grid),
+                clientWidth: grid.clientWidth,
+                scrollWidth: grid.scrollWidth,
+                cards: [...grid.querySelectorAll(":scope > .photo-card")].map((card) => {
+                  const thumbnail = card.querySelector(".photo-thumbnail");
+                  const info = card.querySelector(".photo-info");
+                  const meta = card.querySelector(".photo-meta");
+                  const controls = card.querySelector(".photo-card-controls");
+                  return {
+                    bounds: boxOf(card),
+                    primary: boxOf(card.querySelector(".photo-card-primary")),
+                    thumbnail: boxOf(thumbnail),
+                    info: boxOf(info),
+                    meta: boxOf(meta),
+                    metaClientWidth: meta.clientWidth,
+                    metaScrollWidth: meta.scrollWidth,
+                    metaChildren: [...meta.children].map(boxOf),
+                    controls: boxOf(controls),
+                    badges: [...card.querySelectorAll(".photo-format-badge, .photo-favorite-badge, .photo-video-badge, .photo-select-badge")].map(boxOf),
+                    actions: [...controls.querySelectorAll("button")].map(boxOf),
+                  };
+                }),
+              },
+            ]),
+          );
           const sidebar = document.querySelector("[data-audit-sidebar]");
           const sidebarContent = sidebar.querySelector(".workspace-sidebar-content");
           const filterBar = sidebar.querySelector(".filter-bar");
@@ -341,6 +421,7 @@ test(
             avatar,
             card,
             move,
+            grids: gridGeometry,
             overlapArea: overlapArea(favorite, remove),
             centerHits: {
               favorite: hitAtCenter(".favorite-btn", favorite),
@@ -400,7 +481,36 @@ test(
           mobile: true,
         });
         await wait(100);
-        fabGeometry.push({ width, ...(await collectGeometry()) });
+        const geometry = { width, ...(await collectGeometry()) };
+        fabGeometry.push(geometry);
+        const screenshot = await command("Page.captureScreenshot", {
+          format: "png",
+          fromSurface: true,
+          captureBeyondViewport: false,
+        });
+        writeFileSync(
+          screenshotPathFor(width),
+          Buffer.from(screenshot.data, "base64"),
+        );
+      }
+      const reflowGeometry = [];
+      await command("Runtime.evaluate", {
+        expression: `(() => {
+          for (const selector of [".app-header", "[data-audit-sidebar]", ".workspace-fab-rail"]) {
+            document.querySelector(selector).style.display = "none";
+          }
+        })()`,
+      });
+      for (const width of [160, 180, 195, 215, 240]) {
+        await command("Emulation.setDeviceMetricsOverride", {
+          width,
+          height: 844,
+          deviceScaleFactor: 1,
+          mobile: true,
+        });
+        await wait(100);
+        const { document, grids } = await collectGeometry();
+        reflowGeometry.push({ width, document, grids });
       }
       await command("Emulation.setDeviceMetricsOverride", {
         width: 390,
@@ -410,11 +520,12 @@ test(
       });
       await wait(100);
       const metrics = fabGeometry.find(({ width }) => width === 390);
-      metrics.fabGeometry = fabGeometry.map(({ width, document, fab, sidebar, card, move, favorite, remove }) => ({
+      metrics.fabGeometry = fabGeometry.map(({ width, document, fab, sidebar, card, move, favorite, remove, grids }) => ({
         width,
         document,
         fab,
         sidebar,
+        grids,
         folderCard: {
           card,
           move,
@@ -422,15 +533,7 @@ test(
           remove,
         },
       }));
-      const screenshot = await command("Page.captureScreenshot", {
-        format: "png",
-        fromSurface: true,
-        captureBeyondViewport: false,
-      });
-      writeFileSync(
-        screenshotPath,
-        Buffer.from(screenshot.data, "base64"),
-      );
+      metrics.reflowGeometry = reflowGeometry;
       writeFileSync(metricsPath, `${JSON.stringify(metrics, null, 2)}\n`);
 
       assert.equal(metrics.viewport.width, 390);
@@ -452,6 +555,80 @@ test(
       });
       assert.notEqual(metrics.focus.outlineStyle, "none");
       assert(Number.parseFloat(metrics.focus.outlineWidth) >= 2);
+      const assertInside = (outer, inner, label) => {
+        assert(inner.left >= outer.left - 0.5, `${label} must stay inside the left bound`);
+        assert(inner.right <= outer.right + 0.5, `${label} must stay inside the right bound`);
+        assert(inner.top >= outer.top - 0.5, `${label} must stay inside the top bound`);
+        assert(inner.bottom <= outer.bottom + 0.5, `${label} must stay inside the bottom bound`);
+      };
+      const assertGalleryGeometry = (geometry, expectedTracks) => {
+        for (const [galleryName, grid] of Object.entries(geometry.grids)) {
+          assert.equal(
+            grid.templateColumns.trim().split(/\s+/).length,
+            expectedTracks,
+            `${geometry.width}px ${galleryName} gallery must have exactly ${expectedTracks} computed track(s)`,
+          );
+          assert.equal(
+            grid.scrollWidth,
+            grid.clientWidth,
+            `${geometry.width}px ${galleryName} gallery must not overflow`,
+          );
+          assert.equal(grid.cards.length, 2);
+          if (expectedTracks === 2) {
+            assert(Math.abs(grid.cards[0].bounds.top - grid.cards[1].bounds.top) < 1);
+          } else {
+            assert(grid.cards[1].bounds.top >= grid.cards[0].bounds.bottom);
+          }
+          for (const [cardIndex, galleryCard] of grid.cards.entries()) {
+            const cardLabel = `${geometry.width}px ${galleryName} card ${cardIndex + 1}`;
+            assertInside(grid.bounds, galleryCard.bounds, cardLabel);
+            assertInside(galleryCard.bounds, galleryCard.primary, `${cardLabel} primary`);
+            assertInside(galleryCard.bounds, galleryCard.thumbnail, `${cardLabel} thumbnail`);
+            assertInside(galleryCard.bounds, galleryCard.info, `${cardLabel} labels`);
+            assertInside(galleryCard.bounds, galleryCard.meta, `${cardLabel} metadata`);
+            assertInside(galleryCard.bounds, galleryCard.controls, `${cardLabel} controls`);
+            assert.equal(overlapArea(galleryCard.thumbnail, galleryCard.info), 0);
+            assert.equal(overlapArea(galleryCard.thumbnail, galleryCard.meta), 0);
+            assert.equal(overlapArea(galleryCard.thumbnail, galleryCard.controls), 0);
+            assert.equal(overlapArea(galleryCard.info, galleryCard.meta), 0);
+            assert.equal(overlapArea(galleryCard.info, galleryCard.controls), 0);
+            assert.equal(overlapArea(galleryCard.meta, galleryCard.controls), 0);
+            assert.equal(
+              galleryCard.metaScrollWidth,
+              galleryCard.metaClientWidth,
+              `${cardLabel} metadata must not be clipped by the card`,
+            );
+            for (const [metaIndex, metaChild] of galleryCard.metaChildren.entries()) {
+              assertInside(
+                galleryCard.meta,
+                metaChild,
+                `${cardLabel} metadata item ${metaIndex + 1}`,
+              );
+            }
+            for (const [badgeIndex, badge] of galleryCard.badges.entries()) {
+              assertInside(
+                galleryCard.thumbnail,
+                badge,
+                `${cardLabel} badge ${badgeIndex + 1}`,
+              );
+              assert.equal(overlapArea(badge, galleryCard.info), 0);
+              assert.equal(overlapArea(badge, galleryCard.controls), 0);
+            }
+            for (const [actionIndex, action] of galleryCard.actions.entries()) {
+              assert(action.width >= 44, `${cardLabel} action ${actionIndex + 1} width`);
+              assert(action.height >= 44, `${cardLabel} action ${actionIndex + 1} height`);
+              assertInside(
+                galleryCard.controls,
+                action,
+                `${cardLabel} action ${actionIndex + 1}`,
+              );
+              for (const otherAction of galleryCard.actions.slice(actionIndex + 1)) {
+                assert.equal(overlapArea(action, otherAction), 0);
+              }
+            }
+          }
+        }
+      };
       for (const geometry of metrics.fabGeometry) {
         assert.equal(
           geometry.document.scrollWidth,
@@ -503,6 +680,17 @@ test(
         assert.equal(overlapArea(move, favorite), 0);
         assert.equal(overlapArea(move, remove), 0);
         assert.equal(overlapArea(favorite, remove), 0);
+        if (geometry.width <= 430) {
+          assertGalleryGeometry(geometry, 2);
+        }
+      }
+      for (const geometry of metrics.reflowGeometry) {
+        assert.equal(
+          geometry.document.scrollWidth,
+          geometry.document.clientWidth,
+          `${geometry.width}px reflow document must not overflow`,
+        );
+        assertGalleryGeometry(geometry, 1);
       }
       const sidebar320 = metrics.fabGeometry.find(({ width }) => width === 320).sidebar;
       assert.equal(Math.round(sidebar320.width), 262);

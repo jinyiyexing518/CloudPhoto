@@ -13,7 +13,9 @@ export {
   preparePrivatePhotoCachesForScope,
 } from "./privatePhotoCacheLifecycle";
 
-const CACHE_PATH = "/__cloudphoto-cache__/photo-lists/";
+export const PHOTO_LIST_CACHE_SCHEMA_VERSION = 2;
+const CACHE_PATH =
+  `/__cloudphoto-cache__/photo-lists/v${PHOTO_LIST_CACHE_SCHEMA_VERSION}/`;
 const CACHE_MAX_AGE_MS = 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 24;
 const CACHED_AT_HEADER = "x-cloudphoto-cached-at";
