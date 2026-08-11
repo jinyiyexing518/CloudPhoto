@@ -15,7 +15,9 @@ interface PhotoWithLocation {
 }
 
 interface IndexedPhotoLocation {
-  name: string;
+  scope?: string;
+  name?: string;
+  photoName?: string;
   lat: number;
   lon: number;
   sourceBlobEtag?: string;
@@ -24,6 +26,33 @@ interface IndexedPhotoLocation {
 }
 
 const GPS_COORDINATE_EPSILON = 1e-7;
+
+function locationIdentifier(location: IndexedPhotoLocation): string | null {
+  const hasName = location.name !== undefined;
+  const hasPhotoName = location.photoName !== undefined;
+  const name = typeof location.name === "string" && location.name.length > 0
+    ? location.name
+    : null;
+  const photoName = typeof location.photoName === "string" && location.photoName.length > 0
+    ? location.photoName
+    : null;
+  if ((hasName && !name) || (hasPhotoName && !photoName)) return null;
+  if (name && photoName && name !== photoName) return null;
+  return name ?? photoName;
+}
+
+function locationIdentifierCandidates(location: IndexedPhotoLocation): string[] {
+  return [...new Set(
+    [location.name, location.photoName]
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  )];
+}
+
+function locationMatchesPhotoScope(location: IndexedPhotoLocation, photoName: string): boolean {
+  const [namespace, owner] = photoName.split("/");
+  if ((namespace !== "personal" && namespace !== "groups") || !owner) return true;
+  return location.scope === `${namespace}/${owner}`;
+}
 
 export interface LocationPin<TPhoto extends PhotoWithLocation> extends GpsCoordinates {
   name: string;
@@ -66,8 +95,19 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
   const photoMap = new Map(photos.map((photo) => [photo.name, photo]));
   const validPhotoGps = new Map<string, GpsCoordinates>();
   const cosmosRowsByName = new Map<string, number>();
+  const namesWithVersionedRows = new Set<string>();
   for (const location of cosmosLocations) {
-    cosmosRowsByName.set(location.name, (cosmosRowsByName.get(location.name) ?? 0) + 1);
+    const identifier = locationIdentifier(location);
+    if (identifier && locationMatchesPhotoScope(location, identifier)) {
+      cosmosRowsByName.set(identifier, (cosmosRowsByName.get(identifier) ?? 0) + 1);
+    }
+    if (location.sourceBlobEtag !== undefined) {
+      for (const candidate of locationIdentifierCandidates(location)) {
+        if (photoMap.has(candidate) && locationMatchesPhotoScope(location, candidate)) {
+          namesWithVersionedRows.add(candidate);
+        }
+      }
+    }
   }
 
   for (const photo of photos) {
@@ -87,12 +127,13 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
   const geoPhotos: LocationPin<TPhoto>[] = [];
   const locatedNames = new Set<string>();
   for (const location of cosmosLocations) {
-    const photo = photoMap.get(location.name);
-    if (!photo) {
+    const identifier = locationIdentifier(location);
+    const photo = identifier ? photoMap.get(identifier) : undefined;
+    if (!identifier || !photo || !locationMatchesPhotoScope(location, identifier)) {
       diagnostics.orphanedCosmos += 1;
       continue;
     }
-    if ((cosmosRowsByName.get(location.name) ?? 0) > 1) {
+    if ((cosmosRowsByName.get(identifier) ?? 0) > 1) {
       diagnostics.ambiguousCosmos += 1;
       continue;
     }
@@ -101,14 +142,15 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
       diagnostics.invalidCosmos += 1;
       continue;
     }
-    if (
-      location.sourceBlobEtag !== undefined
-      && (!photo.blobEtag || location.sourceBlobEtag !== photo.blobEtag)
-    ) {
+    if (namesWithVersionedRows.has(identifier) && (
+      typeof location.sourceBlobEtag !== "string"
+      || !photo.blobEtag
+      || location.sourceBlobEtag !== photo.blobEtag
+    )) {
       diagnostics.staleCosmosIntersections += 1;
       continue;
     }
-    const photoGps = validPhotoGps.get(location.name);
+    const photoGps = validPhotoGps.get(identifier);
     if (photoGps) {
       if (
         Math.abs(indexedGps.lat - photoGps.lat) > GPS_COORDINATE_EPSILON
@@ -121,11 +163,11 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
       diagnostics.staleCosmosIntersections += 1;
       continue;
     }
-    if (locatedNames.has(location.name)) continue;
+    if (locatedNames.has(identifier)) continue;
     diagnostics.cosmosIntersections += 1;
-    locatedNames.add(location.name);
+    locatedNames.add(identifier);
     geoPhotos.push({
-      name: location.name,
+      name: identifier,
       ...indexedGps,
       originalName: location.originalName ?? photo.originalName,
       contentType: location.contentType ?? photo.contentType,

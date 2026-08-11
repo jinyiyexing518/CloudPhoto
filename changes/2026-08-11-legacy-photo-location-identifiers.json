@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-legacy-photo-location-identifiers",
+  "date": "2026-08-11",
+  "icon": "📍",
+  "title": "恢复旧版位置索引字段",
+  "type": "fix",
+  "desc": "历史 Cosmos 位置文档使用 photoName 时，旧照片现在也能重新进入图库和记忆地图。",
+  "details": "服务端照片列表与位置接口、客户端记忆地图同时接受 name 或 photoName；两者冲突、重复、孤儿、跨授权空间、无 GPS 缺失证明或来源 ETag 不匹配时继续 fail closed。补充 Cosmos 查询使用 1.5 秒真实 wall-clock deadline 并在超时后非致命降级；无需读取私有数据、回填或修改历史文档。",
+  "seq": 1786422543942
+}

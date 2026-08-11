@@ -99,7 +99,7 @@ export interface MotionVideoResult {
 }
 
 export interface PhotoLocation {
-  name: string; lat: number; lon: number; sourceBlobEtag?: string; originalName?: string; contentType?: string;
+  scope?: string; name?: string; photoName?: string; lat: number; lon: number; sourceBlobEtag?: string; originalName?: string; contentType?: string;
 }
 
 function isPhotoPayload(value: unknown): value is Photo {

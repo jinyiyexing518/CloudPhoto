@@ -16,6 +16,99 @@ test("a current historical photo uses its valid legacy Cosmos location when Blob
   assert.deepEqual(result.noGpsPhotos, []);
 });
 
+test("a current historical photo accepts the legacy photoName identifier", () => {
+  const oldPhoto = { name: "old.jpg", gpsMetadataPresent: false };
+  const result = partitionPhotoLocations(
+    [oldPhoto],
+    [{ photoName: "old.jpg", lat: 31.2304, lon: 121.4737 }],
+  );
+
+  assert.deepEqual(
+    result.geoPhotos.map(({ name, lat, lon }) => ({ name, lat, lon })),
+    [{ name: "old.jpg", lat: 31.2304, lon: 121.4737 }],
+    "legacy photoName rows must locate the current photo",
+  );
+  assert.deepEqual(result.noGpsPhotos, []);
+});
+
+test("conflicting aliases and malformed version fences cannot authorize fallback", () => {
+  const photos = [
+    { name: "conflict.jpg", gpsMetadataPresent: false },
+    { name: "fenced.jpg", blobEtag: '"current"', gpsMetadataPresent: false },
+    { name: "malformed.jpg", blobEtag: '"current"', gpsMetadataPresent: false },
+  ];
+  const result = partitionPhotoLocations(photos, [
+    {
+      name: "conflict.jpg",
+      photoName: "orphan.jpg",
+      lat: 31.2304,
+      lon: 121.4737,
+    },
+    {
+      name: "fenced.jpg",
+      photoName: "orphan.jpg",
+      lat: 31.2304,
+      lon: 121.4737,
+      sourceBlobEtag: '"stale"',
+    },
+    {
+      photoName: "fenced.jpg",
+      lat: 31.2304,
+      lon: 121.4737,
+    },
+    {
+      name: 42,
+      photoName: "malformed.jpg",
+      lat: 31.2304,
+      lon: 121.4737,
+      sourceBlobEtag: '"current"',
+    },
+    {
+      photoName: "malformed.jpg",
+      lat: 31.2304,
+      lon: 121.4737,
+    },
+  ]);
+
+  assert.deepEqual(result.geoPhotos, []);
+  assert.deepEqual(result.noGpsPhotos.map(({ name }) => name), [
+    "conflict.jpg",
+    "fenced.jpg",
+    "malformed.jpg",
+  ]);
+});
+
+test("name and photoName rows for one photo remain duplicate-ambiguous", () => {
+  const result = partitionPhotoLocations(
+    [{ name: "duplicate.jpg", gpsMetadataPresent: false }],
+    [
+      { name: "duplicate.jpg", lat: 1, lon: 2 },
+      { photoName: "duplicate.jpg", lat: 1, lon: 2 },
+    ],
+  );
+
+  assert.deepEqual(result.geoPhotos, []);
+  assert.deepEqual(result.noGpsPhotos.map(({ name }) => name), ["duplicate.jpg"]);
+  assert.equal(result.diagnostics.ambiguousCosmos, 2);
+});
+
+test("admin-wide location rows cannot cross personal scopes through a legacy alias", () => {
+  const photo = {
+    name: "personal/owner-b/_/photo.jpg",
+    gpsMetadataPresent: false,
+  };
+  const result = partitionPhotoLocations([photo], [{
+    scope: "personal/owner-a",
+    photoName: photo.name,
+    lat: 31.2304,
+    lon: 121.4737,
+  }]);
+
+  assert.deepEqual(result.geoPhotos, []);
+  assert.deepEqual(result.noGpsPhotos, [photo]);
+  assert.equal(result.diagnostics.orphanedCosmos, 1);
+});
+
 test("invalid Blob GPS metadata cannot be revived from an unversioned Cosmos row", () => {
   const result = partitionPhotoLocations(
     [{ name: "invalid.jpg", gpsMetadataPresent: true }],

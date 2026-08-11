@@ -5,6 +5,7 @@
 **紧急修复**
 - **📍 历史位置重新进入图库与地图** — `/photos` 在当前授权空间内一次性读取 Cosmos 位置索引，为 Blob metadata 完全缺少 GPS 的旧照片补齐合法坐标；当前 Blob GPS 优先，来源 ETag 不匹配、跨空间、孤儿、重复、单边、非有限与越界行全部拒绝
 - **🗺️ Cosmos-only 地图兼容** — 当前照片没有 list GPS 时，记忆地图重新接受同名合法 Cosmos 行，并通过当前/来源 Blob ETag 阻止 stale raw 索引绕过列表校验；有位置/无位置集合保持互斥且闭合，旧照片列表缓存通过 schema v2 路径确定性失效
+- **🧩 历史索引字段兼容** — 服务端列表、位置接口和记忆地图同时识别 `name` 与旧文档的 `photoName`；冲突别名、孤儿、跨空间、重复和 stale versioned 行继续 fail closed，补充查询由 1.5 秒真实 wall-clock deadline 非致命限界，历史照片无需回填即可恢复位置
 
 ---
 
