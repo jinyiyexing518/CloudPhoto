@@ -1082,12 +1082,29 @@ const cacheLifecycleUrl = await compileTypeScript(
     JSON.stringify(cacheResetUrl),
   ),
 );
+const listCacheLifecycleUrl = await compileTypeScript(
+  "packages/client/src/services/privatePhotoListCacheLifecycle.ts",
+  (source) => source
+    .replaceAll(
+      '"./privatePhotoCacheLifecycle.ts"',
+      JSON.stringify(cacheLifecycleUrl),
+    )
+    .replaceAll(
+      '"./privateCacheReset.ts"',
+      JSON.stringify(cacheResetUrl),
+    ),
+);
 const listCache = await importTypeScript(
   "packages/client/src/services/photoListCache.ts",
-  (source) => source.replaceAll(
-    '"./privatePhotoCacheLifecycle"',
-    JSON.stringify(cacheLifecycleUrl),
-  ),
+  (source) => source
+    .replaceAll(
+      '"./privatePhotoCacheLifecycle"',
+      JSON.stringify(cacheLifecycleUrl),
+    )
+    .replaceAll(
+      '"./privatePhotoListCacheLifecycle"',
+      JSON.stringify(listCacheLifecycleUrl),
+    ),
 );
 responses.set(
   "https://www.cloudphotos.top/__cloudphoto-cache__/photo-lists/legacy-schema",
