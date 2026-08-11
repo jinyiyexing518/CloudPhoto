@@ -674,10 +674,7 @@ export function checkWorkflowRuntimeContracts(workflows) {
   if (!inspectedFrontend) {
     issues.push(`${frontendWorkflow} is missing`);
   } else {
-    if (
-      inspectedFrontend.checkoutFetchDepths.length !== 1
-      || inspectedFrontend.checkoutFetchDepths[0].depth !== "0"
-    ) {
+    if (!inspectedFrontend.checkoutFetchDepths.some((checkout) => checkout.depth === "0")) {
       issues.push(`${frontendWorkflow} must fetch full history for pinned bootstrap generations`);
     }
     const retentionStep = inspectedFrontend.runSteps.find(

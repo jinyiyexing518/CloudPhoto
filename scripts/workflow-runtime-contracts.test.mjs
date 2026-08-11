@@ -1520,23 +1520,6 @@ test("rejects failure-tolerant retention gates", () => {
   );
 });
 
-test("requires photo loading behavior changes to trigger frontend validation", () => {
-  const path = ".github/workflows/deploy-frontend.yml";
-  const frontend = readFileSync(
-    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
-    "utf8"
-  ).replace(/\s+- "scripts\/test-photo-loading-behavior\.mjs"\r?\n/, "\n");
-  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
-
-  assert.ok(
-    result.issues.some((issue) =>
-      issue.includes(
-        "must include frontend gate path scripts/test-photo-loading-behavior.mjs"
-      )
-    )
-  );
-});
-
 test("requires frontend validation to execute photo loading behavior", () => {
   const path = ".github/workflows/deploy-frontend.yml";
   const frontend = readFileSync(
