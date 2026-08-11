@@ -265,7 +265,9 @@ async function writeFixtureDist(root, kind) {
     document.body.textContent = "OLD_SHELL";
     await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;
-    if (localStorage.getItem("authenticated") === "1") {
+    const authenticated = localStorage.getItem("authenticated") === "1";
+    document.body.dataset.authChecked = "true";
+    if (authenticated) {
       document.body.dataset.status = "loading";
       const stylesheet = new Promise((resolve, reject) => {
         const link = document.createElement("link");
@@ -430,6 +432,11 @@ async function runScenario({ retain, evidenceName, emulateStandalone = false }) 
     await firstPage.send("Page.navigate", { url: `${server.origin}/` });
     await loaded;
     await waitFor(() => firstPage.evaluate("Boolean(navigator.serviceWorker.controller)"));
+    // Page.loadEventFired can precede the entry module's authentication snapshot.
+    await waitFor(() => firstPage.evaluate(
+      'document.body.dataset.authChecked === "true"'
+        + ' && document.body.dataset.status === "signed-out"',
+    ));
     await firstPage.evaluate('localStorage.setItem("authenticated", "1")');
     if (emulateStandalone) {
       assert.equal(
