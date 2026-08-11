@@ -177,6 +177,7 @@ export function partitionPhotoLocations<TPhoto extends PhotoWithLocation>(
 
   for (const photo of photos) {
     if (locatedNames.has(photo.name)) continue;
+    if (photo.gpsMetadataPresent === false) continue;
     const gps = validPhotoGps.get(photo.name);
     if (!gps) continue;
     locatedNames.add(photo.name);

@@ -109,6 +109,61 @@ test("admin-wide location rows cannot cross personal scopes through a legacy ali
   assert.equal(result.diagnostics.orphanedCosmos, 1);
 });
 
+test("rejected Cosmos rows cannot revive server-hydrated coordinates", () => {
+  const photos = [
+    {
+      name: "stale.jpg",
+      gpsMetadataPresent: false,
+      gpsLat: "31.2304",
+      gpsLon: "121.4737",
+      blobEtag: '"current"',
+    },
+    {
+      name: "duplicate.jpg",
+      gpsMetadataPresent: false,
+      gpsLat: "30",
+      gpsLon: "120",
+    },
+    {
+      name: "conflict.jpg",
+      gpsMetadataPresent: false,
+      gpsLat: "29",
+      gpsLon: "119",
+    },
+    {
+      name: "personal/owner-b/_/scoped.jpg",
+      gpsMetadataPresent: false,
+      gpsLat: "28",
+      gpsLon: "118",
+    },
+  ];
+  const result = partitionPhotoLocations(photos, [
+    {
+      name: "stale.jpg",
+      lat: 31.2304,
+      lon: 121.4737,
+      sourceBlobEtag: '"stale"',
+    },
+    { name: "duplicate.jpg", lat: 30, lon: 120 },
+    { photoName: "duplicate.jpg", lat: 30, lon: 120 },
+    {
+      name: "conflict.jpg",
+      photoName: "orphan.jpg",
+      lat: 29,
+      lon: 119,
+    },
+    {
+      scope: "personal/owner-a",
+      photoName: "personal/owner-b/_/scoped.jpg",
+      lat: 28,
+      lon: 118,
+    },
+  ]);
+
+  assert.deepEqual(result.geoPhotos, []);
+  assert.deepEqual(result.noGpsPhotos, photos);
+});
+
 test("invalid Blob GPS metadata cannot be revived from an unversioned Cosmos row", () => {
   const result = partitionPhotoLocations(
     [{ name: "invalid.jpg", gpsMetadataPresent: true }],

@@ -96,6 +96,207 @@ test("login waits for same-origin failure before retrying serially on Azure", as
   ]);
 });
 
+test("a hung same-origin login gets a bounded serial direct attempt within the caller budget", async (t) => {
+  const calls = [];
+  globalThis.fetch = (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url === "/api/auth/login") return new Promise(() => {});
+    return Promise.resolve(new Response(JSON.stringify({ route: "direct" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+  };
+  t.after(() => { delete globalThis.fetch; });
+
+  const startedAt = performance.now();
+  const response = await fetchWithTimeout("/api/auth/login", {
+    method: "POST",
+    body: "{}",
+  }, 6_000);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, [
+    "/api/auth/login",
+    "https://cloudphoto-api.azurewebsites.net/api/auth/login",
+  ]);
+  const elapsedMs = performance.now() - startedAt;
+  assert.ok(elapsedMs >= 4_500, `primary deadline fired too early: ${elapsedMs}ms`);
+  assert.ok(elapsedMs < 5_900, `fallback exhausted the caller budget: ${elapsedMs}ms`);
+  assert.deepEqual(await response.json(), { route: "direct" });
+});
+
+test("caller abort cancels a hung login without alternate-route fallback", async (t) => {
+  const calls = [];
+  globalThis.fetch = (input, init) => {
+    calls.push(String(input));
+    return new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        reject(init.signal.reason ?? new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    });
+  };
+  t.after(() => { delete globalThis.fetch; });
+  const controller = new AbortController();
+  const pending = fetchWithTimeout("/api/auth/login", {
+    method: "POST",
+    body: "{}",
+    signal: controller.signal,
+  }, 6_000);
+  setTimeout(() => controller.abort(new DOMException("Caller cancelled", "AbortError")), 20);
+
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.deepEqual(calls, ["/api/auth/login"]);
+});
+
+test("a Request login body is never replayed through a bodyless alternate request", async (t) => {
+  const calls = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({
+      body: input instanceof Request ? await input.clone().text() : init?.body,
+      method: init?.method ?? (input instanceof Request ? input.method : "GET"),
+      url: input instanceof Request ? input.url : String(input),
+    });
+    return new Response(JSON.stringify({ error: "gateway" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => { delete globalThis.fetch; });
+
+  const response = await fetchWithTimeout(new Request(
+    "https://cloudphotos.top/api/auth/login",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "user", password: "secret" }),
+    },
+  ), undefined, 1_000);
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(calls, [{
+    body: JSON.stringify({ username: "user", password: "secret" }),
+    method: "POST",
+    url: "https://cloudphotos.top/api/auth/login",
+  }]);
+  await response.body?.cancel();
+});
+
+test("aborted direct fallback cancels the retained primary gateway body", async (t) => {
+  const calls = [];
+  let primaryBodyCancellations = 0;
+  globalThis.fetch = (input, init) => {
+    const url = String(input);
+    calls.push(url);
+    if (url === "/api/auth/login") {
+      return Promise.resolve(new Response(new ReadableStream({
+        cancel() {
+          primaryBodyCancellations += 1;
+        },
+      }), { status: 503 }));
+    }
+    return new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        reject(init.signal.reason ?? new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    });
+  };
+  t.after(() => { delete globalThis.fetch; });
+
+  await assert.rejects(
+    fetchWithTimeout("/api/auth/login", { method: "POST", body: "{}" }, 100),
+    { name: "AbortError" },
+  );
+  assert.deepEqual(calls, [
+    "/api/auth/login",
+    "https://cloudphoto-api.azurewebsites.net/api/auth/login",
+  ]);
+  assert.equal(primaryBodyCancellations, 1);
+});
+
+test("non-settling primary body cancellation cannot delay caller timeout", async (t) => {
+  let primaryBodyCancellations = 0;
+  globalThis.fetch = (input, init) => {
+    if (String(input) === "/api/auth/login") {
+      return Promise.resolve(new Response(new ReadableStream({
+        cancel() {
+          primaryBodyCancellations += 1;
+          return new Promise(() => {});
+        },
+      }), { status: 503 }));
+    }
+    return new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        reject(init.signal.reason ?? new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    });
+  };
+  t.after(() => { delete globalThis.fetch; });
+
+  const timedRequest = assert.rejects(
+    fetchWithTimeout("/api/auth/login", { method: "POST", body: "{}" }, 50),
+    { name: "AbortError" },
+  );
+  let guardTimeout;
+  try {
+    await Promise.race([
+      timedRequest,
+      new Promise((_, reject) => {
+        guardTimeout = setTimeout(
+          () => reject(new Error("request remained pending after caller timeout")),
+          250,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(guardTimeout);
+  }
+  assert.equal(primaryBodyCancellations, 1);
+});
+
+test("non-settling primary body cancellation cannot delay successful fallback", async (t) => {
+  let primaryBodyCancellations = 0;
+  globalThis.fetch = (input) => {
+    if (String(input) === "/api/auth/login") {
+      return Promise.resolve(new Response(new ReadableStream({
+        cancel() {
+          primaryBodyCancellations += 1;
+          return new Promise(() => {});
+        },
+      }), { status: 503 }));
+    }
+    return Promise.resolve(new Response(JSON.stringify({ route: "direct" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+  };
+  t.after(() => { delete globalThis.fetch; });
+
+  const fallbackRequest = fetchWithTimeout(
+    "/api/auth/login",
+    { method: "POST", body: "{}" },
+    1_000,
+  );
+  let guardTimeout;
+  let response;
+  try {
+    response = await Promise.race([
+      fallbackRequest,
+      new Promise((_, reject) => {
+        guardTimeout = setTimeout(
+          () => reject(new Error("successful fallback waited for primary body cancellation")),
+          250,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(guardTimeout);
+  }
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { route: "direct" });
+  assert.equal(primaryBodyCancellations, 1);
+});
+
 test("retryable login gateway responses fall back but unsafe writes never replay", async (t) => {
   const calls = [];
   globalThis.fetch = async (input) => {

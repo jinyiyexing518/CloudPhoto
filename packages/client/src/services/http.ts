@@ -32,6 +32,9 @@ import {
 export const preloadApiHedgePolicy = () => import("./apiHedgePolicy");
 
 const RETRYABLE_GATEWAY_STATUSES = new Set([502, 503, 504, 521, 522, 523, 524]);
+// Login's primary route gets five seconds, preserving most of loginApi's
+// 30-second caller budget for one strictly-serial alternate-route attempt.
+export const LOGIN_PRIMARY_ROUTE_DEADLINE_MS = 5_000;
 
 export function isRetryableGatewayStatus(status: number): boolean {
   return RETRYABLE_GATEWAY_STATUSES.has(status);
@@ -133,6 +136,7 @@ function canReplayRequest(input: RequestInfo, init?: RequestInit): boolean {
   const method = requestMethod(input, init);
   const request = parseApiRequest(input);
   if (!request) return false;
+  if (typeof Request !== "undefined" && input instanceof Request) return false;
   if (isLoginRequest(input, init)) return true;
   return isSafeReplayMethod(method) && request.suffix !== "/photos/share";
 }
@@ -145,6 +149,66 @@ function canHedgeOnAlternateRoute(input: RequestInfo, init?: RequestInit): boole
   const request = parseApiRequest(input);
   return canRetryOnAlternateRoute(input, init)
     && shouldHedgeApiRequest(requestMethod(input, init), request?.suffix ?? "");
+}
+
+function fetchWithAttemptDeadline(
+  input: RequestInfo,
+  init: RequestInit | undefined,
+  deadlineMs: number,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const controller = new AbortController();
+    const callerSignal = init?.signal;
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      callerSignal?.removeEventListener("abort", abortFromCaller);
+    };
+    const rejectOnce = (reason: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(reason);
+    };
+    const abortFromCaller = () => {
+      const reason = callerSignal?.reason ?? new DOMException("Aborted", "AbortError");
+      controller.abort(reason);
+      rejectOnce(reason);
+    };
+
+    if (callerSignal?.aborted) {
+      abortFromCaller();
+      return;
+    }
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+    timeoutId = setTimeout(() => {
+      const reason = new DOMException("Login primary route timed out", "TimeoutError");
+      controller.abort(reason);
+      rejectOnce(reason);
+    }, deadlineMs);
+
+    let pending: Promise<Response>;
+    try {
+      pending = fetch(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      rejectOnce(error);
+      return;
+    }
+    pending.then(
+      (response) => {
+        if (settled) {
+          void response.body?.cancel().catch(() => undefined);
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(response);
+      },
+      rejectOnce,
+    );
+  });
 }
 
 function keepCancellationUntilBodyCompletes(
@@ -338,7 +402,20 @@ async function fetchWithProxyFallback(
   if (!hedgeDelayMs || !canHedgeOnAlternateRoute(primaryInput, init)) {
     let primaryResponse: Response;
     try {
-      primaryResponse = await fetch(primaryInput, init);
+      const primaryRequest = parseApiRequest(primaryInput);
+      const boundLoginPrimary = (
+        isLoginRequest(primaryInput, init)
+        && primaryRequest?.kind === "same-origin"
+      );
+      primaryResponse = await (
+        boundLoginPrimary
+          ? fetchWithAttemptDeadline(
+            primaryInput,
+            init,
+            LOGIN_PRIMARY_ROUTE_DEADLINE_MS,
+          )
+          : fetch(primaryInput, init)
+      );
     } catch (error) {
       if (init?.signal?.aborted) throw error;
       return fetch(fallbackUrl, init);
@@ -352,10 +429,13 @@ async function fetchWithProxyFallback(
 
     try {
       const fallbackResponse = await fetch(fallbackUrl, init);
-      await primaryResponse.body?.cancel().catch(() => undefined);
+      void primaryResponse.body?.cancel().catch(() => undefined);
       return fallbackResponse;
     } catch (error) {
-      if (init?.signal?.aborted) throw error;
+      if (init?.signal?.aborted) {
+        void primaryResponse.body?.cancel().catch(() => undefined);
+        throw error;
+      }
       return primaryResponse;
     }
   }

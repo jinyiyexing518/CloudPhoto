@@ -17,6 +17,8 @@ export type PwaUpdateActivationResult =
   | "missing-updater"
   | "timed-out";
 
+export type PwaUpdatePreparationResult = "ready" | "missing-updater" | "timed-out";
+
 const UPDATE_ACTIVATION_TIMEOUT_MS = 1_500;
 
 function bounded<T>(promise: Promise<T>): Promise<T | "timed-out"> {
@@ -82,7 +84,7 @@ export async function activatePwaUpdate(
 
 export async function preparePwaUpdateForRefresh(
   target: PwaUpdateBrowserWindow,
-): Promise<"ready" | "missing-updater" | "timed-out"> {
+): Promise<PwaUpdatePreparationResult> {
   const registration = target.__CF_SW_REGISTRATION__;
   if (!registration) return "missing-updater";
   const updateResult = await bounded(registration.update());

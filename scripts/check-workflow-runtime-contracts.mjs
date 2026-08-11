@@ -111,7 +111,10 @@ const runtimeAlgorithmPaths = [
   "packages/algorithm/package.json",
   "packages/algorithm/tsconfig.json",
 ];
-const frontendGateCommands = ["node scripts/test-photo-loading-behavior.mjs"];
+const frontendGateCommands = [
+  "node scripts/test-photo-loading-behavior.mjs",
+  "yarn test:memory-map-locations",
+];
 
 function indentation(line) {
   return line.match(/^\s*/)[0].length;
@@ -1020,9 +1023,24 @@ export function checkWorkflowRuntimeContracts(workflows) {
       }
     }
   }
+  const frontendArtifactStage = inspectedFrontend?.artifactSteps.find((step) =>
+    step.action === "upload-artifact"
+    && step.job === "build"
+    && step.name === frontendArtifactName
+  );
   for (const requiredCommand of frontendGateCommands) {
-    if (!frontend?.text.includes(requiredCommand)) {
+    const gate = inspectedFrontend?.runSteps.find((step) =>
+      step.job === "build"
+      && step.command.includes(requiredCommand)
+      && step.condition === null
+      && step.continueOnError !== "true"
+    );
+    if (!gate) {
       issues.push(`${frontendWorkflow} must execute frontend gate command ${requiredCommand}`);
+    } else if (!frontendArtifactStage || gate.order >= frontendArtifactStage.order) {
+      issues.push(
+        `${frontendWorkflow} must execute frontend gate command ${requiredCommand} before artifact staging`
+      );
     }
   }
 

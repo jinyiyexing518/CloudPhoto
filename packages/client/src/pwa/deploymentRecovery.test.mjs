@@ -6,6 +6,7 @@ import {
   consumeDeploymentRecoveryIntent,
   createDeploymentRecoveryCoordinator,
 } from "./deploymentRecovery.ts";
+import { preparePwaUpdateForRefresh } from "./updatePolicy.ts";
 
 const OLD_FOLDER_CHUNK = "https://cloudphotos.top/assets/FolderView-5-M83veG.js";
 
@@ -85,7 +86,7 @@ function createFixture({
     prepareUpdate: updater
       ? async () => {
         calls.prepareUpdate += 1;
-        await onPrepare?.();
+        return await onPrepare?.();
       }
       : undefined,
     hardRefresh: () => {
@@ -192,6 +193,42 @@ test("old FolderView hash 404 performs one update-aware hard refresh", async () 
     false,
     "sessionStorage must not contain URLs",
   );
+});
+
+test("a timed-out worker preparation leaves stale-chunk recovery actionable without refreshing", async () => {
+  const pwaWindow = new EventTarget();
+  pwaWindow.__CF_SW_REGISTRATION__ = {
+    update: async () => new Promise(() => {}),
+    installing: null,
+    waiting: null,
+  };
+  const fixture = createFixture({
+    onPrepare: () => preparePwaUpdateForRefresh(pwaWindow),
+  });
+
+  fixture.target.dispatchEvent(new FakePreloadErrorEvent(
+    new TypeError(`Failed to fetch dynamically imported module: ${OLD_FOLDER_CHUNK}`),
+  ));
+  await new Promise((resolve) => setTimeout(resolve, 1_650));
+
+  assert.equal(fixture.calls.prepareUpdate, 1);
+  assert.equal(fixture.calls.hardRefresh, 0);
+  assert.equal(fixture.coordinator.getState().status, "exhausted");
+  assert.equal(fixture.coordinator.getState().primaryActionLabel, "刷新新版");
+});
+
+test("missing updater still permits bounded stale-chunk hard refresh recovery", async () => {
+  const fixture = createFixture({
+    onPrepare: async () => "missing-updater",
+  });
+
+  fixture.target.dispatchEvent(new FakePreloadErrorEvent(
+    new TypeError(`Failed to fetch dynamically imported module: ${OLD_FOLDER_CHUNK}`),
+  ));
+  await flushRecovery();
+
+  assert.equal(fixture.calls.prepareUpdate, 1);
+  assert.equal(fixture.calls.hardRefresh, 1);
 });
 
 test("active transfer blocks reload and resumes after the shared gate clears", async () => {

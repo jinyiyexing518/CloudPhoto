@@ -55,8 +55,8 @@ jobs:
           # Full URL of the Azure Function App, e.g. https://cloudphoto-api.azurewebsites.net/api
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
 
-      - name: Verify login recovery and PWA update
-        run: yarn test:login-recovery && yarn test:pwa-update
+      - name: Verify login, location recovery, and PWA update
+        run: yarn test:login-recovery && yarn test:memory-map-locations && yarn test:pwa-update
 
       - name: Retain bounded deployment assets
         run: node scripts/deployment-assets.mjs --dist packages/client/dist --generation "$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --source https://brave-sand-053b07a00.7.azurestaticapps.net --policy packages/client/deployment-retention.json

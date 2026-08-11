@@ -6,6 +6,7 @@ import {
 import {
   preparePwaUpdateForRefresh,
   type PwaUpdateBrowserWindow,
+  type PwaUpdatePreparationResult,
 } from "./updatePolicy.ts";
 
 const RECOVERY_STORAGE_KEY = "cf_deployment_recovery_v1";
@@ -60,7 +61,7 @@ interface CoordinatorOptions {
   subscribeDangerousOperation: (
     listener: (snapshot: DangerousOperationSnapshot) => void,
   ) => () => void;
-  prepareUpdate?: () => Promise<void>;
+  prepareUpdate?: () => Promise<PwaUpdatePreparationResult>;
   hardRefresh: () => void;
   getNavigationIntent?: () => RecoveryNavigationIntent | null;
   saveNavigationIntent?: (intent: RecoveryNavigationIntent) => void;
@@ -267,7 +268,12 @@ export function createDeploymentRecoveryCoordinator(options: CoordinatorOptions)
     setState({ status: "recovering", message: "正在切换到新版资源…" });
     if (options.prepareUpdate) {
       try {
-        await options.prepareUpdate();
+        const preparation = await options.prepareUpdate();
+        if (preparation === "timed-out") {
+          recoveryInFlight = false;
+          setState(manualRecoveryState("exhausted", "更新服务响应超时，请稍后重试。"));
+          return;
+        }
       } catch (error) {
         console.error("[DeploymentRecovery] Service worker activation failed:", error);
       }
@@ -388,9 +394,7 @@ export function installDeploymentRecovery(
     isOnline: () => target.navigator?.onLine !== false,
     getDangerousOperationSnapshot,
     subscribeDangerousOperation,
-    prepareUpdate: async () => {
-      await preparePwaUpdateForRefresh(target as PwaUpdateBrowserWindow);
-    },
+    prepareUpdate: () => preparePwaUpdateForRefresh(target as PwaUpdateBrowserWindow),
     hardRefresh: () => hardRefreshLocation(target),
     getNavigationIntent: () => navigationIntentProvider?.() ?? null,
   });

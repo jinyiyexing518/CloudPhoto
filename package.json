@@ -26,6 +26,7 @@
     "test:header-accessibility": "node --test packages/client/src/components/shared/menuKeyboard.test.mjs packages/client/src/components/groups/HeaderAutoHide.test.mjs packages/client/src/components/groups/HeaderMenusAccessibility.test.mjs packages/client/src/components/auth/UserMenuDialogsAccessibility.test.mjs",
     "test:auth-validation": "node --test packages/client/src/components/auth/nativeValidation.test.mjs",
     "test:login-recovery": "node --test packages/client/src/services/loginProxyRecovery.test.mjs",
+    "test:memory-map-locations": "node --test packages/client/src/components/memory-map/memoryMapLocationPartitions.test.mjs",
     "test:auth-layout": "node --test scripts/auth-layout-contracts.test.mjs",
     "test:auth-layout-cdp": "node scripts/auth-layout-cdp.mjs",
     "test:authenticated-dates": "node --test scripts/authenticated-date-contracts.test.mjs",

@@ -1577,3 +1577,59 @@ test("requires frontend validation to execute photo loading behavior", () => {
     )
   );
 });
+
+test("frontend validation runs memory-map location partitions before artifact staging", () => {
+  const packageJson = JSON.parse(readFileSync(
+    new URL("../package.json", import.meta.url),
+    "utf8",
+  ));
+  assert.equal(
+    packageJson.scripts["test:memory-map-locations"],
+    "node --test packages/client/src/components/memory-map/memoryMapLocationPartitions.test.mjs",
+  );
+
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8",
+  );
+  const command = "yarn test:memory-map-locations";
+  const gateIndex = frontend.indexOf(command);
+  const artifactIndex = frontend.indexOf("      - name: Stage production artifact");
+  assert.ok(gateIndex >= 0, "frontend workflow must run the memory-map partition suite");
+  assert.ok(gateIndex < artifactIndex, "memory-map partition suite must run before artifact staging");
+
+  const result = checkWorkflowRuntimeContracts([{
+    path,
+    text: frontend.replace(command, "echo memory-map-location-tests-skipped"),
+  }]);
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes(`must execute frontend gate command ${command}`)
+    )
+  );
+
+  const movedAfterArtifact = frontend
+    .replace(
+      "yarn test:login-recovery && yarn test:memory-map-locations && yarn test:pwa-update",
+      "yarn test:login-recovery && yarn test:pwa-update",
+    )
+    .replace(
+      "          retention-days: 1",
+      [
+        "          retention-days: 1",
+        "",
+        "      - name: Run memory-map location tests too late",
+        `        run: ${command}`,
+      ].join("\n"),
+    );
+  const movedResult = checkWorkflowRuntimeContracts([{
+    path,
+    text: movedAfterArtifact,
+  }]);
+  assert.ok(
+    movedResult.issues.some((issue) =>
+      issue.includes(`must execute frontend gate command ${command} before artifact staging`)
+    )
+  );
+});

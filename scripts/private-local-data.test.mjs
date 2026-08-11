@@ -1279,11 +1279,12 @@ assert.equal(
   "both 401 recovery branches must use the endpoint-aware replay guard",
 );
 assert(
-  http.includes('request?.suffix !== "/photos/share"'),
+  http.includes('request.suffix !== "/photos/share"'),
   "share creation must be excluded from route and auth replay despite using GET",
 );
 assert(
-  http.includes("const safeToReplay = canReplayRequest(primaryInput, init);"),
+  http.includes("canReplayRequest(primaryInput, init)")
+    && http.includes("&& !isLoginRequest(primaryInput, init)"),
   "same-origin route recovery must not bypass the endpoint-aware share replay guard",
 );
 assert(
