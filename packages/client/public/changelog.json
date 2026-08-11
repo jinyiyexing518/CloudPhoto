@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-08-11-photo-path-authorization",
+    "date": "2026-08-11",
+    "icon": "🛡️",
+    "title": "封闭照片路径越权入口",
+    "type": "security",
+    "desc": "照片元数据、移动、动态照片、Moments、公开分享、缩略图和回收站操作现在都会统一验证个人所有权或群组成员关系。",
+    "details": "下载、元数据、移动、motion-video、Moments 统计、公开分享、缩略图、删除、恢复与永久删除统一复用 fail-closed 路径授权器，拒绝未知命名空间、内部缩略图/语音路径及跨 owner/group 访问。上传、文件夹改名和文件夹分享不能进入内部命名空间；managed share 会重新验证持久化 scope/prefix 并过滤内部对象。移动目标必须留在同一照片 scope；语音指针只能引用同 scope 的专用 _voice 目录，列表不会为历史无效指针签发 SAS。自动发现路径入口的行为与 wiring 测试锁定授权必须发生在任何 Blob 访问之前。",
+    "seq": 1786479000000
+  },
+  {
     "id": "2026-08-11-workspace-fab-interaction-safety",
     "date": "2026-08-11",
     "icon": "🧭",

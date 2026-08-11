@@ -12,6 +12,11 @@ import {
   generateSasUrlWithKey,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import {
+  canAccessPhotoPath,
+  isGalleryPhotoPath,
+  isPhotoFolderPath,
+} from "../../utils/auth/photoAccess";
 import { isGroupMember, getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmos/cosmosClient";
 
 function decodeMeta(raw: string | undefined): string | undefined {
@@ -117,8 +122,21 @@ app.http("createShareLink", {
       : 24;
 
     try {
-      const blobServiceClient = getBlobServiceClient();
-      const containerClient = blobServiceClient.getContainerClient(containerName);
+      const authorizedBlobNames: string[] = [];
+      if (!hasFolderParam) {
+        for (const candidate of candidateBlobNames(rawBlobName as string)) {
+          if (await canAccessPhotoPath(candidate, payload, isGroupMember)) {
+            authorizedBlobNames.push(candidate);
+          }
+        }
+        if (authorizedBlobNames.length === 0) {
+          return {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Forbidden" }),
+          };
+        }
+      }
 
       if (hasFolderParam) {
         const folderPath = normalizeFolderPath(rawFolderPath);
@@ -135,11 +153,20 @@ app.http("createShareLink", {
         }
 
         const folderSegment = folderPath === "" ? "_" : folderPath;
-        const targetPrefix = `${groupId ? `groups/${groupId}` : `personal/${payload.userId}`}/${folderSegment}/`;
+        if (!isPhotoFolderPath(folderSegment)) {
+          return {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Invalid folder path" }),
+          };
+        }
+        const targetScope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
+        const targetPrefix = `${targetScope}/${folderSegment}/`;
+        const containerClient = getBlobServiceClient().getContainerClient(containerName);
 
         let hasShareablePhoto = false;
         for await (const blob of containerClient.listBlobsFlat({ prefix: targetPrefix, includeMetadata: true })) {
-          if (!getMeta(blob.metadata, "deletedAt")) {
+          if (isGalleryPhotoPath(blob.name) && !getMeta(blob.metadata, "deletedAt")) {
             hasShareablePhoto = true;
             break;
           }
@@ -168,6 +195,7 @@ app.http("createShareLink", {
           displayName,
           groupId: groupId || undefined,
           targetType: "folder",
+          targetScope,
           folderPath,
           targetPrefix,
           createdAt,
@@ -205,36 +233,10 @@ app.http("createShareLink", {
         };
       }
 
-      const blobNameList = candidateBlobNames(rawBlobName as string);
-      const blobName = blobNameList[0];
-      const segs = blobName.split("/");
-      if (segs[0] === "personal") {
-        if (segs[1] !== payload.userId && payload.role !== "admin") {
-          return {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ error: "Forbidden" }),
-          };
-        }
-      } else if (segs[0] === "groups") {
-        if (!await isGroupMember(segs[1], payload.userId)) {
-          return {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ error: "Not a member of this group" }),
-          };
-        }
-      } else {
-        return {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "Invalid photo path" }),
-        };
-      }
-
+      const containerClient = getBlobServiceClient().getContainerClient(containerName);
       let actualBlobName: string | null = null;
       let props: Awaited<ReturnType<ReturnType<typeof containerClient.getBlobClient>["getProperties"]>> | null = null;
-      for (const candidate of blobNameList) {
+      for (const candidate of authorizedBlobNames) {
         try {
           const candidateProps = await containerClient.getBlobClient(candidate).getProperties();
           actualBlobName = candidate;
@@ -275,6 +277,8 @@ app.http("createShareLink", {
       const displayName = decodeMeta(getMeta(props.metadata, "originalName"))
         || actualBlobName.split("/").pop()
         || actualBlobName;
+      const actualPathSegments = actualBlobName.split("/");
+      const targetScope = `${actualPathSegments[0]}/${actualPathSegments[1]}`;
       const doc: ShareLinkDoc = {
         docType: "share",
         id: linkId,
@@ -282,8 +286,11 @@ app.http("createShareLink", {
         createdByName: payload.displayName,
         blobName: actualBlobName,
         displayName,
-        groupId: segs[0] === "groups" ? segs[1] : undefined,
+        groupId: actualPathSegments[0] === "groups"
+          ? actualPathSegments[1]
+          : undefined,
         targetType: "photo",
+        targetScope,
         createdAt,
         expiresAt,
         status: "active",

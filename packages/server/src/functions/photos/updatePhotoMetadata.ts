@@ -5,7 +5,12 @@ import {
   InvocationContext,
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
+import {
+  canAccessPhotoPath,
+  isVoiceMemoPathWithinPhotoScope,
+} from "../../utils/auth/photoAccess";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
 import {
   readGpsMetadata,
@@ -56,6 +61,9 @@ app.http("updatePhotoMetadata", {
     try {
       const blobName = request.query.get("name");
       if (!blobName) return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "name required" }) };
+      if (!await canAccessPhotoPath(blobName, payload, isGroupMember)) {
+        return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Forbidden" }) };
+      }
       const body = (await request.json()) as {
         subject?: string;
         originalName?: string;
@@ -66,6 +74,16 @@ app.http("updatePhotoMetadata", {
         gpsLon?: string;
         takenAt?: string;
       };
+      if (
+        body.voiceMemoName
+        && !isVoiceMemoPathWithinPhotoScope(blobName, body.voiceMemoName)
+      ) {
+        return {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "voiceMemoName must reference the same photo scope" }),
+        };
+      }
       const gpsUpdate = body.gpsLat !== undefined || body.gpsLon !== undefined
         ? readGpsMetadata({
             gpsLat: body.gpsLat ?? "",

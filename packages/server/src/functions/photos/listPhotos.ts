@@ -11,6 +11,7 @@ import {
   generateSasUrlWithKey,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isVoiceMemoPathWithinPhotoScope } from "../../utils/auth/photoAccess";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import {
   PhotoDerivativeNames,
@@ -115,7 +116,11 @@ app.http("listPhotos", {
         }
         const blobGroupId = segs[0] === "groups" ? segs[1] : undefined;
         const folder = folderRaw === "_" ? "" : folderRaw;
-        const voiceMemoName = getMeta(blob.metadata, "voiceMemoName");
+        const storedVoiceMemoName = getMeta(blob.metadata, "voiceMemoName");
+        const voiceMemoName = storedVoiceMemoName
+          && isVoiceMemoPathWithinPhotoScope(blob.name, storedVoiceMemoName)
+          ? storedVoiceMemoName
+          : undefined;
         const storedThumbnailName = decodeMeta(getMeta(blob.metadata, "thumbnailName"));
         const storedPreviewName = decodeMeta(getMeta(blob.metadata, "previewName"));
         storedDerivativeNames.set(blob.name, {

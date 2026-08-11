@@ -10,6 +10,7 @@ import {
   MomentInsightDoc,
 } from "../../utils/cosmos/cosmosClient";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
 import { normalizeLocalDateKey } from "./momentDateKey";
 
 type MomentInsightDocWithEtag = MomentInsightDoc & { _etag?: string };
@@ -90,19 +91,6 @@ function getScopeFromPhotoName(photoName: string):
   return { ok: false, response: json({ error: "Invalid photo path" }, 400) };
 }
 
-async function canAccessPhotoScope(
-  photoName: string,
-  userId: string,
-  role: string,
-): Promise<boolean> {
-  const scope = getScopeFromPhotoName(photoName);
-  if (!scope.ok) return false;
-  if (scope.scopeType === "personal") {
-    return scope.scopeId === userId || role === "admin";
-  }
-  return isGroupMember(scope.scopeId, userId);
-}
-
 app.http("listMomentInsights", {
   methods: ["GET", "POST"],
   authLevel: "anonymous",
@@ -129,7 +117,7 @@ app.http("listMomentInsights", {
     const uniqueNames = [...new Set(names)];
     const allowedNames: string[] = [];
     for (const photoName of uniqueNames) {
-      if (await canAccessPhotoScope(photoName, payload.userId, payload.role)) {
+      if (await canAccessPhotoPath(photoName, payload, isGroupMember)) {
         allowedNames.push(photoName);
       }
     }
@@ -199,12 +187,7 @@ app.http("recordMomentView", {
     const scope = getScopeFromPhotoName(photoName);
     if (!scope.ok) return scope.response;
 
-    const allowed =
-      scope.scopeType === "personal"
-        ? scope.scopeId === payload.userId || payload.role === "admin"
-        : await isGroupMember(scope.scopeId, payload.userId);
-
-    if (!allowed) {
+    if (!await canAccessPhotoPath(photoName, payload, isGroupMember)) {
       return json({ error: "Forbidden" }, 403);
     }
 

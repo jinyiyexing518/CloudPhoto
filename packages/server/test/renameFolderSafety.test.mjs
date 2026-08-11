@@ -314,6 +314,8 @@ test("path policy accepts only canonical relative same-parent renames", () => {
     "a/./b",
     "a/../b",
     "a\\b",
+    "_voice",
+    "a/_voice",
     "a\u0000b",
     "a\u001fb",
     "a\u007fb",

@@ -191,6 +191,7 @@ export interface ShareLinkDoc {
   displayName: string;
   groupId?: string;
   targetType?: ShareLinkTargetType;
+  targetScope?: string;
   folderPath?: string;
   targetPrefix?: string;
   createdAt: string;

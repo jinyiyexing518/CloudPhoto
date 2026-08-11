@@ -10,6 +10,10 @@ import {
   getUserDelegationKey,
   generateSasUrlWithKey,
 } from "../../utils/blob/blobStorage";
+import {
+  isGalleryPhotoPath,
+  isPhotoPathWithinScope,
+} from "../../utils/auth/photoAccess";
 import { getShareLinksContainer, ShareLinkDoc } from "../../utils/cosmos/cosmosClient";
 
 function decodeMeta(raw: string | undefined): string | undefined {
@@ -25,6 +29,12 @@ function decodeMeta(raw: string | undefined): string | undefined {
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
   return metadata[key] ?? metadata[key.toLowerCase()];
+}
+
+function recordedShareScope(resource: ShareLinkDoc): string | null {
+  if (resource.targetScope) return resource.targetScope;
+  if (resource.groupId) return `groups/${resource.groupId}`;
+  return resource.createdByUserId ? `personal/${resource.createdByUserId}` : null;
 }
 
 function escapeHtml(value: string): string {
@@ -146,20 +156,29 @@ app.http("openShareLink", {
         return { status: 404, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Shared photo not found" }) };
       }
 
-      const blobServiceClient = getBlobServiceClient();
-      const containerClient = blobServiceClient.getContainerClient(containerName);
-
       if ((resource.targetType ?? "photo") === "folder") {
-        if (!resource.targetPrefix) {
+        const scopePrefix = recordedShareScope(resource);
+        const folderPath = resource.folderPath;
+        const folderSegment = folderPath === "" ? "_" : folderPath;
+        const expectedTargetPrefix = scopePrefix && folderSegment
+          ? `${scopePrefix}/${folderSegment}/`
+          : "";
+        if (
+          !resource.targetPrefix
+          || resource.targetPrefix !== expectedTargetPrefix
+          || !scopePrefix
+          || !isPhotoPathWithinScope(`${expectedTargetPrefix}share-validation`, scopePrefix)
+        ) {
           return { status: 404, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Shared folder not found" }) };
         }
 
+        const containerClient = getBlobServiceClient().getContainerClient(containerName);
         const remainingHours = Math.max(1, Math.ceil((new Date(resource.expiresAt).getTime() - now) / (1000 * 60 * 60)));
         const key = await getUserDelegationKey(Math.min(remainingHours, 24));
         const items: Array<{ id: string; name: string; relativePath: string; url: string; updatedAt: string }> = [];
 
         for await (const blob of containerClient.listBlobsFlat({ prefix: resource.targetPrefix, includeMetadata: true })) {
-          if (getMeta(blob.metadata, "deletedAt")) continue;
+          if (!isGalleryPhotoPath(blob.name) || getMeta(blob.metadata, "deletedAt")) continue;
           const relativePath = blob.name.startsWith(resource.targetPrefix)
             ? blob.name.slice(resource.targetPrefix.length)
             : blob.name;
@@ -196,6 +215,11 @@ app.http("openShareLink", {
       }
 
       const blobName = resource.blobName as string;
+      const scopePrefix = recordedShareScope(resource);
+      if (!scopePrefix || !isPhotoPathWithinScope(blobName, scopePrefix)) {
+        return { status: 404, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Shared photo not found" }) };
+      }
+      const containerClient = getBlobServiceClient().getContainerClient(containerName);
       const props = await containerClient.getBlobClient(blobName).getProperties();
       if (getMeta(props.metadata, "deletedAt")) {
         return { status: 404, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Photo not found" }) };

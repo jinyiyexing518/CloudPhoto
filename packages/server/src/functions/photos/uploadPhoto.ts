@@ -10,6 +10,7 @@ import {
   generateSasUrl,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isPhotoFolderPath } from "../../utils/auth/photoAccess";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
 import type { BlockBlobClient } from "@azure/storage-blob";
@@ -261,6 +262,9 @@ app.http("uploadPhoto", {
             .filter(Boolean)
             .join("/")
         : "_";
+      if (!isPhotoFolderPath(safeFolderPath)) {
+        return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Invalid folder path" }) };
+      }
       const scope = groupId ? `groups/${groupId}` : `personal/${payload.userId}`;
       const objectId = rawUploadId || String(Date.now());
       const blobName = `${scope}/${safeFolderPath}/${objectId}-${safeName}`;

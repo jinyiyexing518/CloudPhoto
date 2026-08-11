@@ -1,4 +1,5 @@
 import type { ContainerClient } from "@azure/storage-blob";
+import { isPhotoFolderPath } from "../../utils/auth/photoAccess";
 
 export type FolderRenamePhase = "copy" | "delete";
 
@@ -102,6 +103,7 @@ function validateFolderPath(value: string, fieldName: string): string {
     || segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")
     || value.includes("\\")
     || CONTROL_CHARACTERS.test(value)
+    || !isPhotoFolderPath(normalized)
   ) {
     throw new FolderRenameError(400, `${fieldName} must be a canonical relative folder path`);
   }

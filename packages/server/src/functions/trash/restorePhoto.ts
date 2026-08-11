@@ -5,6 +5,7 @@ import {
   InvocationContext,
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
+import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
@@ -37,15 +38,8 @@ app.http("restorePhoto", {
     const blobName = request.query.get("name");
     if (!blobName) return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "name required" }) };
 
-    const segs = blobName.split("/");
-    if (segs[0] === "personal") {
-      if (segs[1] !== payload.userId && payload.role !== "admin") {
-        return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Forbidden" }) };
-      }
-    } else if (segs[0] === "groups") {
-      if (!await isGroupMember(segs[1], payload.userId)) {
-        return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Not a member of this group" }) };
-      }
+    if (!await canAccessPhotoPath(blobName, payload, isGroupMember)) {
+      return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Forbidden" }) };
     }
 
     try {

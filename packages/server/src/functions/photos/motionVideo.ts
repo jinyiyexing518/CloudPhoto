@@ -6,6 +6,8 @@ import {
 } from "@azure/functions";
 import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 
 /**
  * Parse XMP header text to locate the embedded motion video.
@@ -230,6 +232,14 @@ app.http("motionVideo", {
         status: 400,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ error: "Missing name parameter" }),
+      };
+    }
+
+    if (!await canAccessPhotoPath(blobName, payload, isGroupMember)) {
+      return {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Forbidden" }),
       };
     }
 

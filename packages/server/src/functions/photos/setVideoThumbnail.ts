@@ -11,6 +11,7 @@ import {
   generateSasUrlWithKey,
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { expectedPhotoDerivativeNames } from "./photoDerivatives";
 import type sharpT from "sharp";
@@ -82,20 +83,7 @@ app.http("setVideoThumbnail", {
     }
 
     try {
-      const segments = blobName.split("/");
-      const scopeType = segments[0];
-      const scopeId = segments[1] ?? "";
-      const filename = segments[segments.length - 1] ?? "";
-      const mayAccessPersonal = scopeType === "personal"
-        && (scopeId === payload.userId || payload.role === "admin");
-      const mayAccessGroup = scopeType === "groups"
-        && !!scopeId
-        && await isGroupMember(scopeId, payload.userId);
-      if (
-        segments.length < 4 ||
-        filename.startsWith("_th_") ||
-        (!mayAccessPersonal && !mayAccessGroup)
-      ) {
+      if (!await canAccessPhotoPath(blobName, payload, isGroupMember)) {
         return { status: 403, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Forbidden" }) };
       }
 

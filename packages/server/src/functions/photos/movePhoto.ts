@@ -9,7 +9,12 @@ import {
   containerName,
   generateSasUrl,
 } from "../../utils/blob/blobStorage";
+import {
+  canAccessPhotoPath,
+  isPhotoPathWithinSameScope,
+} from "../../utils/auth/photoAccess";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
+import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -53,6 +58,13 @@ app.http("movePhoto", {
           body: JSON.stringify({ error: "name and toFolder are required" }),
         };
       }
+      if (!await canAccessPhotoPath(name, payload, isGroupMember)) {
+        return {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Forbidden" }),
+        };
+      }
 
       // Path: {scope}/{ownerId}/{folderPath...}/{filename}  (4+ segments)
       // filename is always the last segment; folderPath can span multiple segments for sub-folders
@@ -77,6 +89,13 @@ app.http("movePhoto", {
             .join("/")
         : "_";
       const newBlobName = `${scope}/${ownerId}/${safeFolderPath}/${filename}`;
+      if (!isPhotoPathWithinSameScope(name, newBlobName)) {
+        return {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Invalid destination folder" }),
+        };
+      }
 
       if (newBlobName === name) {
         return {
