@@ -102,6 +102,15 @@ export interface PhotoLocation {
   scope?: string; name?: string; photoName?: string; lat: number; lon: number; sourceBlobEtag?: string; originalName?: string; contentType?: string;
 }
 
+export interface ReadOnlyPhotoLocation {
+  name: string;
+  gpsLat: string;
+  gpsLon: string;
+  sourceBlobEtag: string;
+}
+
+export const MAX_READ_ONLY_LOCATION_RECOVERY_PHOTOS = 64;
+
 function isPhotoPayload(value: unknown): value is Photo {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<Photo>;
@@ -365,6 +374,81 @@ export async function fetchPhotoLocations(
     throw new AuthorizationDriftError();
   }
   return locations;
+}
+
+export async function recoverReadOnlyPhotoLocations(
+  photos: ReadonlyArray<Pick<Photo, "name" | "blobEtag">>,
+  groupId = "",
+  options: { signal?: AbortSignal } = {},
+): Promise<{
+  locations: ReadOnlyPhotoLocation[];
+  processed: string[];
+  bytesRead: number;
+  truncated: boolean;
+}> {
+  if (photos.length > MAX_READ_ONLY_LOCATION_RECOVERY_PHOTOS) {
+    throw new Error(`Read-only location recovery is limited to ${MAX_READ_ONLY_LOCATION_RECOVERY_PHOTOS} photos`);
+  }
+  const url = groupId
+    ? `${API_BASE}/photos/locations/recover?groupId=${encodeURIComponent(groupId)}`
+    : `${API_BASE}/photos/locations/recover`;
+  const snapshot = getAuthorizationSnapshot();
+  if (!snapshot) throw new AuthorizationDriftError();
+  const generation = getAuthGeneration();
+  const response = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: authHeadersForSnapshot(snapshot, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ photos }),
+    signal: options.signal,
+  }, 5_000);
+  if (
+    generation !== getAuthGeneration()
+    || getAuthorizationSnapshot()?.cacheOwner !== snapshot.cacheOwner
+  ) {
+    await response.body?.cancel();
+    throw new AuthorizationDriftError();
+  }
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "恢复历史照片位置失败"));
+  }
+  const result = await response.json() as {
+    locations?: unknown;
+    processed?: unknown;
+    bytesRead?: unknown;
+    truncated?: unknown;
+  };
+  if (
+    generation !== getAuthGeneration()
+    || getAuthorizationSnapshot()?.cacheOwner !== snapshot.cacheOwner
+  ) {
+    throw new AuthorizationDriftError();
+  }
+  if (
+    !Array.isArray(result.locations)
+    || !result.locations.every((location) => (
+      location
+      && typeof location === "object"
+      && typeof location.name === "string"
+      && typeof location.gpsLat === "string"
+      && typeof location.gpsLon === "string"
+      && typeof location.sourceBlobEtag === "string"
+    ))
+    || !Array.isArray(result.processed)
+    || !result.processed.every((name) => typeof name === "string")
+    || typeof result.bytesRead !== "number"
+    || !Number.isSafeInteger(result.bytesRead)
+    || result.bytesRead < 0
+    || result.bytesRead > 8 * 1024 * 1024
+    || typeof result.truncated !== "boolean"
+  ) {
+    throw new Error("Invalid read-only location recovery response");
+  }
+  return {
+    locations: result.locations as ReadOnlyPhotoLocation[],
+    processed: result.processed as string[],
+    bytesRead: result.bytesRead,
+    truncated: result.truncated,
+  };
 }
 
 // ── Photo metadata mutations (consolidated via shared patchMetadata) ───────

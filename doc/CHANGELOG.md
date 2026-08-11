@@ -1,5 +1,13 @@
 # 更新日志
 
+### 2026-08-11 — 只读恢复原图内的历史位置
+
+**紧急修复**
+- **📍 无索引旧照片仍可定位** — 记忆地图只对服务端已证明 GPS metadata 完全缺失、且携带当前 Blob ETag 的照片启动只读恢复；服务端在授权 workspace 内以 ETag `If-Match` 从原图有界读取 TIFF/HEIC、标准或 Extended XMP GPS，不写 Blob、Cosmos 或回填状态
+- **🛡️ 有界且 fail closed** — 每批最多 64 张、顺序扫描、8 MiB 总 Range 预算、96 KiB 请求体，避免并发大图预算活锁；2.5 秒真实 wall-clock deadline 从 group authorization 开始，地图会话受 512 张、64 请求和 128 MiB 总读取共同限制；精确只读 POST 可串行线路/token 重试但绝不 hedge，跨 scope、stale、duplicate、冲突索引与 present-but-invalid metadata 继续拒绝
+
+---
+
 ### 2026-08-11 — 修复登录代理恢复与认证前 PWA 更新
 
 **紧急修复**

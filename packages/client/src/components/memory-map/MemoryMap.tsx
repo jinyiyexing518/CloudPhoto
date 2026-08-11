@@ -5,8 +5,10 @@ import "leaflet/dist/leaflet.css";
 import {
   Photo,
   PhotoLocation,
+  MAX_READ_ONLY_LOCATION_RECOVERY_PHOTOS,
   fetchPhotoLocations,
   isAuthorizationDriftError,
+  recoverReadOnlyPhotoLocations,
   updatePhotoGps,
 } from "../../services/photoApi";
 import MediaThumb from "../shared/MediaThumb";
@@ -15,6 +17,10 @@ import { useToast } from "../../contexts/ToastContext";
 import { readGpsCoordinates } from "../../utils/gpsCoordinates";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 import { partitionPhotoLocations } from "./memoryMapLocationPartitions";
+import {
+  applyReadOnlyLocationRecovery,
+  type ReadOnlyRecoveredLocation,
+} from "./readOnlyLocationRecovery";
 import {
   createMapTooltipContent,
   getMapMarkerLabel,
@@ -99,19 +105,56 @@ export default function MemoryMap({
   const [cosmosLocationState, setCosmosLocationState] = useState<{
     workspace: string;
     locations: PhotoLocation[];
-  }>({ workspace: groupId, locations: [] });
+    loaded: boolean;
+  }>({ workspace: groupId, locations: [], loaded: false });
   const cosmosLocations = cosmosLocationState.workspace === groupId
     ? cosmosLocationState.locations
     : [];
+  const cosmosLocationsLoaded = (
+    cosmosLocationState.workspace === groupId
+    && cosmosLocationState.loaded
+  );
+  const [readOnlyRecoveryState, setReadOnlyRecoveryState] = useState<{
+    workspace: string;
+    locations: ReadOnlyRecoveredLocation[];
+  }>({ workspace: groupId, locations: [] });
+  const [recoveryBatchRevision, setRecoveryBatchRevision] = useState(0);
+  const recoveryAttemptRef = useRef<{
+    workspace: string;
+    keys: Set<string>;
+    total: number;
+    requests: number;
+    bytesRead: number;
+  }>({
+    workspace: groupId,
+    keys: new Set(),
+    total: 0,
+    requests: 0,
+    bytesRead: 0,
+  });
+
+  useEffect(() => {
+    setReadOnlyRecoveryState({ workspace: groupId, locations: [] });
+    setRecoveryBatchRevision(0);
+    recoveryAttemptRef.current = {
+      workspace: groupId,
+      keys: new Set(),
+      total: 0,
+      requests: 0,
+      bytesRead: 0,
+    };
+  }, [groupId]);
 
   // Fetch GPS locations from Cosmos on mount (fast, independent of full photo list)
   useEffect(() => {
     const controller = new AbortController();
     const workspace = groupId;
-    setCosmosLocationState({ workspace, locations: [] });
+    setCosmosLocationState({ workspace, locations: [], loaded: false });
     void fetchPhotoLocations(workspace, { signal: controller.signal }).then(
       (locations) => {
-        if (!controller.signal.aborted) setCosmosLocationState({ workspace, locations });
+        if (!controller.signal.aborted) {
+          setCosmosLocationState({ workspace, locations, loaded: true });
+        }
       },
       (error: unknown) => {
         if (
@@ -139,15 +182,90 @@ export default function MemoryMap({
     () => photosGroupId === groupId ? photos : [],
     [groupId, photos, photosGroupId],
   );
+  const recoveredLocations = readOnlyRecoveryState.workspace === groupId
+    ? readOnlyRecoveryState.locations
+    : [];
+  const currentPhotosWithReadOnlyRecovery = useMemo(
+    () => applyReadOnlyLocationRecovery(currentPhotos, recoveredLocations),
+    [currentPhotos, recoveredLocations],
+  );
   const photosByName = useMemo(
-    () => new Map(currentPhotos.map((photo) => [photo.name, photo])),
-    [currentPhotos],
+    () => new Map(currentPhotosWithReadOnlyRecovery.map((photo) => [photo.name, photo])),
+    [currentPhotosWithReadOnlyRecovery],
   );
   const locationPartitions = useMemo(
-    () => partitionPhotoLocations(currentPhotos, cosmosLocations),
-    [cosmosLocations, currentPhotos],
+    () => partitionPhotoLocations(currentPhotosWithReadOnlyRecovery, cosmosLocations),
+    [cosmosLocations, currentPhotosWithReadOnlyRecovery],
   );
   const { geoPhotos, noGpsPhotos } = locationPartitions;
+
+  useEffect(() => {
+    if (!cosmosLocationsLoaded || noGpsPhotos.length === 0) return;
+    const attempts = recoveryAttemptRef.current;
+    if (attempts.workspace !== groupId) return;
+    const remainingCapacity = 512 - attempts.total;
+    const requestByteReservation = 8 * 1024 * 1024;
+    if (
+      remainingCapacity <= 0
+      || attempts.requests >= 64
+      || attempts.bytesRead + requestByteReservation > 128 * 1024 * 1024
+    ) return;
+    const candidates = [...noGpsPhotos]
+      .reverse()
+      .filter((photo) => (
+        photo.gpsMetadataPresent === false
+        && typeof photo.blobEtag === "string"
+        && photo.blobEtag.length > 0
+        && !attempts.keys.has(`${photo.name}@${photo.blobEtag}`)
+      ))
+      .slice(0, Math.min(MAX_READ_ONLY_LOCATION_RECOVERY_PHOTOS, remainingCapacity))
+      .map((photo) => ({ name: photo.name, blobEtag: photo.blobEtag }));
+    if (candidates.length === 0) return;
+    for (const candidate of candidates) {
+      attempts.keys.add(`${candidate.name}@${candidate.blobEtag}`);
+    }
+    attempts.total += candidates.length;
+    attempts.requests += 1;
+    attempts.bytesRead += requestByteReservation;
+    let reservationSettled = false;
+    const settleByteReservation = (bytesRead: number) => {
+      if (reservationSettled) return;
+      reservationSettled = true;
+      attempts.bytesRead -= requestByteReservation - bytesRead;
+    };
+
+    const controller = new AbortController();
+    void recoverReadOnlyPhotoLocations(candidates, groupId, {
+      signal: controller.signal,
+    }).then(
+      ({ locations, bytesRead }) => {
+        settleByteReservation(bytesRead);
+        if (controller.signal.aborted) return;
+        if (locations.length > 0) {
+          setReadOnlyRecoveryState((current) => {
+            if (current.workspace !== groupId) return current;
+            const next = new Map(current.locations.map((location) => [location.name, location]));
+            for (const location of locations) next.set(location.name, location);
+            return { workspace: groupId, locations: [...next.values()] };
+          });
+        }
+        setRecoveryBatchRevision((revision) => revision + 1);
+      },
+      (error: unknown) => {
+        settleByteReservation(requestByteReservation);
+        if (
+          controller.signal.aborted
+          || isAuthorizationDriftError(error)
+          || (error instanceof Error && error.name === "AbortError")
+        ) return;
+        console.warn("Read-only historical location recovery failed:", error);
+      },
+    );
+    return () => {
+      settleByteReservation(requestByteReservation);
+      controller.abort(new DOMException("Location recovery changed", "AbortError"));
+    };
+  }, [cosmosLocationsLoaded, groupId, noGpsPhotos, recoveryBatchRevision]);
 
   // Includes coordinates so effect re-runs on GPS updates, not just count changes
   const geoPhotoKey = useMemo(

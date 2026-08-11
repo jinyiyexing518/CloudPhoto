@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-read-only-photo-location-recovery",
+  "date": "2026-08-11",
+  "icon": "📍",
+  "title": "只读恢复原图内的历史位置",
+  "type": "fix",
+  "desc": "没有位置索引的旧照片现在可从当前原图内的 EXIF/XMP 恢复地图标记，无需修改历史数据。",
+  "details": "记忆地图只把服务端已证明 GPS metadata 完全缺失、且携带当前 Blob ETag 的照片分批提交到新的只读恢复端点。服务端从认证后的 96 KiB 请求体与 group membership 检查开始执行 2.5 秒真实 wall-clock deadline，再用 If-Match ETag、每批 64 张、顺序扫描和 8 MiB 总 Range 预算解析 TIFF/HEIC、标准 XMP 或 Extended XMP，避免并发大图互相耗尽预算而不推进。不写 Blob metadata、Cosmos 或任何回填状态，因此这个精确 POST 可在 token refresh 或线路故障后串行重放但绝不 hedge。客户端只接受同名且 sourceBlobEtag 与当前照片完全匹配的 finite/range 坐标，并将其标为当前 Blob 权威来源；每次地图会话还受 512 张、64 请求和 128 MiB 总读取上限约束。旧 photoName 行继续工作，缺 scope、stale/duplicate/冲突索引不能授权跨空间数据，present-but-invalid metadata 继续 fail closed。",
+  "seq": 1786453300000
+}

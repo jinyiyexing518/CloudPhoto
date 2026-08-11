@@ -387,6 +387,47 @@ test("retryable login gateway responses fall back but unsafe writes never replay
   localStorage.removeItem("cloudphoto_refresh_token");
 });
 
+test("only the exact read-only location recovery POST gains serial route replay", async (t) => {
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.startsWith("/api/")) {
+      throw new TypeError("same-origin transport failed");
+    }
+    return new Response(JSON.stringify({
+      locations: [],
+      processed: [],
+      bytesRead: 0,
+      truncated: false,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => { delete globalThis.fetch; });
+
+  const response = await fetchWithTimeout("/api/photos/locations/recover", {
+    method: "POST",
+    body: JSON.stringify({ photos: [] }),
+  }, 1_000);
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.splice(0), [
+    "/api/photos/locations/recover",
+    "https://cloudphoto-api.azurewebsites.net/api/photos/locations/recover",
+  ]);
+  assert.equal(shouldHedgeApiRequest("POST", "/photos/locations/recover"), false);
+
+  await assert.rejects(
+    fetchWithTimeout("/api/photos/locations", {
+      method: "POST",
+      body: "{}",
+    }, 1_000),
+    /same-origin transport failed/,
+  );
+  assert.deepEqual(calls, ["/api/photos/locations"]);
+});
+
 test("login errors describe exhausted transport and gateway routes instead of only the proxy", async (t) => {
   const calls = [];
   globalThis.fetch = async (input) => {

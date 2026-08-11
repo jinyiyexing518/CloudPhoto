@@ -60,7 +60,14 @@ test("all four location surfaces share the finite coordinate pair policy", async
     assert.doesNotMatch(surface, /gpsLat\s*&&\s*selectedPhoto\.gpsLon/);
     assert.doesNotMatch(surface, /isFinite\(parseFloat\(selectedPhoto\.gps/);
   }
-  assert.match(memoryMap, /partitionPhotoLocations\(currentPhotos, cosmosLocations\)/);
+  assert.match(
+    memoryMap,
+    /partitionPhotoLocations\(currentPhotosWithReadOnlyRecovery, cosmosLocations\)/,
+  );
+  assert.match(
+    memoryMap,
+    /applyReadOnlyLocationRecovery\(currentPhotos, recoveredLocations\)/,
+  );
   assert.match(memoryMap, /readGpsCoordinates\(manualLat, manualLon\) !== null/);
   assert.match(app, /filters\.noGpsOnly && hasValidGps\(p\.gpsLat, p\.gpsLon\)/);
 });
@@ -72,11 +79,15 @@ test("memory map renders Cosmos locations only for the workspace that produced t
   ]);
   assert.match(memoryMap, /cosmosLocationState\.workspace === groupId/);
   assert.match(memoryMap, /photosGroupId === groupId \? photos : \[\]/);
-  assert.match(memoryMap, /partitionPhotoLocations\(currentPhotos, cosmosLocations\)/);
+  assert.match(
+    memoryMap,
+    /partitionPhotoLocations\(currentPhotosWithReadOnlyRecovery, cosmosLocations\)/,
+  );
+  assert.match(memoryMap, /readOnlyRecoveryState\.workspace === groupId/);
   assert.match(memoryMap, /const \{ geoPhotos, noGpsPhotos \} = locationPartitions/);
   assert.match(memoryMap, /readGpsCoordinates\(manualLat, manualLon\) !== null/);
   assert.match(memoryMap, /showToast\(error instanceof Error \? error\.message/);
-  assert.match(memoryMap, /setCosmosLocationState\(\{ workspace, locations \}\)/);
+  assert.match(memoryMap, /setCosmosLocationState\(\{ workspace, locations, loaded: true \}\)/);
   assert.match(memoryMap, /controller\.abort\(new DOMException\("Workspace changed", "AbortError"\)\)/);
   assert.match(memoryMap, /locationIndexRevision/);
   assert.match(app, /activeTab === "map" && resolvedPhotoWorkspaceId !== null/);
