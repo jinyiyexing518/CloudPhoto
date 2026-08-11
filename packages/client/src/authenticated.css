@@ -7524,25 +7524,43 @@ body {
 @media (min-width: 681px) {
   .modal-content {
     flex-direction: row;
-    max-width: min(92vw, 1160px);
-    max-height: 90vh;
+  }
+  .modal-content:not(.modal-content--fullscreen) {
+    max-width: min(90vw, 1080px);
+    max-height: 88vh;
   }
   .modal-image-pane {
-    flex: 0 0 68%;
     align-self: stretch;
     min-height: 0;
   }
+  .modal-content:not(.modal-content--fullscreen) .modal-image-pane {
+    flex: 0 0 58%;
+  }
   .modal-image {
     max-width: 100%;
-    max-height: 90vh;
     min-height: 0;
+  }
+  .modal-content:not(.modal-content--fullscreen) .modal-image {
+    max-height: 88vh;
   }
   .modal-info {
     flex: 1;
     min-width: 0;
-    max-height: 90vh;
     border-top: none;
     border-left: 1px solid #f1f5f9;
+  }
+  .modal-content:not(.modal-content--fullscreen) .modal-info {
+    max-height: 88vh;
+  }
+  .modal-content--fullscreen {
+    max-width: min(92vw, 1160px);
+    max-height: 90vh;
+  }
+  .modal-content--fullscreen .modal-image-pane {
+    flex: 0 0 68%;
+  }
+  .modal-content--fullscreen .modal-info {
+    max-height: 90vh;
   }
 }
 
