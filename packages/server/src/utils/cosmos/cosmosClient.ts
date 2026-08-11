@@ -104,7 +104,7 @@ export interface PhotoLocationDoc {
   originalName?: string;
   contentType?: string;
   uploadedAt: string;
-  /** Blob ETag used to build this cache row; never returned by the public query. */
+  /** Blob ETag used to build this cache row and reject stale map/list hydration. */
   sourceBlobEtag?: string;
 }
 

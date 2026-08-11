@@ -66,6 +66,81 @@ export function createGpsJpeg() {
   ]);
 }
 
+export function createXmpGpsJpeg() {
+  const xmp = Buffer.from(
+    "<?xpacket begin='\uFEFF' id='W5M0MpCehiHzreSzNTczkc9d'?>"
+    + "<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+    + "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+    + "<rdf:Description rdf:about='' xmlns:exif='http://ns.adobe.com/exif/1.0/' "
+    + "exif:GPSLatitude='31,13.824N' exif:GPSLongitude='121,28.422E'/>"
+    + "</rdf:RDF></x:xmpmeta><?xpacket end='w'?>",
+    "utf8",
+  );
+  const payload = Buffer.concat([
+    Buffer.from("http://ns.adobe.com/xap/1.0/\0", "ascii"),
+    xmp,
+  ]);
+  const app1 = Buffer.alloc(4);
+  app1.writeUInt16BE(0xffe1, 0);
+  app1.writeUInt16BE(payload.length + 2, 2);
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8]),
+    app1,
+    payload,
+    Buffer.from([0xff, 0xd9]),
+  ]);
+}
+
+export function createExtendedXmpGpsJpeg() {
+  const guid = "0123456789ABCDEF0123456789ABCDEF";
+  const mainXmp = Buffer.from(
+    "<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+    + "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+    + "<rdf:Description rdf:about='' xmlns:xmpNote='http://ns.adobe.com/xmp/note/' "
+    + `xmpNote:HasExtendedXMP='${guid}'/>`
+    + "</rdf:RDF></x:xmpmeta>",
+    "utf8",
+  );
+  const extendedXmp = Buffer.from(
+    "<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+    + "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+    + "<rdf:Description rdf:about='' xmlns:exif='http://ns.adobe.com/exif/1.0/' "
+    + "exif:GPSLatitude='31.2304' exif:GPSLatitudeRef='S' "
+    + "exif:GPSLongitude='121.4737' exif:GPSLongitudeRef='W'/>"
+    + "</rdf:RDF></x:xmpmeta>",
+    "utf8",
+  );
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(extendedXmp.length);
+  const offset = Buffer.alloc(4);
+  offset.writeUInt32BE(0);
+  const mainPayload = Buffer.concat([
+    Buffer.from("http://ns.adobe.com/xap/1.0/\0", "ascii"),
+    mainXmp,
+  ]);
+  const extendedPayload = Buffer.concat([
+    Buffer.from("http://ns.adobe.com/xmp/extension/\0", "ascii"),
+    Buffer.from(guid, "ascii"),
+    length,
+    offset,
+    extendedXmp,
+  ]);
+  const mainApp1 = Buffer.alloc(4);
+  mainApp1.writeUInt16BE(0xffe1, 0);
+  mainApp1.writeUInt16BE(mainPayload.length + 2, 2);
+  const extendedApp1 = Buffer.alloc(4);
+  extendedApp1.writeUInt16BE(0xffe1, 0);
+  extendedApp1.writeUInt16BE(extendedPayload.length + 2, 2);
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8]),
+    mainApp1,
+    mainPayload,
+    extendedApp1,
+    extendedPayload,
+    Buffer.from([0xff, 0xd9]),
+  ]);
+}
+
 export function createGpsHeic() {
   const ftypPayload = Buffer.alloc(16);
   ftypPayload.write("mif1", 0, 4, "ascii");

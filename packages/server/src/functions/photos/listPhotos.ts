@@ -12,12 +12,24 @@ import {
 } from "../../utils/blob/blobStorage";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isVoiceMemoPathWithinPhotoScope } from "../../utils/auth/photoAccess";
-import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import {
+  getPhotoLocationsContainer,
+  isGroupMember,
+} from "../../utils/cosmos/cosmosClient";
 import {
   PhotoDerivativeNames,
   resolveListedPhotoDerivatives,
 } from "./photoDerivatives";
-import { readGpsMetadata } from "../../utils/photos/gpsCoordinates";
+import {
+  hasGpsMetadataKeys,
+  readGpsMetadata,
+} from "../../utils/photos/gpsCoordinates";
+import {
+  hydrateListedPhotoLocations,
+  listAuthorizedPhotoLocationRows,
+  type HydratablePhoto,
+  type ListedPhotoLocationSource,
+} from "./photoListLocationHydration";
 
 // Azure Blob metadata is ASCII-only; free-text fields are stored as base64
 function decodeMeta(raw: string | undefined): string | undefined {
@@ -33,6 +45,29 @@ function decodeMeta(raw: string | undefined): string | undefined {
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
   return metadata[key] ?? metadata[key.toLowerCase()];
+}
+
+interface ListedPhoto extends HydratablePhoto {
+  originalName: string | undefined;
+  subject: string | undefined;
+  folder: string | undefined;
+  groupId: string | undefined;
+  url: string;
+  thumbnailUrl: string | undefined;
+  previewUrl: string | undefined;
+  size: number | undefined;
+  lastModified: Date | undefined;
+  contentType: string | undefined;
+  createdAt: string | undefined;
+  createdBy: string | undefined;
+  favorite: boolean;
+  lastModifiedAt: string | undefined;
+  lastModifiedBy: string | undefined;
+  voiceMemoName: string | undefined;
+  voiceMemoUrl: string | undefined;
+  blobEtag: string | undefined;
+  takenAt: string | undefined;
+  isAnimated: boolean;
 }
 
 app.http("listPhotos", {
@@ -66,30 +101,8 @@ app.http("listPhotos", {
           ? "personal/"
           : `personal/${payload.userId}/`;
 
-      const photos: Array<{
-        name: string;
-        originalName: string | undefined;
-        subject: string | undefined;
-        folder: string | undefined;
-        groupId: string | undefined;
-        url: string;
-        thumbnailUrl: string | undefined;
-        previewUrl: string | undefined;
-        size: number | undefined;
-        lastModified: Date | undefined;
-        contentType: string | undefined;
-        createdAt: string | undefined;
-        createdBy: string | undefined;
-        favorite: boolean;
-        lastModifiedAt: string | undefined;
-        lastModifiedBy: string | undefined;
-        voiceMemoName: string | undefined;
-        voiceMemoUrl: string | undefined;
-        gpsLat: string | undefined;
-        gpsLon: string | undefined;
-        takenAt: string | undefined;
-        isAnimated: boolean;
-      }> = [];
+      const photos: ListedPhoto[] = [];
+      const locationSources: Array<ListedPhotoLocationSource<ListedPhoto>> = [];
       const listedDerivativeNames = new Set<string>();
       const storedDerivativeNames = new Map<string, Partial<PhotoDerivativeNames>>();
 
@@ -129,7 +142,7 @@ app.http("listPhotos", {
         });
 
         const gps = readGpsMetadata(blob.metadata);
-        photos.push({
+        const photo: ListedPhoto = {
           name: blob.name,
           originalName: decodeMeta(getMeta(blob.metadata, "originalName")),
           subject: decodeMeta(getMeta(blob.metadata, "subject")),
@@ -148,11 +161,31 @@ app.http("listPhotos", {
           lastModifiedBy: decodeMeta(getMeta(blob.metadata, "lastModifiedBy")),
           voiceMemoName,
           voiceMemoUrl: voiceMemoName ? generateSasUrlWithKey(voiceMemoName, delegationKey) : undefined,
+          blobEtag: blob.properties.etag,
           gpsLat: gps?.gpsLat,
           gpsLon: gps?.gpsLon,
           takenAt: getMeta(blob.metadata, "takenAt"),
           isAnimated: getMeta(blob.metadata, "isAnimated") === "1" || blob.properties.contentType === "image/gif",
+        };
+        photos.push(photo);
+        locationSources.push({
+          photo,
+          scope: `${segs[0]}/${segs[1]}`,
+          blobEtag: photo.blobEtag,
+          hasGpsMetadata: hasGpsMetadataKeys(blob.metadata),
         });
+      }
+
+      if (locationSources.some((source) => !source.hasGpsMetadata)) {
+        try {
+          const locationRows = await listAuthorizedPhotoLocationRows(
+            await getPhotoLocationsContainer(),
+            { groupId, userId: payload.userId, role: payload.role },
+          );
+          hydrateListedPhotoLocations(locationSources, locationRows);
+        } catch (error) {
+          context.warn("photoLocations list hydration failed (non-fatal):", error);
+        }
       }
 
       for (const photo of photos) {

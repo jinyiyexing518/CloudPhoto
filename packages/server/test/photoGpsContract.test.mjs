@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import exifr from "exifr";
 import uploadGps from "../dist/src/functions/photos/uploadGps.js";
+import {
+  createExtendedXmpGpsJpeg,
+  createGpsHeic,
+  createGpsJpeg,
+  createXmpGpsJpeg,
+} from "./fixtures/exifGpsFixtures.mjs";
 
 const {
   buildUploadGpsQuery,
+  parseXmpGps,
+  readPhotoGps,
   resolveUploadGps,
   uploadGpsMetadata,
   readGpsMetadata,
@@ -51,6 +60,8 @@ test("invalid, partial, and non-finite client coordinates fall back to server EX
     ["0", "-181"],
     ["NaN", "1"],
     ["1", "NaN"],
+    ["Infinity", "1"],
+    ["1", "-Infinity"],
     ["12", ""],
     ["", "34"],
   ]) {
@@ -59,5 +70,79 @@ test("invalid, partial, and non-finite client coordinates fall back to server EX
       gpsLon: "139.6503",
     });
   }
-  assert.equal(calls, 6);
+  assert.equal(calls, 8);
+});
+
+test("server fallback recovers standard XMP-only GPS that exifr.gps omits", async () => {
+  const jpeg = createXmpGpsJpeg();
+  assert.equal(await exifr.gps(jpeg), undefined);
+  assert.deepEqual(await readPhotoGps(jpeg), {
+    latitude: 31.2304,
+    longitude: 121.4737,
+  });
+});
+
+test("server fallback reads numeric hemisphere GPS from Adobe Extended XMP", async () => {
+  const jpeg = createExtendedXmpGpsJpeg();
+  const singleSegment = await exifr.parse(jpeg, {
+    xmp: true,
+    tiff: false,
+    icc: false,
+    iptc: false,
+    jfif: false,
+    mergeOutput: true,
+  });
+  assert.equal(parseXmpGps(singleSegment), null);
+  assert.deepEqual(await readPhotoGps(jpeg), {
+    latitude: -31.2304,
+    longitude: -121.4737,
+  });
+});
+
+test("server upload GPS reader preserves TIFF JPEG and HEIC fast paths", async () => {
+  for (const media of [createGpsJpeg(), createGpsHeic()]) {
+    const gps = await readPhotoGps(media);
+    assert.ok(gps);
+    assert.ok(Math.abs(gps.latitude - 31.2304) < 1e-8);
+    assert.ok(Math.abs(gps.longitude - 121.4737) < 1e-8);
+  }
+});
+
+test("XMP GPS conversion rejects partial, mismatched, and out-of-range coordinates", () => {
+  assert.deepEqual(parseXmpGps({
+    exif: {
+      GPSLatitude: "33,52.128S",
+      GPSLongitude: "151,12.558E",
+    },
+  }), {
+    latitude: -33.8688,
+    longitude: 151.2093,
+  });
+  assert.deepEqual(parseXmpGps({
+    GPSLatitude: 31.2304,
+    GPSLatitudeRef: "S",
+    GPSLongitude: 121.4737,
+    GPSLongitudeRef: "W",
+  }), {
+    latitude: -31.2304,
+    longitude: -121.4737,
+  });
+  assert.equal(parseXmpGps({ GPSLatitude: "31,13.824N" }), null);
+  assert.equal(parseXmpGps({
+    GPSLatitude: "31,13.824E",
+    GPSLongitude: "121,28.422E",
+  }), null);
+  assert.equal(parseXmpGps({
+    GPSLatitude: "31,,N",
+    GPSLongitude: "121,28.422E",
+  }), null);
+  assert.equal(parseXmpGps({
+    GPSLatitude: "31,13.824N",
+    GPSLatitudeRef: "S",
+    GPSLongitude: "121,28.422E",
+  }), null);
+  assert.equal(parseXmpGps({
+    GPSLatitude: "91,0N",
+    GPSLongitude: "121,28.422E",
+  }), null);
 });

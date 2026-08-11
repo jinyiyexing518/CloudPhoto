@@ -29,7 +29,7 @@ test("server fallback, Blob metadata, upload response, and refreshed list share 
     source("packages/server/src/functions/photos/listPhotos.ts"),
   ]);
   assert.match(upload, /resolveUploadGps\(gpsLat, gpsLon/);
-  assert.match(upload, /exifr\.gps\(buf\)/);
+  assert.match(upload, /readPhotoGps\(buf\)/);
   assert.match(upload, /resolveUploadMediaType\(contentType, filename/);
   assert.match(upload, /resolveUploadMediaType\(contentType, filename, buf\)/);
   assert.match(upload, /\.\.\.uploadGpsMetadata\(resolvedGps\)/);
@@ -45,7 +45,7 @@ test("personal and group authorization failures return before Blob fallback work
   const authIndex = upload.indexOf("extractTokenFromHeader");
   const membershipIndex = upload.indexOf("isGroupMember(groupId, payload.userId)");
   const blobIndex = upload.indexOf("getBlobServiceClient()");
-  const exifIndex = upload.indexOf("exifr.gps(buf)");
+  const exifIndex = upload.indexOf("readPhotoGps(buf)");
   assert.ok(authIndex >= 0 && membershipIndex > authIndex);
   assert.ok(blobIndex > membershipIndex);
   assert.ok(exifIndex > blobIndex);
@@ -63,7 +63,8 @@ test("maintenance skips videos and deleted blobs before bounded EXIF reads", asy
 
 test("maintenance records a bumped GPS scan marker without rescanning valid pairs", async () => {
   const recovery = await source("packages/server/src/functions/photos/photoMetadataRecovery.ts");
-  assert.match(recovery, /GPS_SCAN_VERSION = "2"/);
+  assert.match(recovery, /GPS_SCAN_VERSION = "3"/);
+  assert.match(recovery, /readPhotoGps\(buffer\)/);
   assert.match(recovery, /existingGps === null/);
   assert.match(recovery, /gpsScanVersion"\) !== GPS_SCAN_VERSION/);
   assert.match(recovery, /setMetadataValue\(latestMetadata, "gpsScanVersion", GPS_SCAN_VERSION\)/);

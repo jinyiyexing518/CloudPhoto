@@ -11,6 +11,7 @@ interface LocationItem {
   name: string;
   lat: number;
   lon: number;
+  sourceBlobEtag?: string;
   originalName?: string;
   contentType?: string;
 }
@@ -53,7 +54,7 @@ app.http("getPhotoLocations", {
         const scope = `groups/${groupId}`;
         const { resources } = await container.items
           .query<PhotoLocationDoc>({
-            query: "SELECT c.name, c.lat, c.lon, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
+            query: "SELECT c.name, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
             parameters: [{ name: "@scope", value: scope }],
           })
           .fetchAll();
@@ -63,7 +64,7 @@ app.http("getPhotoLocations", {
         const { resources } = await container.items
           .query<PhotoLocationDoc>(
             {
-              query: "SELECT c.name, c.lat, c.lon, c.originalName, c.contentType FROM c WHERE STARTSWITH(c.scope, 'personal/')",
+              query: "SELECT c.name, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE STARTSWITH(c.scope, 'personal/')",
             }
           )
           .fetchAll();
@@ -73,7 +74,7 @@ app.http("getPhotoLocations", {
         const scope = `personal/${payload.userId}`;
         const { resources } = await container.items
           .query<PhotoLocationDoc>({
-            query: "SELECT c.name, c.lat, c.lon, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
+            query: "SELECT c.name, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
             parameters: [{ name: "@scope", value: scope }],
           })
           .fetchAll();

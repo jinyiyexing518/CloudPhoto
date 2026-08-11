@@ -23,6 +23,7 @@ import {
 } from "./uploadAdmission";
 import {
   readGpsMetadata,
+  readPhotoGps,
   resolveUploadGps,
   uploadGpsMetadata,
 } from "./uploadGps";
@@ -355,11 +356,7 @@ app.http("uploadPhoto", {
       }
       const resolvedGps = await resolveUploadGps(gpsLat, gpsLon, async () => {
         if (isVideoUpload || isAudioUpload) return null;
-        try {
-          return await exifr.gps(buf);
-        } catch {
-          return null;
-        }
+        return readPhotoGps(buf);
       });
       // Animated check must happen before upload so we can conditionally skip thumbnail.
       // Motion photos (animated JPEG): sharp processes the JPEG portion, ignoring the video track.

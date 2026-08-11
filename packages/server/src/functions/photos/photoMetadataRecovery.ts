@@ -9,8 +9,9 @@ import {
   setGpsMetadata,
   setMetadataValue,
 } from "../../utils/photos/gpsCoordinates";
+import { readPhotoGps } from "./uploadGps";
 
-export const GPS_SCAN_VERSION = "2";
+export const GPS_SCAN_VERSION = "3";
 export const METADATA_SCAN_VERSION = "1";
 
 const IMAGE_SCAN_LIMITS: Record<string, { initialBytes: number; maxBytes: number }> = {
@@ -153,7 +154,7 @@ function formatExifDate(value: unknown): string | undefined {
 async function extractMetadata(buffer: Buffer): Promise<ExtractedMetadata> {
   const result: ExtractedMetadata = {};
   try {
-    const gps = await exifr.gps(buffer);
+    const gps = await readPhotoGps(buffer);
     const lat = parseFiniteCoordinate(String(gps?.latitude ?? ""), -90, 90);
     const lon = parseFiniteCoordinate(String(gps?.longitude ?? ""), -180, 180);
     if (lat !== null && lon !== null) {

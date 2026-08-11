@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import recovery from "../dist/src/functions/photos/photoMetadataRecovery.js";
+import { createXmpGpsJpeg } from "./fixtures/exifGpsFixtures.mjs";
 
 const {
   GPS_SCAN_VERSION,
@@ -110,6 +111,24 @@ test("recovers literal NaN GPS from a bounded JPEG EXIF prefix", async () => {
   assert.equal(item.writes[0].metadata.gpsLat, "31.2304");
   assert.equal(item.writes[0].metadata.gpsLon, "121.4737");
   assert.equal(item.writes[0].metadata.gpsScanVersion, GPS_SCAN_VERSION);
+});
+
+test("rescans the TIFF-only marker and recovers XMP-only GPS", async () => {
+  const bytes = createXmpGpsJpeg();
+  const item = candidate({
+    bytes,
+    metadata: { gpsScanVersion: "2" },
+  });
+  const result = await scanPhotoMetadataCandidate(item.input);
+
+  assert.equal(result.candidates, 1);
+  assert.equal(result.recovered, 1);
+  assert.equal(item.reads, 1);
+  assert.equal(item.syncs, 1);
+  assert.equal(item.writes.length, 1);
+  assert.equal(item.writes[0].metadata.gpsLat, "31.2304");
+  assert.equal(item.writes[0].metadata.gpsLon, "121.4737");
+  assert.notEqual(item.writes[0].metadata.gpsScanVersion, "2");
 });
 
 test("cleans both invalid GPS keys only after a complete no-EXIF scan", async () => {
