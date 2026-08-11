@@ -1,10 +1,14 @@
 const WORKBOX_EXPIRATION_DB_NAME = "workbox-expiration";
 const WORKBOX_EXPIRATION_STORE_NAME = "cache-entries";
+const WORKBOX_CACHE_NAME_INDEX = "cacheName";
 const CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
+const PRIVATE_CLEANUP_MARKER_KEY = "cloudphoto_private_cleanup_v2";
+const PRIVATE_CACHE_FENCE_MESSAGE = "cloudphoto-private-cache-fence";
 const LEGACY_PRIVATE_LOCAL_KEYS = [
   "cloudphoto_moments_insights_v1",
   "cloudphoto_moments_diagnostics_v1",
   "cf_recent_share_links",
+  "cloudphoto_private_cleanup_v1",
 ] as const;
 
 export type PrivateExpirationCleanupResult = {
@@ -12,14 +16,18 @@ export type PrivateExpirationCleanupResult = {
   deletedEntries: number;
 };
 
+type PrivateCacheFence = {
+  controller: ServiceWorker;
+  generation: number;
+};
+
 function cleanupFailure(step: string, cause: unknown): Error {
-  return new Error(`Private Workbox expiration cleanup failed during ${step}`, { cause });
+  return new Error(`Private cache cleanup failed during ${step}`, { cause });
 }
 
 export function removeLegacyPrivateLocalData(): void {
   try {
     for (const key of LEGACY_PRIVATE_LOCAL_KEYS) localStorage.removeItem(key);
-    localStorage.setItem("cloudphoto_private_cleanup_v1", "1");
   } catch {
     // Cache Storage cleanup and in-memory invalidation still proceed.
   }
@@ -33,87 +41,165 @@ export function storePrivateCacheOwner(authScope: string): void {
   }
 }
 
+function sendPrivateCacheFenceMessage(
+  controller: ServiceWorker,
+  command: "begin" | "resume",
+  generation?: number,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const channel = new MessageChannel();
+    const timeout = globalThis.setTimeout(() => {
+      channel.port1.close();
+      reject(cleanupFailure("service worker fence", new Error("response timed out")));
+    }, 1_000);
+    channel.port1.onmessage = ({ data }) => {
+      globalThis.clearTimeout(timeout);
+      channel.port1.close();
+      if (data?.ok === true && Number.isSafeInteger(data.generation)) {
+        resolve(data.generation);
+      } else {
+        reject(cleanupFailure("service worker fence", new Error("request rejected")));
+      }
+    };
+    try {
+      controller.postMessage(
+        { type: PRIVATE_CACHE_FENCE_MESSAGE, command, generation },
+        [channel.port2],
+      );
+    } catch (error) {
+      globalThis.clearTimeout(timeout);
+      channel.port1.close();
+      reject(cleanupFailure("service worker fence", error));
+    }
+  });
+}
+
+async function beginPrivateCacheFence(): Promise<PrivateCacheFence | null> {
+  if (
+    typeof navigator === "undefined"
+    || !("serviceWorker" in navigator)
+    || !navigator.serviceWorker.controller
+  ) {
+    return null;
+  }
+  const controller = navigator.serviceWorker.controller;
+  return {
+    controller,
+    generation: await sendPrivateCacheFenceMessage(controller, "begin"),
+  };
+}
+
 function openExistingExpirationDatabase(
   databaseFactory: IDBFactory,
 ): Promise<IDBDatabase | "database-absent"> {
   return new Promise((resolve, reject) => {
     let createdDatabase = false;
+    let settled = false;
     let request: IDBOpenDBRequest;
+    const resolveOnce = (result: IDBDatabase | "database-absent") => {
+      if (settled) {
+        if (typeof result !== "string") result.close();
+        return;
+      }
+      settled = true;
+      resolve(result);
+    };
+    const rejectOnce = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(cleanupFailure("database open", error));
+    };
     try {
       request = databaseFactory.open(WORKBOX_EXPIRATION_DB_NAME);
     } catch (error) {
-      reject(cleanupFailure("database open", error));
+      rejectOnce(error);
       return;
     }
     request.onupgradeneeded = () => {
       createdDatabase = true;
-      request.transaction?.abort();
-    };
-    request.onerror = () => {
-      if (createdDatabase) {
-        resolve("database-absent");
-        return;
+      try {
+        request.transaction?.abort();
+      } catch (error) {
+        rejectOnce(error);
       }
-      reject(cleanupFailure("database open", request.error));
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onblocked = () => rejectOnce(request.error);
+    request.onerror = () => {
+      if (createdDatabase) resolveOnce("database-absent");
+      else rejectOnce(request.error);
+    };
+    request.onsuccess = () => {
+      if (createdDatabase) {
+        request.result.close();
+        resolveOnce("database-absent");
+      } else {
+        resolveOnce(request.result);
+      }
+    };
   });
 }
 
-function collectPrivateExpirationKeys(
+function deletePrivateExpirationRows(
   database: IDBDatabase,
   privateCacheNames: ReadonlySet<string>,
-): Promise<IDBValidKey[]> {
-  return new Promise((resolve, reject) => {
-    let transaction: IDBTransaction;
-    let request: IDBRequest<IDBCursorWithValue | null>;
-    const keys: IDBValidKey[] = [];
-    try {
-      transaction = database.transaction(WORKBOX_EXPIRATION_STORE_NAME, "readonly");
-      request = transaction.objectStore(WORKBOX_EXPIRATION_STORE_NAME).openCursor();
-    } catch (error) {
-      reject(cleanupFailure("readonly transaction", error));
-      return;
-    }
-    transaction.oncomplete = () => resolve(keys);
-    transaction.onerror = () => reject(cleanupFailure("readonly transaction", transaction.error));
-    transaction.onabort = () => reject(cleanupFailure("readonly transaction", transaction.error));
-    request.onerror = () => reject(cleanupFailure("cursor scan", request.error));
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) return;
-      const row = cursor.value;
-      if (
-        row
-        && typeof row === "object"
-        && typeof (row as { cacheName?: unknown }).cacheName === "string"
-        && privateCacheNames.has((row as { cacheName: string }).cacheName)
-      ) {
-        keys.push(cursor.primaryKey);
-      }
-      cursor.continue();
-    };
-  });
-}
-
-function deleteExpirationKeys(
-  database: IDBDatabase,
-  keys: readonly IDBValidKey[],
-): Promise<void> {
-  if (keys.length === 0) return Promise.resolve();
+): Promise<number> {
   return new Promise((resolve, reject) => {
     let transaction: IDBTransaction;
     try {
       transaction = database.transaction(WORKBOX_EXPIRATION_STORE_NAME, "readwrite");
-      const store = transaction.objectStore(WORKBOX_EXPIRATION_STORE_NAME);
-      for (const key of keys) store.delete(key);
     } catch (error) {
       reject(cleanupFailure("readwrite transaction", error));
       return;
     }
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(cleanupFailure("readwrite transaction", transaction.error));
-    transaction.onabort = () => reject(cleanupFailure("readwrite transaction", transaction.error));
+    let deletedEntries = 0;
+    let settled = false;
+    const fail = (step: string, error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(cleanupFailure(step, error));
+    };
+    transaction.oncomplete = () => {
+      if (settled) return;
+      settled = true;
+      resolve(deletedEntries);
+    };
+    transaction.onerror = () => fail("readwrite transaction", transaction.error);
+    transaction.onabort = () => fail("readwrite transaction", transaction.error);
+
+    try {
+      const store = transaction.objectStore(WORKBOX_EXPIRATION_STORE_NAME);
+      if (!store.indexNames.contains(WORKBOX_CACHE_NAME_INDEX)) {
+        throw new Error("cacheName index unavailable");
+      }
+      const cacheNameIndex = store.index(WORKBOX_CACHE_NAME_INDEX);
+      for (const cacheName of privateCacheNames) {
+        const request = cacheNameIndex.openKeyCursor(cacheName);
+        request.onerror = () => fail("cacheName cursor", request.error);
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          try {
+            cursor.delete();
+            deletedEntries += 1;
+            cursor.continue();
+          } catch (error) {
+            try {
+              transaction.abort();
+            } catch {
+              // The cursor error remains the useful failure.
+            }
+            fail("cacheName cursor", error);
+          }
+        };
+      }
+    } catch (error) {
+      try {
+        transaction.abort();
+      } catch {
+        // The schema error remains the useful failure.
+      }
+      fail("readwrite transaction", error);
+    }
   });
 }
 
@@ -147,9 +233,8 @@ export async function purgePrivateWorkboxExpirationMetadata(
     if (!database.objectStoreNames.contains(WORKBOX_EXPIRATION_STORE_NAME)) {
       return { status: "store-absent", deletedEntries: 0 };
     }
-    const keys = await collectPrivateExpirationKeys(database, new Set(cacheNames));
-    await deleteExpirationKeys(database, keys);
-    return { status: "deleted", deletedEntries: keys.length };
+    const deletedEntries = await deletePrivateExpirationRows(database, new Set(cacheNames));
+    return { status: "deleted", deletedEntries };
   } finally {
     database.close();
   }
@@ -158,9 +243,23 @@ export async function purgePrivateWorkboxExpirationMetadata(
 export async function deletePrivateCaches(
   cacheNames: readonly string[],
   activePersistentWrites: ReadonlySet<Promise<void>>,
+  resumeCaching = false,
 ): Promise<void> {
   removeLegacyPrivateLocalData();
+  try {
+    localStorage.removeItem(PRIVATE_CLEANUP_MARKER_KEY);
+  } catch {
+    // In-memory ownership still gates private writes when storage is unavailable.
+  }
+
   const failures: unknown[] = [];
+  let fence: PrivateCacheFence | null = null;
+  try {
+    fence = await beginPrivateCacheFence();
+  } catch (error) {
+    failures.push(error);
+  }
+
   for (let pass = 0; pass < 2; pass += 1) {
     await Promise.allSettled([...activePersistentWrites]);
     if (typeof window !== "undefined" && "caches" in window) {
@@ -180,10 +279,21 @@ export async function deletePrivateCaches(
       failures.push(error);
     }
   }
-  if (failures.length > 0) {
-    const details = failures
-      .map((failure) => failure instanceof Error ? failure.message : String(failure))
-      .join("; ");
-    throw new AggregateError(failures, `Private cache cleanup failed: ${details}`);
+
+  if (failures.length === 0 && resumeCaching && fence) {
+    try {
+      await sendPrivateCacheFenceMessage(fence.controller, "resume", fence.generation);
+    } catch (error) {
+      failures.push(error);
+    }
   }
+  if (failures.length === 0) {
+    try {
+      localStorage.setItem(PRIVATE_CLEANUP_MARKER_KEY, "1");
+    } catch {
+      // The caller still receives the in-memory completion result.
+    }
+    return;
+  }
+  throw new AggregateError(failures, "Private cache cleanup failed");
 }

@@ -56,6 +56,41 @@ globalThis.window = {
 };
 globalThis.caches = globalThis.window.caches;
 
+const lifecycleSource = await read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const expirationMetadataSource = await read("packages/client/src/services/privateCachePurge.ts");
+assert(
+  lifecycleSource.includes('import("./privateCachePurge.ts")'),
+  "the login lifecycle must load Workbox expiration cleanup only at the private cleanup boundary",
+);
+assert(
+  lifecycleSource.includes("await cleanup.deletePrivateCaches(cacheNames, activePersistentWrites, resumeCaching)"),
+  "private cleanup must await the dynamically loaded Workbox metadata purge",
+);
+assert(
+  lifecycleSource.includes("if (expectedGeneration !== cacheGeneration) return false"),
+  "generation drift must block replacement-owner adoption",
+);
+for (const implementationMarker of [
+  '"workbox-expiration"',
+  '"cache-entries"',
+  "openKeyCursor(",
+]) {
+  assert(
+    !lifecycleSource.includes(implementationMarker),
+    `${implementationMarker} must not remain in the login entry dependency`,
+  );
+  assert(
+    expirationMetadataSource.includes(implementationMarker),
+    `${implementationMarker} must live in the deferred cleanup implementation`,
+  );
+}
+for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
+  assert(
+    !expirationMetadataSource.includes(sensitiveRead),
+    `${sensitiveRead} must not materialize private URLs or SAS values during cleanup`,
+  );
+}
+
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const workboxCleanup = await import("../packages/client/src/services/privateCachePurge.ts");
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
@@ -72,71 +107,110 @@ function createFakeWorkboxExpirationDb(
   {
     includeDatabase = true,
     includeStore = true,
+    includeIndex = true,
+    inventoryError = false,
+    openOutcome = "success",
+    readwriteOutcome = "complete",
+    trapSensitiveReads = false,
     onClose,
-    openFailure = false,
-    cursorFailure = false,
-    readonlyTransactionFailure = false,
-    readwriteTransactionFailure = false,
   } = {},
 ) {
   const rows = new Map(entries.map((entry) => [entry.id, { ...entry }]));
   let openCount = 0;
+  const openedDatabaseNames = [];
+  const transactions = [];
 
   const db = {
     objectStoreNames: {
       contains: (name) => includeStore && name === "cache-entries",
     },
-    transaction(_storeName, mode) {
+    transaction(storeName, mode) {
+      transactions.push({ storeName, mode });
+      const stagedDeletes = [];
+      let pendingCursors = 0;
+      let outcomeScheduled = false;
+      let aborted = false;
       const transaction = {
         error: null,
+        abort() {
+          if (aborted) return;
+          aborted = true;
+          transaction.error = new DOMException("Synthetic transaction abort", "AbortError");
+          queueMicrotask(() => transaction.onabort?.());
+        },
         objectStore() {
           return {
-            indexNames: { contains: () => false },
-            openCursor() {
-              const request = {};
-              if (cursorFailure) {
-                queueMicrotask(() => {
-                  request.error = new Error("fake cursor failure");
-                  request.onerror?.();
-                });
-                return request;
-              }
-              const storedRows = [...rows.values()];
-              let index = 0;
-              const advance = () => {
-                const value = storedRows[index++];
-                request.result = value
-                  ? {
-                      primaryKey: value.id,
-                      value,
-                      continue: () => queueMicrotask(advance),
-                    }
-                  : null;
-                request.onsuccess?.();
-                if (!value) queueMicrotask(() => transaction.oncomplete?.());
-              };
-              queueMicrotask(advance);
-              return request;
+            indexNames: {
+              contains: (name) => includeIndex && name === "cacheName",
             },
-            delete(key) {
-              rows.delete(key);
-              return {};
+            openCursor() {
+              throw new Error("full-store cursor access is forbidden");
+            },
+            index(name) {
+              if (!includeIndex || name !== "cacheName") {
+                throw new DOMException("Synthetic missing index", "NotFoundError");
+              }
+              return {
+                openKeyCursor(cacheName) {
+                  const request = {};
+                  const matchingRows = [...rows.values()].filter(
+                    (entry) => entry.cacheName === cacheName,
+                  );
+                  let cursorIndex = 0;
+                  pendingCursors += 1;
+                  const finishTransaction = () => {
+                    pendingCursors -= 1;
+                    if (pendingCursors !== 0 || outcomeScheduled || aborted) return;
+                    outcomeScheduled = true;
+                    queueMicrotask(() => {
+                      if (aborted) return;
+                      if (readwriteOutcome === "complete") {
+                        for (const key of stagedDeletes) rows.delete(key);
+                        transaction.oncomplete?.();
+                      } else {
+                        transaction.error = new DOMException(
+                          `Synthetic readwrite ${readwriteOutcome}`,
+                          readwriteOutcome === "abort" ? "AbortError" : "UnknownError",
+                        );
+                        transaction[`on${readwriteOutcome}`]?.();
+                      }
+                    });
+                  };
+                  const advance = () => {
+                    const value = matchingRows[cursorIndex++];
+                    if (!value) {
+                      request.result = null;
+                      request.onsuccess?.();
+                      finishTransaction();
+                      return;
+                    }
+                    const cursor = {
+                      delete() {
+                        stagedDeletes.push(value.id);
+                        return {};
+                      },
+                      continue: () => queueMicrotask(advance),
+                    };
+                    if (trapSensitiveReads) {
+                      for (const property of ["key", "primaryKey", "value"]) {
+                        Object.defineProperty(cursor, property, {
+                          get() {
+                            throw new Error(`sensitive cursor field read: ${property}`);
+                          },
+                        });
+                      }
+                    }
+                    request.result = cursor;
+                    request.onsuccess?.();
+                  };
+                  queueMicrotask(advance);
+                  return request;
+                },
+              };
             },
           };
         },
       };
-      const transactionFailure = (
-        (mode === "readonly" && readonlyTransactionFailure)
-        || (mode === "readwrite" && readwriteTransactionFailure)
-      );
-      if (transactionFailure) {
-        queueMicrotask(() => {
-          transaction.error = new Error(`fake ${mode} transaction failure`);
-          transaction.onerror?.();
-        });
-      } else if (mode === "readwrite") {
-        queueMicrotask(() => transaction.oncomplete?.());
-      }
       return transaction;
     },
     close() {
@@ -149,19 +223,39 @@ function createFakeWorkboxExpirationDb(
 
   const factory = {
     async databases() {
-      return includeDatabase ? [{ name: "workbox-expiration", version: 1 }] : [];
+      if (inventoryError) throw new Error("Synthetic metadata inventory failure");
+      return includeDatabase
+        ? [{ name: "unrelated-database", version: 7 }, { name: "workbox-expiration", version: 1 }]
+        : [{ name: "unrelated-database", version: 7 }];
     },
-    open() {
+    open(name) {
       openCount += 1;
+      openedDatabaseNames.push(name);
+      if (openOutcome === "throw") throw new DOMException("Synthetic open failure", "UnknownError");
       const request = {};
       queueMicrotask(() => {
-        if (openFailure) {
-          request.error = new Error("fake database open failure");
-          request.onerror?.();
+        if (openOutcome === "success") {
+          request.result = db;
+          request.onsuccess?.();
           return;
         }
-        request.result = db;
-        request.onsuccess?.();
+        if (openOutcome === "upgrade") {
+          request.result = db;
+          request.transaction = {
+            abort() {
+              request.error = new DOMException("Synthetic absent database", "AbortError");
+              queueMicrotask(() => request.onerror?.());
+            },
+          };
+          request.onupgradeneeded?.();
+          return;
+        }
+        if (openOutcome === "blocked") {
+          request.onblocked?.();
+          return;
+        }
+        request.error = new DOMException("Synthetic version failure", "VersionError");
+        request.onerror?.();
       });
       return request;
     },
@@ -171,9 +265,79 @@ function createFakeWorkboxExpirationDb(
     factory,
     openCount: () => openCount,
     count: (cacheName) => [...rows.values()].filter((entry) => entry.cacheName === cacheName).length,
+    openedDatabaseNames,
+    transactions,
   };
 }
+{
+  const originalDelete = window.caches.delete;
+  window.caches.delete = async () => {
+    throw new DOMException("Synthetic Cache Storage failure", "SecurityError");
+  };
+  try {
+    await assert.rejects(
+      workboxCleanup.deletePrivateCaches(privateCacheNames, new Set(), true),
+      /Private cache cleanup failed/,
+      "Cache Storage rejection must keep cleanup incomplete",
+    );
+  } finally {
+    window.caches.delete = originalDelete;
+  }
+  assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v2"), null);
+}
 
+{
+  const originalDelete = window.caches.delete;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const commands = [];
+  const deletionFenceStates = [];
+  let fenceGeneration = 0;
+  let cacheWritesEnabled = true;
+  const controller = {
+    postMessage(message, ports) {
+      commands.push(message.command);
+      if (message.command === "begin") {
+        fenceGeneration += 1;
+        cacheWritesEnabled = false;
+        ports[0].postMessage({ ok: true, generation: fenceGeneration });
+        return;
+      }
+      const ok = message.command === "resume" && message.generation === fenceGeneration;
+      if (ok) cacheWritesEnabled = true;
+      ports[0].postMessage({ ok, generation: fenceGeneration });
+    },
+  };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { serviceWorker: { controller } },
+  });
+  window.caches.delete = async () => {
+    deletionFenceStates.push(cacheWritesEnabled);
+    return true;
+  };
+  try {
+    await workboxCleanup.deletePrivateCaches(privateCacheNames, new Set(), true);
+    assert.deepEqual(commands, ["begin", "resume"]);
+    assert(
+      deletionFenceStates.every((enabled) => enabled === false),
+      "private cache writes must stay fenced throughout both cleanup passes",
+    );
+    assert.equal(cacheWritesEnabled, true, "replacement-owner preparation may resume writes");
+
+    commands.length = 0;
+    deletionFenceStates.length = 0;
+    await workboxCleanup.deletePrivateCaches(privateCacheNames, new Set());
+    assert.deepEqual(commands, ["begin"]);
+    assert.equal(cacheWritesEnabled, false, "logout cleanup must leave private SW writes fenced");
+  } finally {
+    window.caches.delete = originalDelete;
+    if (originalNavigator) {
+      Object.defineProperty(globalThis, "navigator", originalNavigator);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
+}
 const insight = {
   photoName: "private/photo.jpg",
   totalViews: 2,
@@ -194,6 +358,7 @@ localStorage.setItem("cf_recent_share_links", JSON.stringify([{
   createdAt: "2026-08-10T12:00:00.000Z",
 }]));
 values.set("cloudphoto_private_data_v1:non-enumerable-private-record", "private");
+localStorage.setItem("cloudphoto_private_cleanup_v1", "1");
 for (const [key, value] of [
   ["cf_grid_size", "lg"],
   ["fab-pos", JSON.stringify({ x: 10, y: 20 })],
@@ -204,7 +369,7 @@ for (const [key, value] of [
 ]) {
   localStorage.setItem(key, value);
 }
-await lifecycle.preparePrivatePhotoCachesForScope("account-a:viewer");
+assert.equal(await lifecycle.preparePrivatePhotoCachesForScope("account-a:viewer"), true);
 assert.equal(values.has("cloudphoto_moments_insights_v1"), false, "legacy insights must be deleted, not adopted");
 assert.equal(values.has("cloudphoto_moments_diagnostics_v1"), false, "legacy diagnostics must be deleted, not adopted");
 assert.equal(values.has("cf_recent_share_links"), false, "legacy share links must be deleted, not adopted");
@@ -213,6 +378,8 @@ assert.equal(
   false,
   "cleanup must use the Storage key API rather than enumerable object properties",
 );
+assert.equal(values.has("cloudphoto_private_cleanup_v1"), false, "legacy cleanup marker must not bypass the SW fence");
+assert.equal(values.get("cloudphoto_private_cleanup_v2"), "1", "fenced cleanup must write the versioned marker");
 assert.deepEqual(momentsStore.readPrivateMomentInsights("personal"), {}, "unowned legacy data must stay unreadable");
 assert.deepEqual(shareStore.listRecentShareLinks(), [], "unowned legacy share tokens must stay unreadable");
 for (const key of [
@@ -613,7 +780,7 @@ localStorage.removeItem(quotaKey);
     { id: "legacy-private", cacheName: "cf-media-v1", timestamp: 1 },
     { id: "list-private", cacheName: "cloudphoto-photo-lists-v1", timestamp: 1 },
     { id: "unknown", cacheName: "future-public-cache-v1", timestamp: 1 },
-  ]);
+  ], { trapSensitiveReads: true });
 
   const first = await workboxCleanup.purgePrivateWorkboxExpirationMetadata(
     expirationDb.factory,
@@ -626,6 +793,18 @@ localStorage.removeItem(quotaKey);
   assert.equal(expirationDb.count("cloudphoto-photo-lists-v1"), 0);
   assert.equal(expirationDb.count("app-code-v1"), 48);
   assert.equal(expirationDb.count("future-public-cache-v1"), 1);
+  assert.deepEqual(
+    expirationDb.openedDatabaseNames,
+    ["workbox-expiration"],
+    "cleanup must never inspect or mutate unrelated IndexedDB databases",
+  );
+  assert.deepEqual(
+    expirationDb.transactions.map(({ storeName, mode }) => ({ storeName, mode })),
+    [
+      { storeName: "cache-entries", mode: "readwrite" },
+    ],
+    "cleanup must use only one targeted Workbox cache-entries transaction and await completion",
+  );
 
   const second = await workboxCleanup.purgePrivateWorkboxExpirationMetadata(
     expirationDb.factory,
@@ -649,41 +828,52 @@ localStorage.removeItem(quotaKey);
     "store-absent",
   );
 
-  await assert.rejects(
-    workboxCleanup.purgePrivateWorkboxExpirationMetadata(
-      createFakeWorkboxExpirationDb([], { openFailure: true }).factory,
-      [],
-    ),
-    /database open/,
-    "IndexedDB open failures must reject explicitly",
+  const upgradeDb = createFakeWorkboxExpirationDb([], { openOutcome: "upgrade" });
+  assert.equal(
+    (await workboxCleanup.purgePrivateWorkboxExpirationMetadata(
+      upgradeDb.factory,
+      privateCacheNames,
+    )).status,
+    "database-absent",
+    "an upgrade attempt must be aborted instead of creating the Workbox database",
   );
+  for (const openOutcome of ["blocked", "error", "throw"]) {
+    await assert.rejects(
+      workboxCleanup.purgePrivateWorkboxExpirationMetadata(
+        createFakeWorkboxExpirationDb([], { openOutcome }).factory,
+        privateCacheNames,
+      ),
+      /database open/,
+      `${openOutcome} must reject explicitly`,
+    );
+  }
   await assert.rejects(
     workboxCleanup.purgePrivateWorkboxExpirationMetadata(
-      createFakeWorkboxExpirationDb([], { cursorFailure: true }).factory,
-      [],
-    ),
-    /cursor scan/,
-    "cursor failures must reject explicitly",
-  );
-  await assert.rejects(
-    workboxCleanup.purgePrivateWorkboxExpirationMetadata(
-      createFakeWorkboxExpirationDb([], { readonlyTransactionFailure: true }).factory,
-      [],
-    ),
-    /readonly transaction/,
-    "readonly transaction failures must reject explicitly",
-  );
-  await assert.rejects(
-    workboxCleanup.purgePrivateWorkboxExpirationMetadata(
-      createFakeWorkboxExpirationDb(
-        [{ id: "private", cacheName: "photo-media-v1", timestamp: 1 }],
-        { readwriteTransactionFailure: true },
-      ).factory,
-      ["photo-media-v1"],
+      createFakeWorkboxExpirationDb([], { includeIndex: false }).factory,
+      privateCacheNames,
     ),
     /readwrite transaction/,
-    "readwrite transaction failures must reject explicitly",
+    "a missing cacheName index must not fall back to a full-store URL-bearing scan",
   );
+  for (const readwriteOutcome of ["error", "abort"]) {
+    const failingTransaction = createFakeWorkboxExpirationDb(
+      [
+        { id: "private", cacheName: "photo-media-v1", timestamp: 1 },
+        { id: "app", cacheName: "app-code-v1", timestamp: 1 },
+      ],
+      { readwriteOutcome },
+    );
+    await assert.rejects(
+      workboxCleanup.purgePrivateWorkboxExpirationMetadata(
+        failingTransaction.factory,
+        privateCacheNames,
+      ),
+      /transaction/,
+      `readwrite ${readwriteOutcome} must reject explicitly`,
+    );
+    assert.equal(failingTransaction.count("photo-media-v1"), 1);
+    assert.equal(failingTransaction.count("app-code-v1"), 1);
+  }
 }
 
 availableCacheNames.add("photo-media-v1");
@@ -697,7 +887,7 @@ globalThis.indexedDB = {
 };
 await assert.rejects(
   lifecycle.clearPrivatePhotoCaches(),
-  /database open/,
+  /Private cache cleanup failed/,
   "metadata cleanup failures must reject the lifecycle cleanup promise",
 );
 assert.equal(
@@ -713,7 +903,7 @@ globalThis.indexedDB = cacheFailureDb.factory;
 cacheDeleteFailure = "photo-media-v1";
 await assert.rejects(
   lifecycle.clearPrivatePhotoCaches(),
-  /fake cache deletion failure/,
+  /Private cache cleanup failed/,
   "Cache Storage failures must reject after all targeted cleanup stages finish",
 );
 cacheDeleteFailure = null;
@@ -808,6 +998,11 @@ assert(
   && auth.includes("preparePrivatePhotoCachesForScope(nextScope)")
   && (auth.match(/restoreCurrentUser\(controller, generation\)/g) ?? []).length === 2,
   "restored sessions must validate and prepare the exact account/role scope before publishing the user",
+);
+assert(
+  auth.includes("await preparePrivatePhotoCachesForScope(nextScope)")
+  && auth.includes("if (!await preparePrivatePhotoCachesForScope(nextScope)) return;"),
+  "login and cross-tab replacement must block authenticated UI when cleanup is incomplete",
 );
 assert(
   auth.includes("replacementScope && replacementScope === currentScope"),

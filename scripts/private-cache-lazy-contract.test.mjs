@@ -23,10 +23,15 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
     lifecycle,
     /import\s+(?!type\b)[^;]+from "\.\/privateCachePurge\.ts"/,
   );
-  for (const marker of ["workbox-expiration", "cache-entries", "openCursor()"]) {
+  for (const marker of ["workbox-expiration", "cache-entries", "openKeyCursor("]) {
     assert.ok(cleanup.includes(marker), `lazy cleanup must own ${marker}`);
     assert.ok(!lifecycle.includes(marker), `static lifecycle shell must not own ${marker}`);
   }
+  assert.doesNotMatch(cleanup, /cursor\.(?:value|primaryKey)/);
+  assert.match(
+    lifecycle,
+    /await cleanup\.deletePrivateCaches\(cacheNames, activePersistentWrites, resumeCaching\)/,
+  );
   assert.ok(!auth.includes("void clearPrivatePhotoCaches()"));
   assert.match(auth, /await clearPrivatePhotoCaches\(\)/);
   assert.match(auth, /setUnauthorizedHandler\(async \(failedToken\)/);

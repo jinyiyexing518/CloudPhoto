@@ -1,12 +1,39 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import type { WorkboxPlugin } from "workbox-core";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const appVersion = process.env.npm_package_version ?? "0.0.0";
 const buildTime = new Date().toISOString();
 const clientDir = path.dirname(fileURLToPath(import.meta.url));
+const privateCacheWriteFence = {
+  handlerWillStart: async ({ state }) => {
+    if (state) {
+      const generationKey = ["__cloudPhotoPrivate", "CacheGeneration"].join("");
+      const generation = (
+        globalThis as typeof globalThis & Record<string, unknown>
+      )[generationKey];
+      state.cloudPhotoPrivateCacheGeneration =
+        typeof generation === "number" ? generation : 0;
+      const enabledKey = ["__cloudPhotoPrivate", "CacheEnabled"].join("");
+      state.cloudPhotoPrivateCacheWriteAllowed = (
+        globalThis as typeof globalThis & Record<string, unknown>
+      )[enabledKey] === true;
+    }
+  },
+  cacheWillUpdate: async ({ response, state }) => {
+    const generationKey = ["__cloudPhotoPrivate", "CacheGeneration"].join("");
+    const enabledKey = ["__cloudPhotoPrivate", "CacheEnabled"].join("");
+    const guard = globalThis as typeof globalThis & Record<string, unknown>;
+    return state?.cloudPhotoPrivateCacheWriteAllowed === true
+      && guard[enabledKey] === true
+      && state?.cloudPhotoPrivateCacheGeneration === guard[generationKey]
+      ? response
+      : null;
+  },
+} satisfies WorkboxPlugin;
 
 export default defineConfig({
   resolve: {
@@ -67,6 +94,7 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: false,
+        importScripts: ["private-cache-fence.js"],
         globPatterns: [
           "index.html",
           "assets/index-*.{js,css}",
@@ -121,6 +149,7 @@ export default defineConfig({
             options: {
               cacheName: "photo-media-v1",
               matchOptions: { ignoreSearch: false },
+              plugins: [privateCacheWriteFence],
               expiration: {
                 maxEntries: 600,           // ~200 photos × thumbnail, preview, or image original
                 maxAgeSeconds: 60 * 60,    // never outlive the one-hour private freshness window

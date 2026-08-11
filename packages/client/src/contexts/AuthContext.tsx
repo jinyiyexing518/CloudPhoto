@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await logout();
       return;
     }
-    await preparePrivatePhotoCachesForScope(nextScope);
+    if (!await preparePrivatePhotoCachesForScope(nextScope)) return;
     if (!controller.signal.aborted && generation === authSyncGeneration.current) {
       currentUserRef.current = nextUser;
       setUser(nextUser);
@@ -120,8 +120,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     cancelAuthSync();
     saveStoredAuth(resp.token, resp.refreshToken);
     const generation = authSyncGeneration.current;
-    await preparePrivatePhotoCachesForScope(nextScope);
-    if (generation === authSyncGeneration.current && getToken() === resp.token) {
+    if (
+      await preparePrivatePhotoCachesForScope(nextScope)
+      && generation === authSyncGeneration.current
+      && getToken() === resp.token
+    ) {
       currentUserRef.current = resp.user;
       setUser(resp.user);
       return true;

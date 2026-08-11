@@ -27,6 +27,7 @@ const hedgePolicy = read("packages/client/src/services/apiHedgePolicy.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
 const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
 const workboxCleanup = read("packages/client/src/services/privateCachePurge.ts");
+const privateCacheFence = read("packages/client/public/private-cache-fence.js");
 const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
 const maintenanceBackfillPaging = read("packages/client/src/services/maintenanceBackfillPaging.ts");
@@ -171,19 +172,42 @@ requireText(workboxCleanup, "Promise.allSettled([...activePersistentWrites])", "
 requireText(
   cacheLifecycle,
   'import("./privateCachePurge.ts")',
-  "lazy Workbox expiration cleanup boundary",
+  "awaited lazy Workbox expiration cleanup boundary",
+);
+for (const marker of ['"workbox-expiration"', '"cache-entries"', "openKeyCursor("]) {
+  assert(
+    !cacheLifecycle.includes(marker),
+    `${marker} must stay out of the statically loaded authentication lifecycle`,
+  );
+  requireText(workboxCleanup, marker, "deferred Workbox expiration implementation");
+}
+requireText(workboxCleanup, "objectStoreNames.contains", "defensive Workbox schema discovery");
+requireText(workboxCleanup, "indexNames.contains", "defensive Workbox index discovery");
+requireText(workboxCleanup, "for (const cacheName of privateCacheNames)", "targeted cache-name selection");
+requireText(workboxCleanup, "openKeyCursor(cacheName)", "index-only private metadata scan");
+requireText(workboxCleanup, "beginPrivateCacheFence", "service-worker write fence");
+requireText(workboxCleanup, 'command: "begin" | "resume"', "service-worker fence protocol");
+requireText(privateCacheFence, 'event.data.command === "begin"', "service-worker fence activation");
+requireText(privateCacheFence, 'event.data.command === "resume"', "service-worker fence release");
+requireText(vite, "handlerWillStart", "private media request generation capture");
+requireText(vite, "cacheWillUpdate", "private media late-write rejection");
+requireText(vite, "cloudPhotoPrivateCacheWriteAllowed", "disabled-fence request rejection");
+requireText(vite, 'importScripts: ["private-cache-fence.js"]', "private media fence bootstrap");
+assert(
+  !workboxCleanup.includes("cursor.value")
+    && !workboxCleanup.includes("cursor.primaryKey"),
+  "private metadata cleanup must not materialize URL-bearing values or primary keys",
 );
 assert(
   !cacheLifecycle.includes('"workbox-expiration"')
   && !cacheLifecycle.includes('"cache-entries"')
-  && !cacheLifecycle.includes("openCursor()"),
+  && !cacheLifecycle.includes("openKeyCursor("),
   "the statically reachable private-cache shell must not contain IndexedDB purge implementation",
 );
 requireText(workboxCleanup, '"workbox-expiration"', "Workbox expiration metadata inventory");
 requireText(workboxCleanup, '"cache-entries"', "Workbox expiration metadata store");
 requireText(workboxCleanup, "objectStoreNames.contains", "defensive Workbox schema discovery");
-requireText(workboxCleanup, "openCursor()", "bounded metadata row scan");
-requireText(workboxCleanup, "privateCacheNames.has", "targeted private metadata selection");
+requireText(workboxCleanup, "openKeyCursor(cacheName)", "index-only private metadata scan");
 requireText(workboxCleanup, "reject(cleanupFailure", "explicit IndexedDB failure propagation");
 requireText(workboxCleanup, "for (let pass = 0; pass < 2; pass += 1)", "late-write cleanup pass");
 assert(
@@ -217,6 +241,11 @@ requireText(auth, "getTokenAuthScope() !== nextScope", "restore token/role drift
 requireText(auth, "preparePrivatePhotoCachesForScope(nextScope)", "restore authorization ownership");
 requireText(auth, "getTokenAuthScope(resp.token) !== nextScope", "login token/user scope validation");
 requireText(auth, "preparePrivatePhotoCachesForScope(nextScope)", "account/role ownership");
+requireText(
+  auth,
+  "if (!await preparePrivatePhotoCachesForScope(nextScope)) return;",
+  "cross-tab cleanup success gate",
+);
 assert.equal(
   (auth.match(/restoreCurrentUser\(controller, generation\)/g) ?? []).length,
   2,

@@ -4,6 +4,7 @@ const PRIVATE_MEDIA_CACHE_NAMES = ["photo-media-v1", "cf-media-v1"] as const;
 const PRIVATE_CACHE_NAMES = [PHOTO_LIST_CACHE_NAME, ...PRIVATE_MEDIA_CACHE_NAMES] as const;
 const CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
 const PRIVATE_LOCAL_DATA_PREFIX = "cloudphoto_private_data_v1:";
+const PRIVATE_CLEANUP_MARKER_KEY = "cloudphoto_private_cleanup_v2";
 
 let cacheGeneration = 0;
 let activePrivateCacheOwner: string | null = null;
@@ -44,7 +45,11 @@ function removeScopedPrivateLocalData(): void {
       if (key) keys.push(key);
     }
     for (const key of keys) {
-      if (key === CACHE_OWNER_KEY || key.startsWith(PRIVATE_LOCAL_DATA_PREFIX)) {
+      if (
+        key === CACHE_OWNER_KEY
+        || key === PRIVATE_CLEANUP_MARKER_KEY
+        || key.startsWith(PRIVATE_LOCAL_DATA_PREFIX)
+      ) {
         localStorage.removeItem(key);
       }
     }
@@ -53,7 +58,11 @@ function removeScopedPrivateLocalData(): void {
   }
 }
 
-function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean): Promise<void> {
+function queueCacheDeletion(
+  cacheNames: readonly string[],
+  clearOwner: boolean,
+  resumeCaching = !clearOwner,
+): Promise<void> {
   cacheGeneration += 1;
   if (clearOwner) activePrivateCacheOwner = null;
   for (const reset of resetListeners) reset(clearOwner);
@@ -61,7 +70,7 @@ function queueCacheDeletion(cacheNames: readonly string[], clearOwner: boolean):
 
   const deletePrivateCaches = async () => {
     const cleanup = await loadPrivateCacheCleanup();
-    await cleanup.deletePrivateCaches(cacheNames, activePersistentWrites);
+    await cleanup.deletePrivateCaches(cacheNames, activePersistentWrites, resumeCaching);
   };
   cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
   return cleanupChain;
@@ -83,24 +92,25 @@ export function clearPrivatePhotoCaches(): Promise<void> {
  * Adopts private caches for one authorization scope (`userId:role`). Unknown
  * legacy ownership, account switches, and role changes delete private data.
  */
-export async function preparePrivatePhotoCachesForScope(authScope: string): Promise<void> {
-  if (typeof window === "undefined" || !authScope) return;
+export async function preparePrivatePhotoCachesForScope(authScope: string): Promise<boolean> {
+  if (typeof window === "undefined" || !authScope) return false;
   let owner: string | null = null;
   let cleanupComplete = false;
   try {
     owner = localStorage.getItem(CACHE_OWNER_KEY);
-    cleanupComplete = localStorage.getItem("cloudphoto_private_cleanup_v1") === "1";
+    cleanupComplete = localStorage.getItem(PRIVATE_CLEANUP_MARKER_KEY) === "1";
   } catch {
     // Treat storage failures as unknown ownership.
   }
   const pendingCleanup = owner !== authScope || !cleanupComplete
-    ? clearPrivatePhotoCaches()
+    ? queueCacheDeletion(PRIVATE_CACHE_NAMES, true, true)
     : cleanupChain;
   const expectedGeneration = cacheGeneration;
   const cleanup = await loadPrivateCacheCleanup();
   cleanup.removeLegacyPrivateLocalData();
   await pendingCleanup;
-  if (expectedGeneration !== cacheGeneration) return;
+  if (expectedGeneration !== cacheGeneration) return false;
   activePrivateCacheOwner = authScope;
   cleanup.storePrivateCacheOwner(authScope);
+  return true;
 }

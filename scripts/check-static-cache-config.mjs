@@ -485,6 +485,27 @@ function checkHashedAssets(configPath) {
   } catch (error) {
     fail(configPath, `cannot inspect built service worker: ${error.message}`);
   }
+  const privateCacheFencePath = join(dirname(configPath), "private-cache-fence.js");
+  if (!existsSync(privateCacheFencePath)) {
+    fail(configPath, "built service worker is missing its private cache write fence");
+  }
+  const privateCacheFence = readFileSync(privateCacheFencePath, "utf8");
+  for (const marker of [
+    "cloudphoto-private-cache-fence",
+    "__cloudPhotoPrivateCacheGeneration",
+    "__cloudPhotoPrivateCacheEnabled",
+  ]) {
+    if (!privateCacheFence.includes(marker)) fail(configPath, `private cache fence is missing ${marker}`);
+  }
+  for (const marker of [
+    "private-cache-fence.js",
+    "__cloudPhotoPrivate",
+    "CacheGeneration",
+    "CacheEnabled",
+    "cloudPhotoPrivateCacheWriteAllowed",
+  ]) {
+    if (!serviceWorker.includes(marker)) fail(configPath, `service worker is missing ${marker}`);
+  }
   if (serviceWorker.includes(`assets/${basename(galleryChunks[0])}`)) {
     fail(configPath, "deferred PhotoGallery chunk must not be downloaded by the precache");
   }
