@@ -31,7 +31,7 @@ const frontendInitialOwnershipCondition = null;
 const frontendFinalOwnershipCondition =
   "steps.deployment_ownership_initial.outputs.should_deploy == 'true'";
 const frontendReceiptCommand =
-  'echo "::notice::Canonical frontend deployment receipt for ${GITHUB_SHA} from run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}."';
+  "node scripts/check-frontend-deployment-ownership.mjs --confirm-current-main";
 const frontendRequeueCommand =
   "gh workflow run deploy-frontend.yml --ref main -f mode=production";
 const frontendUploadToken = "${{ steps.swa_token.outputs.deployment_token }}";
@@ -525,7 +525,10 @@ export function inspectWorkflow(text, path = "workflow.yml") {
         job: step.job,
       };
     }
-    if (name === "Check deployment ownership" || name === "Recheck deployment ownership") {
+    if (
+      name === "Check deployment ownership"
+      || name === "Recheck deployment ownership"
+    ) {
       frontendDeploymentOwnershipChecks.push({
         command: stepField(step, "run"),
         condition: stepField(step, "if"),
@@ -539,12 +542,15 @@ export function inspectWorkflow(text, path = "workflow.yml") {
       frontendDeploymentReceipt = {
         command: stepField(step, "run"),
         condition: stepField(step, "if"),
+        ghToken: stepChildField(step, "env", "GITHUB_TOKEN"),
+        id: stepField(step, "id"),
         job: step.job,
       };
     }
     if (
       name === "Requeue current main tip after initial check"
       || name === "Requeue current main tip after final check"
+      || name === "Requeue current main tip after receipt fence"
     ) {
       frontendDeploymentRequeues.push({
         command: stepField(step, "run"),
@@ -953,21 +959,26 @@ export function checkWorkflowRuntimeContracts(workflows) {
       || ownershipChecks["Recheck deployment ownership"]?.command !== frontendOwnershipCommand
       || frontendPolicy.frontendDeploymentReceipt?.job !== "deploy_production"
       || frontendPolicy.frontendDeploymentReceipt?.condition !== frontendActualUploadCondition
+      || frontendPolicy.frontendDeploymentReceipt?.id !== "canonical_receipt"
+      || frontendPolicy.frontendDeploymentReceipt?.ghToken
+        !== "${{ secrets.GITHUB_TOKEN }}"
       || frontendPolicy.frontendDeploymentReceipt?.command !== frontendReceiptCommand
     ) {
       issues.push(
-        `${frontendWorkflow} must coalesce stale and duplicate production runs with two ownership checks and an explicit deployment receipt`
+        `${frontendWorkflow} must coalesce stale and duplicate production runs with pre-upload ownership checks and a main-tip-fenced deployment receipt`
       );
     }
     const requeueSteps = Object.fromEntries(
       frontendPolicy.frontendDeploymentRequeues.map((step) => [step.name, step])
     );
     if (
-      frontendPolicy.frontendDeploymentRequeues.length !== 2
+      frontendPolicy.frontendDeploymentRequeues.length !== 3
       || requeueSteps["Requeue current main tip after initial check"]?.condition
         !== "steps.deployment_ownership_initial.outputs.reason == 'stale-main'"
       || requeueSteps["Requeue current main tip after final check"]?.condition
         !== "steps.deployment_ownership_final.outputs.reason == 'stale-main'"
+      || requeueSteps["Requeue current main tip after receipt fence"]?.condition
+        !== "always() && steps.canonical_receipt.outputs.reason == 'stale-main'"
       || frontendPolicy.frontendDeploymentRequeues.some(
         (step) =>
           step.job !== "deploy_production"

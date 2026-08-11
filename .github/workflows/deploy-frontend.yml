@@ -246,8 +246,17 @@ jobs:
           skip_app_build: true        # we built manually above to inject env vars
 
       - name: Record canonical deployment receipt
+        id: canonical_receipt
         if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && steps.deployment_ownership_final.outputs.should_deploy == 'true'
-        run: echo "::notice::Canonical frontend deployment receipt for ${GITHUB_SHA} from run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-frontend-deployment-ownership.mjs --confirm-current-main
+
+      - name: Requeue current main tip after receipt fence
+        if: always() && steps.canonical_receipt.outputs.reason == 'stale-main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-frontend.yml --ref main -f mode=production
 
       - name: Report coalesced deployment
         if: steps.deployment_ownership_initial.outputs.should_deploy != 'true' || steps.deployment_ownership_final.outputs.should_deploy == 'false'

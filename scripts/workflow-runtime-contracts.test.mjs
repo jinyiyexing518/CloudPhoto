@@ -7,6 +7,7 @@ import {
 } from "./classify-deployment-event.mjs";
 import {
   checkDeploymentOwnership,
+  checkCurrentMainOwnership,
   classifyFrontendDeploymentJob,
   parseDeploymentMarker,
 } from "./check-frontend-deployment-ownership.mjs";
@@ -227,7 +228,7 @@ test("requires deployment ownership and receipt gates beyond serialization", () 
     "Recheck deployment ownership",
     "node scripts/check-frontend-deployment-ownership.mjs",
     "Record canonical deployment receipt",
-    "steps.deployment_ownership_final.outputs.should_deploy == 'true'",
+    "node scripts/check-frontend-deployment-ownership.mjs --confirm-current-main",
     "Requeue current main tip",
     "gh workflow run deploy-frontend.yml --ref main -f mode=production",
   ]) {
@@ -269,6 +270,43 @@ test("rejects a serialized frontend workflow without final ownership coalescing"
       issue.includes("coalesce stale and duplicate production runs")
     )
   );
+});
+
+test("rejects a canonical receipt without an in-step main-tip fence", () => {
+  const path = ".github/workflows/deploy-frontend.yml";
+  const frontend = readFileSync(
+    new URL("../.github/workflows/deploy-frontend.yml", import.meta.url),
+    "utf8"
+  ).replace(
+    "        run: node scripts/check-frontend-deployment-ownership.mjs --confirm-current-main",
+    "        run: echo receipt-without-current-main-fence"
+  );
+  const result = checkWorkflowRuntimeContracts([{ path, text: frontend }]);
+
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.includes("main-tip-fenced deployment receipt")
+    )
+  );
+});
+
+test("final receipt ownership checks current main without coalescing on old receipts", async () => {
+  const sha = "b".repeat(40);
+  const result = await checkCurrentMainOwnership({
+    expectedSha: sha,
+    repository: "owner/repo",
+    requestJson: async (path) => {
+      assert.equal(path, "/repos/owner/repo/git/ref/heads/main");
+      return { object: { sha } };
+    },
+  });
+
+  assert.deepEqual(result, {
+    reason: "owned",
+    receiptRunAttempt: "",
+    receiptRunId: "",
+    shouldDeploy: true,
+  });
 });
 
 test("rejects non-main manual frontend runs that can upload to production", () => {

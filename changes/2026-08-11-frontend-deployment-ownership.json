@@ -5,6 +5,6 @@
   "title": "前端生产部署增加所有权与幂等凭据",
   "type": "fix",
   "desc": "旧版本和重复版本不再顺序重复上传，生产健康检查只验证真正完成的 Azure 部署。",
-  "details": "Frontend 对每次 main push 创建候选 run；stale run 若替换唯一 pending 会自动重新 dispatch 当前 main。production job 在取 token 前和 upload 前双重确认触发 SHA 仍是远端 main tip，完整分页检查同 workflow、同 SHA所有 runs 的全部 attempts 与成功 upload receipt，并要求主域/SWA实时 marker 仍匹配。重复或过期 run 以 0 次 upload 安全结束，线上漂移则重新发布修复；Production Health 只认 attempt-specific Azure upload + canonical receipt，并用 run ID + attempt 隔离 coalesced success。",
+  "details": "Frontend 对每次 main push 创建候选 run；stale run 若替换唯一 pending 会自动重新 dispatch 当前 main。production job 在取 token 前、upload 前和 upload 后确认触发 SHA 仍是远端 main tip，完整分页检查同 workflow、同 SHA所有 runs 的全部 attempts 与成功 upload receipt，并要求主域/SWA实时 marker 仍匹配。upload 窗口内 main 前移时不写 canonical receipt并重排 current tip；重复或过期 run 以 0 次 upload 安全结束，线上漂移则重新发布修复。Production Health 只认 attempt-specific Azure upload + canonical receipt，并用 run ID + attempt 隔离 coalesced success。",
   "seq": 1786471200000
 }

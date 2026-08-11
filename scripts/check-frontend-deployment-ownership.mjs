@@ -86,6 +86,31 @@ export function parseDeploymentMarker({ body, cacheControl, origin }) {
   return payload.sha.toLowerCase();
 }
 
+export async function checkCurrentMainOwnership({
+  expectedSha,
+  repository,
+  requestJson,
+}) {
+  if (!commitShaPattern.test(expectedSha ?? "")) {
+    throw new Error("GITHUB_SHA must be a 40-character commit SHA");
+  }
+  if (!/^[^/\s]+\/[^/\s]+$/.test(repository ?? "")) {
+    throw new Error("GITHUB_REPOSITORY must use owner/repository form");
+  }
+  const normalizedSha = expectedSha.toLowerCase();
+  const mainRef = await requestJson(`/repos/${repository}/git/ref/heads/main`);
+  const remoteMainSha = mainRef?.object?.sha?.toLowerCase();
+  if (!commitShaPattern.test(remoteMainSha ?? "")) {
+    throw new Error("GitHub main ref response did not contain a valid commit SHA");
+  }
+  return {
+    reason: remoteMainSha === normalizedSha ? "owned" : "stale-main",
+    receiptRunAttempt: "",
+    receiptRunId: "",
+    shouldDeploy: remoteMainSha === normalizedSha,
+  };
+}
+
 async function defaultReadDeploymentMarker(url, expectedSha) {
   const markerUrl = new URL(url);
   markerUrl.searchParams.set("sha", expectedSha);
@@ -174,18 +199,13 @@ export async function checkDeploymentOwnership({
     throw new Error("markerDelayMs must be an integer between 0 and 30000");
   }
   const normalizedSha = expectedSha.toLowerCase();
-  const mainRef = await requestJson(`/repos/${repository}/git/ref/heads/main`);
-  const remoteMainSha = mainRef?.object?.sha?.toLowerCase();
-  if (!commitShaPattern.test(remoteMainSha ?? "")) {
-    throw new Error("GitHub main ref response did not contain a valid commit SHA");
-  }
-  if (remoteMainSha !== normalizedSha) {
-    return {
-      reason: "stale-main",
-      receiptRunAttempt: "",
-      receiptRunId: "",
-      shouldDeploy: false,
-    };
+  const mainOwnership = await checkCurrentMainOwnership({
+    expectedSha,
+    repository,
+    requestJson,
+  });
+  if (!mainOwnership.shouldDeploy) {
+    return mainOwnership;
   }
 
   const normalizedRunAttempt = Number(currentRunAttempt);
@@ -302,15 +322,22 @@ async function githubRequestJson(path) {
 }
 
 async function main() {
-  const result = await checkDeploymentOwnership({
-    currentRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
-    currentRunId: process.env.GITHUB_RUN_ID,
-    expectedSha: process.env.GITHUB_SHA,
-    markerAttempts: 4,
-    markerDelayMs: 5_000,
-    repository: process.env.GITHUB_REPOSITORY,
-    requestJson: githubRequestJson,
-  });
+  const confirmsCurrentMain = process.argv.slice(2).includes("--confirm-current-main");
+  const result = confirmsCurrentMain
+    ? await checkCurrentMainOwnership({
+        expectedSha: process.env.GITHUB_SHA,
+        repository: process.env.GITHUB_REPOSITORY,
+        requestJson: githubRequestJson,
+      })
+    : await checkDeploymentOwnership({
+        currentRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+        currentRunId: process.env.GITHUB_RUN_ID,
+        expectedSha: process.env.GITHUB_SHA,
+        markerAttempts: 4,
+        markerDelayMs: 5_000,
+        repository: process.env.GITHUB_REPOSITORY,
+        requestJson: githubRequestJson,
+      });
   if (!process.env.GITHUB_OUTPUT) {
     throw new Error("GITHUB_OUTPUT is required");
   }
@@ -329,6 +356,13 @@ async function main() {
     ? `; receipt run ${result.receiptRunId} attempt ${result.receiptRunAttempt}`
     : "";
   console.log(`::notice::Frontend deployment ownership: ${result.reason}${detail}.`);
+  if (confirmsCurrentMain && result.shouldDeploy) {
+    console.log(
+      `::notice::Canonical frontend deployment receipt for ${process.env.GITHUB_SHA} from run ${process.env.GITHUB_RUN_ID} attempt ${process.env.GITHUB_RUN_ATTEMPT}.`
+    );
+  } else if (confirmsCurrentMain) {
+    process.exitCode = 1;
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(scriptPath)) {
