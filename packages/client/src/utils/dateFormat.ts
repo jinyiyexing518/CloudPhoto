@@ -80,6 +80,15 @@ export function getFirstLocalCalendarDateKey(
   return "";
 }
 
+export function addLocalCalendarDays(value: PhotoDateValue, days: number): string {
+  if (!Number.isInteger(days)) return "";
+  const dateKey = getLocalCalendarDateKey(value);
+  const date = dateKey ? validDate(dateKey) : null;
+  if (!date) return "";
+  date.setDate(date.getDate() + days);
+  return getLocalCalendarDateKey(date);
+}
+
 export function getPhotoCalendarDayDistance(
   targetDateKey: string,
   reference: PhotoDateValue = new Date(),

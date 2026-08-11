@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { useToast } from "../../contexts/ToastContext";
 import {
+  addLocalCalendarDays,
   getPhotoCalendarDayDistance,
   getLocalCalendarDateKey,
 } from "../../utils/dateFormat";
@@ -70,9 +71,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
 
   const now = new Date();
   const today = getLocalCalendarDateKey(now);
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minimumUnlockDate = getLocalCalendarDateKey(tomorrow);
+  const minimumUnlockDate = addLocalCalendarDays(now, 1);
 
   const folders = useMemo(
     () => [...new Set(photos.map((p) => (p.folder ?? "").trim()).filter(Boolean))].sort(),

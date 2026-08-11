@@ -9,7 +9,7 @@ const appSource = readFileSync(new URL("../../AuthenticatedApp.tsx", import.meta
 test("capsule creator uses the shared stacked dialog boundary", () => {
   assert.match(capsuleSource, /useModalFocusBoundary\(\{[\s\S]*active: showCreate/);
   assert.match(capsuleSource, /className="capsule-dialog-overlay"[\s\S]*data-modal-layer/);
-  assert.match(capsuleSource, /className="capsule-dialog"[\s\S]*role="dialog"/);
+  assert.match(capsuleSource, /className="[^"]*\bcapsule-dialog\b[^"]*"[\s\S]*role="dialog"/);
   assert.match(capsuleSource, /aria-modal="true"/);
   assert.match(capsuleSource, /aria-labelledby="capsule-create-title"/);
   assert.match(capsuleSource, /id="capsule-create-title"/);

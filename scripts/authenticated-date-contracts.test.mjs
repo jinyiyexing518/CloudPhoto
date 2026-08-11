@@ -281,6 +281,54 @@ test("native date inputs and YYYY-MM-DD serialization stay intact", () => {
   }
 });
 
+test("capsule tomorrow uses shared local calendar addition across midnight and DST", () => {
+  assert.match(timeCapsule, /addLocalCalendarDays/);
+  assert.match(
+    timeCapsule,
+    /const minimumUnlockDate = addLocalCalendarDays\(now,\s*1\)/,
+  );
+  assert.doesNotMatch(timeCapsule, /setDate\(/);
+  assert.doesNotMatch(timeCapsule, /86_?400_?000|86400000/);
+
+  const helperUrl = pathToFileURL(dateHelperPath).href;
+  const cases = [
+    ["Asia/Shanghai", "2026-08-10T16:30:00.000Z", 1, "2026-08-12"],
+    ["America/New_York", "2026-03-08T06:30:00.000Z", 1, "2026-03-09"],
+    ["America/New_York", "2026-11-01T05:30:00.000Z", 1, "2026-11-02"],
+    ["America/New_York", "2026-03-08", 1, "2026-03-09"],
+    ["Asia/Shanghai", "2024-02-28", 1, "2024-02-29"],
+  ];
+
+  for (const [timezone, value, days, expected] of cases) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `const { addLocalCalendarDays } = await import(${JSON.stringify(helperUrl + `?add-days=${timezone}-${value}`)}); console.log(addLocalCalendarDays(${JSON.stringify(value)}, ${days}));`,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, TZ: timezone },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), expected, `${timezone} ${value}`);
+  }
+
+  const invalidResult = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `const { addLocalCalendarDays } = await import(${JSON.stringify(helperUrl + "?add-days=invalid")}); console.log(JSON.stringify([addLocalCalendarDays("not-a-date", 1), addLocalCalendarDays("2026-02-30", 1), addLocalCalendarDays("2026-08-11", 1.5)]));`,
+    ],
+    { encoding: "utf8", env: { ...process.env, TZ: "Asia/Shanghai" } },
+  );
+  assert.equal(invalidResult.status, 0, invalidResult.stderr);
+  assert.deepEqual(JSON.parse(invalidResult.stdout.trim()), ["", "", ""]);
+});
+
 test("one local calendar policy drives timeline, filters, uploads, and moment stats", () => {
   assert.doesNotMatch(authenticatedApp, /function (?:formatLocalDate|toLocalDateKey)\(/);
   assert.match(authenticatedApp, /getLocalCalendarDateKey/);
