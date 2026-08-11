@@ -86,6 +86,27 @@ interface ExtractedMetadata {
   takenAt?: string;
 }
 
+interface EmbeddedPhotoGps {
+  latitude: number;
+  longitude: number;
+}
+
+interface EmbeddedPhotoGpsInput {
+  name: string;
+  contentType: string;
+  contentLength: number;
+  budget: ByteBudget;
+  signal?: AbortSignal;
+  readRange: (offset: number, count: number, signal?: AbortSignal) => Promise<Buffer>;
+}
+
+export class EmbeddedPhotoGpsBudgetError extends Error {
+  constructor() {
+    super("Embedded photo GPS scan exceeded the read-only byte budget");
+    this.name = "EmbeddedPhotoGpsBudgetError";
+  }
+}
+
 export function createByteBudget(limit: number): ByteBudget {
   if (!Number.isSafeInteger(limit) || limit < 0) throw new Error("Invalid metadata byte budget");
   return { limit, used: 0 };
@@ -172,6 +193,49 @@ async function extractMetadata(buffer: Buffer): Promise<ExtractedMetadata> {
     // See GPS handling above.
   }
   return result;
+}
+
+export async function readEmbeddedPhotoGps(
+  input: EmbeddedPhotoGpsInput,
+): Promise<EmbeddedPhotoGps | null> {
+  const contentType = input.contentType.toLowerCase();
+  const limits = IMAGE_SCAN_LIMITS[contentType];
+  if (!limits || input.contentLength <= 0) return null;
+
+  let targetBytes = Math.min(input.contentLength, limits.initialBytes);
+  let buffer = Buffer.alloc(0);
+  while (targetBytes > buffer.length) {
+    input.signal?.throwIfAborted();
+    const requestBytes = targetBytes - buffer.length;
+    if (requestBytes > input.budget.limit - input.budget.used) {
+      throw new EmbeddedPhotoGpsBudgetError();
+    }
+    input.budget.used += requestBytes;
+    let chunk: Buffer;
+    try {
+      chunk = await input.readRange(buffer.length, requestBytes, input.signal);
+    } catch (error) {
+      input.budget.used -= requestBytes;
+      throw error;
+    }
+    if (chunk.length > requestBytes) {
+      throw new Error(`Range read exceeded its bound: ${input.name}`);
+    }
+    input.budget.used -= requestBytes - chunk.length;
+    buffer = Buffer.concat([buffer, chunk]);
+    const gps = await readPhotoGps(buffer);
+    if (gps) return gps;
+    if (
+      chunk.length < requestBytes
+      || metadataScanIsComplete(contentType, buffer, input.contentLength)
+      || buffer.length >= input.contentLength
+      || targetBytes >= Math.min(input.contentLength, limits.maxBytes)
+    ) {
+      return null;
+    }
+    targetBytes = Math.min(input.contentLength, limits.maxBytes, targetBytes * 2);
+  }
+  return null;
 }
 
 async function reconcile(
