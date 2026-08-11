@@ -1,17 +1,21 @@
 import {
-  PHOTO_LIST_CACHE_NAME,
   getPrivatePhotoCacheGeneration,
   registerPrivatePhotoCacheReset,
   registerPrivatePhotoCacheWrite,
   waitForPrivatePhotoCacheCleanup,
 } from "./privatePhotoCacheLifecycle";
+import {
+  PHOTO_LIST_CACHE_NAME,
+  registerPrivatePhotoListCacheWrite,
+  waitForPrivatePhotoListCacheCleanup,
+} from "./privatePhotoListCacheLifecycle";
 
 export {
   clearPrivatePhotoCaches,
   getPrivatePhotoCacheGeneration,
-  invalidatePhotoListCaches,
   preparePrivatePhotoCachesForScope,
 } from "./privatePhotoCacheLifecycle";
+export { invalidatePhotoListCaches } from "./privatePhotoListCacheLifecycle";
 
 export const PHOTO_LIST_CACHE_SCHEMA_VERSION = 2;
 const CACHE_PATH =
@@ -91,7 +95,10 @@ export async function readPhotoListCache<T>(
   if (!url) return null;
 
   try {
-    await waitForPrivatePhotoCacheCleanup();
+    await Promise.all([
+      waitForPrivatePhotoCacheCleanup(),
+      waitForPrivatePhotoListCacheCleanup(),
+    ]);
     if (expectedGeneration !== getPrivatePhotoCacheGeneration()) return null;
     const cache = await window.caches.open(PHOTO_LIST_CACHE_NAME);
     if (expectedGeneration !== getPrivatePhotoCacheGeneration()) return null;
@@ -121,7 +128,10 @@ export async function writePhotoListCache<T>(
   if (!url) return;
 
   try {
-    await waitForPrivatePhotoCacheCleanup();
+    await Promise.all([
+      waitForPrivatePhotoCacheCleanup(),
+      waitForPrivatePhotoListCacheCleanup(),
+    ]);
     if (expectedGeneration !== getPrivatePhotoCacheGeneration()) return;
     const previousWrite = persistentWriteChains.get(key) ?? Promise.resolve();
     const operation = previousWrite.catch(() => undefined).then(async () => {
@@ -145,10 +155,12 @@ export async function writePhotoListCache<T>(
     });
     persistentWriteChains.set(key, operation);
     const unregisterWrite = registerPrivatePhotoCacheWrite(operation);
+    const unregisterListWrite = registerPrivatePhotoListCacheWrite(operation);
     try {
       await operation;
     } finally {
       unregisterWrite();
+      unregisterListWrite();
       if (persistentWriteChains.get(key) === operation) persistentWriteChains.delete(key);
     }
   } catch (error) {

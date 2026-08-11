@@ -11,8 +11,9 @@ const source = (path) => readFile(new URL(path, root), "utf8");
 const distPath = new URL("packages/client/dist/", root);
 
 test("private Workbox cleanup stays behind an awaited dynamic boundary", async () => {
-  const [lifecycle, reset, cleanup, auth, http] = await Promise.all([
+  const [lifecycle, listLifecycle, reset, cleanup, auth, http] = await Promise.all([
     source("packages/client/src/services/privatePhotoCacheLifecycle.ts"),
+    source("packages/client/src/services/privatePhotoListCacheLifecycle.ts"),
     source("packages/client/src/services/privateCacheReset.ts"),
     source("packages/client/src/services/privateCachePurge.ts"),
     source("packages/client/src/contexts/AuthContext.tsx"),
@@ -30,6 +31,8 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
   }
   assert.doesNotMatch(cleanup, /cursor\.(?:value|primaryKey)/);
   assert.match(lifecycle, /await reset\.resetPrivateCaches\(/);
+  assert.match(listLifecycle, /await reset\.resetPrivateCaches\(/);
+  assert.doesNotMatch(lifecycle, /listCleanupChain/);
   assert.match(reset, /await beginPrivateCacheReset\(/);
   assert.match(reset, /await cleanup\.purgePrivateWorkboxExpirationMetadata\(/);
   assert.match(reset, /await completePrivateCacheReset\(/);

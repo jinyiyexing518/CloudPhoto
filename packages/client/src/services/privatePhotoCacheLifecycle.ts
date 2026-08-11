@@ -1,7 +1,8 @@
-export const PHOTO_LIST_CACHE_NAME = "cloudphoto-photo-lists-v1";
-
-const PRIVATE_MEDIA_CACHE_NAMES = ["photo-media-v1", "cf-media-v1"] as const;
-const PRIVATE_CACHE_NAMES = [PHOTO_LIST_CACHE_NAME, ...PRIVATE_MEDIA_CACHE_NAMES] as const;
+const PRIVATE_CACHE_NAMES = [
+  "cloudphoto-photo-lists-v1",
+  "photo-media-v1",
+  "cf-media-v1",
+] as const;
 const CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
 const PRIVATE_LOCAL_DATA_PREFIX = "cloudphoto_private_data_v1:";
 const PRIVATE_CLEANUP_MARKER_KEY = "cloudphoto_private_cleanup_v2";
@@ -9,7 +10,6 @@ const PRIVATE_CLEANUP_MARKER_KEY = "cloudphoto_private_cleanup_v2";
 let cacheGeneration = 0;
 let activePrivateCacheOwner: string | null = null;
 let cleanupChain: Promise<void> = Promise.resolve();
-let listCleanupChain: Promise<void> = Promise.resolve();
 const activePersistentWrites = new Set<Promise<void>>();
 const resetListeners = new Set<(scopeReset: boolean) => void>();
 const loadPrivateCacheReset = () => import("./privateCacheReset.ts");
@@ -24,9 +24,8 @@ export function getPrivatePhotoCacheOwner(): string | null {
   return activePrivateCacheOwner;
 }
 
-export async function waitForPrivatePhotoCacheCleanup(): Promise<void> {
-  await cleanupChain;
-  await listCleanupChain;
+export function waitForPrivatePhotoCacheCleanup(): Promise<void> {
+  return cleanupChain;
 }
 
 export function registerPrivatePhotoCacheReset(
@@ -39,6 +38,12 @@ export function registerPrivatePhotoCacheReset(
 export function registerPrivatePhotoCacheWrite(operation: Promise<void>): () => void {
   activePersistentWrites.add(operation);
   return () => activePersistentWrites.delete(operation);
+}
+
+export function invalidatePrivatePhotoListCacheGeneration(): number {
+  cacheGeneration += 1;
+  for (const reset of resetListeners) reset(false);
+  return cacheGeneration;
 }
 
 function removeScopedPrivateLocalData(): void {
@@ -69,42 +74,22 @@ function invalidatePrivateCacheOwnership(): void {
   removeScopedPrivateLocalData();
 }
 
-function queueCacheDeletion(
-  cacheNames: readonly string[],
-  clearOwner: boolean,
-  resumeCaching = !clearOwner,
-  fencePrivateMediaWrites = true,
-): Promise<void> {
-  if (clearOwner) {
-    invalidatePrivateCacheOwnership();
-    listCleanupChain = listCleanupChain.then(undefined, () => undefined);
-  }
-  else {
-    cacheGeneration += 1;
-    for (const reset of resetListeners) reset(false);
-  }
+function queueCacheDeletion(resumeCaching = false): Promise<void> {
+  invalidatePrivateCacheOwnership();
   const deletionGeneration = cacheGeneration;
 
   const deletePrivateCaches = async () => {
     const reset = await loadPrivateCacheReset();
     await reset.resetPrivateCaches(
-      cacheNames,
+      PRIVATE_CACHE_NAMES,
       activePersistentWrites,
-      fencePrivateMediaWrites,
+      true,
       resumeCaching,
       () => deletionGeneration === cacheGeneration,
     );
   };
-  if (fencePrivateMediaWrites) {
-    cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
-    return cleanupChain;
-  }
-  listCleanupChain = listCleanupChain.then(deletePrivateCaches, deletePrivateCaches);
-  return listCleanupChain;
-}
-
-export function invalidatePhotoListCaches(): Promise<void> {
-  return queueCacheDeletion([PHOTO_LIST_CACHE_NAME], false, false, false);
+  cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
+  return cleanupChain;
 }
 
 /**
@@ -112,7 +97,7 @@ export function invalidatePhotoListCaches(): Promise<void> {
  * remain intact, so logout does not force a full application redownload.
  */
 export function clearPrivatePhotoCaches(): Promise<void> {
-  return queueCacheDeletion(PRIVATE_CACHE_NAMES, true);
+  return queueCacheDeletion();
 }
 
 /**
@@ -136,7 +121,7 @@ export async function preparePrivatePhotoCachesForScope(
     const needsCleanup = owner !== authScope || !cleanupComplete;
     cleanupStarted = needsCleanup;
     const pendingCleanup = needsCleanup
-      ? queueCacheDeletion(PRIVATE_CACHE_NAMES, true, true)
+      ? queueCacheDeletion(true)
       : waitForPrivatePhotoCacheCleanup();
     const expectedGeneration = cacheGeneration;
     const reset = await loadPrivateCacheReset();

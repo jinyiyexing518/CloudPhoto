@@ -26,6 +26,9 @@ const routingPolicy = read("packages/client/src/services/apiRoutingPolicy.ts");
 const hedgePolicy = read("packages/client/src/services/apiHedgePolicy.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
 const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const listCacheLifecycle = read(
+  "packages/client/src/services/privatePhotoListCacheLifecycle.ts",
+);
 const privateCacheReset = read("packages/client/src/services/privateCacheReset.ts");
 const workboxCleanup = read("packages/client/src/services/privateCachePurge.ts");
 const privateCacheFence = read("packages/client/public/private-cache-fence.js");
@@ -203,8 +206,13 @@ requireText(privateCacheFence, "cloudphoto-private-cache-fence-v1", "persistent 
 requireText(privateCacheFence, "__cloudPhotoPrivateCacheFenceReady", "restored fence readiness");
 requireText(privateCacheReset, "navigator.serviceWorker.getRegistration()", "controllerless active-worker fence");
 requireText(
-  cacheLifecycle,
-  "queueCacheDeletion([PHOTO_LIST_CACHE_NAME], false, false, false)",
+  listCacheLifecycle,
+  "invalidatePrivatePhotoListCacheGeneration()",
+  "authenticated list-only invalidation boundary",
+);
+assert.match(
+  listCacheLifecycle,
+  /activeWrites,\s*false,\s*false,/,
   "list-only invalidation must not resume the private media fence",
 );
 requireText(

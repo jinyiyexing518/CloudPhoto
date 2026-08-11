@@ -65,6 +65,9 @@ globalThis.window = {
 globalThis.caches = globalThis.window.caches;
 
 const lifecycleSource = await read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const listLifecycleSource = await read(
+  "packages/client/src/services/privatePhotoListCacheLifecycle.ts",
+);
 const resetSource = await read("packages/client/src/services/privateCacheReset.ts");
 const expirationMetadataSource = await read("packages/client/src/services/privateCachePurge.ts");
 assert(
@@ -74,6 +77,14 @@ assert(
 assert(
   lifecycleSource.includes("await reset.resetPrivateCaches("),
   "private cleanup must await the precached Cache Storage reset boundary",
+);
+assert(
+  listLifecycleSource.includes("await reset.resetPrivateCaches("),
+  "list-only cleanup must await its authenticated reset boundary",
+);
+assert(
+  !lifecycleSource.includes("listCleanupChain"),
+  "list-only orchestration must stay outside the login entry dependency",
 );
 assert(
   resetSource.includes("await cleanup.purgePrivateWorkboxExpirationMetadata("),
@@ -221,6 +232,9 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
 }
 
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const listLifecycle = await import(
+  "../packages/client/src/services/privatePhotoListCacheLifecycle.ts"
+);
 const cacheReset = await import("../packages/client/src/services/privateCacheReset.ts");
 const workboxCleanup = await import("../packages/client/src/services/privateCachePurge.ts");
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
@@ -647,7 +661,7 @@ const unregisterReset = lifecycle.registerPrivatePhotoCacheReset((scopeReset) =>
   resetCount += 1;
 });
 const pendingMutationWrite = momentsStore.capturePrivateMomentsContext("personal");
-await lifecycle.invalidatePhotoListCaches();
+await listLifecycle.invalidatePhotoListCaches();
 assert.equal(resetCount, 0, "ordinary photo-list invalidation must not reset moments");
 assert.deepEqual(
   momentsStore.readPrivateMomentInsights("personal"),
@@ -869,20 +883,20 @@ assert.equal(
 assert.equal(values.has(raceDiagnosticsKey), false, "stale diagnostics writes must also be rolled back");
 await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
 
-cacheDeleteFailure = lifecycle.PHOTO_LIST_CACHE_NAME;
+cacheDeleteFailure = listLifecycle.PHOTO_LIST_CACHE_NAME;
 await assert.rejects(
-  lifecycle.invalidatePhotoListCaches(),
+  listLifecycle.invalidatePhotoListCaches(),
   /Private cache cleanup failed/,
   "failed list invalidation must reject explicitly",
 );
 await assert.rejects(
-  lifecycle.waitForPrivatePhotoCacheCleanup(),
+  listLifecycle.waitForPrivatePhotoListCacheCleanup(),
   /Private cache cleanup failed/,
   "failed current-generation invalidation must keep persistence fenced",
 );
 cacheDeleteFailure = null;
-await lifecycle.invalidatePhotoListCaches();
-await lifecycle.waitForPrivatePhotoCacheCleanup();
+await listLifecycle.invalidatePhotoListCaches();
+await listLifecycle.waitForPrivatePhotoListCacheCleanup();
 
 {
   let releaseStaleDeletion;
@@ -897,15 +911,15 @@ await lifecycle.waitForPrivatePhotoCacheCleanup();
   let blockFirstListDeletion = true;
   beforeCacheDelete = async (name) => {
     deletionOwners.push({ name, owner: lifecycle.getPrivatePhotoCacheOwner() });
-    if (name === lifecycle.PHOTO_LIST_CACHE_NAME && blockFirstListDeletion) {
+    if (name === listLifecycle.PHOTO_LIST_CACHE_NAME && blockFirstListDeletion) {
       blockFirstListDeletion = false;
       reportStaleDeletionStarted();
       await staleDeletionBlocked;
     }
   };
 
-  availableCacheNames.add(lifecycle.PHOTO_LIST_CACHE_NAME);
-  const staleListCleanup = lifecycle.invalidatePhotoListCaches();
+  availableCacheNames.add(listLifecycle.PHOTO_LIST_CACHE_NAME);
+  const staleListCleanup = listLifecycle.invalidatePhotoListCaches();
   await staleDeletionStarted;
   assert.equal(
     await lifecycle.preparePrivatePhotoCachesForScope("account-c:viewer"),
@@ -913,7 +927,10 @@ await lifecycle.waitForPrivatePhotoCacheCleanup();
     "a replacement account must not wait for a blocked list-only cleanup",
   );
   let persistenceBarrierReleased = false;
-  const persistenceBarrier = lifecycle.waitForPrivatePhotoCacheCleanup().then(() => {
+  const persistenceBarrier = Promise.all([
+    lifecycle.waitForPrivatePhotoCacheCleanup(),
+    listLifecycle.waitForPrivatePhotoListCacheCleanup(),
+  ]).then(() => {
     persistenceBarrierReleased = true;
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -928,7 +945,7 @@ await lifecycle.waitForPrivatePhotoCacheCleanup();
   await persistenceBarrier;
   assert.equal(
     deletionOwners.some(({ name, owner }) =>
-      name === lifecycle.PHOTO_LIST_CACHE_NAME && owner === "account-c:viewer"
+      name === listLifecycle.PHOTO_LIST_CACHE_NAME && owner === "account-c:viewer"
     ),
     false,
     "generation drift must abort the stale cleanup before its second deletion pass",
@@ -1309,7 +1326,7 @@ assert(
 window.caches = completeCacheStorage;
 globalThis.caches = completeCacheStorage;
 globalThis.indexedDB = createFakeWorkboxExpirationDb([]).factory;
-await lifecycle.invalidatePhotoListCaches();
+await listLifecycle.invalidatePhotoListCaches();
 assert.equal(
   localStorage.getItem("cloudphoto_private_cleanup_v2"),
   null,
@@ -1327,7 +1344,7 @@ assert.equal(
 );
 assert.equal(lifecycle.getPrivatePhotoCacheOwner(), "mobile-account:viewer");
 assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v2"), "1");
-await lifecycle.invalidatePhotoListCaches();
+await listLifecycle.invalidatePhotoListCaches();
 assert.equal(
   localStorage.getItem("cloudphoto_private_cleanup_v2"),
   "1",
