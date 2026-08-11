@@ -5,8 +5,8 @@
  * so token refresh and auto-logout are handled transparently.
  */
 
-import { API_BASE, isProxySiteHost } from "../utils/apiBase";
-import { fetchWithTimeout, authHeaders } from "./http";
+import { API_BASE } from "../utils/apiBase";
+import { fetchWithTimeout, authHeaders, isRetryableGatewayStatus } from "./http";
 
 // ── Domain types ──────────────────────────────────────────────────────────
 
@@ -40,16 +40,17 @@ export async function loginApi(
     },
     30_000,
   ).catch((e: unknown) => {
-    const isOnProxy = typeof window !== "undefined" && isProxySiteHost(window.location.hostname);
     throw new Error(
       e instanceof Error && e.name === "AbortError"
         ? "登录响应超时，服务器可能正在启动，请稍后重试"
-        : isOnProxy
-          ? "代理服务器不可用，请稍后重试"
-          : "网络错误",
+        : "登录服务暂时不可用，请稍后重试",
     );
   });
   if (!res.ok) {
+    if (isRetryableGatewayStatus(res.status)) {
+      await res.body?.cancel().catch(() => undefined);
+      throw new Error("登录服务暂时不可用，请稍后重试");
+    }
     const err = await res.json().catch(() => ({ error: "Login failed" }));
     throw new Error((err as { error?: string }).error ?? "Login failed");
   }

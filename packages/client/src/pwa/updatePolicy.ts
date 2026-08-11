@@ -14,7 +14,8 @@ export interface PwaUpdateBrowserWindow extends EventTarget {
 export type PwaUpdateActivationResult =
   | "updated"
   | "blocked-transferring"
-  | "missing-updater";
+  | "missing-updater"
+  | "timed-out";
 
 const UPDATE_ACTIVATION_TIMEOUT_MS = 1_500;
 
@@ -70,6 +71,7 @@ export async function activatePwaUpdate(
 ): Promise<PwaUpdateActivationResult> {
   if (getDangerousOperationSnapshot().active) return "blocked-transferring";
   const prepared = await preparePwaUpdateForRefresh(target);
+  if (prepared === "timed-out") return "timed-out";
   if (prepared === "missing-updater" || !target.__CF_HARD_REFRESH__) {
     return "missing-updater";
   }

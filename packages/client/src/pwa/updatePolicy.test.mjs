@@ -48,6 +48,22 @@ test("returns missing-updater when updater is unavailable", async () => {
   assert.equal(await activatePwaUpdate(fakeWindow), "missing-updater");
 });
 
+test("a stalled updater reports timeout without refreshing the stale client", async () => {
+  const fakeWindow = new FakePwaWindow();
+  let refreshes = 0;
+  fakeWindow.__CF_SW_REGISTRATION__ = {
+    update: async () => new Promise(() => {}),
+    installing: null,
+    waiting: null,
+  };
+  fakeWindow.__CF_HARD_REFRESH__ = () => {
+    refreshes += 1;
+  };
+
+  assert.equal(await activatePwaUpdate(fakeWindow), "timed-out");
+  assert.equal(refreshes, 0);
+});
+
 test("updates and explicitly activates a waiting worker before refresh", async () => {
   const fakeWindow = new FakePwaWindow();
   const serviceWorkerContainer = new EventTarget();
@@ -98,5 +114,23 @@ test("authenticated update action contract: no fallback reload", () => {
   assert.match(source, /setDangerousOperationActivity\(/);
   assert.match(source, /disabled=\{transferring\}/);
   assert.match(source, /传输完成后更新/);
+  assert.match(source, /result === "timed-out"[\s\S]*更新超时[\s\S]*return;[\s\S]*setUpdateReady\(false\)/);
   assert.doesNotMatch(source, /handleRefreshToUpdate[\s\S]*window\.location\.reload/);
+});
+
+test("logged-out install entry exposes the existing explicit update path", () => {
+  const source = readFileSync(new URL("./PwaInstallEntry.tsx", import.meta.url), "utf8");
+  assert.match(source, /isPwaUpdateReady\(window as PwaUpdateBrowserWindow\)/);
+  assert.match(
+    source,
+    /addEventListener\(PWA_UPDATE_READY_EVENT[\s\S]*isPwaUpdateReady\(window as PwaUpdateBrowserWindow\)[\s\S]*setUpdateReady\(true\)/,
+  );
+  assert.match(source, /removeEventListener\(PWA_UPDATE_READY_EVENT/);
+  assert.match(source, /activatePwaUpdate\(window as PwaUpdateBrowserWindow\)/);
+  assert.match(source, /立即更新/);
+  assert.match(source, /更新服务暂不可用/);
+  assert.match(source, /更新超时/);
+  assert.match(source, /更新失败/);
+  assert.match(source, /安装应用/);
+  assert.doesNotMatch(source, /window\.location\.reload/);
 });

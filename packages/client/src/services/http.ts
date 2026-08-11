@@ -31,6 +31,12 @@ import {
 
 export const preloadApiHedgePolicy = () => import("./apiHedgePolicy");
 
+const RETRYABLE_GATEWAY_STATUSES = new Set([502, 503, 504, 521, 522, 523, 524]);
+
+export function isRetryableGatewayStatus(status: number): boolean {
+  return RETRYABLE_GATEWAY_STATUSES.has(status);
+}
+
 type ApiRouteKind = "direct" | "proxy" | "same-origin";
 
 interface ParsedApiRequest {
@@ -118,10 +124,17 @@ function requestMethod(input: RequestInfo, init?: RequestInit): string {
   ).toUpperCase();
 }
 
+function isLoginRequest(input: RequestInfo, init?: RequestInit): boolean {
+  const request = parseApiRequest(input);
+  return requestMethod(input, init) === "POST" && request?.suffix === "/auth/login";
+}
+
 function canReplayRequest(input: RequestInfo, init?: RequestInit): boolean {
   const method = requestMethod(input, init);
   const request = parseApiRequest(input);
-  return isSafeReplayMethod(method) && request?.suffix !== "/photos/share";
+  if (!request) return false;
+  if (isLoginRequest(input, init)) return true;
+  return isSafeReplayMethod(method) && request.suffix !== "/photos/share";
 }
 
 function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
@@ -297,7 +310,10 @@ async function fetchWithProxyFallback(
 
   const handleMissingSameOriginRoute = async (response: Response): Promise<Response> => {
     const primaryRequest = parseApiRequest(primaryInput);
-    const safeToReplay = canReplayRequest(primaryInput, init);
+    const safeToReplay = (
+      canReplayRequest(primaryInput, init)
+      && !isLoginRequest(primaryInput, init)
+    );
     const contentType = response.headers.get("content-type") ?? "";
     const routeMissing = (
       safeToReplay
@@ -319,7 +335,6 @@ async function fetchWithProxyFallback(
     return handleMissingSameOriginRoute(await fetch(primaryInput, init));
   }
 
-  const retryableStatuses = new Set([502, 503, 504, 521, 522, 523, 524]);
   if (!hedgeDelayMs || !canHedgeOnAlternateRoute(primaryInput, init)) {
     let primaryResponse: Response;
     try {
@@ -331,7 +346,7 @@ async function fetchWithProxyFallback(
 
     const handledResponse = await handleMissingSameOriginRoute(primaryResponse);
     if (handledResponse !== primaryResponse) return handledResponse;
-    if (!retryableStatuses.has(primaryResponse.status) || init?.signal?.aborted) {
+    if (!isRetryableGatewayStatus(primaryResponse.status) || init?.signal?.aborted) {
       return primaryResponse;
     }
 
@@ -364,7 +379,7 @@ async function fetchWithProxyFallback(
     startPrimary: () => startAttempt(primaryInput),
     startFallback: () => startAttempt(fallbackUrl),
     hedgeDelayMs,
-    isUsable: (response) => !retryableStatuses.has(response.status),
+    isUsable: (response) => !isRetryableGatewayStatus(response.status),
     signal: init?.signal ?? undefined,
   });
   const response = keepCancellationUntilBodyCompletes(outcome.value, outcome.release);
@@ -582,6 +597,7 @@ export function fetchWithTimeout(
   return fetchWithProxyFallback(input, requestInit, hedgeDelayMs)
     .then(async (res) => {
       if (res.status === 401) {
+        if (isLoginRequest(input, init)) return res;
         // Never refresh or replay a request that belongs to a replaced account.
         if (requestAuthGeneration !== _authGeneration) return res;
         const newToken = await recoverFromUnauthorized(requestToken, controller.signal);

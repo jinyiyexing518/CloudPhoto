@@ -369,7 +369,12 @@ requireText(groupSwitcher, "onClick={() => void refreshGroups()}", "group load r
 requireText(http, "canHedgeOnAlternateRoute", "safe route hedge guard");
 requireText(http, "canRetryOnAlternateRoute", "failure-only route retry guard");
 requireText(http, "isSafeReplayMethod(method)", "unsafe route replay exclusion");
-requireText(http, "const safeToReplay = canReplayRequest", "endpoint-aware misrouted request replay guard");
+requireText(
+  http,
+  "canReplayRequest(primaryInput, init)",
+  "endpoint-aware misrouted request replay guard",
+);
+requireText(http, "&& !isLoginRequest(primaryInput, init)", "login business-response replay exclusion");
 requireText(http, "await waitForResult(", "abortable deferred route hedge");
 requireText(http, "preloadApiHedgePolicy(),", "deferred non-destructive route hedge");
 for (const path of ["/photos", "/photos/locations", "/photos/motion-video", "/photos/trash", "/geocode/search"]) {

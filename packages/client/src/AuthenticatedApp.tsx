@@ -2141,6 +2141,10 @@ function AppContent() {
       showToast("更新服务暂不可用，请稍后再试", "error");
       return;
     }
+    if (result === "timed-out") {
+      showToast("更新超时，请稍后重试", "error");
+      return;
+    }
     setUpdateReady(false);
   };
 
