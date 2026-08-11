@@ -39,6 +39,7 @@ const dateHelperPath = join(
   repoRoot,
   "packages/client/src/utils/dateFormat.ts",
 );
+const dateHelper = readFileSync(dateHelperPath, "utf8");
 
 function cssBlock(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -327,6 +328,68 @@ test("capsule tomorrow uses shared local calendar addition across midnight and D
   );
   assert.equal(invalidResult.status, 0, invalidResult.stderr);
   assert.deepEqual(JSON.parse(invalidResult.stdout.trim()), ["", "", ""]);
+});
+
+test("capsule countdown compares local calendar ordinals and fails safe for invalid dates", () => {
+  assert.match(
+    dateHelper,
+    /function getLocalCalendarDayOrdinal[\s\S]*getLocalCalendarDateKey\(value\)[\s\S]*Date\.UTC\(year, month - 1, day\)/,
+  );
+  assert.match(
+    dateHelper,
+    /return targetOrdinal - currentOrdinal/,
+  );
+  assert.doesNotMatch(
+    dateHelper,
+    /getPhotoCalendarDayDistance[\s\S]{0,500}Math\.(?:ceil|round)|getPhotoCalendarDayDistance[\s\S]{0,500}\.getTime\(\)/,
+  );
+  assert.match(
+    timeCapsule,
+    /const daysLeft = getPhotoCalendarDayDistance\(c\.unlockDate,\s*now\)/,
+  );
+  assert.match(timeCapsule, /daysLeft === null/);
+  assert.match(timeCapsule, /解锁日期无效/);
+  assert.doesNotMatch(timeCapsule, /getPhotoCalendarDayDistance\([^)]*\) \?\? 1/);
+  assert.doesNotMatch(timeCapsule, /new Date\(c\.unlockDate\)/);
+  assert.doesNotMatch(timeCapsule, /Math\.ceil\([^)]*86_?400_?000|86400000/);
+
+  const helperUrl = pathToFileURL(dateHelperPath).href;
+  const cases = [
+    ["Asia/Shanghai", "2026-08-10T16:30:00.000Z", "2026-08-11", 0],
+    ["Asia/Shanghai", "2026-08-10T16:30:00.000Z", "2026-08-12", 1],
+    ["America/New_York", "2026-03-08T06:30:00.000Z", "2026-03-09", 1],
+    ["America/New_York", "2026-11-01T05:30:00.000Z", "2026-11-02", 1],
+    ["America/Los_Angeles", "2026-08-11T01:30:00.000Z", "2026-08-09", -1],
+  ];
+
+  for (const [timezone, reference, target, expected] of cases) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `const { getPhotoCalendarDayDistance } = await import(${JSON.stringify(helperUrl + `?distance=${timezone}-${reference}-${target}`)}); console.log(JSON.stringify(getPhotoCalendarDayDistance(${JSON.stringify(target)}, ${JSON.stringify(reference)})));`,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, TZ: timezone },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout.trim()), expected, `${timezone} ${target}`);
+  }
+
+  const invalidResult = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `const { getPhotoCalendarDayDistance } = await import(${JSON.stringify(helperUrl + "?distance=invalid")}); console.log(JSON.stringify([getPhotoCalendarDayDistance("not-a-date", "2026-08-11"), getPhotoCalendarDayDistance("2026-02-30", "2026-08-11"), getPhotoCalendarDayDistance("2026-08-12", "invalid")]));`,
+    ],
+    { encoding: "utf8", env: { ...process.env, TZ: "Asia/Shanghai" } },
+  );
+  assert.equal(invalidResult.status, 0, invalidResult.stderr);
+  assert.deepEqual(JSON.parse(invalidResult.stdout.trim()), [null, null, null]);
 });
 
 test("one local calendar policy drives timeline, filters, uploads, and moment stats", () => {

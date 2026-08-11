@@ -89,18 +89,21 @@ export function addLocalCalendarDays(value: PhotoDateValue, days: number): strin
   return getLocalCalendarDateKey(date);
 }
 
+function getLocalCalendarDayOrdinal(value: PhotoDateValue): number | null {
+  const dateKey = getLocalCalendarDateKey(value);
+  if (!dateKey) return null;
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return Date.UTC(year, month - 1, day) / MILLISECONDS_PER_DAY;
+}
+
 export function getPhotoCalendarDayDistance(
   targetDateKey: string,
   reference: PhotoDateValue = new Date(),
 ): number | null {
-  const target = validDate(targetDateKey);
-  const current = validDate(reference);
-  if (!target || !current) return null;
-  const calendarIndex = (date: Date) =>
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  return Math.round(
-    (calendarIndex(target) - calendarIndex(current)) / MILLISECONDS_PER_DAY,
-  );
+  const targetOrdinal = getLocalCalendarDayOrdinal(targetDateKey);
+  const currentOrdinal = getLocalCalendarDayOrdinal(reference);
+  if (targetOrdinal === null || currentOrdinal === null) return null;
+  return targetOrdinal - currentOrdinal;
 }
 
 export function formatPhotoDate(value: PhotoDateValue): string {

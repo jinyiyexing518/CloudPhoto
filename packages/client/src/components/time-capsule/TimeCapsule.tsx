@@ -374,7 +374,7 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
           <h3 className="capsule-section-title">🔒 已锁定 ({locked.length})</h3>
           <div className="capsule-list">
             {locked.map((c) => {
-              const daysLeft = getPhotoCalendarDayDistance(c.unlockDate, now) ?? 1;
+              const daysLeft = getPhotoCalendarDayDistance(c.unlockDate, now);
               return (
                 <div key={c.id} className="capsule-card capsule-card--locked">
                   <div className="capsule-card-lock-icon">🔒</div>
@@ -384,7 +384,9 @@ export default function TimeCapsule({ photos, userId, workspaceKey, onViewPhoto 
                       🗓 创建于 {c.createdAt} · {c.photoNames.length} 个记忆项
                     </div>
                     <div className="capsule-card-countdown">
-                      ⏳ 还有 {daysLeft} 天解锁（{c.unlockDate}）
+                      {daysLeft === null
+                        ? `⚠️ 解锁日期无效（${c.unlockDate}）`
+                        : `⏳ 还有 ${daysLeft} 天解锁（${c.unlockDate}）`}
                     </div>
                   </div>
                   <div className="capsule-card-actions">
