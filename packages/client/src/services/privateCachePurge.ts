@@ -1,92 +1,14 @@
 const WORKBOX_EXPIRATION_DB_NAME = "workbox-expiration";
 const WORKBOX_EXPIRATION_STORE_NAME = "cache-entries";
 const WORKBOX_CACHE_NAME_INDEX = "cacheName";
-const CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
-const PRIVATE_CLEANUP_MARKER_KEY = "cloudphoto_private_cleanup_v2";
-const PRIVATE_CACHE_FENCE_MESSAGE = "cloudphoto-private-cache-fence";
-const LEGACY_PRIVATE_LOCAL_KEYS = [
-  "cloudphoto_moments_insights_v1",
-  "cloudphoto_moments_diagnostics_v1",
-  "cf_recent_share_links",
-  "cloudphoto_private_cleanup_v1",
-] as const;
 
 export type PrivateExpirationCleanupResult = {
   status: "deleted" | "unavailable" | "database-absent" | "store-absent";
   deletedEntries: number;
 };
 
-type PrivateCacheFence = {
-  controller: ServiceWorker;
-  generation: number;
-};
-
 function cleanupFailure(step: string, cause: unknown): Error {
   return new Error(`Private cache cleanup failed during ${step}`, { cause });
-}
-
-export function removeLegacyPrivateLocalData(): void {
-  try {
-    for (const key of LEGACY_PRIVATE_LOCAL_KEYS) localStorage.removeItem(key);
-  } catch {
-    // Cache Storage cleanup and in-memory invalidation still proceed.
-  }
-}
-
-export function storePrivateCacheOwner(authScope: string): void {
-  try {
-    localStorage.setItem(CACHE_OWNER_KEY, authScope);
-  } catch {
-    // Authorization-scoped cache keys still isolate memory and Cache Storage entries.
-  }
-}
-
-function sendPrivateCacheFenceMessage(
-  controller: ServiceWorker,
-  command: "begin" | "resume",
-  generation?: number,
-): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const channel = new MessageChannel();
-    const timeout = globalThis.setTimeout(() => {
-      channel.port1.close();
-      reject(cleanupFailure("service worker fence", new Error("response timed out")));
-    }, 1_000);
-    channel.port1.onmessage = ({ data }) => {
-      globalThis.clearTimeout(timeout);
-      channel.port1.close();
-      if (data?.ok === true && Number.isSafeInteger(data.generation)) {
-        resolve(data.generation);
-      } else {
-        reject(cleanupFailure("service worker fence", new Error("request rejected")));
-      }
-    };
-    try {
-      controller.postMessage(
-        { type: PRIVATE_CACHE_FENCE_MESSAGE, command, generation },
-        [channel.port2],
-      );
-    } catch (error) {
-      globalThis.clearTimeout(timeout);
-      channel.port1.close();
-      reject(cleanupFailure("service worker fence", error));
-    }
-  });
-}
-
-async function beginPrivateCacheFence(): Promise<PrivateCacheFence | null> {
-  if (
-    typeof navigator === "undefined"
-    || !("serviceWorker" in navigator)
-    || !navigator.serviceWorker.controller
-  ) {
-    return null;
-  }
-  const controller = navigator.serviceWorker.controller;
-  return {
-    controller,
-    generation: await sendPrivateCacheFenceMessage(controller, "begin"),
-  };
 }
 
 function openExistingExpirationDatabase(
@@ -238,62 +160,4 @@ export async function purgePrivateWorkboxExpirationMetadata(
   } finally {
     database.close();
   }
-}
-
-export async function deletePrivateCaches(
-  cacheNames: readonly string[],
-  activePersistentWrites: ReadonlySet<Promise<void>>,
-  resumeCaching = false,
-): Promise<void> {
-  removeLegacyPrivateLocalData();
-  try {
-    localStorage.removeItem(PRIVATE_CLEANUP_MARKER_KEY);
-  } catch {
-    // In-memory ownership still gates private writes when storage is unavailable.
-  }
-
-  const failures: unknown[] = [];
-  let fence: PrivateCacheFence | null = null;
-  try {
-    fence = await beginPrivateCacheFence();
-  } catch (error) {
-    failures.push(error);
-  }
-
-  for (let pass = 0; pass < 2; pass += 1) {
-    await Promise.allSettled([...activePersistentWrites]);
-    if (typeof window !== "undefined" && "caches" in window) {
-      const results = await Promise.allSettled(
-        cacheNames.map((name) => window.caches.delete(name)),
-      );
-      for (const result of results) {
-        if (result.status === "rejected") failures.push(result.reason);
-      }
-    }
-    try {
-      await purgePrivateWorkboxExpirationMetadata(
-        typeof indexedDB === "undefined" ? undefined : indexedDB,
-        cacheNames,
-      );
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-
-  if (failures.length === 0 && resumeCaching && fence) {
-    try {
-      await sendPrivateCacheFenceMessage(fence.controller, "resume", fence.generation);
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  if (failures.length === 0) {
-    try {
-      localStorage.setItem(PRIVATE_CLEANUP_MARKER_KEY, "1");
-    } catch {
-      // The caller still receives the in-memory completion result.
-    }
-    return;
-  }
-  throw new AggregateError(failures, "Private cache cleanup failed");
 }

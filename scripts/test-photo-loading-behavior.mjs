@@ -1040,26 +1040,46 @@ const http = await import(httpUrl);
 const failingMetadataUrl = `data:text/javascript;base64,${
   Buffer.from('throw new Error("chunk unavailable")').toString("base64")
 }`;
+const failingResetUrl = await compileTypeScript(
+  "packages/client/src/services/privateCacheReset.ts",
+  (source) => source.replaceAll(
+    '"./privateCachePurge.ts"',
+    JSON.stringify(failingMetadataUrl),
+  ),
+);
 const failingLifecycleUrl = await compileTypeScript(
   "packages/client/src/services/privatePhotoCacheLifecycle.ts",
-  (source) => source.replaceAll('"./privateCachePurge.ts"', JSON.stringify(failingMetadataUrl)),
+  (source) => source.replaceAll(
+    '"./privateCacheReset.ts"',
+    JSON.stringify(failingResetUrl),
+  ),
 );
 const failingLifecycle = await import(failingLifecycleUrl);
 availableCacheNames.add("photo-media-v1");
 await assert.rejects(
   failingLifecycle.clearPrivatePhotoCaches(),
-  /chunk unavailable/,
+  (error) => (
+    error instanceof AggregateError
+    && error.errors.some((failure) => /chunk unavailable/.test(failure?.message))
+  ),
   "chunk failure must reject the cleanup promise instead of reporting success",
 );
 
 const expirationMetadataUrl = await compileTypeScript(
   "packages/client/src/services/privateCachePurge.ts",
 );
-const cacheLifecycleUrl = await compileTypeScript(
-  "packages/client/src/services/privatePhotoCacheLifecycle.ts",
+const cacheResetUrl = await compileTypeScript(
+  "packages/client/src/services/privateCacheReset.ts",
   (source) => source.replaceAll(
     '"./privateCachePurge.ts"',
     JSON.stringify(expirationMetadataUrl),
+  ),
+);
+const cacheLifecycleUrl = await compileTypeScript(
+  "packages/client/src/services/privatePhotoCacheLifecycle.ts",
+  (source) => source.replaceAll(
+    '"./privateCacheReset.ts"',
+    JSON.stringify(cacheResetUrl),
   ),
 );
 const listCache = await importTypeScript(

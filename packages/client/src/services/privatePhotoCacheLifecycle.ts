@@ -11,7 +11,7 @@ let activePrivateCacheOwner: string | null = null;
 let cleanupChain: Promise<void> = Promise.resolve();
 const activePersistentWrites = new Set<Promise<void>>();
 const resetListeners = new Set<(scopeReset: boolean) => void>();
-const loadPrivateCacheCleanup = () => import("./privateCachePurge.ts");
+const loadPrivateCacheReset = () => import("./privateCacheReset.ts");
 
 export function getPrivatePhotoCacheGeneration(): number {
   return cacheGeneration;
@@ -62,6 +62,7 @@ function queueCacheDeletion(
   cacheNames: readonly string[],
   clearOwner: boolean,
   resumeCaching = !clearOwner,
+  fencePrivateMediaWrites = true,
 ): Promise<void> {
   cacheGeneration += 1;
   if (clearOwner) activePrivateCacheOwner = null;
@@ -69,15 +70,20 @@ function queueCacheDeletion(
   if (clearOwner) removeScopedPrivateLocalData();
 
   const deletePrivateCaches = async () => {
-    const cleanup = await loadPrivateCacheCleanup();
-    await cleanup.deletePrivateCaches(cacheNames, activePersistentWrites, resumeCaching);
+    const reset = await loadPrivateCacheReset();
+    await reset.resetPrivateCaches(
+      cacheNames,
+      activePersistentWrites,
+      fencePrivateMediaWrites,
+      resumeCaching,
+    );
   };
   cleanupChain = cleanupChain.then(deletePrivateCaches, deletePrivateCaches);
   return cleanupChain;
 }
 
 export function invalidatePhotoListCaches(): Promise<void> {
-  return queueCacheDeletion([PHOTO_LIST_CACHE_NAME], false);
+  return queueCacheDeletion([PHOTO_LIST_CACHE_NAME], false, false, false);
 }
 
 /**
@@ -106,11 +112,15 @@ export async function preparePrivatePhotoCachesForScope(authScope: string): Prom
     ? queueCacheDeletion(PRIVATE_CACHE_NAMES, true, true)
     : cleanupChain;
   const expectedGeneration = cacheGeneration;
-  const cleanup = await loadPrivateCacheCleanup();
-  cleanup.removeLegacyPrivateLocalData();
+  const reset = await loadPrivateCacheReset();
+  reset.removeLegacyPrivateLocalData();
   await pendingCleanup;
   if (expectedGeneration !== cacheGeneration) return false;
+  if (owner === authScope && cleanupComplete) {
+    await reset.enablePrivateCacheWrites();
+    if (expectedGeneration !== cacheGeneration) return false;
+  }
   activePrivateCacheOwner = authScope;
-  cleanup.storePrivateCacheOwner(authScope);
+  reset.storePrivateCacheOwner(authScope);
   return true;
 }

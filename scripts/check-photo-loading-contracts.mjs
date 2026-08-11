@@ -26,6 +26,7 @@ const routingPolicy = read("packages/client/src/services/apiRoutingPolicy.ts");
 const hedgePolicy = read("packages/client/src/services/apiHedgePolicy.ts");
 const loadingPolicy = read("packages/client/src/services/photoLoadingPolicy.ts");
 const cacheLifecycle = read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const privateCacheReset = read("packages/client/src/services/privateCacheReset.ts");
 const workboxCleanup = read("packages/client/src/services/privateCachePurge.ts");
 const privateCacheFence = read("packages/client/public/private-cache-fence.js");
 const listCache = read("packages/client/src/services/photoListCache.ts");
@@ -168,9 +169,9 @@ requireText(listCache, "Date.now() - cachedAt <= CACHE_MAX_AGE_MS", "cache expir
 requireText(listCache, "registerPrivatePhotoCacheReset", "synchronous memory reset registration");
 requireText(listCache, "registerPrivatePhotoCacheWrite(operation)", "in-flight write registration");
 requireText(cacheLifecycle, "activePersistentWrites", "in-flight cache cleanup");
-requireText(workboxCleanup, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
+requireText(privateCacheReset, "Promise.allSettled([...activePersistentWrites])", "logout write drain");
 requireText(
-  cacheLifecycle,
+  privateCacheReset,
   'import("./privateCachePurge.ts")',
   "awaited lazy Workbox expiration cleanup boundary",
 );
@@ -185,11 +186,34 @@ requireText(workboxCleanup, "objectStoreNames.contains", "defensive Workbox sche
 requireText(workboxCleanup, "indexNames.contains", "defensive Workbox index discovery");
 requireText(workboxCleanup, "for (const cacheName of privateCacheNames)", "targeted cache-name selection");
 requireText(workboxCleanup, "openKeyCursor(cacheName)", "index-only private metadata scan");
-requireText(workboxCleanup, "beginPrivateCacheFence", "service-worker write fence");
-requireText(workboxCleanup, 'command: "begin" | "resume"', "service-worker fence protocol");
+requireText(privateCacheReset, "beginPrivateCacheFence", "service-worker write fence");
+requireText(privateCacheReset, "enablePrivateCacheWrites", "authenticated restart fence handshake");
+requireText(
+  privateCacheReset,
+  'command: "begin" | "resume" | "complete" | "enable"',
+  "service-worker fence protocol",
+);
 requireText(privateCacheFence, 'event.data.command === "begin"', "service-worker fence activation");
 requireText(privateCacheFence, 'event.data.command === "resume"', "service-worker fence release");
+requireText(privateCacheFence, 'event.data.command === "complete"', "logout fence completion");
+requireText(privateCacheFence, 'event.data.command === "enable"', "authenticated fence activation");
+requireText(privateCacheFence, "let cleanupActive = false", "cross-tab cleanup serialization");
+requireText(privateCacheFence, "let enabled = false", "fail-closed service-worker restart state");
+requireText(privateCacheFence, "cloudphoto-private-cache-fence-v1", "persistent fence state cache");
+requireText(privateCacheFence, "__cloudPhotoPrivateCacheFenceReady", "restored fence readiness");
+requireText(privateCacheReset, "navigator.serviceWorker.getRegistration()", "controllerless active-worker fence");
+requireText(
+  cacheLifecycle,
+  "queueCacheDeletion([PHOTO_LIST_CACHE_NAME], false, false, false)",
+  "list-only invalidation must not resume the private media fence",
+);
+requireText(
+  cacheLifecycle,
+  "await reset.enablePrivateCacheWrites()",
+  "matching authenticated owner must reopen a restarted fail-closed worker",
+);
 requireText(vite, "handlerWillStart", "private media request generation capture");
+requireText(vite, "CacheFenceReady", "restored fence state wait");
 requireText(vite, "cacheWillUpdate", "private media late-write rejection");
 requireText(vite, "cloudPhotoPrivateCacheWriteAllowed", "disabled-fence request rejection");
 requireText(vite, 'importScripts: ["private-cache-fence.js"]', "private media fence bootstrap");
@@ -209,7 +233,7 @@ requireText(workboxCleanup, '"cache-entries"', "Workbox expiration metadata stor
 requireText(workboxCleanup, "objectStoreNames.contains", "defensive Workbox schema discovery");
 requireText(workboxCleanup, "openKeyCursor(cacheName)", "index-only private metadata scan");
 requireText(workboxCleanup, "reject(cleanupFailure", "explicit IndexedDB failure propagation");
-requireText(workboxCleanup, "for (let pass = 0; pass < 2; pass += 1)", "late-write cleanup pass");
+requireText(privateCacheReset, "for (let pass = 0; pass < 2; pass += 1)", "late-write metadata cleanup pass");
 assert(
   !cacheLifecycle.includes("deleteDatabase(") && !workboxCleanup.includes("deleteDatabase("),
   "private cleanup must never delete the Workbox database or app-code metadata",
@@ -488,6 +512,7 @@ for (const pattern of [
   '"index.html"',
   '"assets/index-*.{js,css}"',
   '"assets/react-vendor-*.js"',
+  '"assets/privateCacheReset-*.js"',
   '"assets/virtual_pwa-register-*.js"',
   '"assets/workbox-window*.js"',
 ]) {

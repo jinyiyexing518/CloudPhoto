@@ -403,6 +403,12 @@ function checkHashedAssets(configPath) {
   if (privateMetadataChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred private metadata cleanup chunk");
   }
+  const privateResetChunks = currentAssets.filter((asset) =>
+    /^privateCacheReset-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (privateResetChunks.length !== 1) {
+    fail(configPath, "built assets must contain one precached private reset chunk");
+  }
   const entryStylesheets = currentAssets.filter((asset) =>
     /^index-[A-Za-z0-9_-]{8,}\.css$/.test(basename(asset))
   );
@@ -494,6 +500,9 @@ function checkHashedAssets(configPath) {
     "cloudphoto-private-cache-fence",
     "__cloudPhotoPrivateCacheGeneration",
     "__cloudPhotoPrivateCacheEnabled",
+    "__cloudPhotoPrivateCacheFenceReady",
+    "cloudphoto-private-cache-fence-v1",
+    "cleanupActive",
   ]) {
     if (!privateCacheFence.includes(marker)) fail(configPath, `private cache fence is missing ${marker}`);
   }
@@ -502,6 +511,7 @@ function checkHashedAssets(configPath) {
     "__cloudPhotoPrivate",
     "CacheGeneration",
     "CacheEnabled",
+    "CacheFenceReady",
     "cloudPhotoPrivateCacheWriteAllowed",
   ]) {
     if (!serviceWorker.includes(marker)) fail(configPath, `service worker is missing ${marker}`);
@@ -526,6 +536,9 @@ function checkHashedAssets(configPath) {
   }
   if (serviceWorker.includes(`assets/${basename(privateMetadataChunks[0])}`)) {
     fail(configPath, "private metadata cleanup must stay out of the app-shell precache");
+  }
+  if (!serviceWorker.includes(`assets/${basename(privateResetChunks[0])}`)) {
+    fail(configPath, "minimal private Cache Storage reset must remain precached");
   }
   if (!serviceWorker.includes("app-code-v1")) {
     fail(configPath, "service worker must cache deferred app chunks after first use");

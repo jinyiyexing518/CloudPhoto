@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (relativePath) => readFile(join(root, relativePath), "utf8");
@@ -57,13 +58,18 @@ globalThis.window = {
 globalThis.caches = globalThis.window.caches;
 
 const lifecycleSource = await read("packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const resetSource = await read("packages/client/src/services/privateCacheReset.ts");
 const expirationMetadataSource = await read("packages/client/src/services/privateCachePurge.ts");
 assert(
-  lifecycleSource.includes('import("./privateCachePurge.ts")'),
-  "the login lifecycle must load Workbox expiration cleanup only at the private cleanup boundary",
+  resetSource.includes('import("./privateCachePurge.ts")'),
+  "the reset boundary must load Workbox expiration cleanup only after its fallback starts",
 );
 assert(
-  lifecycleSource.includes("await cleanup.deletePrivateCaches(cacheNames, activePersistentWrites, resumeCaching)"),
+  lifecycleSource.includes("await reset.resetPrivateCaches("),
+  "private cleanup must await the precached Cache Storage reset boundary",
+);
+assert(
+  resetSource.includes("await cleanup.purgePrivateWorkboxExpirationMetadata("),
   "private cleanup must await the dynamically loaded Workbox metadata purge",
 );
 assert(
@@ -83,7 +89,13 @@ for (const implementationMarker of [
     expirationMetadataSource.includes(implementationMarker),
     `${implementationMarker} must live in the deferred cleanup implementation`,
   );
+  assert(
+    !resetSource.includes(implementationMarker),
+    `${implementationMarker} must stay out of the precached Cache Storage fallback`,
+  );
 }
+assert(resetSource.includes("caches.delete(name)"));
+assert(resetSource.includes("beginPrivateCacheFence"));
 for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
   assert(
     !expirationMetadataSource.includes(sensitiveRead),
@@ -91,7 +103,116 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
   );
 }
 
+{
+  const fenceSource = await read("packages/client/public/private-cache-fence.js");
+  const cacheRows = new Map();
+  let failStateWrite = false;
+  const fakeCaches = {
+    async open(name) {
+      return {
+        async match(request) {
+          return cacheRows.get(`${name}:${request.url}`)?.clone();
+        },
+        async put(request, response) {
+          if (failStateWrite) throw new Error("synthetic fence persistence failure");
+          cacheRows.set(`${name}:${request.url}`, response.clone());
+        },
+        async delete(request) {
+          return cacheRows.delete(`${name}:${request.url}`);
+        },
+      };
+    },
+  };
+  const startWorker = async () => {
+    let messageHandler;
+    const worker = {
+      location: { origin: "https://synthetic.invalid" },
+      addEventListener(type, handler) {
+        if (type === "message") messageHandler = handler;
+      },
+    };
+    runInNewContext(fenceSource, {
+      self: worker,
+      caches: fakeCaches,
+      Request,
+      Response,
+      URL,
+      JSON,
+      Number,
+      Promise,
+    });
+    await worker.__cloudPhotoPrivateCacheFenceReady;
+    return { worker, messageHandler };
+  };
+  const sendFenceCommand = async ({ messageHandler }, command, generation) => {
+    const channel = new MessageChannel();
+    const reply = new Promise((resolve) => {
+      channel.port1.onmessage = ({ data }) => {
+        channel.port1.close();
+        channel.port2.close();
+        resolve(data);
+      };
+    });
+    let pending;
+    messageHandler({
+      data: {
+        type: "cloudphoto-private-cache-fence",
+        command,
+        generation,
+      },
+      ports: [channel.port2],
+      waitUntil(operation) {
+        pending = operation;
+      },
+    });
+    await pending;
+    return reply;
+  };
+
+  const firstWorker = await startWorker();
+  assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
+  assert.equal((await sendFenceCommand(firstWorker, "enable")).ok, true);
+  assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, true);
+
+  const restartedWorker = await startWorker();
+  assert.equal(
+    restartedWorker.worker.__cloudPhotoPrivateCacheEnabled,
+    true,
+    "worker restart must restore the validated authenticated cache state",
+  );
+  const cleanup = await sendFenceCommand(restartedWorker, "begin");
+  assert.equal(restartedWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
+
+  const cleanupWorker = await startWorker();
+  assert.equal(
+    (await sendFenceCommand(cleanupWorker, "enable")).ok,
+    false,
+    "worker restart must preserve and refuse to supersede an active cleanup",
+  );
+  assert.equal(
+    (await sendFenceCommand(cleanupWorker, "complete", cleanup.generation)).ok,
+    true,
+  );
+  const loggedOutWorker = await startWorker();
+  assert.equal(loggedOutWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
+  failStateWrite = true;
+  assert.equal((await sendFenceCommand(loggedOutWorker, "enable")).ok, false);
+  assert.equal(
+    loggedOutWorker.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "writes must remain disabled until an enabling state is durably persisted",
+  );
+  failStateWrite = false;
+  const failedPersistenceRestart = await startWorker();
+  assert.equal(
+    failedPersistenceRestart.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "failed persistence must remove stale enabled state before worker restart",
+  );
+}
+
 const lifecycle = await import("../packages/client/src/services/privatePhotoCacheLifecycle.ts");
+const cacheReset = await import("../packages/client/src/services/privateCacheReset.ts");
 const workboxCleanup = await import("../packages/client/src/services/privateCachePurge.ts");
 const momentsStore = await import("../packages/client/src/services/privateMomentsStore.ts");
 const dateFormat = await import("../packages/client/src/utils/dateFormat.ts");
@@ -276,7 +397,8 @@ function createFakeWorkboxExpirationDb(
   };
   try {
     await assert.rejects(
-      workboxCleanup.deletePrivateCaches(privateCacheNames, new Set(), true),
+      cacheReset.beginPrivateCacheReset(privateCacheNames, new Set(), true)
+        .then((reset) => cacheReset.completePrivateCacheReset(reset, true, [])),
       /Private cache cleanup failed/,
       "Cache Storage rejection must keep cleanup incomplete",
     );
@@ -292,18 +414,35 @@ function createFakeWorkboxExpirationDb(
   const commands = [];
   const deletionFenceStates = [];
   let fenceGeneration = 0;
-  let cacheWritesEnabled = true;
+  let cacheWritesEnabled = false;
+  let cleanupActive = false;
   const controller = {
     postMessage(message, ports) {
       commands.push(message.command);
       if (message.command === "begin") {
         fenceGeneration += 1;
         cacheWritesEnabled = false;
+        cleanupActive = true;
         ports[0].postMessage({ ok: true, generation: fenceGeneration });
         return;
       }
-      const ok = message.command === "resume" && message.generation === fenceGeneration;
-      if (ok) cacheWritesEnabled = true;
+      if (message.command === "enable") {
+        if (!cleanupActive) {
+          fenceGeneration += 1;
+          cacheWritesEnabled = true;
+        }
+        ports[0].postMessage({ ok: !cleanupActive, generation: fenceGeneration });
+        return;
+      }
+      const ok = (
+        (message.command === "resume" || message.command === "complete")
+        && message.generation === fenceGeneration
+        && cleanupActive
+      );
+      if (ok) {
+        cacheWritesEnabled = message.command === "resume";
+        cleanupActive = false;
+      }
       ports[0].postMessage({ ok, generation: fenceGeneration });
     },
   };
@@ -316,7 +455,8 @@ function createFakeWorkboxExpirationDb(
     return true;
   };
   try {
-    await workboxCleanup.deletePrivateCaches(privateCacheNames, new Set(), true);
+    const reset = await cacheReset.beginPrivateCacheReset(privateCacheNames, new Set(), true);
+    await cacheReset.completePrivateCacheReset(reset, true, []);
     assert.deepEqual(commands, ["begin", "resume"]);
     assert(
       deletionFenceStates.every((enabled) => enabled === false),
@@ -326,9 +466,76 @@ function createFakeWorkboxExpirationDb(
 
     commands.length = 0;
     deletionFenceStates.length = 0;
-    await workboxCleanup.deletePrivateCaches(privateCacheNames, new Set());
-    assert.deepEqual(commands, ["begin"]);
+    cacheWritesEnabled = false;
+    await cacheReset.enablePrivateCacheWrites();
+    assert.deepEqual(commands, ["enable"]);
+    assert.equal(
+      cacheWritesEnabled,
+      true,
+      "a validated matching owner must reopen a restarted fail-closed worker",
+    );
+
+    commands.length = 0;
+    const listReset = await cacheReset.beginPrivateCacheReset(
+      ["cloudphoto-photo-lists-v1"],
+      new Set(),
+      false,
+    );
+    await cacheReset.completePrivateCacheReset(listReset, false, []);
+    assert.deepEqual(
+      commands,
+      [],
+      "list-only invalidation must not re-enable private media writes after logout",
+    );
+
+    const logoutReset = await cacheReset.beginPrivateCacheReset(privateCacheNames, new Set(), true);
+    await cacheReset.completePrivateCacheReset(logoutReset, false, []);
+    assert.deepEqual(commands, ["begin", "complete"]);
     assert.equal(cacheWritesEnabled, false, "logout cleanup must leave private SW writes fenced");
+
+    commands.length = 0;
+    let releaseDeletes;
+    const deletesMayFinish = new Promise((resolve) => {
+      releaseDeletes = resolve;
+    });
+    window.caches.delete = async () => {
+      deletionFenceStates.push(cacheWritesEnabled);
+      await deletesMayFinish;
+      return true;
+    };
+    const concurrentLogout = cacheReset.beginPrivateCacheReset(privateCacheNames, new Set(), true)
+      .then((reset) => cacheReset.completePrivateCacheReset(reset, false, []));
+    while (!commands.includes("begin")) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await assert.rejects(
+      cacheReset.enablePrivateCacheWrites(),
+      /service worker fence/,
+      "an authenticated handshake must not supersede an active logout cleanup",
+    );
+    releaseDeletes();
+    await concurrentLogout;
+    assert.deepEqual(commands, ["begin", "enable", "complete"]);
+    assert.equal(cacheWritesEnabled, false, "logout completion must remain fail closed");
+
+    commands.length = 0;
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        serviceWorker: {
+          controller: null,
+          async getRegistration() {
+            return { active: controller };
+          },
+        },
+      },
+    });
+    await cacheReset.enablePrivateCacheWrites();
+    assert.deepEqual(
+      commands,
+      ["enable"],
+      "a controllerless tab must fence through the active registration worker",
+    );
   } finally {
     window.caches.delete = originalDelete;
     if (originalNavigator) {
@@ -936,6 +1143,7 @@ const lifecycleExpirationDb = createFakeWorkboxExpirationDb(
       if (recreatedLateEntry) return;
       recreatedLateEntry = true;
       add({ id: "late-private", cacheName: "photo-media-v1", timestamp: 999 });
+      availableCacheNames.add("photo-media-v1");
     },
   },
 );
@@ -943,7 +1151,11 @@ globalThis.indexedDB = lifecycleExpirationDb.factory;
 await lifecycle.clearPrivatePhotoCaches();
 assert.deepEqual(momentsStore.readPrivateMomentInsights("personal"), {}, "logout/401 must delete scoped moments");
 assert.deepEqual(shareStore.listRecentShareLinks(), [], "logout/401 must delete scoped recent share links");
-assert.equal(availableCacheNames.has("photo-media-v1"), false, "logout must still remove private media");
+assert.equal(
+  availableCacheNames.has("photo-media-v1"),
+  false,
+  "logout must delete private media recreated while the purge chunk runs",
+);
 assert.equal(availableCacheNames.has("workbox-precache-v2"), true, "logout must preserve the private app shell");
 assert.equal(lifecycleExpirationDb.count("photo-media-v1"), 0, "logout must remove private expiration metadata");
 assert.equal(lifecycleExpirationDb.count("app-code-v1"), 48, "logout must preserve app-code expiration metadata");

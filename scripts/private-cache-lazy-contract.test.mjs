@@ -11,14 +11,15 @@ const source = (path) => readFile(new URL(path, root), "utf8");
 const distPath = new URL("packages/client/dist/", root);
 
 test("private Workbox cleanup stays behind an awaited dynamic boundary", async () => {
-  const [lifecycle, cleanup, auth, http] = await Promise.all([
+  const [lifecycle, reset, cleanup, auth, http] = await Promise.all([
     source("packages/client/src/services/privatePhotoCacheLifecycle.ts"),
+    source("packages/client/src/services/privateCacheReset.ts"),
     source("packages/client/src/services/privateCachePurge.ts"),
     source("packages/client/src/contexts/AuthContext.tsx"),
     source("packages/client/src/services/http.ts"),
   ]);
 
-  assert.match(lifecycle, /import\("\.\/privateCachePurge\.ts"\)/);
+  assert.match(reset, /import\("\.\/privateCachePurge\.ts"\)/);
   assert.doesNotMatch(
     lifecycle,
     /import\s+(?!type\b)[^;]+from "\.\/privateCachePurge\.ts"/,
@@ -28,9 +29,15 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
     assert.ok(!lifecycle.includes(marker), `static lifecycle shell must not own ${marker}`);
   }
   assert.doesNotMatch(cleanup, /cursor\.(?:value|primaryKey)/);
-  assert.match(
-    lifecycle,
-    /await cleanup\.deletePrivateCaches\(cacheNames, activePersistentWrites, resumeCaching\)/,
+  assert.match(lifecycle, /await reset\.resetPrivateCaches\(/);
+  assert.match(reset, /await beginPrivateCacheReset\(/);
+  assert.match(reset, /await cleanup\.purgePrivateWorkboxExpirationMetadata\(/);
+  assert.match(reset, /await completePrivateCacheReset\(/);
+  assert.ok(reset.includes("caches.delete(name)"));
+  assert.ok(
+    reset.indexOf("await beginPrivateCacheReset(")
+      < reset.indexOf('import("./privateCachePurge.ts")'),
+    "Cache Storage fallback and the worker fence must run before the purge chunk loads",
   );
   assert.ok(!auth.includes("void clearPrivatePhotoCaches()"));
   assert.match(auth, /await clearPrivatePhotoCaches\(\)/);
@@ -38,10 +45,12 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
   assert.match(http, /await _onUnauthorized\?\.\(requestToken\)/);
   assert.match(http, /await _onUnauthorized\?\.\(null\)/);
   assert.doesNotMatch(
-    lifecycle.slice(lifecycle.indexOf('import("./privateCachePurge.ts")')),
+    lifecycle,
     /\.catch\(/,
     "chunk-load failures must reject the lifecycle cleanup promise",
   );
+  assert.match(reset, /failures\.push\(error\)/);
+  assert.match(reset, /await completePrivateCacheReset\(reset, resumeCaching, failures\)/);
 });
 
 test("API hedge machinery stays behind an authenticated intent boundary", async () => {
@@ -85,9 +94,13 @@ test("built deferred support chunks stay outside login preload and service-worke
   const hedgeNames = currentAssets.filter(
     (name) => /^apiHedgePolicy-[\w-]{8,}\.js$/.test(name),
   );
+  const resetNames = currentAssets.filter(
+    (name) => /^privateCacheReset-[\w-]{8,}\.js$/.test(name),
+  );
   assert.equal(entryNames.length, 1, "build must emit exactly one login entry");
   assert.equal(cleanupNames.length, 1, "build must emit exactly one lazy Workbox cleanup chunk");
   assert.equal(hedgeNames.length, 1, "build must emit exactly one lazy API hedge chunk");
+  assert.equal(resetNames.length, 1, "build must emit exactly one precached private reset chunk");
 
   const entryPath = new URL(`assets/${entryNames[0]}`, distPath);
   const cleanupPath = new URL(`assets/${cleanupNames[0]}`, distPath);
@@ -121,6 +134,14 @@ test("built deferred support chunks stay outside login preload and service-worke
   assert.ok(
     !serviceWorker.includes(`assets/${hedgeNames[0]}`),
     "service worker must not precache the API hedge chunk",
+  );
+  assert.ok(
+    serviceWorker.includes(`assets/${resetNames[0]}`),
+    "service worker must precache the minimal cache/fence fallback",
+  );
+  assert.ok(
+    !html.includes(resetNames[0]),
+    "unauthenticated HTML must not preload the private reset chunk",
   );
   assert.ok(
     entryStats.size <= 36_000,

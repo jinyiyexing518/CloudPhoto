@@ -156,7 +156,7 @@
     "title": "退出时清除私有媒体缓存索引",
     "type": "fix",
     "desc": "退出、会话失效或切换账号时会等待清除私有照片缓存及其 Workbox 过期索引，避免浏览器继续保留上一会话的媒体请求元数据。",
-    "details": "轻量账号归属、generation 与同步 reset 仍由登录入口持有；Workbox IndexedDB 实现只在私有清理路径按需加载并被 cleanup Promise 等待，不进入登录入口、HTML preload 或预缓存。清理只通过 cacheName 索引删除照片列表、当前媒体与旧版媒体行，不读取 URL、SAS、照片名或主键，也不删除数据库、对象仓库、app-code-v1、预缓存或其他行。SW generation fence 在删除前禁止迟到媒体写入，仅在替换 owner 清理成功后恢复；Cache Storage、IDB、chunk 或 fence 失败均显式 reject、保留未完成状态并阻止采用新 owner。",
+    "details": "轻量账号归属、generation 与同步 reset 仍由登录入口持有；私有清理先等待预缓存但不由 HTML preload 的最小 Cache Storage/fence reset chunk，再按需加载并等待独立的 Workbox IndexedDB purge chunk。IDB 实现不进入登录入口、HTML preload 或 SW precache；清理只通过 cacheName 索引删除照片列表、当前媒体与旧版媒体行，不读取 URL、SAS、照片名或主键，也不删除数据库、对象仓库、app-code-v1、预缓存或其他行。SW generation fence 在删除前禁止迟到媒体写入，仅在替换 owner 清理成功后恢复；Cache Storage、IDB、chunk 或 fence 失败均显式 reject、保留未完成状态并阻止采用新 owner。",
     "seq": 1786410000000
   },
   {

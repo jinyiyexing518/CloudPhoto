@@ -11,6 +11,13 @@ const clientDir = path.dirname(fileURLToPath(import.meta.url));
 const privateCacheWriteFence = {
   handlerWillStart: async ({ state }) => {
     if (state) {
+      const readyKey = ["__cloudPhotoPrivate", "CacheFenceReady"].join("");
+      const ready = (
+        globalThis as typeof globalThis & Record<string, unknown>
+      )[readyKey];
+      if (ready && typeof (ready as Promise<void>).then === "function") {
+        await ready;
+      }
       const generationKey = ["__cloudPhotoPrivate", "CacheGeneration"].join("");
       const generation = (
         globalThis as typeof globalThis & Record<string, unknown>
@@ -99,6 +106,7 @@ export default defineConfig({
           "index.html",
           "assets/index-*.{js,css}",
           "assets/react-vendor-*.js",
+          "assets/privateCacheReset-*.js",
           "assets/virtual_pwa-register-*.js",
           "assets/workbox-window*.js",
         ],
