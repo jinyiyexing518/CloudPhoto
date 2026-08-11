@@ -5,10 +5,12 @@ import {
   InvocationContext,
 } from "@azure/functions";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
-import { isGroupMember, getPhotoLocationsContainer, PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
+import { isGroupMember, getPhotoLocationsContainer } from "../../utils/cosmos/cosmosClient";
 
 interface LocationItem {
-  name: string;
+  scope?: string;
+  name?: string;
+  photoName?: string;
   lat: number;
   lon: number;
   sourceBlobEtag?: string;
@@ -53,8 +55,8 @@ app.http("getPhotoLocations", {
         // Group photos: query by scope = "groups/{groupId}"
         const scope = `groups/${groupId}`;
         const { resources } = await container.items
-          .query<PhotoLocationDoc>({
-            query: "SELECT c.name, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
+          .query<LocationItem>({
+            query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
             parameters: [{ name: "@scope", value: scope }],
           })
           .fetchAll();
@@ -62,9 +64,9 @@ app.http("getPhotoLocations", {
       } else if (payload.role === "admin") {
         // Admin: all personal photos (cross-partition query)
         const { resources } = await container.items
-          .query<PhotoLocationDoc>(
+          .query<LocationItem>(
             {
-              query: "SELECT c.name, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE STARTSWITH(c.scope, 'personal/')",
+              query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE STARTSWITH(c.scope, 'personal/')",
             }
           )
           .fetchAll();
@@ -73,8 +75,8 @@ app.http("getPhotoLocations", {
         // Personal photos: query by scope = "personal/{userId}"
         const scope = `personal/${payload.userId}`;
         const { resources } = await container.items
-          .query<PhotoLocationDoc>({
-            query: "SELECT c.name, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
+          .query<LocationItem>({
+            query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope",
             parameters: [{ name: "@scope", value: scope }],
           })
           .fetchAll();

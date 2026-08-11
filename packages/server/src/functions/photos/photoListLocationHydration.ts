@@ -1,4 +1,3 @@
-import type { PhotoLocationDoc } from "../../utils/cosmos/cosmosClient";
 import {
   formatCoordinate,
   parseFiniteCoordinate,
@@ -11,10 +10,23 @@ interface PhotoLocationQuery {
 
 interface PhotoLocationQueryContainer {
   items: {
-    query<T>(query: PhotoLocationQuery): {
+    query<T>(query: PhotoLocationQuery, options?: { abortSignal?: AbortSignal }): {
       fetchAll(): Promise<{ resources: T[] }>;
     };
   };
+}
+
+interface IndexedPhotoLocationRow {
+  id?: unknown;
+  scope?: unknown;
+  name?: unknown;
+  photoName?: unknown;
+  lat?: unknown;
+  lon?: unknown;
+  originalName?: unknown;
+  contentType?: unknown;
+  uploadedAt?: unknown;
+  sourceBlobEtag?: unknown;
 }
 
 export interface PhotoLocationAccess {
@@ -46,12 +58,34 @@ export interface PhotoLocationHydrationDiagnostics {
 }
 
 const LOCATION_SELECT =
-  "SELECT c.id, c.scope, c.name, c.lat, c.lon, c.originalName, c.contentType, c.uploadedAt, c.sourceBlobEtag FROM c";
+  "SELECT c.id, c.scope, c.name, c.photoName, c.lat, c.lon, c.originalName, c.contentType, c.uploadedAt, c.sourceBlobEtag FROM c";
+
+export const PHOTO_LOCATION_QUERY_TIMEOUT_MS = 1_500;
+
+function locationIdentifier(row: IndexedPhotoLocationRow): string | null {
+  const hasName = row.name !== undefined;
+  const hasPhotoName = row.photoName !== undefined;
+  const name = typeof row.name === "string" && row.name.length > 0 ? row.name : null;
+  const photoName = typeof row.photoName === "string" && row.photoName.length > 0
+    ? row.photoName
+    : null;
+  if ((hasName && !name) || (hasPhotoName && !photoName)) return null;
+  if (name && photoName && name !== photoName) return null;
+  return name ?? photoName;
+}
+
+function locationIdentifierCandidates(row: IndexedPhotoLocationRow): string[] {
+  return [...new Set(
+    [row.name, row.photoName]
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  )];
+}
 
 export async function listAuthorizedPhotoLocationRows(
   container: PhotoLocationQueryContainer,
   access: PhotoLocationAccess,
-): Promise<PhotoLocationDoc[]> {
+  timeoutMs = PHOTO_LOCATION_QUERY_TIMEOUT_MS,
+): Promise<IndexedPhotoLocationRow[]> {
   const query = access.groupId
     ? {
         query: `${LOCATION_SELECT} WHERE c.scope = @scope`,
@@ -65,13 +99,31 @@ export async function listAuthorizedPhotoLocationRows(
           query: `${LOCATION_SELECT} WHERE c.scope = @scope`,
           parameters: [{ name: "@scope", value: `personal/${access.userId}` }],
         };
-  const { resources } = await container.items.query<PhotoLocationDoc>(query).fetchAll();
-  return resources;
+  const abortController = new AbortController();
+  const queryPromise = container.items.query<IndexedPhotoLocationRow>(
+    query,
+    { abortSignal: abortController.signal },
+  ).fetchAll();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const { resources } = await Promise.race([
+      queryPromise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          abortController.abort();
+          reject(new Error("photoLocations list hydration timed out"));
+        }, timeoutMs);
+      }),
+    ]);
+    return resources;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 export function hydrateListedPhotoLocations<TPhoto extends HydratablePhoto>(
   sources: readonly ListedPhotoLocationSource<TPhoto>[],
-  rows: readonly PhotoLocationDoc[],
+  rows: readonly IndexedPhotoLocationRow[],
 ): PhotoLocationHydrationDiagnostics {
   const diagnostics: PhotoLocationHydrationDiagnostics = {
     hydrated: 0,
@@ -83,20 +135,31 @@ export function hydrateListedPhotoLocations<TPhoto extends HydratablePhoto>(
   };
   const sourcesByName = new Map(sources.map((source) => [source.photo.name, source]));
   const matchingRowsByName = new Map<string, number>();
+  const namesWithVersionedRows = new Set<string>();
   for (const row of rows) {
-    const source = sourcesByName.get(row.name);
-    if (source && row.scope === source.scope) {
-      matchingRowsByName.set(row.name, (matchingRowsByName.get(row.name) ?? 0) + 1);
+    const identifier = locationIdentifier(row);
+    const source = identifier ? sourcesByName.get(identifier) : undefined;
+    if (identifier && source && row.scope === source.scope) {
+      matchingRowsByName.set(identifier, (matchingRowsByName.get(identifier) ?? 0) + 1);
+    }
+    if (row.sourceBlobEtag !== undefined) {
+      for (const candidate of locationIdentifierCandidates(row)) {
+        const candidateSource = sourcesByName.get(candidate);
+        if (candidateSource && row.scope === candidateSource.scope) {
+          namesWithVersionedRows.add(candidate);
+        }
+      }
     }
   }
 
   for (const row of rows) {
-    const source = sourcesByName.get(row.name);
-    if (!source || row.scope !== source.scope) {
+    const identifier = locationIdentifier(row);
+    const source = identifier ? sourcesByName.get(identifier) : undefined;
+    if (!identifier || !source || row.scope !== source.scope) {
       diagnostics.orphanedOrOutOfScope += 1;
       continue;
     }
-    if ((matchingRowsByName.get(row.name) ?? 0) > 1) {
+    if ((matchingRowsByName.get(identifier) ?? 0) > 1) {
       diagnostics.ambiguousRows += 1;
       continue;
     }
@@ -104,10 +167,11 @@ export function hydrateListedPhotoLocations<TPhoto extends HydratablePhoto>(
       diagnostics.blobMetadataAuthoritative += 1;
       continue;
     }
-    if (
-      row.sourceBlobEtag !== undefined
-      && (!source.blobEtag || row.sourceBlobEtag !== source.blobEtag)
-    ) {
+    if (namesWithVersionedRows.has(identifier) && (
+      typeof row.sourceBlobEtag !== "string"
+      || !source.blobEtag
+      || row.sourceBlobEtag !== source.blobEtag
+    )) {
       diagnostics.staleSource += 1;
       continue;
     }
