@@ -1585,7 +1585,7 @@ test("frontend validation runs memory-map location partitions before artifact st
   ));
   assert.equal(
     packageJson.scripts["test:memory-map-locations"],
-    "node --test packages/client/src/components/memory-map/memoryMapLocationPartitions.test.mjs",
+    "node --test packages/client/src/components/memory-map/memoryMapLocationPartitions.test.mjs packages/client/src/photoGpsState.test.mjs",
   );
 
   const path = ".github/workflows/deploy-frontend.yml";

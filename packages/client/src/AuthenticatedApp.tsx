@@ -32,6 +32,7 @@ import {
   mergeUploadedPhoto,
   normalizeExifGps,
 } from "./uploadLocation";
+import { applyAuthoritativeGpsUpdate } from "./photoGpsState";
 import {
   WORKSPACE_TAB_ORDER,
   activateWorkspaceTabWithFocus,
@@ -1971,9 +1972,7 @@ function AppContent() {
   };
 
   const handleGpsUpdate = (name: string, gpsLat: string, gpsLon: string) => {
-    mutatePhotos((prev) =>
-      prev.map((p) => (p.name === name ? { ...p, gpsLat, gpsLon } : p))
-    );
+    mutatePhotos((prev) => applyAuthoritativeGpsUpdate(prev, name, gpsLat, gpsLon));
   };
 
   const handleRenamePhoto = (name: string, newOriginalName: string) => {
@@ -3038,7 +3037,7 @@ function AppContent() {
                         locationIndexRevision={locationIndexRevision}
                         onViewPhoto={jumpToTimelinePhoto}
                         onGpsUpdate={(name, lat, lon) =>
-                          mutatePhotos((prev) => prev.map((p) => p.name === name ? { ...p, gpsLat: lat, gpsLon: lon } : p))
+                          mutatePhotos((prev) => applyAuthoritativeGpsUpdate(prev, name, lat, lon))
                         }
                       />
                   </Suspense>
