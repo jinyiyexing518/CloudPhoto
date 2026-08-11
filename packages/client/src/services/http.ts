@@ -132,27 +132,19 @@ function isLoginRequest(input: RequestInfo, init?: RequestInit): boolean {
   return requestMethod(input, init) === "POST" && request?.suffix === "/auth/login";
 }
 
-function isReadOnlyLocationRecoveryRequest(input: RequestInfo, init?: RequestInit): boolean {
-  const request = parseApiRequest(input);
-  return requestMethod(input, init) === "POST"
-    && request?.suffix === "/photos/locations/recover";
-}
-
-function canReplayRequest(input: RequestInfo, init?: RequestInit): boolean {
+function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
   const method = requestMethod(input, init);
   const request = parseApiRequest(input);
   if (!request) return false;
   if (typeof Request !== "undefined" && input instanceof Request) return false;
   if (
     isLoginRequest(input, init)
-    || isReadOnlyLocationRecoveryRequest(input, init)
+    || (method === "POST" && request.suffix === "/photos/locations/recover")
   ) return true;
   return isSafeReplayMethod(method) && request.suffix !== "/photos/share";
 }
 
-function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
-  return canReplayRequest(input, init);
-}
+const canReplayRequest = canRetryOnAlternateRoute;
 
 function canHedgeOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
   const request = parseApiRequest(input);
