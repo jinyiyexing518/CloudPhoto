@@ -10,7 +10,6 @@ let cacheGeneration = 0;
 let activePrivateCacheOwner: string | null = null;
 let cleanupChain: Promise<void> = Promise.resolve();
 let listCleanupChain: Promise<void> = Promise.resolve();
-let listCleanupGeneration = -1;
 const activePersistentWrites = new Set<Promise<void>>();
 const resetListeners = new Set<(scopeReset: boolean) => void>();
 const loadPrivateCacheReset = () => import("./privateCacheReset.ts");
@@ -27,17 +26,7 @@ export function getPrivatePhotoCacheOwner(): string | null {
 
 export async function waitForPrivatePhotoCacheCleanup(): Promise<void> {
   await cleanupChain;
-  const expectedGeneration = cacheGeneration;
-  try {
-    await listCleanupChain;
-  } catch (error) {
-    if (
-      listCleanupGeneration === expectedGeneration
-      && expectedGeneration === cacheGeneration
-    ) {
-      throw error;
-    }
-  }
+  await listCleanupChain;
 }
 
 export function registerPrivatePhotoCacheReset(
@@ -86,7 +75,10 @@ function queueCacheDeletion(
   resumeCaching = !clearOwner,
   fencePrivateMediaWrites = true,
 ): Promise<void> {
-  if (clearOwner) invalidatePrivateCacheOwnership();
+  if (clearOwner) {
+    invalidatePrivateCacheOwnership();
+    listCleanupChain = listCleanupChain.then(undefined, () => undefined);
+  }
   else {
     cacheGeneration += 1;
     for (const reset of resetListeners) reset(false);
@@ -108,7 +100,6 @@ function queueCacheDeletion(
     return cleanupChain;
   }
   listCleanupChain = listCleanupChain.then(deletePrivateCaches, deletePrivateCaches);
-  listCleanupGeneration = deletionGeneration;
   return listCleanupChain;
 }
 
