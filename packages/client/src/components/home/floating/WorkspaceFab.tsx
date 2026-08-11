@@ -1,4 +1,19 @@
-import { useRef, useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useRef,
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import {
+  accessWorkspaceFabStorage,
+  clampWorkspaceFabPosition,
+  finishWorkspaceFabDrag,
+  persistWorkspaceFabPosition,
+  readWorkspaceFabPosition,
+  type WorkspaceFabDragState,
+} from "./workspaceFabInteraction";
 
 interface Props {
   activeTab: "timeline" | "moments";
@@ -19,32 +34,95 @@ export default function WorkspaceFab({
   onSecondaryChipClick,
 }: Props) {
   const [compactExpanded, setCompactExpanded] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
-    try {
-      const saved = localStorage.getItem("fab-pos");
-      if (!saved) return null;
-      const p = JSON.parse(saved) as { x: number; y: number };
-      // Discard positions that fall outside the current viewport (e.g. from a different screen size)
-      if (
-        typeof p.x !== "number" || typeof p.y !== "number" ||
-        p.x < 0 || p.x > window.innerWidth - 50 ||
-        p.y < 0 || p.y > window.innerHeight - 50
-      ) {
-        localStorage.removeItem("fab-pos");
-        return null;
-      }
-      return p;
-    } catch {
-      return null;
-    }
-  });
+  const [pos, setPos] = useState(() =>
+    readWorkspaceFabPosition(accessWorkspaceFabStorage(() => window.localStorage)),
+  );
 
   const railRef = useRef<HTMLDivElement>(null);
   const compactToggleRef = useRef<HTMLButtonElement>(null);
   const compactFirstActionRef = useRef<HTMLButtonElement>(null);
   const primaryChipRef = useRef<HTMLButtonElement>(null);
   const secondaryChipRef = useRef<HTMLButtonElement>(null);
-  const drag = useRef({ active: false, hasDragged: false, mx: 0, my: 0, ox: 0, oy: 0 });
+  const drag = useRef<WorkspaceFabDragState>({
+    active: false,
+    hasDragged: false,
+    mx: 0,
+    my: 0,
+    ox: 0,
+    oy: 0,
+  });
+
+  const clampCurrentPosition = useCallback((persist: boolean) => {
+    const el = railRef.current;
+    if (!el) return;
+    setPos((current) => {
+      if (!current) return current;
+      const clamped = clampWorkspaceFabPosition(
+        current,
+        { width: window.innerWidth, height: window.innerHeight },
+        { width: el.offsetWidth, height: el.offsetHeight },
+      );
+      if (persist) {
+        persistWorkspaceFabPosition(
+          accessWorkspaceFabStorage(() => window.localStorage),
+          clamped,
+        );
+      }
+      if (clamped.x === current.x && clamped.y === current.y) return current;
+      return clamped;
+    });
+  }, []);
+
+  const finishDrag = useCallback((persistPosition: boolean) => {
+    if (!drag.current.active) return;
+    const result = finishWorkspaceFabDrag(drag.current);
+    const el = railRef.current;
+    if (el) {
+      el.style.cursor = "";
+      el.style.transition = "";
+    }
+    if (!result.wasDragged) return;
+    if (!persistPosition) {
+      setPos(result.origin);
+      return;
+    }
+    clampCurrentPosition(true);
+  }, [clampCurrentPosition]);
+
+  useLayoutEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const activeElement = document.activeElement;
+    const focusWasInside = Boolean(activeElement && rail.contains(activeElement));
+    rail.inert = hidden;
+    if (!hidden) return;
+    setCompactExpanded(false);
+    finishDrag(false);
+    if (!focusWasInside) return;
+    const activeTabTrigger = document.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    activeTabTrigger?.focus();
+    if (!activeTabTrigger && activeElement instanceof HTMLElement) activeElement.blur();
+  }, [finishDrag, hidden]);
+
+  useLayoutEffect(() => {
+    clampCurrentPosition(true);
+  }, [clampCurrentPosition]);
+
+  useEffect(() => {
+    let resizeFrame = 0;
+    const handleResize = () => {
+      finishDrag(false);
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => clampCurrentPosition(true));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      cancelAnimationFrame(resizeFrame);
+    };
+  }, [clampCurrentPosition, finishDrag]);
 
   useEffect(() => {
     if (compactExpanded) {
@@ -87,13 +165,16 @@ export default function WorkspaceFab({
   }, [onOpenSidebar]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (hidden) return;
     if ((e.target as Element).closest("button")) return;
     e.preventDefault();
-    const rect = railRef.current!.getBoundingClientRect();
+    const el = railRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
     drag.current = { active: true, hasDragged: false, mx: e.clientX, my: e.clientY, ox: rect.left, oy: rect.top };
-    railRef.current!.style.transition = "none";
-    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-  }, []);
+    el.style.transition = "none";
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, [hidden]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current.active) return;
@@ -110,27 +191,20 @@ export default function WorkspaceFab({
     setPos({ x: ox + dx, y: oy + dy });
   }, []);
 
-  const onPointerUp = useCallback(() => {
-    if (!drag.current.active) return;
-    const wasDragged = drag.current.hasDragged;
-    drag.current.active = false;
-    drag.current.hasDragged = false;
-    const el = railRef.current;
-    if (!el) return;
-    el.style.cursor = "";
-    el.style.transition = "";
-    // Only persist position if the user actually dragged (not just tapped)
-    if (!wasDragged) return;
-    const maxX = window.innerWidth - el.offsetWidth - 8;
-    const maxY = window.innerHeight - el.offsetHeight - 8;
-    setPos((prev) => {
-      if (!prev) return prev;
-      const nx = Math.max(8, Math.min(prev.x, maxX));
-      const ny = Math.max(8, Math.min(prev.y, maxY));
-      localStorage.setItem("fab-pos", JSON.stringify({ x: nx, y: ny }));
-      return { x: nx, y: ny };
-    });
-  }, []);
+  const onPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    finishDrag(true);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, [finishDrag]);
+
+  const onPointerCancel = useCallback(() => {
+    finishDrag(false);
+  }, [finishDrag]);
+
+  const onLostPointerCapture = useCallback(() => {
+    finishDrag(false);
+  }, [finishDrag]);
 
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape") return;
@@ -144,10 +218,13 @@ export default function WorkspaceFab({
     <div
       ref={railRef}
       className={`workspace-fab-rail${compactExpanded ? " workspace-fab-rail--expanded" : ""}${hidden ? " workspace-fab-rail--hidden" : ""}`}
+      aria-hidden={hidden}
       style={pos ? ({ left: pos.x, top: pos.y, right: "unset", bottom: "unset" } as React.CSSProperties) : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onLostPointerCapture}
       onKeyDown={onKeyDown}
     >
       <div id="workspace-fab-actions" className="workspace-fab-actions">

@@ -8,6 +8,7 @@ const appSource = readFileSync(new URL("../../AuthenticatedApp.tsx", import.meta
 const settingsSource = readFileSync(new URL("../settings/SettingsDialog.tsx", import.meta.url), "utf8");
 const boundarySource = readFileSync(new URL("../shared/useModalFocusBoundary.ts", import.meta.url), "utf8");
 const modalFocus = import("../shared/modalFocus.ts");
+const fabInteraction = import("./floating/workspaceFabInteraction.ts");
 
 class FakeElement {
   constructor({ connected = true, visible = true } = {}) {
@@ -76,6 +77,96 @@ test("FAB hands the real desktop or compact restore trigger to the sidebar", () 
   assert.doesNotMatch(fabSource, /restoreAfterHidden/);
   assert.match(appSource, /sidebarRestoreFocusRef\.current = trigger/);
   assert.match(appSource, /restoreFocusTo=\{sidebarRestoreFocusRef\.current\}/);
+});
+
+test("hidden FAB rail leaves both Tab order and the accessibility tree safely", () => {
+  assert.match(fabSource, /rail\.inert = hidden/);
+  assert.match(fabSource, /aria-hidden=\{hidden\}/);
+  assert.match(fabSource, /\[role="tab"\]\[aria-selected="true"\]/);
+  assert.match(fabSource, /activeTabTrigger\?\.focus\(\)/);
+  assert.match(fabSource, /setCompactExpanded\(false\)/);
+});
+
+test("pointer cancellation and capture loss restore the FAB drag state", async () => {
+  const { finishWorkspaceFabDrag } = await fabInteraction;
+  const drag = {
+    active: true,
+    hasDragged: true,
+    mx: 10,
+    my: 20,
+    ox: 30,
+    oy: 40,
+  };
+  assert.deepEqual(finishWorkspaceFabDrag(drag), {
+    wasDragged: true,
+    origin: { x: 30, y: 40 },
+  });
+  assert.equal(drag.active, false);
+  assert.equal(drag.hasDragged, false);
+
+  assert.match(fabSource, /onPointerCancel=\{onPointerCancel\}/);
+  assert.match(fabSource, /onLostPointerCapture=\{onLostPointerCapture\}/);
+  assert.match(fabSource, /finishDrag\(false\)/);
+  assert.match(fabSource, /el\.style\.cursor = ""/);
+  assert.match(fabSource, /el\.style\.transition = ""/);
+});
+
+test("FAB position reclamps across phone and landscape sizes without trusting storage", async () => {
+  const {
+    clampWorkspaceFabPosition,
+    readWorkspaceFabPosition,
+    persistWorkspaceFabPosition,
+  } = await fabInteraction;
+
+  const landscape = clampWorkspaceFabPosition(
+    { x: 790, y: 360 },
+    { width: 844, height: 390 },
+    { width: 240, height: 64 },
+  );
+  assert.deepEqual(landscape, { x: 596, y: 318 });
+  const phone = clampWorkspaceFabPosition(
+    landscape,
+    { width: 320, height: 568 },
+    { width: 48, height: 48 },
+  );
+  assert.deepEqual(phone, { x: 264, y: 318 });
+  assert.deepEqual(
+    clampWorkspaceFabPosition(
+      phone,
+      { width: 844, height: 390 },
+      { width: 240, height: 64 },
+    ),
+    { x: 264, y: 318 },
+  );
+
+  const throwingStorage = {
+    getItem() {
+      throw new DOMException("blocked", "SecurityError");
+    },
+    setItem() {
+      throw new DOMException("blocked", "SecurityError");
+    },
+    removeItem() {
+      throw new DOMException("blocked", "SecurityError");
+    },
+  };
+  assert.equal(readWorkspaceFabPosition(throwingStorage), null);
+  assert.equal(
+    persistWorkspaceFabPosition(throwingStorage, { x: 8, y: 8 }),
+    false,
+  );
+  const { accessWorkspaceFabStorage } = await fabInteraction;
+  assert.equal(
+    accessWorkspaceFabStorage(() => {
+      throw new DOMException("Storage accessor blocked", "SecurityError");
+    }),
+    null,
+  );
+  assert.equal(readWorkspaceFabPosition(null), null);
+  assert.equal(persistWorkspaceFabPosition(null, landscape), false);
+
+  assert.match(fabSource, /window\.addEventListener\("resize", handleResize\)/);
+  assert.match(fabSource, /requestAnimationFrame\(\(\) => clampCurrentPosition\(true\)\)/);
 });
 
 test("Settings forms a stacked shared modal and restores to its sidebar action", () => {
