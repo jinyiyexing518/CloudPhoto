@@ -1,0 +1,10 @@
+{
+  "id": "2026-08-11-auth-layout-native-validation",
+  "date": "2026-08-11",
+  "icon": "🔐",
+  "title": "修复认证页窄屏布局与中文校验",
+  "type": "fix",
+  "desc": "登录和注册页不再横向滚动，原生必填与邮箱格式提示在英文浏览器中也保持字段对应的中文。",
+  "details": "320/390/500px 长注册表单改由根页面纵向滚动，auth-page 不再成为双轴嵌套滚动区；1440px 装饰保持容器内。页签、输入框、密码显示、提交和安装入口统一系统字体并至少 44×44px。保留 required、email type、autocomplete、原生 focus/tooltip、密码与 API 页面内错误；输入会清除旧 custom error，无效表单不会发送认证请求。源码契约和四档 Chromium CDP 持续防止布局、字体、触控及中文校验回归。",
+  "seq": 1786471000000
+}
