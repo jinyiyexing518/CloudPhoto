@@ -51,40 +51,190 @@ test("private cache degradation notice is claimed once per app session", async (
   );
 });
 
-test("private media reads stay fenced after rejected or late cleanup", async () => {
-  const { privateCacheWriteFence } = await import("../packages/client/vite.config.mts");
+test("private media requests keep their generation snapshot across late cleanup", async () => {
+  const { privateMediaCache } = await import("../packages/client/vite.config.mts");
   const guard = globalThis;
-  guard.__cloudPhotoPrivateCacheFenceReady = Promise.resolve();
-  guard.__cloudPhotoPrivateCacheGeneration = 7;
-  guard.__cloudPhotoPrivateCacheEnabled = true;
+  let generation = 7;
+  let enabled = true;
+  const reads = [];
+  const writes = [];
+  guard.__cloudPhotoPrivateMediaCachePolicy = {
+    snapshot: () => ({ generation, enabled, ready: true }),
+    current: (snapshot) => (
+      snapshot?.ready === true
+      && snapshot.enabled === true
+      && enabled
+      && snapshot.generation === generation
+    ),
+    accepts: (response, snapshot) => (
+      response.headers.get("x-cloudphoto-private-cache-generation")
+        === String(snapshot.generation)
+    ),
+    read: async (_request, snapshot) => {
+      reads.push(snapshot);
+      return enabled && snapshot.enabled && snapshot.generation === generation
+        ? new Response("current private media")
+        : null;
+    },
+    write: async (_request, _response, snapshot) => {
+      writes.push(snapshot);
+      return enabled && snapshot.enabled && snapshot.generation === generation;
+    },
+  };
   const state = {};
-  await privateCacheWriteFence.handlerWillStart({ state });
-  const cachedResponse = new Response("stale private media");
+  privateMediaCache.handlerWillStart({ state });
+  const request = new Request("https://example.test/media/photo.jpg");
+  const current = await privateMediaCache.handlerDidError({
+    request,
+    state,
+    error: new TypeError("offline"),
+  });
+  assert.equal(await current.text(), "current private media");
+  assert.equal(reads.at(-1).generation, 7);
+  const markerlessCachedResponse = new Response("markerless cached private media");
   assert.equal(
-    await privateCacheWriteFence.cachedResponseWillBeUsed({ cachedResponse, state }),
-    cachedResponse,
-  );
-  guard.__cloudPhotoPrivateCacheEnabled = false;
-  assert.equal(
-    await privateCacheWriteFence.cachedResponseWillBeUsed({ cachedResponse, state }),
+    await privateMediaCache.cachedResponseWillBeUsed({
+      cachedResponse: markerlessCachedResponse,
+      state,
+    }),
     null,
+    "markerless cached private bytes must never be accepted",
+  );
+  const currentCachedResponse = new Response("current cached private media", {
+    headers: { "x-cloudphoto-private-cache-generation": "7" },
+  });
+  assert.equal(
+    await privateMediaCache.cachedResponseWillBeUsed({
+      cachedResponse: currentCachedResponse,
+      state,
+    }),
+    currentCachedResponse,
+    "an explicitly enabled current-generation cached response must remain eligible",
+  );
+
+  enabled = false;
+  const bypassState = {};
+  const cacheStorageCalls = { open: 0, match: 0, put: 0 };
+  const originalCaches = guard.caches;
+  guard.caches = {
+    open: async () => {
+      cacheStorageCalls.open += 1;
+      return {
+        match: async () => {
+          cacheStorageCalls.match += 1;
+          return new Response("stale owner private media");
+        },
+        put: async () => {
+          cacheStorageCalls.put += 1;
+        },
+      };
+    },
+  };
+  guard.__cloudPhotoPrivateMediaCachePolicy = {
+    snapshot: () => ({ generation: 7, enabled: false, ready: false }),
+    current: () => false,
+    accepts: () => false,
+    read: async () => {
+      const cache = await guard.caches.open("photo-media-v1");
+      return cache.match(request);
+    },
+    write: async () => {
+      const cache = await guard.caches.open("photo-media-v1");
+      await cache.put(request, new Response("should not be cached"));
+      return true;
+    },
+  };
+  await Promise.race([
+    Promise.resolve(privateMediaCache.handlerWillStart({ state: bypassState })),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error("private media handler start exceeded its readiness bound")),
+      100,
+    )),
+  ]);
+  const bypassResponse = new Response("online private media", { status: 200 });
+  const bypassWaits = [];
+  assert.equal(
+    await privateMediaCache.fetchDidSucceed({
+      request,
+      response: bypassResponse,
+      event: { waitUntil: (promise) => bypassWaits.push(promise) },
+      state: bypassState,
+    }),
+    bypassResponse,
+    "unknown cache readiness must fail open to the authorized network",
+  );
+  assert.equal(
+    await bypassResponse.clone().text(),
+    "online private media",
+    "degraded bypass must return only the currently authorized network bytes",
+  );
+  const staleCachedResponse = new Response("stale owner private media");
+  assert.equal(
+    await privateMediaCache.cachedResponseWillBeUsed({
+      cachedResponse: staleCachedResponse,
+      state: bypassState,
+    }),
+    null,
+    "disabled or unknown ownership must reject stale cached private bytes",
+  );
+  assert.equal(bypassWaits.length, 0, "disabled cache writes must be bypassed completely");
+  assert.equal(
+    (await privateMediaCache.handlerDidError({
+      request,
+      state: bypassState,
+      error: new TypeError("offline"),
+    })).status,
+    504,
     "a rejected cleanup must make an existing cached response unreadable",
   );
-  guard.__cloudPhotoPrivateCacheEnabled = true;
-  guard.__cloudPhotoPrivateCacheGeneration = 8;
-  assert.equal(
-    await privateCacheWriteFence.cachedResponseWillBeUsed({ cachedResponse, state }),
-    null,
-    "a late prior-generation request must not read private cached media",
+  assert.deepEqual(
+    cacheStorageCalls,
+    { open: 0, match: 0, put: 0 },
+    "degraded private media bypass must not call CacheStorage",
   );
+
+  guard.__cloudPhotoPrivateMediaCachePolicy = {
+    snapshot: () => ({ generation, enabled: true, ready: true }),
+    current: (snapshot) => (
+      snapshot?.ready === true
+      && snapshot.enabled === true
+      && enabled
+      && snapshot.generation === generation
+    ),
+    accepts: (response, snapshot) => (
+      response.headers.get("x-cloudphoto-private-cache-generation")
+        === String(snapshot.generation)
+    ),
+    read: async (_request, snapshot) => {
+      reads.push(snapshot);
+      return enabled && snapshot.enabled && snapshot.generation === generation
+        ? new Response("current private media")
+        : null;
+    },
+    write: async (_request, _response, snapshot) => {
+      writes.push(snapshot);
+      return enabled && snapshot.enabled && snapshot.generation === generation;
+    },
+  };
+  enabled = true;
+  generation = 8;
+  const waitUntil = [];
+  const networkResponse = new Response("fresh private media", { status: 200 });
   assert.equal(
-    await privateCacheWriteFence.cacheWillUpdate({ response: cachedResponse, state }),
-    null,
-    "a late prior-generation response must remain unwritable",
+    await privateMediaCache.fetchDidSucceed({
+      request,
+      response: networkResponse,
+      event: { waitUntil: (promise) => waitUntil.push(promise) },
+      state,
+    }),
+    networkResponse,
+    "a successful network response must not wait for the private cache",
   );
-  delete guard.__cloudPhotoPrivateCacheFenceReady;
-  delete guard.__cloudPhotoPrivateCacheGeneration;
-  delete guard.__cloudPhotoPrivateCacheEnabled;
+  assert.equal(await Promise.all(waitUntil).then(([written]) => written), false);
+  assert.equal(writes.at(-1).generation, 7, "late writes must retain the request generation");
+  if (originalCaches === undefined) delete guard.caches;
+  else guard.caches = originalCaches;
+  delete guard.__cloudPhotoPrivateMediaCachePolicy;
 });
 
 test("private Workbox cleanup stays behind an awaited dynamic boundary", async () => {

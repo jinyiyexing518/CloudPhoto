@@ -231,10 +231,59 @@ requireText(
   "matching authenticated owner must reopen a restarted fail-closed worker",
 );
 requireText(vite, "handlerWillStart", "private media request generation capture");
-requireText(vite, "CacheFenceReady", "restored fence state wait");
-requireText(vite, "cacheWillUpdate", "private media late-write rejection");
-requireText(vite, "cachedResponseWillBeUsed", "private media stale-read rejection");
-requireText(vite, "cloudPhotoPrivateCacheWriteAllowed", "disabled-fence request rejection");
+requireText(vite, 'handler: "NetworkOnly"', "network-first private media delivery");
+requireText(vite, "requestWillFetch", "bounded private media network request");
+requireText(vite, 'searchParams.get("cf_cover") !== "1"', "cover-only request deadline");
+requireText(vite, "Private media request timed out", "private media network deadline");
+requireText(vite, "}, 6_000);", "cover network abort deadline");
+requireText(vite, "response.status >= 500", "cached retryable HTTP failure fallback");
+requireText(vite, "handlerDidError", "bounded offline private media fallback");
+requireText(vite, "MediaCachePolicy", "generation-fenced private media policy");
+requireText(privateCacheFence, "mediaSnapshotCurrent", "private media late-settlement rejection");
+requireText(privateCacheFence, "withMediaCacheDeadline", "bounded private media cache operations");
+requireText(privateCacheFence, "mediaCacheGenerationParam", "generation-specific private media keys");
+requireText(privateCacheFence, 'url.searchParams.delete("cf_cover_retry")', "stable retry cache key");
+requireText(privateCacheFence, 'url.searchParams.delete("cf_cover")', "stable cover cache key");
+requireText(
+  privateCacheFence,
+  "if (!nextEnabled && !resumeGenerationOnEnable) nextGeneration += 1",
+  "same-owner media generation retention",
+);
+requireText(privateCacheFence, "await persist(nextState)", "durable private cache enable commit");
+requireText(
+  privateCacheFence,
+  "if (!stateChanged)",
+  "no-op fence persistence bypass",
+);
+requireText(privateCacheFence, "commandEpoch += 1", "arrival-time cleanup supersession");
+requireText(
+  privateCacheFence,
+  "if (context.epoch !== commandEpoch)",
+  "superseded enable publication rejection",
+);
+requireText(privateCacheFence, "stateVersionRequest", "immutable durable fence versions");
+requireText(
+  privateCacheFence,
+  "pendingBeginContexts.push(context)",
+  "cold-start cleanup preservation",
+);
+assert(
+  privateCacheFence.indexOf("await persist(nextState)")
+    < privateCacheFence.indexOf("enabled = nextEnabled;", privateCacheFence.indexOf("await persist(nextState)")),
+  "private cache enablement must publish only after persistence succeeds",
+);
+requireText(privateCacheFence, "stateRestored", "bounded cold-worker state restoration");
+requireText(privateCacheFence, "purgeStaleMediaGenerations", "detached stale-generation cleanup");
+assert(
+  !vite.includes("privateCacheWriteFence"),
+  "private media delivery must not restore the blocking CacheFirst fence",
+);
+requireText(
+  vite,
+  "cachedResponseWillBeUsed",
+  "private cached responses must retain the live owner and generation guard",
+);
+requireText(vite, "policy.accepts(cachedResponse, snapshot)", "cached response metadata validation");
 requireText(vite, 'importScripts: ["private-cache-fence.js"]', "private media fence bootstrap");
 assert(
   !workboxCleanup.includes("cursor.value")
@@ -527,9 +576,15 @@ requireText(vite, '!request.headers.has("range")', "Range exclusion");
 requireText(vite, "const isCacheablePhotoPath =", "image-only media cache classification");
 requireText(vite, "/\\.(?:bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(url.pathname)", "self-contained Workbox image matcher");
 requireText(vite, "&& isCacheablePhotoPath", "original video cache exclusion");
-requireText(vite, "cacheableResponse: { statuses: [200] }", "opaque exclusion");
-assert(!vite.includes("statuses: [0, 200]"), "opaque status 0 must not be cached");
-requireText(vite, 'cacheName: "photo-media-v1"', "private media cache name");
+requireText(vite, 'handler: "NetworkOnly" as const', "degraded private media CacheStorage bypass");
+requireText(privateCacheFence, "response.status !== 200", "opaque and error response exclusion");
+requireText(privateCacheFence, "current(snapshot)", "live private media cache snapshot validation");
+requireText(privateCacheFence, "mediaCacheGenerationHeader", "cached response generation marker");
+requireText(privateCacheFence, "privateMediaCachePolicy.accepts(cached, snapshot)", "cache-hit metadata validation");
+requireText(privateCacheFence, "cachedGenerationValue === null", "missing cached generation rejection");
+requireText(privateCacheFence, "/^(?:0|[1-9]\\d*)$/.test(cachedGenerationValue)", "canonical cached generation");
+requireText(privateCacheFence, "age >= 0", "future cached response rejection");
+requireText(privateCacheFence, 'mediaCacheName = "photo-media-v1"', "private media cache name");
 assert(
   !vite.includes('globPatterns: ["**/*.{js,css,html,ico,png,svg,json}"]'),
   "deferred feature chunks must not be downloaded by the install-time precache",
@@ -550,12 +605,40 @@ assert(
 );
 requireText(vite, 'cacheName: "app-code-v1"', "on-demand app chunk cache");
 requireText(vite, 'url.pathname.startsWith("/assets/")', "on-demand app chunk route");
-requireText(vite, "matchOptions: { ignoreSearch: false }", "account-safe SAS cache key");
-requireText(vite, "maxAgeSeconds: 60 * 60", "SAS-bounded Workbox freshness");
+requireText(privateCacheFence, "new Request(url, request)", "account-safe SAS cache key");
+requireText(privateCacheFence, "mediaCacheMaxAgeMs = 60 * 60 * 1000", "SAS-bounded cache freshness");
 assert(!vite.includes("ignoreSearch: true"), "private media cache must retain SAS authorization");
 assert(!photoCard.includes("<video"), "gallery cards must never embed original-video elements");
 assert(!photoCard.includes("fetchMediaWithFallback"), "gallery cards must not directly fetch original-video ranges");
 assert(!photoCard.includes("Range:"), "gallery cards must not directly request video bytes");
+requireText(photoCard, "photoCoverFailed", "terminal photo cover failure state");
+requireText(photoCard, "setImageRetryKey", "photo cover retry request remount");
+requireText(photoCard, "COVER_LOAD_DEADLINE_MS = 8_000", "total photo cover deadline");
+requireText(photoCard, "COVER_SOURCE_ATTEMPT_MAX_MS = 4_000", "per-source photo cover deadline");
+requireText(
+  photoCard,
+  "COVER_LOAD_DEADLINE_MS / Math.max(coverDeadlineCandidates.length, 1)",
+  "candidate-count cover deadline allocation",
+);
+requireText(photoCard, "coverLoadContextRef.current === context", "stale photo cover callback rejection");
+requireText(photoCard, "user?.role", "role-scoped photo cover attempt");
+requireText(photoCard, "getMediaCandidates(coverDeadlineSources)", "deadline-driven authorized fallback");
+requireText(photoCard, "if (!expectedSource) {", "zero-derivative terminal cover state");
+requireText(photoCard, "coverImageRef.current === element", "stale source element callback rejection");
+requireText(photoCard, "currentIndex !== coverAttemptIndex", "stale source attempt callback rejection");
+requireText(photoCard, "key={coverAttemptElementKey}", "per-source cover element identity");
+requireText(
+  photoCard,
+  "element.complete && element.naturalWidth > 0",
+  "decoded-only cached cover completion",
+);
+requireText(photoCard, "gifUsesOriginal ? markImageLoaded : undefined", "GIF original deadline exemption");
+requireText(photoCard, "cf_cover=1", "bounded photo cover request marker");
+requireText(photoCard, "cf_cover_retry=", "photo cover retry request cache busting");
+requireText(photoCard, "retryVideoPosterSources", "bounded video poster cover request");
+assert(!photoCard.includes("setGifDisplaySrc"), "GIF source tier must change atomically with pause state");
+requireText(photoCard, "封面加载失败，点击重试", "visible photo cover retry affordance");
+requireText(photoCard, 'role="status"', "accessible photo cover failure status");
 assert(!mediaThumb.includes("<video"), "secondary grids must never create original-video elements");
 requireText(photoCard, 'className="video-thumb-placeholder"', "missing video derivative placeholder");
 requireText(mediaThumb, '"video-thumb-placeholder"', "shared missing video derivative placeholder");
@@ -564,7 +647,7 @@ requireText(renderPolicy, ".filter((source): source is string => Boolean(source)
 requireText(photoCard, "useVideoCoverRepair", "visible-card repair hook");
 requireText(photoCard, "markDerivativeBroken", "broken derivative repair transition");
 requireText(photoCard, "isLowInformationVideoCoverImage", "successful derivative content check");
-requireText(photoCard, "fallbackMediaSource(event.currentTarget, videoPosterSources)", "blank thumbnail preview fallback");
+requireText(photoCard, "isLowInformationVideoCoverImage(element)", "deadline-aware video poster inspection");
 requireText(mediaThumb, "markVideoCoverBroken(blobName)", "shared thumbnail broken-cover registry");
 requireText(photoCard, "onThumbnailUpdate?.(photo.name, repairedUrl)", "repair URL state publication");
 requireText(photoCard, "正在生成封面", "repair progress accessibility");

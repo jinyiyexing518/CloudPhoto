@@ -137,23 +137,52 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
   const fenceSource = await read("packages/client/public/private-cache-fence.js");
   const cacheRows = new Map();
   let failStateWrite = false;
+  let failStateDelete = false;
+  let failMediaMatch = false;
+  let hangMediaMatch = false;
+  const cacheOpenCounts = new Map();
+  let beforeStatePut = null;
+  let beforeStateMatch = null;
+  let beforeMediaPut = null;
   const fakeCaches = {
     async open(name) {
+      cacheOpenCounts.set(name, (cacheOpenCounts.get(name) ?? 0) + 1);
       return {
         async match(request) {
+          if (name === "cloudphoto-private-cache-fence-v1") {
+            await beforeStateMatch?.(request);
+          }
+          if (name === "photo-media-v1" && hangMediaMatch) {
+            return new Promise(() => {});
+          }
+          if (name === "photo-media-v1" && failMediaMatch) {
+            throw new Error("synthetic media cache match failure");
+          }
           return cacheRows.get(`${name}:${request.url}`)?.clone();
         },
         async put(request, response) {
           if (failStateWrite) throw new Error("synthetic fence persistence failure");
+          if (name === "cloudphoto-private-cache-fence-v1") {
+            await beforeStatePut?.(request, response);
+          }
+          if (name === "photo-media-v1") await beforeMediaPut?.(request);
           cacheRows.set(`${name}:${request.url}`, response.clone());
         },
         async delete(request) {
+          if (name === "cloudphoto-private-cache-fence-v1" && failStateDelete) {
+            throw new Error("synthetic fence state deletion failure");
+          }
           return cacheRows.delete(`${name}:${request.url}`);
+        },
+        async keys() {
+          return [...cacheRows.keys()]
+            .filter((key) => key.startsWith(`${name}:`))
+            .map((key) => new Request(key.slice(name.length + 1)));
         },
       };
     },
   };
-  const startWorker = async () => {
+  const startWorker = async ({ waitForReady = true } = {}) => {
     let messageHandler;
     const worker = {
       location: { origin: "https://synthetic.invalid" },
@@ -170,11 +199,22 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
       JSON,
       Number,
       Promise,
+      Headers,
+      Date,
+      Error,
+      String,
+      console,
+      setTimeout,
+      clearTimeout,
     });
-    await worker.__cloudPhotoPrivateCacheFenceReady;
-    return { worker, messageHandler };
+    if (waitForReady) await worker.__cloudPhotoPrivateCacheFenceReady;
+    return {
+      worker,
+      messageHandler,
+      ready: worker.__cloudPhotoPrivateCacheFenceReady,
+    };
   };
-  const sendFenceCommand = async (
+  const beginFenceCommand = (
     { messageHandler },
     command,
     generation,
@@ -201,14 +241,282 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
         pending = operation;
       },
     });
-    await pending;
-    return reply;
+    return { pending, reply };
+  };
+  const sendFenceCommand = async (...args) => {
+    const operation = beginFenceCommand(...args);
+    await operation.pending;
+    return operation.reply;
   };
 
   const firstWorker = await startWorker();
   assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
-  assert.equal((await sendFenceCommand(firstWorker, "enable")).ok, true);
+  let releaseStatePut;
+  let holdFirstStatePut = true;
+  const statePutStarted = new Promise((resolve) => {
+    beforeStatePut = () => {
+      if (!holdFirstStatePut) return undefined;
+      holdFirstStatePut = false;
+      resolve();
+      return new Promise((release) => {
+        releaseStatePut = release;
+      });
+    };
+  });
+  const pendingEnable = beginFenceCommand(firstWorker, "enable");
+  await statePutStarted;
+  const pendingEnablePolicy = firstWorker.worker.__cloudPhotoPrivateMediaCachePolicy;
+  assert.equal(
+    firstWorker.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "enabling must not publish before the fence state is durably persisted",
+  );
+  assert.equal(
+    pendingEnablePolicy.snapshot().enabled,
+    false,
+    "media cache eligibility must remain disabled while persistence is pending",
+  );
+  const mediaOpensBeforePendingEnable =
+    cacheOpenCounts.get("photo-media-v1") ?? 0;
+  assert.equal(
+    await pendingEnablePolicy.read(
+      new Request("https://synthetic.invalid/media/owner-a/pending.png"),
+      pendingEnablePolicy.snapshot(),
+    ),
+    null,
+    "pending enablement must not expose cached private bytes",
+  );
+  assert.equal(
+    cacheOpenCounts.get("photo-media-v1") ?? 0,
+    mediaOpensBeforePendingEnable,
+    "pending enablement must make zero private CacheStorage calls",
+  );
+  const queuedCleanup = beginFenceCommand(
+    firstWorker,
+    "begin",
+    undefined,
+    Date.now() + 20,
+  );
+  assert.equal(
+    firstWorker.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "an on-time cleanup arrival must synchronously fence a pending enable",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  releaseStatePut();
+  beforeStatePut = null;
+  await pendingEnable.pending;
+  assert.equal(
+    (await pendingEnable.reply).ok,
+    false,
+    "a superseded enabling write must not publish after persistence resumes",
+  );
+  await queuedCleanup.pending;
+  const queuedCleanupResult = await queuedCleanup.reply;
+  assert.equal(
+    queuedCleanupResult.ok,
+    true,
+    "a cleanup that arrived before its deadline must survive queue delay",
+  );
+  assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
+  const supersededWriteRestart = await startWorker();
+  assert.equal(
+    supersededWriteRestart.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "a late lower-version enable write must stay fenced after worker restart",
+  );
+  assert.equal(
+    (await sendFenceCommand(
+      firstWorker,
+      "resume",
+      queuedCleanupResult.generation,
+    )).ok,
+    true,
+  );
   assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, true);
+  beforeStatePut = async (_request, response) => {
+    const nextState = await response.clone().json();
+    if (nextState.enabled) {
+      throw new Error("a repeated enable must not persist unchanged enabled state");
+    }
+  };
+  assert.equal(
+    (await sendFenceCommand(firstWorker, "enable")).ok,
+    true,
+    "repeated same-owner enable must settle without another enabling write",
+  );
+  const immediateCleanup = await sendFenceCommand(firstWorker, "begin");
+  assert.equal(
+    firstWorker.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "a repeated enable must not delay a subsequent cleanup fence",
+  );
+  beforeStatePut = null;
+  assert.equal(
+    (await sendFenceCommand(
+      firstWorker,
+      "resume",
+      immediateCleanup.generation,
+    )).ok,
+    true,
+  );
+  const mediaPolicy = firstWorker.worker.__cloudPhotoPrivateMediaCachePolicy;
+  const mediaRequest = new Request(
+    "https://synthetic.invalid/media/owner-a/thumb.png?sig=owner-a",
+  );
+  const mediaRetryRequest = new Request(
+    "https://synthetic.invalid/media/owner-a/thumb.png"
+    + "?sig=owner-a&cf_cover=1&cf_cover_retry=1",
+  );
+  const mediaSnapshot = mediaPolicy.snapshot();
+  assert.equal(
+    await mediaPolicy.write(
+      mediaRetryRequest,
+      new Response("synthetic image", { status: 200 }),
+      mediaSnapshot,
+    ),
+    true,
+  );
+  assert.equal(
+    await (await mediaPolicy.read(mediaRequest, mediaSnapshot)).text(),
+    "synthetic image",
+    "current-generation private media must remain available offline",
+  );
+  const generatedMediaKeys = [...cacheRows.keys()]
+    .filter((key) => key.startsWith("photo-media-v1:"));
+  assert.equal(generatedMediaKeys.length, 1);
+  assert.match(
+    generatedMediaKeys[0],
+    new RegExp(`__cf_private_generation=${mediaSnapshot.generation}`),
+  );
+  assert(
+    !generatedMediaKeys[0].includes("cf_cover"),
+    "retry-only URL state must not fragment the offline cache key",
+  );
+  const validCachedMedia = cacheRows.get(generatedMediaKeys[0]).clone();
+  for (const [label, response] of [
+    ["missing markers", new Response("previous-owner-bytes")],
+    ["noncanonical generation", new Response("previous-owner-bytes", {
+      headers: {
+        "x-cloudphoto-private-cache-generation": `0${mediaSnapshot.generation}`,
+        "x-cloudphoto-private-cached-at": String(Date.now()),
+      },
+    })],
+    ["future timestamp", new Response("previous-owner-bytes", {
+      headers: {
+        "x-cloudphoto-private-cache-generation": String(mediaSnapshot.generation),
+        "x-cloudphoto-private-cached-at": String(Date.now() + 60_000),
+      },
+    })],
+  ]) {
+    cacheRows.set(generatedMediaKeys[0], response);
+    assert.equal(
+      await mediaPolicy.read(mediaRequest, mediaSnapshot),
+      null,
+      `${label} must make cached private media unreadable`,
+    );
+  }
+  cacheRows.set(generatedMediaKeys[0], validCachedMedia);
+  const repeatedEnable = await sendFenceCommand(firstWorker, "enable");
+  assert.equal(
+    repeatedEnable.generation,
+    mediaSnapshot.generation,
+    "same-owner startup must preserve the readable media generation",
+  );
+  assert.equal(
+    await (await mediaPolicy.read(mediaRequest, mediaPolicy.snapshot())).text(),
+    "synthetic image",
+    "same-owner startup must retain its offline media",
+  );
+  assert.equal(
+    await mediaPolicy.read(mediaRequest, {
+      generation: 0,
+      enabled: false,
+      ready: false,
+    }),
+    null,
+    "a request that started before fence readiness must remain cache-ineligible",
+  );
+  const mediaOpensBeforeBypass = cacheOpenCounts.get("photo-media-v1") ?? 0;
+  assert.equal(
+    await mediaPolicy.read(mediaRequest, {
+      generation: mediaSnapshot.generation,
+      enabled: false,
+      ready: true,
+    }),
+    null,
+    "disabled private media caching must bypass CacheStorage",
+  );
+  assert.equal(
+    cacheOpenCounts.get("photo-media-v1") ?? 0,
+    mediaOpensBeforeBypass,
+    "disabled private media reads must make zero CacheStorage calls",
+  );
+  const staleGenerationKey =
+    "photo-media-v1:https://synthetic.invalid/media/owner-a/stale.png"
+    + "?sig=owner-a&__cf_private_generation=0";
+  cacheRows.set(staleGenerationKey, new Response("stale image"));
+  assert.equal(await mediaPolicy.cleanup(), true);
+  assert(
+    !cacheRows.has(staleGenerationKey),
+    "subsequent cleanup must remove detached old-generation writes",
+  );
+
+  hangMediaMatch = true;
+  const hungReadStartedAt = Date.now();
+  assert.equal(await mediaPolicy.read(mediaRequest, mediaSnapshot), null);
+  assert(
+    Date.now() - hungReadStartedAt < 1_500,
+    "a never-settling private cache read must honor its wall-clock deadline",
+  );
+  hangMediaMatch = false;
+  failMediaMatch = true;
+  assert.equal(
+    await mediaPolicy.read(mediaRequest, mediaSnapshot),
+    null,
+    "a rejected private cache read must not block media delivery",
+  );
+  failMediaMatch = false;
+
+  let releaseMediaPut;
+  const mediaPutStarted = new Promise((resolve) => {
+    beforeMediaPut = () => {
+      resolve();
+      return new Promise((release) => {
+        releaseMediaPut = release;
+      });
+    };
+  });
+  const lateWriteRequest = new Request(
+    "https://synthetic.invalid/media/owner-a/late.png?sig=owner-a",
+  );
+  const lateWrite = mediaPolicy.write(
+    lateWriteRequest,
+    new Response("late image", { status: 200 }),
+    mediaSnapshot,
+  );
+  await mediaPutStarted;
+  const switchedCleanup = await sendFenceCommand(firstWorker, "begin");
+  releaseMediaPut();
+  beforeMediaPut = null;
+  assert.equal(
+    await lateWrite,
+    false,
+    "a cache write settling after a generation change must be rejected",
+  );
+  assert(
+    ![...cacheRows.keys()].some((key) => key.includes("/media/owner-a/late.png")),
+    "a late old-generation media body must be removed",
+  );
+  assert.equal(
+    (await sendFenceCommand(
+      firstWorker,
+      "complete",
+      switchedCleanup.generation,
+    )).ok,
+    true,
+  );
+  assert.equal((await sendFenceCommand(firstWorker, "enable")).ok, true);
   assert.equal(
     (await sendFenceCommand(firstWorker, "begin", undefined, Date.now() - 1)).ok,
     false,
@@ -216,11 +524,132 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
   );
   assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, true);
 
+  let releaseStateMatch;
+  let holdStateMatch = true;
+  const stateMatchStarted = new Promise((resolve) => {
+    beforeStateMatch = () => {
+      if (!holdStateMatch) return undefined;
+      holdStateMatch = false;
+      resolve();
+      return new Promise((release) => {
+        releaseStateMatch = release;
+      });
+    };
+  });
+  const coldWorker = await startWorker({ waitForReady: false });
+  await stateMatchStarted;
+  const coldBegin = beginFenceCommand(coldWorker, "begin");
+  assert.equal(
+    coldWorker.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "a begin arriving during restoration must remain fail closed",
+  );
+  releaseStateMatch();
+  beforeStateMatch = null;
+  await coldWorker.ready;
+  await coldBegin.pending;
+  const coldBeginResult = await coldBegin.reply;
+  assert.equal(coldBeginResult.ok, true);
+  assert.equal(
+    coldWorker.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "restored enabled state must not overwrite a cold-start begin",
+  );
+  const coldBeginRestart = await startWorker();
+  assert.equal(
+    coldBeginRestart.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "a cold-start begin must be durable before its reply",
+  );
+  assert.equal(
+    (await sendFenceCommand(
+      coldWorker,
+      "resume",
+      coldBeginResult.generation,
+    )).ok,
+    true,
+  );
+  const overlappingBeginA = beginFenceCommand(coldWorker, "begin");
+  const overlappingBeginB = beginFenceCommand(coldWorker, "begin");
+  await Promise.all([overlappingBeginA.pending, overlappingBeginB.pending]);
+  const overlappingResultA = await overlappingBeginA.reply;
+  const overlappingResultB = await overlappingBeginB.reply;
+  assert.notEqual(
+    overlappingResultA.generation,
+    overlappingResultB.generation,
+    "overlapping cleanups must receive distinct generation tokens",
+  );
+  assert.equal(
+    (await sendFenceCommand(
+      coldWorker,
+      "resume",
+      overlappingResultA.generation,
+    )).ok,
+    false,
+    "an older cleanup token must not release a newer fence",
+  );
+  assert.equal(
+    (await sendFenceCommand(
+      coldWorker,
+      "resume",
+      overlappingResultB.generation,
+    )).ok,
+    true,
+  );
+
+  let rejectOlderBeginWrite;
+  let stateWriteIndex = 0;
+  const olderBeginWriteStarted = new Promise((resolve) => {
+    beforeStatePut = () => {
+      stateWriteIndex += 1;
+      if (stateWriteIndex === 1) {
+        resolve();
+        return new Promise((_settle, reject) => {
+          rejectOlderBeginWrite = reject;
+        });
+      }
+      return undefined;
+    };
+  });
+  const failingBeginA = beginFenceCommand(coldWorker, "begin");
+  await olderBeginWriteStarted;
+  const succeedingBeginB = beginFenceCommand(coldWorker, "begin");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  rejectOlderBeginWrite(new Error("synthetic older begin persistence failure"));
+  await Promise.all([failingBeginA.pending, succeedingBeginB.pending]);
+  const failingBeginResultA = await failingBeginA.reply;
+  const succeedingBeginResultB = await succeedingBeginB.reply;
+  beforeStatePut = null;
+  assert.equal(failingBeginResultA.ok, false);
+  assert.equal(succeedingBeginResultB.ok, true);
+  const failedOverlapRestart = await startWorker();
+  assert.equal(
+    failedOverlapRestart.worker.__cloudPhotoPrivateCacheGeneration,
+    succeedingBeginResultB.generation,
+    "an older failed begin must not erase a newer durable fence",
+  );
+  assert.equal(
+    (await sendFenceCommand(
+      failedOverlapRestart,
+      "resume",
+      succeedingBeginResultB.generation,
+    )).ok,
+    true,
+  );
+
   const restartedWorker = await startWorker();
   assert.equal(
     restartedWorker.worker.__cloudPhotoPrivateCacheEnabled,
-    true,
-    "worker restart must restore the validated authenticated cache state",
+    false,
+    "worker restart must require a fresh authenticated enable handshake",
+  );
+  const restartGeneration =
+    restartedWorker.worker.__cloudPhotoPrivateCacheGeneration;
+  assert.equal((await sendFenceCommand(restartedWorker, "enable")).ok, true);
+  assert.equal(
+    restartedWorker.worker.__cloudPhotoPrivateCacheGeneration,
+    restartGeneration,
+    "same-owner restart handshake must preserve the media generation",
   );
   const cleanup = await sendFenceCommand(restartedWorker, "begin");
   assert.equal(restartedWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
@@ -238,6 +667,7 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
   const loggedOutWorker = await startWorker();
   assert.equal(loggedOutWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
   failStateWrite = true;
+  failStateDelete = true;
   assert.equal((await sendFenceCommand(loggedOutWorker, "enable")).ok, false);
   assert.equal(
     loggedOutWorker.worker.__cloudPhotoPrivateCacheEnabled,
@@ -245,11 +675,56 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
     "writes must remain disabled until an enabling state is durably persisted",
   );
   failStateWrite = false;
+  failStateDelete = false;
   const failedPersistenceRestart = await startWorker();
   assert.equal(
     failedPersistenceRestart.worker.__cloudPhotoPrivateCacheEnabled,
     false,
-    "failed persistence must remove stale enabled state before worker restart",
+    "failed persistence and deletion must still require a fresh enable handshake",
+  );
+
+  const statePrefix =
+    "cloudphoto-private-cache-fence-v1:https://synthetic.invalid/"
+    + "__cloudphoto_private_cache_fence_state__?version=";
+  const latestStateVersion = Math.max(
+    ...[...cacheRows.keys()]
+      .filter((key) => key.startsWith(statePrefix))
+      .map((key) => Number(key.slice(statePrefix.length))),
+  );
+  cacheRows.set(
+    `${statePrefix}${latestStateVersion + 1}`,
+    new Response("{malformed"),
+  );
+  cacheRows.set(
+    `${statePrefix}${latestStateVersion + 2}`,
+    new Response(JSON.stringify({
+      generation: 999,
+      enabled: true,
+      cleanupActive: true,
+      version: latestStateVersion + 2,
+    })),
+  );
+  cacheRows.set(
+    "cloudphoto-private-cache-fence-v1:"
+    + "https://synthetic.invalid/__cloudphoto_private_cache_fence_state__",
+    new Response("{malformed legacy"),
+  );
+  const malformedStateRestart = await startWorker();
+  assert.equal(
+    malformedStateRestart.worker.__cloudPhotoPrivateCacheEnabled,
+    false,
+    "malformed newer states must not authorize private cache reads",
+  );
+  const malformedStateBegin = await sendFenceCommand(
+    malformedStateRestart,
+    "begin",
+  );
+  assert.equal(malformedStateBegin.ok, true);
+  assert(
+    [...cacheRows.keys()].some(
+      (key) => key === `${statePrefix}${latestStateVersion + 3}`,
+    ),
+    "new durable state must advance beyond malformed observed versions",
   );
 }
 

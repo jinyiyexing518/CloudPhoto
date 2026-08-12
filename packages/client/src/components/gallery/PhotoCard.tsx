@@ -2,7 +2,13 @@ import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
 import { BLANK_GIF, GRID_MEDIA_POLICY_MARKER, selectGridMediaSources } from "@cloudphoto/algorithm";
-import { fallbackMediaSource, getPreferredMediaUrl } from "../../services/mediaRoute";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  fallbackMediaSource,
+  getMediaCandidates,
+  getPreferredMediaUrl,
+  promoteSuccessfulMediaUrl,
+} from "../../services/mediaRoute";
 import {
   isLowInformationVideoCoverImage,
   useVideoCoverRepair,
@@ -22,6 +28,28 @@ import {
 import { formatPhotoDate } from "../../utils/dateFormat";
 import { focusMenuItem, handleMenuKeyDown } from "../shared/menuKeyboard";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+
+const COVER_LOAD_DEADLINE_MS = 8_000;
+const COVER_SOURCE_ATTEMPT_MAX_MS = 4_000;
+
+function withCoverRequestState(
+  source: string,
+  retryKey: number,
+  coverDerivative: boolean,
+): string {
+  if (source.startsWith("blob:") || source.startsWith("data:")) {
+    return source;
+  }
+  const requestState = [
+    ...(coverDerivative ? ["cf_cover=1"] : []),
+    ...(retryKey > 0 ? [`cf_cover_retry=${retryKey}`] : []),
+  ];
+  if (requestState.length === 0) return source;
+  const hashIndex = source.indexOf("#");
+  const base = hashIndex >= 0 ? source.slice(0, hashIndex) : source;
+  const hash = hashIndex >= 0 ? source.slice(hashIndex) : "";
+  return `${base}${base.includes("?") ? "&" : "?"}${requestState.join("&")}${hash}`;
+}
 
 interface Props {
   photo: Photo;
@@ -55,6 +83,7 @@ function PhotoCard({
   priority = false,
   onThumbnailUpdate,
 }: Props) {
+  const { user } = useAuth();
   const isVideo = photo.contentType?.startsWith("video/") ?? false;
   const isAudio = photo.contentType?.startsWith("audio/") ?? false;
   const isGif = photo.contentType === "image/gif";
@@ -80,13 +109,15 @@ function PhotoCard({
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
+  const [imageRetryKey, setImageRetryKey] = useState(0);
+  const [coverAttempt, setCoverAttempt] = useState({ context: "", index: 0 });
   // GIF originals can be many MB. Keep the static thumbnail until the user
   // explicitly presses play instead of downloading every visible GIF.
   const [gifPaused, setGifPaused] = useState(isGif);
   const [videoThumbFailed, setVideoThumbFailed] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const [gifDisplaySrc, setGifDisplaySrc] = useState<string>(() => staticAnimatedSrc);
-  const videoThumbImgRef = useRef<HTMLImageElement>(null);
+  const coverImageRef = useRef<HTMLImageElement>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
   const confirmLayerRef = useRef<HTMLDivElement>(null);
   const confirmDialogRef = useRef<HTMLDivElement>(null);
@@ -95,10 +126,57 @@ function PhotoCard({
   const menuRef = useRef<HTMLUListElement>(null);
   const mountedRef = useRef(true);
   const publishedRepairUrlRef = useRef<string | null>(null);
-  const gifImgRef = useRef<HTMLImageElement>(null);
   // Video cards render only server-persisted derivatives. Missing or broken
   // derivatives stay as a local placeholder until the user opens playback.
   const useVideoThumb = isVideo && !!videoPosterSrc && !videoThumbFailed;
+  const retryVideoPosterSources = videoPosterSources.map((source) =>
+    withCoverRequestState(source, imageRetryKey, true));
+  const retryVideoPosterSrc = retryVideoPosterSources[0];
+  const retryLowDataImageSources = lowDataImageSources.map((source) =>
+    withCoverRequestState(source, imageRetryKey, true));
+  const retryDerivativeImageSources = derivativeImageSources.map((source) =>
+    withCoverRequestState(source, imageRetryKey, true));
+  const retryOriginalImageUrl = withCoverRequestState(originalImageUrl, imageRetryKey, false);
+  const retryStaticAnimatedSrc = withCoverRequestState(staticAnimatedSrc, imageRetryKey, true);
+  const retryGifDisplaySrc = gifPaused
+    ? retryStaticAnimatedSrc
+    : retryOriginalImageUrl;
+  const selectionMode = onSelect !== undefined;
+  const gifInteractionBlocked = selectionMode || interactionDisabled;
+  const gifUsesOriginal = isGif && !gifPaused && !gifInteractionBlocked;
+  const coverDeadlineSources = isAudio || (isVideo && !useVideoThumb) || gifUsesOriginal
+    ? null
+    : useVideoThumb
+      ? retryVideoPosterSources
+      : isAnimated
+        ? retryDerivativeImageSources
+        : retryLowDataImageSources;
+  const coverDeadlineCandidates = coverDeadlineSources
+    ? getMediaCandidates(coverDeadlineSources)
+    : [];
+  const coverDeadlineEnabled = coverDeadlineSources !== null;
+  const coverDeadlineSourceKey = coverDeadlineCandidates.join("\n");
+  const coverLoadContext = [
+    user?.id ?? "anonymous",
+    user?.role ?? "none",
+    photo.name,
+    String(imageRetryKey),
+    coverDeadlineSourceKey,
+  ].join("\n");
+  const coverLoadContextRef = useRef(coverLoadContext);
+  coverLoadContextRef.current = coverLoadContext;
+  const coverAttemptIndex = coverAttempt.context === coverLoadContext
+    ? coverAttempt.index
+    : 0;
+  const coverAttemptSource = coverDeadlineCandidates[coverAttemptIndex];
+  const coverAttemptTimeoutMs = Math.min(
+    COVER_SOURCE_ATTEMPT_MAX_MS,
+    Math.floor(COVER_LOAD_DEADLINE_MS / Math.max(coverDeadlineCandidates.length, 1)),
+  );
+  const coverAttemptElementKey = [
+    coverLoadContext,
+    String(coverAttemptIndex),
+  ].join("\n");
 
   useEffect(() => {
     const repairedUrl = videoRepairState.thumbnailUrl;
@@ -118,48 +196,125 @@ function PhotoCard({
     };
   }, []);
 
-  // For video thumbnails served as <img>: if the image is already cached the browser
-  // may fire onLoad synchronously before React attaches the handler, so we check
-  // img.complete as a safety net whenever the thumbnail URL changes.
-  useEffect(() => {
-    const el = videoThumbImgRef.current;
-    if (useVideoThumb && el?.complete && el.naturalWidth > 0) {
-      if (isLowInformationVideoCoverImage(el) === true) {
-        markDerivativeBroken();
-        if (fallbackMediaSource(el, videoPosterSources)) {
-          setImgLoaded(false);
-          return;
-        }
-        setVideoThumbFailed(true);
-        setImgLoaded(false);
-        return;
-      }
-      setImgLoaded(true);
-    }
-  }, [markDerivativeBroken, useVideoThumb, videoPosterSrc]);
-
   useEffect(() => {
     setVideoThumbFailed(false);
     setImgLoaded(false);
+    setImgFailed(false);
   }, [videoPosterSrc]);
 
-  // Same safety net for animated images (GIFs / motion photos).
   useEffect(() => {
-    if (!isAnimated) return;
-    const el = gifImgRef.current;
-    if (el?.complete && el.naturalWidth > 0) {
-      setImgLoaded(true);
+    setImgLoaded(false);
+    setImgFailed(false);
+  }, [lowDataImageSrc, staticAnimatedSrc, originalImageUrl]);
+
+  const photoCoverFailed = imgFailed && !isVideo && !isAudio;
+  const markImageLoaded = useCallback(() => {
+    setImgFailed(false);
+    setImgLoaded(true);
+  }, []);
+  const markImageFailed = useCallback(() => {
+    setImgLoaded(false);
+    setImgFailed(true);
+  }, []);
+  const markCoverFailed = useCallback(() => {
+    if (isVideo) {
+      markDerivativeBroken();
+      setVideoThumbFailed(true);
+      setImgLoaded(false);
+      return;
     }
-  }, [isAnimated, gifPaused, photo.url]);
+    markImageFailed();
+  }, [isVideo, markDerivativeBroken, markImageFailed]);
 
   useEffect(() => {
-    if (!isGif) return;
-    setGifDisplaySrc(gifPaused ? staticAnimatedSrc : originalImageUrl);
-  }, [gifPaused, isGif, originalImageUrl, staticAnimatedSrc]);
+    const element = coverImageRef.current;
+    const expectedSource = coverAttemptSource;
+    if (!element || !coverDeadlineEnabled) return;
+    if (!expectedSource) {
+      markCoverFailed();
+      return;
+    }
 
-  const selectionMode = onSelect !== undefined;
-  const gifInteractionBlocked = selectionMode || interactionDisabled;
+    const context = coverLoadContext;
+    let active = true;
+    let timeoutId: number | undefined;
+    const contextIsCurrent = () => (
+      active
+      && mountedRef.current
+      && coverLoadContextRef.current === context
+      && coverImageRef.current === element
+    );
+    const clearAttempt = () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+      element.removeEventListener("load", handleLoad);
+      element.removeEventListener("error", handleError);
+    };
+    const advanceOrFail = () => {
+      if (!contextIsCurrent()) return;
+      clearAttempt();
+      if (coverAttemptIndex + 1 >= coverDeadlineCandidates.length) {
+        markCoverFailed();
+        return;
+      }
+      setImgLoaded(false);
+      setImgFailed(false);
+      setCoverAttempt((current) => {
+        const currentIndex = current.context === context ? current.index : 0;
+        if (coverLoadContextRef.current !== context || currentIndex !== coverAttemptIndex) {
+          return current;
+        }
+        return { context, index: coverAttemptIndex + 1 };
+      });
+    };
+    const handleLoad = () => {
+      if (!contextIsCurrent()) return;
+      clearAttempt();
+      if (
+        isVideo
+        && isLowInformationVideoCoverImage(element) === true
+      ) {
+        markDerivativeBroken();
+        advanceOrFail();
+        return;
+      }
+      promoteSuccessfulMediaUrl(expectedSource);
+      markImageLoaded();
+    };
+    const handleError = () => advanceOrFail();
 
+    element.addEventListener("load", handleLoad);
+    element.addEventListener("error", handleError);
+    timeoutId = window.setTimeout(
+      advanceOrFail,
+      coverAttemptTimeoutMs,
+    );
+    if (element.complete && element.naturalWidth > 0) {
+      void Promise.resolve().then(handleLoad);
+    }
+
+    return () => {
+      active = false;
+      clearAttempt();
+    };
+  }, [
+    coverAttemptIndex,
+    coverAttemptSource,
+    coverAttemptTimeoutMs,
+    coverDeadlineEnabled,
+    coverDeadlineSourceKey,
+    coverLoadContext,
+    isVideo,
+    markCoverFailed,
+    markDerivativeBroken,
+    markImageLoaded,
+  ]);
+
+  const retryImage = () => {
+    setImgLoaded(false);
+    setImgFailed(false);
+    setImageRetryKey((current) => current + 1);
+  };
   // Toggle play/pause for GIFs. Uses src-swap instead of canvas
   // to avoid cross-origin (CORS) security errors on Azure SAS URLs.
   const toggleGifPause = (e: React.MouseEvent) => {
@@ -188,7 +343,9 @@ function PhotoCard({
     selected: !!selected,
   };
   const groupLabel = getPhotoCardGroupLabel(labelInput);
-  const primaryActionLabel = getPhotoPrimaryActionLabel(labelInput);
+  const primaryActionLabel = photoCoverFailed
+    ? `重试加载 ${displayName} 封面`
+    : getPhotoPrimaryActionLabel(labelInput);
   const descriptionId = useId();
   const deleteDialogTitleId = useId();
   const deleteDialogDescriptionId = useId();
@@ -199,6 +356,7 @@ function PhotoCard({
     photo.subject ? `${descriptionId}-subject` : null,
     photo.createdBy ? `${descriptionId}-creator` : null,
     isVideo && !useVideoThumb ? `${descriptionId}-video-status` : null,
+    photoCoverFailed ? `${descriptionId}-cover-status` : null,
   ].filter(Boolean).join(" ");
 
   const requestCloseDeleteDialog = useCallback(() => {
@@ -321,6 +479,8 @@ function PhotoCard({
     event.currentTarget.focus({ preventScroll: true });
     if (selectionMode) {
       onSelect?.(event);
+    } else if (photoCoverFailed) {
+      retryImage();
     } else {
       onClick();
     }
@@ -376,7 +536,7 @@ function PhotoCard({
             className="photo-thumbnail"
             data-media-policy={GRID_MEDIA_POLICY_MARKER}
           >
-            {!isAudio && !imgLoaded && (!isVideo || useVideoThumb) && <span className="photo-skeleton" />}
+            {!isAudio && !imgLoaded && !imgFailed && (!isVideo || useVideoThumb) && <span className="photo-skeleton" />}
             {isAudio ? (
               <>
                 <span className="audio-thumb-placeholder" aria-hidden="true">
@@ -387,33 +547,14 @@ function PhotoCard({
               </>
             ) : useVideoThumb ? (
               <img
-                ref={videoThumbImgRef}
+                key={coverAttemptElementKey}
+                ref={coverImageRef}
                 crossOrigin="anonymous"
-                src={videoPosterSrc}
+                src={coverAttemptSource ?? retryVideoPosterSrc}
                 alt=""
                 loading={priority ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 className={imgLoaded ? "img-loaded" : "img-loading"}
-                onLoad={(event) => {
-                  if (isLowInformationVideoCoverImage(event.currentTarget) === true) {
-                    markDerivativeBroken();
-                    if (fallbackMediaSource(event.currentTarget, videoPosterSources)) {
-                      setImgLoaded(false);
-                      return;
-                    }
-                    setVideoThumbFailed(true);
-                    setImgLoaded(false);
-                    return;
-                  }
-                  setImgLoaded(true);
-                }}
-                onError={(e) => {
-                  if (!fallbackMediaSource(e.currentTarget, videoPosterSources)) {
-                    markDerivativeBroken();
-                    setVideoThumbFailed(true);
-                    setImgLoaded(false);
-                  }
-                }}
               />
             ) : isVideo ? (
               <span className="video-thumb-placeholder" aria-hidden="true">
@@ -422,48 +563,54 @@ function PhotoCard({
               </span>
             ) : isMotionPhoto ? (
               <img
-                ref={gifImgRef}
-                src={lowDataImageSrc}
+                key={coverAttemptElementKey}
+                ref={coverImageRef}
+                src={coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF}
                 alt=""
                 loading={priority ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 className={imgLoaded ? "img-loaded" : "img-loading"}
-                onLoad={() => setImgLoaded(true)}
-                onError={(e) => {
-                  if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
-                }}
               />
             ) : isAnimated ? (
               <img
-                ref={gifImgRef}
-                src={isGif ? (gifInteractionBlocked ? staticAnimatedSrc : gifDisplaySrc) : staticAnimatedSrc}
+                key={gifUsesOriginal ? imageRetryKey : coverAttemptElementKey}
+                ref={coverImageRef}
+                src={coverAttemptSource ?? (isGif
+                  ? (gifInteractionBlocked ? retryStaticAnimatedSrc : retryGifDisplaySrc)
+                  : retryStaticAnimatedSrc)}
                 alt=""
                 loading={priority ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 className={imgLoaded ? "img-loaded" : "img-loading"}
-                onLoad={() => setImgLoaded(true)}
-                onError={(e) => {
-                  const sources = isGif && !gifPaused
-                    ? [originalImageUrl]
-                    : derivativeImageSources;
-                  if (!fallbackMediaSource(e.currentTarget, sources)) setImgLoaded(false);
-                }}
+                onLoad={gifUsesOriginal ? markImageLoaded : undefined}
+                onError={gifUsesOriginal
+                  ? (event) => {
+                    if (!fallbackMediaSource(event.currentTarget, [retryOriginalImageUrl])) {
+                      markImageFailed();
+                    }
+                  }
+                  : undefined}
               />
             ) : (
               <img
-                src={lowDataImageSrc}
+                key={coverAttemptElementKey}
+                ref={coverImageRef}
+                src={coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF}
                 alt=""
                 loading={priority ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 decoding="async"
-                className={imgLoaded ? "img-loaded" : "img-loading"}
-                onLoad={() => setImgLoaded(true)}
-                onError={(e) => {
-                  // A broken derivative may try the preview and alternate route,
-                  // but never silently downloads a 20 MB original as fallback.
-                  if (!fallbackMediaSource(e.currentTarget, lowDataImageSources)) setImgLoaded(false);
-                }}
+                className={imgLoaded ? "img-loaded" : imgFailed ? "img-error" : "img-loading"}
               />
+            )}
+            {photoCoverFailed && (
+              <span
+                id={`${descriptionId}-cover-status`}
+                className="photo-thumb-error"
+                role="status"
+              >
+                封面加载失败，点击重试
+              </span>
             )}
             {isVideo && <span className="photo-video-badge">▶</span>}
             {isHeic && <span className="photo-format-badge">HEIC</span>}

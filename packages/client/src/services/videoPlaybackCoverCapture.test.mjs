@@ -147,13 +147,18 @@ test("both viewers include known-broken covers and publish one shared repair res
 test("PhotoCard and MediaThumb register broken derivatives by blob identity", () => {
   assert.match(
     photoCard,
-    /isLowInformationVideoCoverImage[\s\S]{0,180}markDerivativeBroken\(\);[\s\S]{0,180}fallbackMediaSource/,
+    /isLowInformationVideoCoverImage[\s\S]{0,180}markDerivativeBroken\(\);[\s\S]{0,80}advanceOrFail\(\);/,
     "content-confirmed low-information covers should be registered immediately",
   );
   assert.match(
     photoCard,
-    /onError=\{\(e\) => \{\s*if \(!fallbackMediaSource\(e\.currentTarget, videoPosterSources\)\) \{\s*markDerivativeBroken\(\);/,
-    "one failed route must not condemn a derivative before fallback is exhausted",
+    /coverDeadlineSources =[\s\S]{0,200}retryVideoPosterSources/,
+    "video poster fallbacks must use the shared per-source cover deadline",
+  );
+  assert.match(
+    photoCard,
+    /retryVideoPosterSources = videoPosterSources\.map\(\(source\) =>\s*withCoverRequestState\(source, imageRetryKey, true\)\)/,
+    "video poster derivatives must use the cover-only deadline and retry request state",
   );
   assert.match(mediaThumb, /blobName\?: string/);
   assert.match(

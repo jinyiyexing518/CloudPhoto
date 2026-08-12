@@ -8,47 +8,156 @@ import { fileURLToPath } from "node:url";
 const appVersion = process.env.npm_package_version ?? "0.0.0";
 const buildTime = new Date().toISOString();
 const clientDir = path.dirname(fileURLToPath(import.meta.url));
-export const privateCacheWriteFence = {
-  handlerWillStart: async ({ state }) => {
+type PrivateMediaCacheSnapshot = {
+  generation: number;
+  enabled: boolean;
+  ready: boolean;
+};
+
+type PrivateMediaCachePolicy = {
+  snapshot: () => PrivateMediaCacheSnapshot;
+  current: (snapshot: PrivateMediaCacheSnapshot) => boolean;
+  accepts: (
+    response: Response,
+    snapshot: PrivateMediaCacheSnapshot,
+  ) => boolean;
+  read: (request: Request, snapshot: PrivateMediaCacheSnapshot) => Promise<Response | null>;
+  write: (
+    request: Request,
+    response: Response,
+    snapshot: PrivateMediaCacheSnapshot,
+  ) => Promise<boolean>;
+};
+
+export const privateMediaCache = {
+  handlerWillStart: ({ state }) => {
     if (state) {
-      const readyKey = ["__cloudPhotoPrivate", "CacheFenceReady"].join("");
-      const ready = (
+      const policyKey = ["__cloudPhotoPrivate", "MediaCachePolicy"].join("");
+      const policy = (
         globalThis as typeof globalThis & Record<string, unknown>
-      )[readyKey];
-      if (ready && typeof (ready as Promise<void>).then === "function") {
-        await ready;
-      }
-      const generationKey = ["__cloudPhotoPrivate", "CacheGeneration"].join("");
-      const generation = (
-        globalThis as typeof globalThis & Record<string, unknown>
-      )[generationKey];
-      state.cloudPhotoPrivateCacheGeneration =
-        typeof generation === "number" ? generation : 0;
-      const enabledKey = ["__cloudPhotoPrivate", "CacheEnabled"].join("");
-      state.cloudPhotoPrivateCacheWriteAllowed = (
-        globalThis as typeof globalThis & Record<string, unknown>
-      )[enabledKey] === true;
+      )[policyKey] as PrivateMediaCachePolicy | undefined;
+      state.cloudPhotoPrivateMediaSnapshot = policy?.snapshot() ?? {
+        generation: 0,
+        enabled: false,
+        ready: false,
+      };
     }
   },
-  cacheWillUpdate: async ({ response, state }) => {
-    const generationKey = ["__cloudPhotoPrivate", "CacheGeneration"].join("");
-    const enabledKey = ["__cloudPhotoPrivate", "CacheEnabled"].join("");
-    const guard = globalThis as typeof globalThis & Record<string, unknown>;
-    return state?.cloudPhotoPrivateCacheWriteAllowed === true
-      && guard[enabledKey] === true
-      && state?.cloudPhotoPrivateCacheGeneration === guard[generationKey]
-      ? response
-      : null;
-  },
   cachedResponseWillBeUsed: async ({ cachedResponse, state }) => {
-    const generationKey = ["__cloudPhotoPrivate", "CacheGeneration"].join("");
-    const enabledKey = ["__cloudPhotoPrivate", "CacheEnabled"].join("");
-    const guard = globalThis as typeof globalThis & Record<string, unknown>;
-    return state?.cloudPhotoPrivateCacheWriteAllowed === true
-      && guard[enabledKey] === true
-      && state?.cloudPhotoPrivateCacheGeneration === guard[generationKey]
+    const policyKey = ["__cloudPhotoPrivate", "MediaCachePolicy"].join("");
+    const policy = (
+      globalThis as typeof globalThis & Record<string, unknown>
+    )[policyKey] as PrivateMediaCachePolicy | undefined;
+    const snapshot = state?.cloudPhotoPrivateMediaSnapshot as
+      | PrivateMediaCacheSnapshot
+      | undefined;
+    return cachedResponse
+      && policy
+      && snapshot?.enabled === true
+      && snapshot.ready === true
+      && policy.current(snapshot)
+      && policy.accepts(cachedResponse, snapshot)
       ? cachedResponse
       : null;
+  },
+  requestWillFetch: async ({ request, state }) => {
+    if (
+      !state
+      || new URL(request.url).searchParams.get("cf_cover") !== "1"
+    ) {
+      return request;
+    }
+    const controller = new AbortController();
+    const abortFromRequest = () => {
+      controller.abort(request.signal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    if (request.signal.aborted) {
+      abortFromRequest();
+    } else {
+      request.signal.addEventListener("abort", abortFromRequest, { once: true });
+    }
+    state.cloudPhotoPrivateMediaController = controller;
+    state.cloudPhotoPrivateMediaRequestSignal = request.signal;
+    state.cloudPhotoPrivateMediaAbortListener = abortFromRequest;
+    state.cloudPhotoPrivateMediaTimeout = globalThis.setTimeout(() => {
+      request.signal.removeEventListener("abort", abortFromRequest);
+      controller.abort(new DOMException("Private media request timed out", "TimeoutError"));
+    }, 6_000);
+    return new Request(request, { signal: controller.signal });
+  },
+  fetchDidSucceed: async ({ request, response, event, state }) => {
+    if (state?.cloudPhotoPrivateMediaTimeout !== undefined) {
+      globalThis.clearTimeout(state.cloudPhotoPrivateMediaTimeout as number);
+    }
+    const requestSignal = state?.cloudPhotoPrivateMediaRequestSignal as AbortSignal | undefined;
+    const abortListener = state?.cloudPhotoPrivateMediaAbortListener as
+      | (() => void)
+      | undefined;
+    if (requestSignal && abortListener) {
+      requestSignal.removeEventListener("abort", abortListener);
+    }
+    const policyKey = ["__cloudPhotoPrivate", "MediaCachePolicy"].join("");
+    const guard = globalThis as typeof globalThis & Record<string, unknown>;
+    const policy = guard[policyKey] as PrivateMediaCachePolicy | undefined;
+    const snapshot = state?.cloudPhotoPrivateMediaSnapshot as
+      | PrivateMediaCacheSnapshot
+      | undefined;
+    if (
+      response.status === 408
+      || response.status === 429
+      || response.status >= 500
+    ) {
+      const cached = policy && snapshot?.enabled === true && snapshot.ready === true
+        ? await policy.read(request, snapshot)
+        : null;
+      if (cached) return cached;
+      return response;
+    }
+    if (
+      policy
+      && snapshot?.enabled === true
+      && snapshot.ready === true
+      && response.status === 200
+    ) {
+      event.waitUntil(policy.write(request, response.clone(), snapshot));
+    }
+    return response;
+  },
+  fetchDidFail: async ({ state }) => {
+    if (state?.cloudPhotoPrivateMediaTimeout !== undefined) {
+      globalThis.clearTimeout(state.cloudPhotoPrivateMediaTimeout as number);
+    }
+    const requestSignal = state?.cloudPhotoPrivateMediaRequestSignal as AbortSignal | undefined;
+    const abortListener = state?.cloudPhotoPrivateMediaAbortListener as
+      | (() => void)
+      | undefined;
+    if (requestSignal && abortListener) {
+      requestSignal.removeEventListener("abort", abortListener);
+    }
+  },
+  handlerDidError: async ({ request, state, error }) => {
+    const policyKey = ["__cloudPhotoPrivate", "MediaCachePolicy"].join("");
+    const guard = globalThis as typeof globalThis & Record<string, unknown>;
+    const policy = guard[policyKey] as PrivateMediaCachePolicy | undefined;
+    const snapshot = state?.cloudPhotoPrivateMediaSnapshot as
+      | PrivateMediaCacheSnapshot
+      | undefined;
+    const cached = policy && snapshot?.enabled === true && snapshot.ready === true
+      ? await policy.read(request, snapshot)
+      : null;
+    if (cached) return cached;
+    console.warn("[PrivateMediaCache]", {
+      label: "network-and-cache-unavailable",
+      source: new URL(request.url).pathname.startsWith("/media/")
+        ? "media-proxy"
+        : "blob-storage",
+      errorType: error instanceof Error ? error.name : typeof error,
+    });
+    return new Response("", {
+      status: 504,
+      statusText: "Private media unavailable",
+      headers: { "Cache-Control": "no-store" },
+    });
   },
 } satisfies WorkboxPlugin;
 
@@ -163,17 +272,9 @@ export default defineConfig({
                 )
                 && isCacheablePhotoPath;
             },
-            handler: "CacheFirst" as const,
+            handler: "NetworkOnly" as const,
             options: {
-              cacheName: "photo-media-v1",
-              matchOptions: { ignoreSearch: false },
-              plugins: [privateCacheWriteFence],
-              expiration: {
-                maxEntries: 600,           // ~200 photos × thumbnail, preview, or image original
-                maxAgeSeconds: 60 * 60,    // never outlive the one-hour private freshness window
-                purgeOnQuotaError: true,   // auto-evict oldest if storage quota exceeded
-              },
-              cacheableResponse: { statuses: [200] },
+              plugins: [privateMediaCache],
             },
           },
         ],

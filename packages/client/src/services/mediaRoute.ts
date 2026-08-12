@@ -369,6 +369,10 @@ function mediaCandidates(urls: Array<string | undefined>): string[] {
   return candidates;
 }
 
+export function getMediaCandidates(urls: Array<string | undefined>): string[] {
+  return mediaCandidates(urls);
+}
+
 interface ElementFallbackState {
   sourceKey: string;
   candidates: string[];

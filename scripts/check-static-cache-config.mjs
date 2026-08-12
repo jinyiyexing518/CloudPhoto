@@ -501,21 +501,29 @@ function checkHashedAssets(configPath) {
     "__cloudPhotoPrivateCacheGeneration",
     "__cloudPhotoPrivateCacheEnabled",
     "__cloudPhotoPrivateCacheFenceReady",
+    "__cloudPhotoPrivateMediaCachePolicy",
     "cloudphoto-private-cache-fence-v1",
     "cleanupActive",
+    "mediaSnapshotCurrent",
+    "withMediaCacheDeadline",
+    "__cf_private_generation",
+    "x-cloudphoto-private-cache-generation",
   ]) {
     if (!privateCacheFence.includes(marker)) fail(configPath, `private cache fence is missing ${marker}`);
   }
   for (const marker of [
     "private-cache-fence.js",
     "__cloudPhotoPrivate",
-    "CacheGeneration",
-    "CacheEnabled",
-    "CacheFenceReady",
-    "cloudPhotoPrivateCacheWriteAllowed",
+    "MediaCachePolicy",
+    "cloudPhotoPrivateMediaSnapshot",
     "cachedResponseWillBeUsed",
+    "Private media request timed out",
+    "network-and-cache-unavailable",
   ]) {
     if (!serviceWorker.includes(marker)) fail(configPath, `service worker is missing ${marker}`);
+  }
+  if (serviceWorker.includes("COVER_NETWORK_TIMEOUT_MS")) {
+    fail(configPath, "service worker contains an unresolved cover timeout identifier");
   }
   if (serviceWorker.includes(`assets/${basename(galleryChunks[0])}`)) {
     fail(configPath, "deferred PhotoGallery chunk must not be downloaded by the precache");

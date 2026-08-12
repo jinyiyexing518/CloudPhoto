@@ -15,6 +15,7 @@
     "dev:server": "yarn workspace cloudphoto-server start",
     "test:video-playback": "node --test packages/client/src/services/videoPlaybackSession.test.mjs packages/client/src/services/videoPlaybackCoverCapture.test.mjs",
     "test:photo-loading-contracts": "node packages/client/src/services/videoCoverRepairPolicy.test.mjs && node scripts/check-photo-loading-contracts.mjs",
+    "test:photo-cover-browser": "node --test --test-force-exit scripts/photo-cover-loading-browser.test.mjs",
     "test:private-data": "node scripts/private-local-data.test.mjs",
     "test:private-cache-lazy": "node --test scripts/private-cache-lazy-contract.test.mjs",
     "test:mobile-layout-contracts": "node --test scripts/mobile-layout-contracts.test.mjs scripts/mobile-controls-date-contracts.test.mjs scripts/photo-preview-modal-contracts.test.mjs packages/client/src/components/gallery/FilterBar.debounce.test.mjs packages/client/src/components/home/WorkspaceSidebar.keyboard.test.mjs",
