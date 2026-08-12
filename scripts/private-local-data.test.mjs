@@ -8,6 +8,16 @@ import { runInNewContext } from "node:vm";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (relativePath) => readFile(join(root, relativePath), "utf8");
+const hasCleanupStep = (expectedStep) => (error) => {
+  const failures = [
+    error,
+    ...(Array.isArray(error?.errors) ? error.errors : []),
+  ];
+  return failures.some((failure) =>
+    failure?.code === "PRIVATE_CACHE_FAILED"
+    && String(failure.step).includes(expectedStep)
+  );
+};
 
 const values = new Map();
 let afterSetItem = null;
@@ -545,7 +555,7 @@ function createFakeWorkboxExpirationDb(
     }
     await assert.rejects(
       cacheReset.enablePrivateCacheWrites(),
-      /service worker fence/,
+      hasCleanupStep("service worker fence"),
       "an authenticated handshake must not supersede an active logout cleanup",
     );
     releaseDeletes();
@@ -1156,7 +1166,7 @@ localStorage.removeItem(quotaKey);
         createFakeWorkboxExpirationDb([], { openOutcome }).factory,
         privateCacheNames,
       ),
-      /database open/,
+      hasCleanupStep("database open"),
       `${openOutcome} must reject explicitly`,
     );
   }
@@ -1165,7 +1175,7 @@ localStorage.removeItem(quotaKey);
       createFakeWorkboxExpirationDb([], { includeIndex: false }).factory,
       privateCacheNames,
     ),
-    /readwrite transaction/,
+    hasCleanupStep("readwrite transaction"),
     "a missing cacheName index must not fall back to a full-store URL-bearing scan",
   );
   for (const readwriteOutcome of ["error", "abort"]) {
@@ -1181,7 +1191,7 @@ localStorage.removeItem(quotaKey);
         failingTransaction.factory,
         privateCacheNames,
       ),
-      /transaction/,
+      hasCleanupStep("readwrite transaction"),
       `readwrite ${readwriteOutcome} must reject explicitly`,
     );
     assert.equal(failingTransaction.count("photo-media-v1"), 1);
@@ -1330,7 +1340,8 @@ assert.equal(
 );
 assert(
   quotaError.errors.every((error) =>
-    error.name.includes("Cache Storage deletion")
+    error.code === "PRIVATE_CACHE_FAILED"
+    && error.step.includes("Cache Storage deletion")
   ),
   "each quota failure must identify its explicit cleanup step",
 );
@@ -1406,7 +1417,7 @@ assert.equal(localStorage.getItem("cloudphoto_private_cache_owner_v1"), null);
 assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v2"), null);
 await assert.rejects(
   lifecycle.waitForPrivatePhotoCacheCleanup(),
-  /service worker fence/,
+  hasCleanupStep("service worker fence"),
   "SW enable failure must keep persistent private data behind the degraded barrier",
 );
 if (originalNavigator) {
@@ -1428,7 +1439,7 @@ if (originalNavigator) {
   }
   await assert.rejects(
     delayedTimerReset,
-    /deadline/,
+    hasCleanupStep("deadline"),
     "wall-clock expiry must win even when the timer callback is delayed",
   );
 }
@@ -1451,7 +1462,7 @@ if (originalNavigator) {
   });
   await assert.rejects(
     cacheReset.resetPrivateCaches(privateCacheNames, new Set(), true, true),
-    /deadline/,
+    hasCleanupStep("deadline"),
     "a stalled registration lookup must reach the cleanup deadline",
   );
   resolveRegistration({
@@ -1545,8 +1556,10 @@ const crossTabStart = auth.indexOf("const handleStorage");
 assert(crossTabStart >= 0);
 const crossTabBody = auth.slice(crossTabStart, auth.indexOf("window.addEventListener", crossTabStart));
 assert(
-  crossTabBody.indexOf("await clearPrivatePhotoCaches()") < crossTabBody.indexOf("setUser(null)"),
-  "cross-tab account replacement must await private data cleanup before clearing auth state",
+  crossTabBody.indexOf("const cleanup = clearPrivatePhotoCaches()")
+    < crossTabBody.indexOf("setUser(null)")
+  && crossTabBody.indexOf("setUser(null)") < crossTabBody.indexOf("await cleanup"),
+  "cross-tab auth reset must clear visible state immediately while still awaiting cleanup",
 );
 assert(
   crossTabBody.includes("if (!getToken()) {")

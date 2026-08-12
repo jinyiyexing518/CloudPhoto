@@ -21,6 +21,34 @@ test("private cache degradation notice is claimed once per app session", async (
     false,
     "logout and a second successful login must not repeat the same warning",
   );
+  const failure = Object.assign(
+    new AggregateError([
+      Object.assign(new Error("Private cache cleanup failed"), {
+        step: "Cache Storage deletion",
+      }),
+    ], "Private cache cleanup failed"),
+    { code: "PRIVATE_CACHE_FAILED" },
+  );
+  const log = notice.privateCacheDegradationLog(failure);
+  assert.deepEqual(log, {
+    code: "PRIVATE_CACHE_FAILED",
+    kind: "aggregate",
+    steps: ["cache-storage-delete"],
+  });
+  assert.doesNotMatch(
+    JSON.stringify(log),
+    /Private cache cleanup failed/i,
+    "structured logging must never echo raw cleanup messages or causes",
+  );
+  assert.doesNotMatch(
+    JSON.stringify(notice.privateCacheDegradationLog({
+      code: "RAW_SECRET",
+      name: "RAW_SECRET",
+      step: "RAW_SECRET",
+    })),
+    /RAW_SECRET/,
+    "unknown metadata must not enter private-cache diagnostics",
+  );
 });
 
 test("private media reads stay fenced after rejected or late cleanup", async () => {
@@ -60,7 +88,7 @@ test("private media reads stay fenced after rejected or late cleanup", async () 
 });
 
 test("private Workbox cleanup stays behind an awaited dynamic boundary", async () => {
-  const [lifecycle, listLifecycle, reset, cleanup, auth, authPage, http, app] = await Promise.all([
+  const [lifecycle, listLifecycle, reset, cleanup, auth, authPage, http, shell, app] = await Promise.all([
     source("packages/client/src/services/privatePhotoCacheLifecycle.ts"),
     source("packages/client/src/services/privatePhotoListCacheLifecycle.ts"),
     source("packages/client/src/services/privateCacheReset.ts"),
@@ -68,6 +96,7 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
     source("packages/client/src/contexts/AuthContext.tsx"),
     source("packages/client/src/components/auth/AuthPage.tsx"),
     source("packages/client/src/services/http.ts"),
+    source("packages/client/src/App.tsx"),
     source("packages/client/src/AuthenticatedApp.tsx"),
   ]);
 
@@ -127,12 +156,24 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
   assert.ok(noticeStart >= 0);
   assert.doesNotMatch(
     noticeBody,
-    /error\.message|String\(error\)/,
+    /console\.error|error\.message|String\(error\)/,
     "private-cache failures must not reach a raw toast",
   );
+  assert.match(app, /logPrivateCacheDegradation\(/);
+  assert.doesNotMatch(auth, /catch\(console\.error\)|console\.error\(error\)/);
   assert.ok(
     (app.match(/reportPrivateCacheDegradation\(error\)/g) ?? []).length >= 2,
     "preparation and logout degradation must share the deduplicated notice path",
+  );
+  assert.match(
+    shell,
+    /<ToastProvider key=\{user\?\.id\}>/,
+    "auth reset must immediately unmount any visible private-cache warning",
+  );
+  assert.doesNotMatch(
+    shell,
+    /<ToastProvider>\s*<AuthProvider>/,
+    "toasts must not survive the authenticated identity that created them",
   );
   const loginStart = authPage.indexOf("const handleLogin");
   const loginBody = authPage.slice(loginStart, authPage.indexOf("const switchTab", loginStart));

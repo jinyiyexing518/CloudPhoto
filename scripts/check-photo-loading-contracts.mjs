@@ -273,9 +273,10 @@ for (const scopeReset of ["true", "false"]) {
 }
 requireText(
   app,
-  'console.error("[PrivateDataCleanup] Photo list cache invalidation failed:", error)',
-  "photo mutation cache invalidation error handling",
+  '"[PrivateDataCleanup] Photo list cache invalidation failed:"',
+  "photo mutation cache invalidation context",
 );
+requireText(app, "logPrivateCacheDegradation(", "sanitized private-cache diagnostics");
 requireText(auth, "await clearPrivatePhotoCaches()", "awaited explicit/automatic logout cleanup");
 assert(
   !auth.includes("void clearPrivatePhotoCaches()"),

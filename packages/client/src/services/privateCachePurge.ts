@@ -8,9 +8,11 @@ export type PrivateExpirationCleanupResult = {
 };
 
 function cleanupFailure(step: string, cause: unknown): Error {
-  const error = new Error("本地私有缓存暂不可用", { cause });
-  error.name = `PrivateCacheCleanupError (${step})`;
-  return error;
+  return Object.assign(new Error("本地私有缓存暂不可用", { cause }), {
+    name: "PrivateCacheCleanupError",
+    code: "PRIVATE_CACHE_FAILED",
+    step,
+  });
 }
 
 function openExistingExpirationDatabase(

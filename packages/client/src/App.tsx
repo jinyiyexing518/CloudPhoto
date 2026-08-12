@@ -33,39 +33,36 @@ function AppSplash() {
 function App() {
   const { user, loading } = useAuth();
 
-  if (loading) return <AppSplash />;
-  if (!user) {
-    return (
-      <ErrorBoundary
-        label="登录与注册"
-        recovery
-        onError={reportLazyBoundaryFailure}
-      >
-        <AuthPage onAuthIntent={() => { void loadAuthenticatedApp(); }} />
-      </ErrorBoundary>
-    );
-  }
-
   return (
-    <ErrorBoundary
-      label="照片空间"
-      recovery
-      onError={reportLazyBoundaryFailure}
-    >
-      <Suspense fallback={<AppSplash />}>
-        <AuthenticatedApp />
-      </Suspense>
-    </ErrorBoundary>
+    <ToastProvider key={user?.id}>
+      {loading ? <AppSplash /> : !user ? (
+        <ErrorBoundary
+          label="登录与注册"
+          recovery
+          onError={reportLazyBoundaryFailure}
+        >
+          <AuthPage onAuthIntent={() => { void loadAuthenticatedApp(); }} />
+        </ErrorBoundary>
+      ) : (
+        <ErrorBoundary
+          label="照片空间"
+          recovery
+          onError={reportLazyBoundaryFailure}
+        >
+          <Suspense fallback={<AppSplash />}>
+            <AuthenticatedApp />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </ToastProvider>
   );
 }
 
 function AppWithProvider() {
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </ToastProvider>
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   );
 }
 

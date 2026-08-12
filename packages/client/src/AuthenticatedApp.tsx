@@ -26,7 +26,10 @@ import {
 import {
   registerPrivatePhotoCacheReset,
 } from "./services/privatePhotoCacheLifecycle";
-import { claimPrivateCacheDegradationNotice } from "./services/privateCacheDegradationNotice";
+import {
+  claimPrivateCacheDegradationNotice,
+  logPrivateCacheDegradation,
+} from "./services/privateCacheDegradationNotice";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
 import {
   detectUploadMediaType,
@@ -362,7 +365,10 @@ function AppContent() {
   resolvedPhotoWorkspaceIdRef.current = resolvedPhotoWorkspaceId;
   const showToast = useToast();
   const reportPrivateCacheDegradation = useCallback((error: unknown) => {
-    console.error("[PrivateDataCleanup] Cache preparation deferred:", error);
+    logPrivateCacheDegradation(
+      "[PrivateDataCleanup] Cache preparation deferred:",
+      error,
+    );
     if (claimPrivateCacheDegradationNotice()) {
       showToast("本地私有缓存暂不可用；在线内容可继续使用，下次打开时将重试", "info");
     }
@@ -1144,7 +1150,10 @@ function AppContent() {
     photoStateRevisionRef.current += 1;
     fetchAbortRef.current?.abort();
     void invalidatePhotoListCaches().catch((error) => {
-      console.error("[PrivateDataCleanup] Photo list cache invalidation failed:", error);
+      logPrivateCacheDegradation(
+        "[PrivateDataCleanup] Photo list cache invalidation failed:",
+        error,
+      );
     });
     setPhotos(updater);
   }, []);
@@ -2449,7 +2458,6 @@ function AppContent() {
                   try {
                     await logout();
                   } catch (error) {
-                    console.error("[PrivateDataCleanup] Logout cleanup failed:", error);
                     reportPrivateCacheDegradation(error);
                   }
                 }}

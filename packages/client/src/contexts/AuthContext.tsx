@@ -21,6 +21,9 @@ import {
 } from "../services/privatePhotoCacheLifecycle";
 import { authCacheOwner } from "../services/authScope";
 
+const PRIVATE_CACHE_FAILURE = { code: "PRIVATE_CACHE_FAILED" } as const;
+const logPrivateCacheFailure = () => console.error(PRIVATE_CACHE_FAILURE);
+
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
@@ -49,12 +52,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     cancelAuthSync();
     clearStoredAuth();
-    try {
-      await clearPrivatePhotoCaches();
-    } finally {
-      setUser(null);
-      setLoading(false);
-    }
+    const cleanup = clearPrivatePhotoCaches();
+    currentUserRef.current = null;
+    setUser(null);
+    setLoading(false);
+    await cleanup;
   }, [cancelAuthSync]);
 
   const restoreCurrentUser = useCallback(async (
@@ -91,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await restoreCurrentUser(controller, generation);
       } catch {
         if (!controller.signal.aborted && generation === authSyncGeneration.current) {
-          await logout().catch(console.error);
+          await logout().catch(logPrivateCacheFailure);
         }
       } finally {
         if (authSyncController.current === controller) authSyncController.current = null;
@@ -180,15 +182,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       invalidateAuthRefresh();
       cancelAuthSync();
       const generation = authSyncGeneration.current;
+      const cleanup = clearPrivatePhotoCaches();
+      currentUserRef.current = null;
+      setUser(null);
       try {
-        await clearPrivatePhotoCaches();
-      } catch (error) {
+        await cleanup;
+      } catch {
         setLoading(false);
-        console.error(error);
+        logPrivateCacheFailure();
         return;
-      } finally {
-        currentUserRef.current = null;
-        setUser(null);
       }
       if (!getToken()) {
         setLoading(false);
