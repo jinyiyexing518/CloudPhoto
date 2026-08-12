@@ -10,14 +10,65 @@ const root = new URL("..", import.meta.url);
 const source = (path) => readFile(new URL(path, root), "utf8");
 const distPath = new URL("packages/client/dist/", root);
 
+test("private cache degradation notice is claimed once per app session", async () => {
+  const notice = await import(
+    "../packages/client/src/services/privateCacheDegradationNotice.ts"
+  );
+  assert.equal(notice.claimPrivateCacheDegradationNotice(), true);
+  assert.equal(notice.claimPrivateCacheDegradationNotice(), false);
+  assert.equal(
+    notice.claimPrivateCacheDegradationNotice(),
+    false,
+    "logout and a second successful login must not repeat the same warning",
+  );
+});
+
+test("private media reads stay fenced after rejected or late cleanup", async () => {
+  const { privateCacheWriteFence } = await import("../packages/client/vite.config.mts");
+  const guard = globalThis;
+  guard.__cloudPhotoPrivateCacheFenceReady = Promise.resolve();
+  guard.__cloudPhotoPrivateCacheGeneration = 7;
+  guard.__cloudPhotoPrivateCacheEnabled = true;
+  const state = {};
+  await privateCacheWriteFence.handlerWillStart({ state });
+  const cachedResponse = new Response("stale private media");
+  assert.equal(
+    await privateCacheWriteFence.cachedResponseWillBeUsed({ cachedResponse, state }),
+    cachedResponse,
+  );
+  guard.__cloudPhotoPrivateCacheEnabled = false;
+  assert.equal(
+    await privateCacheWriteFence.cachedResponseWillBeUsed({ cachedResponse, state }),
+    null,
+    "a rejected cleanup must make an existing cached response unreadable",
+  );
+  guard.__cloudPhotoPrivateCacheEnabled = true;
+  guard.__cloudPhotoPrivateCacheGeneration = 8;
+  assert.equal(
+    await privateCacheWriteFence.cachedResponseWillBeUsed({ cachedResponse, state }),
+    null,
+    "a late prior-generation request must not read private cached media",
+  );
+  assert.equal(
+    await privateCacheWriteFence.cacheWillUpdate({ response: cachedResponse, state }),
+    null,
+    "a late prior-generation response must remain unwritable",
+  );
+  delete guard.__cloudPhotoPrivateCacheFenceReady;
+  delete guard.__cloudPhotoPrivateCacheGeneration;
+  delete guard.__cloudPhotoPrivateCacheEnabled;
+});
+
 test("private Workbox cleanup stays behind an awaited dynamic boundary", async () => {
-  const [lifecycle, listLifecycle, reset, cleanup, auth, http] = await Promise.all([
+  const [lifecycle, listLifecycle, reset, cleanup, auth, authPage, http, app] = await Promise.all([
     source("packages/client/src/services/privatePhotoCacheLifecycle.ts"),
     source("packages/client/src/services/privatePhotoListCacheLifecycle.ts"),
     source("packages/client/src/services/privateCacheReset.ts"),
     source("packages/client/src/services/privateCachePurge.ts"),
     source("packages/client/src/contexts/AuthContext.tsx"),
+    source("packages/client/src/components/auth/AuthPage.tsx"),
     source("packages/client/src/services/http.ts"),
+    source("packages/client/src/AuthenticatedApp.tsx"),
   ]);
 
   assert.match(reset, /import\("\.\/privateCachePurge\.ts"\)/);
@@ -70,6 +121,38 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
     reset,
     /await completePrivateCacheReset\(\s*reset,\s*resumeCaching,\s*failures,\s*fencePrivateMediaWrites,\s*\)/,
   );
+  assert.match(app, /claimPrivateCacheDegradationNotice\(\)/);
+  const noticeStart = app.indexOf("const reportPrivateCacheDegradation");
+  const noticeBody = app.slice(noticeStart, app.indexOf("useEffect", noticeStart));
+  assert.ok(noticeStart >= 0);
+  assert.doesNotMatch(
+    noticeBody,
+    /error\.message|String\(error\)/,
+    "private-cache failures must not reach a raw toast",
+  );
+  assert.ok(
+    (app.match(/reportPrivateCacheDegradation\(error\)/g) ?? []).length >= 2,
+    "preparation and logout degradation must share the deduplicated notice path",
+  );
+  const loginStart = authPage.indexOf("const handleLogin");
+  const loginBody = authPage.slice(loginStart, authPage.indexOf("const switchTab", loginStart));
+  assert.ok(loginStart >= 0);
+  assert.ok(
+    loginBody.indexOf('setError("")') < loginBody.indexOf("await login("),
+    "every login attempt must clear stale authentication errors before authentication",
+  );
+  assert.doesNotMatch(
+    loginBody.slice(loginBody.indexOf("await login("), loginBody.indexOf("catch")),
+    /setError\(/,
+    "a successful login must leave authentication errors cleared",
+  );
+  for (const privateCacheSource of [reset, cleanup, lifecycle, app]) {
+    assert.doesNotMatch(
+      privateCacheSource,
+      /Private cache cleanup failed/i,
+      "raw private-cache implementation errors must not ship in current client source",
+    );
+  }
 });
 
 test("API hedge machinery stays behind an authenticated intent boundary", async () => {
@@ -106,6 +189,7 @@ test("built deferred support chunks stay outside login preload and service-worke
     ),
   );
   const currentAssets = assetNames.filter((name) => currentAssetNames.has(name));
+  const currentJavaScriptAssets = currentAssets.filter((name) => name.endsWith(".js"));
   const entryNames = currentAssets.filter((name) => /^index-[\w-]{8,}\.js$/.test(name));
   const cleanupNames = currentAssets.filter(
     (name) => /^privateCachePurge-[\w-]{8,}\.js$/.test(name),
@@ -132,6 +216,46 @@ test("built deferred support chunks stay outside login preload and service-worke
     readFile(new URL("sw.js", distPath), "utf8"),
     stat(entryPath),
   ]);
+  const currentJavaScript = new Map(await Promise.all(
+    currentJavaScriptAssets.map(async (name) => [
+      name,
+      await readFile(new URL(`assets/${name}`, distPath), "utf8"),
+    ]),
+  ));
+  const reachable = new Set(entryNames);
+  const pending = [...entryNames];
+  while (pending.length > 0) {
+    const name = pending.pop();
+    const contents = currentJavaScript.get(name);
+    assert.ok(contents, `current dependency ${name} must exist in the build`);
+    for (const candidate of currentJavaScriptAssets) {
+      if (
+        !reachable.has(candidate)
+        && (
+          contents.includes(`./${candidate}`)
+          || contents.includes(`/assets/${candidate}`)
+        )
+      ) {
+        reachable.add(candidate);
+        pending.push(candidate);
+      }
+    }
+  }
+  assert.ok(
+    [...reachable].some((name) => /^privateCacheReset-/.test(name)),
+    "the active login graph must include its current private-cache reset chunk",
+  );
+  assert.ok(
+    [...reachable].some((name) => /^privateCachePurge-/.test(name)),
+    "the active login graph must include its current private-cache purge dependency",
+  );
+  for (const name of reachable) {
+    assert.doesNotMatch(
+      currentJavaScript.get(name),
+      /Private cache cleanup failed/i,
+      `current reachable chunk ${name} must not expose a raw private-cache failure`,
+    );
+  }
   for (const marker of ["workbox-expiration", "cache-entries"]) {
     assert.ok(!entry.includes(marker), `login entry must not contain ${marker}`);
     assert.ok(cleanup.includes(marker), `lazy cleanup chunk must contain ${marker}`);

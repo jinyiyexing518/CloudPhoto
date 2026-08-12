@@ -20,7 +20,9 @@ export type PrivateCacheReset = {
 };
 
 function cleanupFailure(step: string, cause: unknown): Error {
-  return new Error(`Private cache cleanup failed during ${step}`, { cause });
+  const error = new Error("本地私有缓存暂不可用", { cause });
+  error.name = `PrivateCacheCleanupError (${step})`;
+  return error;
 }
 
 export function removeLegacyPrivateLocalData(): void {
@@ -202,7 +204,7 @@ export async function completePrivateCacheReset(
     }
     return;
   }
-  throw new AggregateError(failures, "Private cache cleanup failed");
+  throw new AggregateError(failures, "本地私有缓存暂不可用");
 }
 
 async function runPrivateCacheReset(

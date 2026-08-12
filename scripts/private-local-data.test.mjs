@@ -434,7 +434,7 @@ function createFakeWorkboxExpirationDb(
     await assert.rejects(
       cacheReset.beginPrivateCacheReset(privateCacheNames, new Set(), true)
         .then((reset) => cacheReset.completePrivateCacheReset(reset, true, [])),
-      /Private cache cleanup failed/,
+      /本地私有缓存暂不可用/,
       "Cache Storage rejection must keep cleanup incomplete",
     );
   } finally {
@@ -898,12 +898,12 @@ await lifecycle.preparePrivatePhotoCachesForScope("account-b:admin");
 cacheDeleteFailure = listLifecycle.PHOTO_LIST_CACHE_NAME;
 await assert.rejects(
   listLifecycle.invalidatePhotoListCaches(),
-  /Private cache cleanup failed/,
+  /本地私有缓存暂不可用/,
   "failed list invalidation must reject explicitly",
 );
 await assert.rejects(
   listLifecycle.waitForPrivatePhotoListCacheCleanup(),
-  /Private cache cleanup failed/,
+  /本地私有缓存暂不可用/,
   "failed current-generation invalidation must keep persistence fenced",
 );
 cacheDeleteFailure = null;
@@ -1202,7 +1202,7 @@ globalThis.indexedDB = {
 };
 await assert.rejects(
   lifecycle.clearPrivatePhotoCaches(),
-  /Private cache cleanup failed/,
+  /本地私有缓存暂不可用/,
   "metadata cleanup failures must reject the lifecycle cleanup promise",
 );
 assert.equal(
@@ -1218,7 +1218,7 @@ globalThis.indexedDB = cacheFailureDb.factory;
 cacheDeleteFailure = "photo-media-v1";
 await assert.rejects(
   lifecycle.clearPrivatePhotoCaches(),
-  /Private cache cleanup failed/,
+  /本地私有缓存暂不可用/,
   "Cache Storage failures must reject after all targeted cleanup stages finish",
 );
 cacheDeleteFailure = null;
@@ -1251,7 +1251,7 @@ assert.equal(
 );
 assert.match(
   window.__CF_CACHE_ERROR__.message,
-  /Private cache cleanup failed/,
+  /本地私有缓存暂不可用/,
   "degraded preparation must retain the explicit cleanup failure",
 );
 assert.equal(lifecycleEvents.at(-1), "cf-private-cache-error");
@@ -1293,7 +1293,7 @@ assert.equal(
 const partialCacheError = window.__CF_CACHE_ERROR__;
 assert.match(
   String(partialCacheError),
-  /Private cache cleanup failed/,
+  /本地私有缓存暂不可用/,
   "partial CacheStorage must remain an explicit incomplete cleanup",
 );
 assert.equal(partialCacheError.errors.length, 2);
@@ -1330,7 +1330,7 @@ assert.equal(
 );
 assert(
   quotaError.errors.every((error) =>
-    error.message.includes("Cache Storage deletion")
+    error.name.includes("Cache Storage deletion")
   ),
   "each quota failure must identify its explicit cleanup step",
 );
@@ -1366,7 +1366,7 @@ assert.equal(
 );
 await assert.rejects(
   lifecycle.waitForPrivatePhotoCacheCleanup(),
-  /Private cache cleanup failed/,
+  /本地私有缓存暂不可用/,
   "list-only invalidation must not release the degraded persistence barrier",
 );
 assert.equal(

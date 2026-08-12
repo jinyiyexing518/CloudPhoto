@@ -233,6 +233,7 @@ requireText(
 requireText(vite, "handlerWillStart", "private media request generation capture");
 requireText(vite, "CacheFenceReady", "restored fence state wait");
 requireText(vite, "cacheWillUpdate", "private media late-write rejection");
+requireText(vite, "cachedResponseWillBeUsed", "private media stale-read rejection");
 requireText(vite, "cloudPhotoPrivateCacheWriteAllowed", "disabled-fence request rejection");
 requireText(vite, 'importScripts: ["private-cache-fence.js"]', "private media fence bootstrap");
 assert(

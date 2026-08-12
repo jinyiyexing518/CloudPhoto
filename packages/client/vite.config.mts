@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const appVersion = process.env.npm_package_version ?? "0.0.0";
 const buildTime = new Date().toISOString();
 const clientDir = path.dirname(fileURLToPath(import.meta.url));
-const privateCacheWriteFence = {
+export const privateCacheWriteFence = {
   handlerWillStart: async ({ state }) => {
     if (state) {
       const readyKey = ["__cloudPhotoPrivate", "CacheFenceReady"].join("");
@@ -38,6 +38,16 @@ const privateCacheWriteFence = {
       && guard[enabledKey] === true
       && state?.cloudPhotoPrivateCacheGeneration === guard[generationKey]
       ? response
+      : null;
+  },
+  cachedResponseWillBeUsed: async ({ cachedResponse, state }) => {
+    const generationKey = ["__cloudPhotoPrivate", "CacheGeneration"].join("");
+    const enabledKey = ["__cloudPhotoPrivate", "CacheEnabled"].join("");
+    const guard = globalThis as typeof globalThis & Record<string, unknown>;
+    return state?.cloudPhotoPrivateCacheWriteAllowed === true
+      && guard[enabledKey] === true
+      && state?.cloudPhotoPrivateCacheGeneration === guard[generationKey]
+      ? cachedResponse
       : null;
   },
 } satisfies WorkboxPlugin;

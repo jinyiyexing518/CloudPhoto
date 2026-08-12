@@ -26,6 +26,7 @@ import {
 import {
   registerPrivatePhotoCacheReset,
 } from "./services/privatePhotoCacheLifecycle";
+import { claimPrivateCacheDegradationNotice } from "./services/privateCacheDegradationNotice";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
 import {
   detectUploadMediaType,
@@ -360,19 +361,24 @@ function AppContent() {
   const resolvedPhotoWorkspaceIdRef = useRef(resolvedPhotoWorkspaceId);
   resolvedPhotoWorkspaceIdRef.current = resolvedPhotoWorkspaceId;
   const showToast = useToast();
+  const reportPrivateCacheDegradation = useCallback((error: unknown) => {
+    console.error("[PrivateDataCleanup] Cache preparation deferred:", error);
+    if (claimPrivateCacheDegradationNotice()) {
+      showToast("本地私有缓存暂不可用；在线内容可继续使用，下次打开时将重试", "info");
+    }
+  }, [showToast]);
   useEffect(() => {
     const target = window as Window & { __CF_CACHE_ERROR__?: unknown };
     const notify = () => {
       const error = target.__CF_CACHE_ERROR__;
       if (!error) return;
       delete target.__CF_CACHE_ERROR__;
-      console.error("[PrivateDataCleanup] Cache preparation deferred:", error);
-      showToast("本地私有缓存暂不可用；在线内容可继续使用，下次打开时将重试", "info");
+      reportPrivateCacheDegradation(error);
     };
     notify();
     window.addEventListener("cf-private-cache-error", notify);
     return () => window.removeEventListener("cf-private-cache-error", notify);
-  }, [showToast]);
+  }, [reportPrivateCacheDegradation]);
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -2444,7 +2450,7 @@ function AppContent() {
                     await logout();
                   } catch (error) {
                     console.error("[PrivateDataCleanup] Logout cleanup failed:", error);
-                    showToast("已退出登录，但私有缓存清理失败，请关闭此页面", "error");
+                    reportPrivateCacheDegradation(error);
                   }
                 }}
               >

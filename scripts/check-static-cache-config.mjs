@@ -513,6 +513,7 @@ function checkHashedAssets(configPath) {
     "CacheEnabled",
     "CacheFenceReady",
     "cloudPhotoPrivateCacheWriteAllowed",
+    "cachedResponseWillBeUsed",
   ]) {
     if (!serviceWorker.includes(marker)) fail(configPath, `service worker is missing ${marker}`);
   }
