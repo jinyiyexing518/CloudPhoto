@@ -1,6 +1,7 @@
 const CACHE_OWNER_KEY = "cloudphoto_private_cache_owner_v1";
 const PRIVATE_CLEANUP_MARKER_KEY = "cloudphoto_private_cleanup_v2";
 const PRIVATE_CACHE_FENCE_MESSAGE = "cloudphoto-private-cache-fence";
+const PRIVATE_CACHE_RESET_TIMEOUT_MS = 2_000;
 const LEGACY_PRIVATE_LOCAL_KEYS = [
   "cloudphoto_moments_insights_v1",
   "cloudphoto_moments_diagnostics_v1",
@@ -42,6 +43,7 @@ function sendPrivateCacheFenceMessage(
   controller: ServiceWorker,
   command: "begin" | "resume" | "complete" | "enable",
   generation?: number,
+  expiresAt?: number,
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     const channel = new MessageChannel();
@@ -60,7 +62,7 @@ function sendPrivateCacheFenceMessage(
     };
     try {
       controller.postMessage(
-        { type: PRIVATE_CACHE_FENCE_MESSAGE, command, generation },
+        { type: PRIVATE_CACHE_FENCE_MESSAGE, command, generation, expiresAt },
         [channel.port2],
       );
     } catch (error) {
@@ -71,24 +73,36 @@ function sendPrivateCacheFenceMessage(
   });
 }
 
-async function getPrivateCacheServiceWorker(): Promise<ServiceWorker | null> {
+async function getPrivateCacheServiceWorker(
+  isCurrent: () => boolean = () => true,
+): Promise<ServiceWorker | null> {
   if (
     typeof navigator === "undefined"
     || !("serviceWorker" in navigator)
   ) {
     return null;
   }
-  if (navigator.serviceWorker.controller) return navigator.serviceWorker.controller;
+  if (navigator.serviceWorker.controller) {
+    return isCurrent() ? navigator.serviceWorker.controller : null;
+  }
   const registration = await navigator.serviceWorker.getRegistration();
-  return registration?.active ?? null;
+  return isCurrent() ? registration?.active ?? null : null;
 }
 
-async function beginPrivateCacheFence(): Promise<PrivateCacheFence | null> {
-  const controller = await getPrivateCacheServiceWorker();
-  if (!controller) return null;
+async function beginPrivateCacheFence(
+  isCurrent: () => boolean,
+  expiresAt: number | undefined,
+): Promise<PrivateCacheFence | null> {
+  const controller = await getPrivateCacheServiceWorker(isCurrent);
+  if (!controller || !isCurrent()) return null;
   return {
     controller,
-    generation: await sendPrivateCacheFenceMessage(controller, "begin"),
+    generation: await sendPrivateCacheFenceMessage(
+      controller,
+      "begin",
+      undefined,
+      expiresAt,
+    ),
   };
 }
 
@@ -102,6 +116,8 @@ export async function beginPrivateCacheReset(
   cacheNames: readonly string[],
   activePersistentWrites: ReadonlySet<Promise<void>>,
   fencePrivateMediaWrites: boolean,
+  isCurrent: () => boolean = () => true,
+  deadlineAt?: number,
 ): Promise<PrivateCacheReset> {
   removeLegacyPrivateLocalData();
   if (fencePrivateMediaWrites) {
@@ -115,7 +131,7 @@ export async function beginPrivateCacheReset(
   const reset: PrivateCacheReset = { fence: null, failures: [] };
   if (fencePrivateMediaWrites) {
     try {
-      reset.fence = await beginPrivateCacheFence();
+      reset.fence = await beginPrivateCacheFence(isCurrent, deadlineAt);
     } catch (error) {
       reset.failures.push(error);
     }
@@ -189,17 +205,21 @@ export async function completePrivateCacheReset(
   throw new AggregateError(failures, "Private cache cleanup failed");
 }
 
-export async function resetPrivateCaches(
+async function runPrivateCacheReset(
   cacheNames: readonly string[],
   activePersistentWrites: ReadonlySet<Promise<void>>,
   fencePrivateMediaWrites: boolean,
   resumeCaching: boolean,
   isCurrent: () => boolean = () => true,
+  beforeFinalize: () => void = () => {},
+  deadlineAt?: number,
 ): Promise<void> {
   const reset = await beginPrivateCacheReset(
     cacheNames,
     activePersistentWrites,
     fencePrivateMediaWrites,
+    isCurrent,
+    deadlineAt,
   );
   if (!isCurrent()) return;
   const failures: unknown[] = [];
@@ -219,10 +239,53 @@ export async function resetPrivateCaches(
   if (!isCurrent()) return;
   await deletePrivateCacheStorage(reset, cacheNames, activePersistentWrites);
   if (!isCurrent()) return;
+  beforeFinalize();
   await completePrivateCacheReset(
     reset,
     resumeCaching,
     failures,
     fencePrivateMediaWrites,
   );
+}
+
+export function resetPrivateCaches(
+  cacheNames: readonly string[],
+  activePersistentWrites: ReadonlySet<Promise<void>>,
+  fencePrivateMediaWrites: boolean,
+  resumeCaching: boolean,
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
+  let deadlineExpired = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadlineAt = Date.now() + PRIVATE_CACHE_RESET_TIMEOUT_MS;
+  const deadlineFailure = () =>
+    cleanupFailure("deadline", new Error("response timed out"));
+  const isResetCurrent = () => {
+    if (deadlineExpired || Date.now() >= deadlineAt) {
+      deadlineExpired = true;
+      throw deadlineFailure();
+    }
+    return isCurrent();
+  };
+  const deadline = new Promise<void>((_resolve, reject) => {
+    timeout = globalThis.setTimeout(() => {
+      deadlineExpired = true;
+      reject(deadlineFailure());
+    }, PRIVATE_CACHE_RESET_TIMEOUT_MS);
+  });
+  const operation = runPrivateCacheReset(
+    cacheNames,
+    activePersistentWrites,
+    fencePrivateMediaWrites,
+    resumeCaching,
+    isResetCurrent,
+    () => {
+      if (timeout !== undefined) globalThis.clearTimeout(timeout);
+      timeout = undefined;
+    },
+    deadlineAt,
+  );
+  return Promise.race([operation, deadline]).finally(() => {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+  });
 }

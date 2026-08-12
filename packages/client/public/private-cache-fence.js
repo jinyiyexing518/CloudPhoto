@@ -60,6 +60,15 @@
   const handleCommand = async (event) => {
     const reply = event.ports[0];
     let ok = false;
+    const expiresAt = event.data.expiresAt;
+    if (Number.isFinite(expiresAt) && Date.now() >= expiresAt) {
+      try {
+        reply?.postMessage({ ok, generation });
+      } catch {
+        // The unchanged fail-closed state remains authoritative if the tab left.
+      }
+      return;
+    }
     if (event.data.command === "begin") {
       generation += 1;
       enabled = false;

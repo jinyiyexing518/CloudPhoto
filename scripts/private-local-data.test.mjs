@@ -164,7 +164,12 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
     await worker.__cloudPhotoPrivateCacheFenceReady;
     return { worker, messageHandler };
   };
-  const sendFenceCommand = async ({ messageHandler }, command, generation) => {
+  const sendFenceCommand = async (
+    { messageHandler },
+    command,
+    generation,
+    expiresAt,
+  ) => {
     const channel = new MessageChannel();
     const reply = new Promise((resolve) => {
       channel.port1.onmessage = ({ data }) => {
@@ -179,6 +184,7 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
         type: "cloudphoto-private-cache-fence",
         command,
         generation,
+        expiresAt,
       },
       ports: [channel.port2],
       waitUntil(operation) {
@@ -192,6 +198,12 @@ for (const sensitiveRead of ["cursor.value", "cursor.primaryKey"]) {
   const firstWorker = await startWorker();
   assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, false);
   assert.equal((await sendFenceCommand(firstWorker, "enable")).ok, true);
+  assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, true);
+  assert.equal(
+    (await sendFenceCommand(firstWorker, "begin", undefined, Date.now() - 1)).ok,
+    false,
+    "an expired cleanup command must not disable a newer authenticated worker",
+  );
   assert.equal(firstWorker.worker.__cloudPhotoPrivateCacheEnabled, true);
 
   const restartedWorker = await startWorker();
@@ -1323,6 +1335,26 @@ assert(
   "each quota failure must identify its explicit cleanup step",
 );
 
+const hangingCacheStorage = {
+  delete() {
+    return new Promise(() => {});
+  },
+};
+window.caches = hangingCacheStorage;
+globalThis.caches = hangingCacheStorage;
+const hangingPreparation = await Promise.race([
+  lifecycle.preparePrivatePhotoCachesForScope("mobile-account:viewer"),
+  new Promise((resolve) => setTimeout(() => resolve("login-still-blocked"), 2_500)),
+]);
+assert.equal(
+  hangingPreparation,
+  "degraded",
+  "a non-settling mobile CacheStorage operation must not block authenticated online access",
+);
+assert.equal(lifecycle.getPrivatePhotoCacheOwner(), null);
+assert.equal(localStorage.getItem("cloudphoto_private_cleanup_v2"), null);
+assert.equal(localStorage.getItem("cloudphoto_private_cache_owner_v1"), null);
+
 window.caches = completeCacheStorage;
 globalThis.caches = completeCacheStorage;
 globalThis.indexedDB = createFakeWorkboxExpirationDb([]).factory;
@@ -1382,6 +1414,66 @@ if (originalNavigator) {
 } else {
   delete globalThis.navigator;
 }
+
+{
+  const delayedTimerReset = cacheReset.resetPrivateCaches(
+    privateCacheNames,
+    new Set(),
+    false,
+    false,
+  );
+  const blockedUntil = Date.now() + 2_100;
+  while (Date.now() < blockedUntil) {
+    // Delay timer dispatch while promise continuations remain queued.
+  }
+  await assert.rejects(
+    delayedTimerReset,
+    /deadline/,
+    "wall-clock expiry must win even when the timer callback is delayed",
+  );
+}
+
+{
+  let resolveRegistration;
+  const lateFenceCommands = [];
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      serviceWorker: {
+        controller: null,
+        getRegistration() {
+          return new Promise((resolve) => {
+            resolveRegistration = resolve;
+          });
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    cacheReset.resetPrivateCaches(privateCacheNames, new Set(), true, true),
+    /deadline/,
+    "a stalled registration lookup must reach the cleanup deadline",
+  );
+  resolveRegistration({
+    active: {
+      postMessage(message) {
+        lateFenceCommands.push(message.command);
+      },
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(
+    lateFenceCommands,
+    [],
+    "a registration lookup that settles after the deadline must not send a stale begin command",
+  );
+  if (originalNavigator) {
+    Object.defineProperty(globalThis, "navigator", originalNavigator);
+  } else {
+    delete globalThis.navigator;
+  }
+}
+
 assert.equal(
   await lifecycle.preparePrivatePhotoCachesForScope("mobile-account:viewer"),
   true,

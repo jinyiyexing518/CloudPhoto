@@ -36,6 +36,18 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
   assert.match(reset, /await beginPrivateCacheReset\(/);
   assert.match(reset, /await cleanup\.purgePrivateWorkboxExpirationMetadata\(/);
   assert.match(reset, /await completePrivateCacheReset\(/);
+  assert.match(reset, /PRIVATE_CACHE_RESET_TIMEOUT_MS = 2_000/);
+  assert.match(reset, /Promise\.race\(\[operation, deadline\]\)/);
+  assert.match(reset, /Date\.now\(\) \+ PRIVATE_CACHE_RESET_TIMEOUT_MS/);
+  assert.match(reset, /deadlineExpired \|\| Date\.now\(\) >= deadlineAt/);
+  assert.match(reset, /beginPrivateCacheFence\(isCurrent, deadlineAt\)/);
+  assert.match(reset, /expiresAt/);
+  assert.match(cleanup, /openKeyCursor\(/);
+  assert.ok(
+    reset.indexOf("beforeFinalize();") < reset.indexOf("await completePrivateCacheReset("),
+    "the deadline must stop before the bounded fence-resume commit starts",
+  );
+  assert.doesNotMatch(lifecycle, /PRIVATE_CACHE_RESET_TIMEOUT_MS/);
   assert.ok(reset.includes("cacheStorage.delete(name)"));
   assert.match(reset, /typeof cacheStorage\.delete !== "function"/);
   assert.ok(
