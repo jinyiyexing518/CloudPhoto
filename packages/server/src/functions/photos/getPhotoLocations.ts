@@ -56,7 +56,7 @@ app.http("getPhotoLocations", {
         const scope = `groups/${groupId}`;
         const { resources } = await container.items
           .query<LocationItem>({
-            query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope AND IS_NUMBER(c.lat) AND IS_NUMBER(c.lon)",
+            query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope AND NOT IS_DEFINED(c.docType) AND IS_NUMBER(c.lat) AND IS_NUMBER(c.lon)",
             parameters: [{ name: "@scope", value: scope }],
           })
           .fetchAll();
@@ -66,7 +66,7 @@ app.http("getPhotoLocations", {
         const { resources } = await container.items
           .query<LocationItem>(
             {
-              query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE STARTSWITH(c.scope, 'personal/') AND IS_NUMBER(c.lat) AND IS_NUMBER(c.lon)",
+              query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE STARTSWITH(c.scope, 'personal/') AND NOT IS_DEFINED(c.docType) AND IS_NUMBER(c.lat) AND IS_NUMBER(c.lon)",
             }
           )
           .fetchAll();
@@ -76,7 +76,7 @@ app.http("getPhotoLocations", {
         const scope = `personal/${payload.userId}`;
         const { resources } = await container.items
           .query<LocationItem>({
-            query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope AND IS_NUMBER(c.lat) AND IS_NUMBER(c.lon)",
+            query: "SELECT c.scope, c.name, c.photoName, c.lat, c.lon, c.sourceBlobEtag, c.originalName, c.contentType FROM c WHERE c.scope = @scope AND NOT IS_DEFINED(c.docType) AND IS_NUMBER(c.lat) AND IS_NUMBER(c.lon)",
             parameters: [{ name: "@scope", value: scope }],
           })
           .fetchAll();

@@ -18,6 +18,7 @@ interface PhotoLocationQueryContainer {
 
 interface IndexedPhotoLocationRow {
   id?: unknown;
+  docType?: unknown;
   scope?: unknown;
   name?: unknown;
   photoName?: unknown;
@@ -59,6 +60,8 @@ export interface PhotoLocationHydrationDiagnostics {
 
 const LOCATION_SELECT =
   "SELECT c.id, c.scope, c.name, c.photoName, c.lat, c.lon, c.originalName, c.contentType, c.uploadedAt, c.sourceBlobEtag FROM c";
+const LOCATION_ROW_FILTER =
+  "NOT IS_DEFINED(c.docType) AND IS_NUMBER(c.lat) AND IS_NUMBER(c.lon)";
 
 export const PHOTO_LOCATION_QUERY_TIMEOUT_MS = 1_500;
 
@@ -88,15 +91,15 @@ export async function listAuthorizedPhotoLocationRows(
 ): Promise<IndexedPhotoLocationRow[]> {
   const query = access.groupId
     ? {
-        query: `${LOCATION_SELECT} WHERE c.scope = @scope`,
+        query: `${LOCATION_SELECT} WHERE c.scope = @scope AND ${LOCATION_ROW_FILTER}`,
         parameters: [{ name: "@scope", value: `groups/${access.groupId}` }],
       }
     : access.role === "admin"
       ? {
-          query: `${LOCATION_SELECT} WHERE STARTSWITH(c.scope, 'personal/')`,
+          query: `${LOCATION_SELECT} WHERE STARTSWITH(c.scope, 'personal/') AND ${LOCATION_ROW_FILTER}`,
         }
       : {
-          query: `${LOCATION_SELECT} WHERE c.scope = @scope`,
+          query: `${LOCATION_SELECT} WHERE c.scope = @scope AND ${LOCATION_ROW_FILTER}`,
           parameters: [{ name: "@scope", value: `personal/${access.userId}` }],
         };
   const abortController = new AbortController();
@@ -137,6 +140,7 @@ export function hydrateListedPhotoLocations<TPhoto extends HydratablePhoto>(
   const matchingRowsByName = new Map<string, number>();
   const namesWithVersionedRows = new Set<string>();
   for (const row of rows) {
+    if (row.docType !== undefined) continue;
     const identifier = locationIdentifier(row);
     const source = identifier ? sourcesByName.get(identifier) : undefined;
     if (identifier && source && row.scope === source.scope) {
@@ -153,6 +157,10 @@ export function hydrateListedPhotoLocations<TPhoto extends HydratablePhoto>(
   }
 
   for (const row of rows) {
+    if (row.docType !== undefined) {
+      diagnostics.orphanedOrOutOfScope += 1;
+      continue;
+    }
     const identifier = locationIdentifier(row);
     const source = identifier ? sourcesByName.get(identifier) : undefined;
     if (!identifier || !source || row.scope !== source.scope) {

@@ -68,6 +68,7 @@ const photoLocationSync = read("packages/server/src/utils/cosmos/photoLocationSy
 const setVideoThumb = read("packages/server/src/functions/photos/setVideoThumbnail.ts");
 const listPhotos = read("packages/server/src/functions/photos/listPhotos.ts");
 const photoCatalog = read("packages/server/src/utils/cosmos/photoCatalog.ts");
+const photoCatalogRollout = read("packages/server/src/utils/cosmos/photoCatalogRollout.ts");
 const photoCatalogFence = read("packages/server/src/utils/blob/photoCatalogFence.ts");
 const download = read("packages/server/src/functions/photos/downloadPhoto.ts");
 const trash = read("packages/server/src/functions/trash/listTrash.ts");
@@ -488,6 +489,16 @@ requireText(photoPaging, "page.revision !== revision", "catalog revision guard")
 requireText(photoPaging, "items.length !== total", "complete-page accounting");
 requireText(app, "onPage: (progress) =>", "progressive React publication");
 requireText(app, "<ProgressivePhotoPreview", "read-only first-page paint");
+requireText(
+  app,
+  "if (!fallbackMediaSource(event.currentTarget, sources))",
+  "read-only first-page media route and derivative fallback",
+);
+requireText(
+  app,
+  "setFailedSourceKey(sourceKey)",
+  "read-only first-page terminal placeholder",
+);
 requireText(app, "photos.slice(0, PHOTO_PAGE_SIZE)", "bounded progressive derivative preview");
 requireText(app, "setPhotoListComplete(progress.complete || hasStale)", "warm-cache completeness preservation");
 requireText(app, "{photoListComplete && <WorkspaceSidebar", "complete-only sidebar aggregates");
@@ -529,10 +540,36 @@ requireText(
   "row.snapshotId !== rebuild.id",
   "cross-snapshot row publication rejection",
 );
+requireText(photoCatalogRollout, '"writers-only"', "two-phase catalog rollout default");
 requireText(
   listPhotos,
-  "catalogRebuild.previousSnapshotId",
-  "post-publication previous snapshot cleanup",
+  "if (pagedRequest && !catalogPagingEnabled)",
+  "writers-only page fallback",
+);
+requireText(
+  listPhotos,
+  "const catalogContainer = catalogPagingEnabled && catalogScope",
+  "writers-only catalog materialization block",
+);
+requireText(
+  photoCatalog,
+  "export async function deleteStalePhotoCatalogRows",
+  "resumable stale snapshot cleanup",
+);
+requireText(
+  photoCatalog,
+  "AND c.snapshotId != @activeSnapshotId",
+  "active snapshot cleanup exclusion",
+);
+requireText(
+  listPhotos,
+  "!catalogRevisionIsClean(catalogScope, page.revision)",
+  "first-page stale snapshot cleanup retry",
+);
+requireText(
+  listPhotos,
+  "deleted < PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT",
+  "complete stale snapshot cleanup marker",
 );
 const beginCatalogRebuild = photoCatalog.slice(
   photoCatalog.indexOf("export async function beginPhotoCatalogRebuild"),

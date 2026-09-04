@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import photoCatalog from "../dist/src/utils/cosmos/photoCatalog.js";
+import photoCatalogRollout from "../dist/src/utils/cosmos/photoCatalogRollout.js";
 
 const {
   CatalogNotReadyError,
   PHOTO_CATALOG_SUMMARY_ID,
   PHOTO_CATALOG_MUTATION_RECOVERY_MS,
   PHOTO_CATALOG_REBUILD_RECOVERY_MS,
+  PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT,
   PhotoCatalogMutationInProgressError,
   PhotoCatalogRebuildInProgressError,
   StalePhotoCatalogMutationError,
@@ -18,6 +20,7 @@ const {
   beginPhotoCatalogMutation,
   buildPhotoCatalogRow,
   deletePhotoCatalogSnapshot,
+  deleteStalePhotoCatalogRows,
   decodePhotoCatalogCursor,
   encodePhotoCatalogCursor,
   listCompletePhotoCatalog,
@@ -29,6 +32,10 @@ const {
   renewPhotoCatalogRebuild,
   replacePhotoCatalogSnapshot,
 } = photoCatalog;
+const {
+  PHOTO_CATALOG_ROLLOUT_PHASE,
+  photoCatalogPagingIsEnabled,
+} = photoCatalogRollout;
 
 const scope = "groups/group-a";
 const activeSnapshotId = "catalog:rebuild:active";
@@ -271,7 +278,21 @@ function mutableCatalogContainer(initialSummary, initialRows = [], hooks = {}) {
         return { resource: structuredClone(next) };
       },
       async upsert(next) {
+        if (next.docType === "photo-catalog") {
+          hooks.upsertStarted?.push(next.name);
+          const delayMs = next.name === hooks.failUpsertName
+            ? (hooks.failUpsertDelayMs ?? 0)
+            : (hooks.upsertDelayMs ?? 0);
+          if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+          if (next.name === hooks.failUpsertName) {
+            hooks.upsertFinished?.push(next.name);
+            throw new Error(`upsert failed for ${next.name}`);
+          }
+        }
         documents.set(next.id, structuredClone(next));
+        if (next.docType === "photo-catalog") hooks.upsertFinished?.push(next.name);
         return { resource: structuredClone(next) };
       },
       query(spec, options) {
@@ -287,6 +308,19 @@ function mutableCatalogContainer(initialSummary, initialRows = [], hooks = {}) {
                 resources: [...documents.values()]
                   .filter((document) => document.docType === "photo-catalog-mutation")
                   .map(({ id, startedAt, _ts }) => ({ id, startedAt, _ts })),
+              };
+            }
+            if (spec.query.includes("c.snapshotId != @activeSnapshotId")) {
+              const limit = Number(spec.query.match(/SELECT TOP (\d+)/)?.[1]);
+              return {
+                resources: [...documents.values()]
+                  .filter((document) => (
+                    document.docType === "photo-catalog"
+                    && document.scope === parameters.get("@scope")
+                    && document.snapshotId !== parameters.get("@activeSnapshotId")
+                  ))
+                  .slice(0, limit)
+                  .map(({ id, snapshotId }) => ({ id, snapshotId })),
               };
             }
             let resources = [...documents.values()]
@@ -751,6 +785,155 @@ test("replaces a catalog snapshot behind an unready revision fence", async () =>
   await deletePhotoCatalogSnapshot(container, scope, oldSnapshotId);
   assert.equal(resources.has(oldRow.id), false);
   assert(resources.has("location:keep"));
+});
+
+test("bounds stale snapshot cleanup and resumes without touching the active snapshot", async () => {
+  const oldSnapshotId = "catalog:rebuild:old";
+  const failedSnapshotId = "catalog:rebuild:failed";
+  const activeRow = makeRow("active.jpg", 4);
+  const staleRows = [
+    makeRow("old-a.jpg", 3, { snapshotId: oldSnapshotId }),
+    makeRow("old-b.jpg", 2, { snapshotId: oldSnapshotId }),
+    makeRow("failed.jpg", 1, { snapshotId: failedSnapshotId }),
+  ];
+  const locationRow = {
+    id: "location:keep",
+    scope,
+    name: "keep.jpg",
+    lat: 1,
+    lon: 2,
+  };
+  const container = mutableCatalogContainer({
+    id: PHOTO_CATALOG_SUMMARY_ID,
+    docType: "photo-catalog-summary",
+    scope,
+    version: 2,
+    ready: true,
+    revision: 7,
+    total: 1,
+    activeSnapshotId,
+  }, [activeRow, ...staleRows, locationRow]);
+  const fences = fakeFenceStore(readyFenceState());
+
+  assert.equal(PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT, 250);
+  assert.equal(
+    await deleteStalePhotoCatalogRows(container, scope, 2, fences),
+    2,
+  );
+  assert(container.documents.has(activeRow.id));
+  assert(container.documents.has(locationRow.id));
+  assert.equal(
+    staleRows.filter((row) => container.documents.has(row.id)).length,
+    1,
+  );
+
+  assert.equal(
+    await deleteStalePhotoCatalogRows(container, scope, 2, fences),
+    1,
+  );
+  assert(container.documents.has(activeRow.id));
+  assert(container.documents.has(locationRow.id));
+  assert.equal(
+    staleRows.some((row) => container.documents.has(row.id)),
+    false,
+  );
+});
+
+test("stale snapshot cleanup stops before deletion when the Blob fence changes", async () => {
+  const staleRow = makeRow("stale.jpg", 1, {
+    snapshotId: "catalog:rebuild:stale",
+  });
+  const activeRow = makeRow("active.jpg", 2);
+  const container = mutableCatalogContainer({
+    id: PHOTO_CATALOG_SUMMARY_ID,
+    docType: "photo-catalog-summary",
+    scope,
+    version: 2,
+    ready: true,
+    revision: 7,
+    total: 1,
+    activeSnapshotId,
+  }, [activeRow, staleRow]);
+  let reads = 0;
+  const changingFence = {
+    async read() {
+      reads += 1;
+      return {
+        etag: `"fence-${reads}"`,
+        lastModified: new Date().toISOString(),
+        state: readyFenceState(),
+      };
+    },
+    async write() {
+      throw new Error("write not expected");
+    },
+  };
+
+  await assert.rejects(
+    () => deleteStalePhotoCatalogRows(container, scope, 10, changingFence),
+    StalePhotoCatalogCursorError,
+  );
+  assert(container.documents.has(activeRow.id));
+  assert(container.documents.has(staleRow.id));
+});
+
+test("snapshot write failure drains in-flight workers before abandoned rows are deleted", async () => {
+  const upsertStarted = [];
+  const upsertFinished = [];
+  const container = mutableCatalogContainer({
+    id: PHOTO_CATALOG_SUMMARY_ID,
+    docType: "photo-catalog-summary",
+    scope,
+    version: 2,
+    ready: true,
+    revision: 7,
+    total: 0,
+    activeSnapshotId,
+  }, [], {
+    failUpsertName: "photo-00.jpg",
+    failUpsertDelayMs: 5,
+    upsertDelayMs: 30,
+    upsertStarted,
+    upsertFinished,
+  });
+  const fences = fakeFenceStore(readyFenceState());
+  const rebuild = await beginPhotoCatalogRebuild(
+    container,
+    scope,
+    new Date("2026-08-11T01:00:00.000Z"),
+    fences,
+  );
+  const rows = Array.from({ length: 20 }, (_, index) => (
+    makeRow(`photo-${String(index).padStart(2, "0")}.jpg`, 20 - index, {
+      snapshotId: rebuild.id,
+    })
+  ));
+
+  await assert.rejects(
+    () => replacePhotoCatalogSnapshot(
+      container,
+      scope,
+      rows,
+      new Date("2026-08-11T01:00:00.000Z"),
+      rebuild,
+      fences,
+    ),
+    /upsert failed for photo-00\.jpg/,
+  );
+  assert.equal(upsertStarted.length, 12, "no queued row may start after the first failure");
+  assert.equal(upsertFinished.length, 12, "the rejection must wait for every started write");
+
+  await abandonPhotoCatalogRebuild(container, rebuild, fences);
+  assert.equal(
+    [...container.documents.values()].some((row) => row.snapshotId === rebuild.id),
+    false,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(
+    [...container.documents.values()].some((row) => row.snapshotId === rebuild.id),
+    false,
+    "no in-flight writer may recreate an abandoned snapshot after cleanup",
+  );
 });
 
 test("keeps a superseded rebuild isolated from the published snapshot", async () => {
@@ -1901,18 +2084,55 @@ test("keeps paged reads on Cosmos and legacy materialization behind the page bra
     new URL("../src/functions/photos/getPhotoLocations.ts", import.meta.url),
     "utf8",
   );
+  const rollout = readFileSync(
+    new URL("../src/utils/cosmos/photoCatalogRollout.ts", import.meta.url),
+    "utf8",
+  );
 
   assert(
     listPhotos.indexOf("if (pagedRequest)") < listPhotos.indexOf("getBlobServiceClient()"),
     "bounded photo pages must return before the legacy Blob scan",
   );
   assert.match(listPhotos, /await listPhotoCatalogPage\(/);
+  assert.equal(PHOTO_CATALOG_ROLLOUT_PHASE, "writers-only");
+  assert.equal(photoCatalogPagingIsEnabled(), false);
+  assert.equal(photoCatalogPagingIsEnabled("enabled"), true);
+  assert.match(
+    listPhotos,
+    /if \(pagedRequest && !catalogPagingEnabled\)/,
+    "the first release must make paged reads fall back while fence-aware writers drain",
+  );
+  assert.match(
+    listPhotos,
+    /const catalogContainer = catalogPagingEnabled && catalogScope/,
+    "writers-only rollout must not materialize a catalog that legacy instances can stale",
+  );
+  assert.match(
+    rollout,
+    /PHOTO_CATALOG_ROLLOUT_PHASE: PhotoCatalogRolloutPhase = "writers-only"/,
+    "paging activation must be an explicit follow-up commit",
+  );
   assert(
     listPhotos.indexOf("await listCompletePhotoCatalog(")
       < listPhotos.indexOf("await beginPhotoCatalogRebuild("),
     "ready legacy requests must reuse the active snapshot before considering a rebuild",
   );
   assert.match(listPhotos, /await replacePhotoCatalogSnapshot\(/);
+  assert.equal(
+    (listPhotos.match(/await deleteStalePhotoCatalogRows\(/g) ?? []).length,
+    3,
+    "failed stale-row cleanup must be retried on first pages, ready legacy reuse, and rebuild",
+  );
+  assert.match(
+    listPhotos,
+    /!request\.query\.has\("cursor"\)[\s\S]*!catalogRevisionIsClean\(catalogScope, page\.revision\)/,
+    "large stale snapshots must resume bounded cleanup on later first-page reads",
+  );
+  assert.match(
+    listPhotos,
+    /deleted < PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT[\s\S]*markCatalogRevisionClean/,
+    "a revision is clean only after a bounded cleanup returns fewer than the limit",
+  );
   assert(
     listPhotos.indexOf("await beginPhotoCatalogRebuild(")
       < listPhotos.indexOf("listBlobsFlat("),

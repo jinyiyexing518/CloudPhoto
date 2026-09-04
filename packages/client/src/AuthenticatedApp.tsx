@@ -16,7 +16,10 @@ import "./authenticated.css";
 import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, subscribeToVideoThumbnailResults, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, PhotoCatalogUpdatingError, PHOTO_PAGE_SIZE, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
-import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
+import {
+  fallbackMediaSource,
+  subscribeToPreferredMediaRoute,
+} from "./services/mediaRoute";
 import { isPhotoBlobInWorkspace } from "./services/videoCoverRepairPolicy";
 import { hasOpenAriaModal, isGlobalShortcutEligible } from "./keyboard/globalShortcutEligibility";
 import {
@@ -338,6 +341,41 @@ function getQuickDateRanges(referenceDate = new Date()): Record<QuickDateFilter,
   };
 }
 
+function ProgressivePhotoPreviewImage({
+  photo,
+  priority,
+}: {
+  photo: Photo;
+  priority: boolean;
+}) {
+  const sources = [photo.thumbnailUrl, photo.previewUrl];
+  const source = sources.find((candidate): candidate is string => !!candidate);
+  const sourceKey = sources.filter(Boolean).join("\n");
+  const [failedSourceKey, setFailedSourceKey] = useState<string | null>(null);
+
+  if (!source || failedSourceKey === sourceKey) {
+    return (
+      <span className="photo-page-preview-placeholder" aria-label="照片缩略图生成中">
+        📷
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={source}
+      alt={photo.originalName ?? "照片"}
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "auto"}
+      onError={(event) => {
+        if (!fallbackMediaSource(event.currentTarget, sources)) {
+          setFailedSourceKey(sourceKey);
+        }
+      }}
+    />
+  );
+}
+
 function ProgressivePhotoPreview({
   photos,
   loaded,
@@ -354,23 +392,11 @@ function ProgressivePhotoPreview({
         <span>已加载 {loaded} / {total} 张，正在继续加载完整图库…</span>
       </div>
       <div className="photo-page-preview-grid" aria-label="已加载的照片预览">
-        {photos.slice(0, PHOTO_PAGE_SIZE).map((photo, index) => {
-          const source = photo.thumbnailUrl ?? photo.previewUrl;
-          return (
-            <figure className="photo-page-preview-card" key={photo.name}>
-              {source ? (
-                <img
-                  src={source}
-                  alt={photo.originalName ?? "照片"}
-                  loading={index < 6 ? "eager" : "lazy"}
-                  fetchPriority={index < 6 ? "high" : "auto"}
-                />
-              ) : (
-                <span className="photo-page-preview-placeholder" aria-label="照片缩略图生成中">📷</span>
-              )}
-            </figure>
-          );
-        })}
+        {photos.slice(0, PHOTO_PAGE_SIZE).map((photo, index) => (
+          <figure className="photo-page-preview-card" key={photo.name}>
+            <ProgressivePhotoPreviewImage photo={photo} priority={index < 6} />
+          </figure>
+        ))}
       </div>
     </section>
   );

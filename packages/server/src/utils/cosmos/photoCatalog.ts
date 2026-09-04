@@ -26,6 +26,7 @@ export const PHOTO_CATALOG_MUTATION_RECOVERY_MS = 10 * 60_000;
 export const PHOTO_CATALOG_REBUILD_RECOVERY_MS = 2 * 60_000;
 export const PHOTO_CATALOG_MUTATION_HEARTBEAT_MS = 60_000;
 export const PHOTO_CATALOG_REBUILD_HEARTBEAT_MS = 20_000;
+export const PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT = 250;
 const PHOTO_CATALOG_FENCE_CLOCK_SKEW_MS = 60_000;
 const PHOTO_CATALOG_ROW_WRITE_BATCH_SIZE = 100;
 
@@ -1219,16 +1220,27 @@ async function forEachBounded<T>(
   concurrency = 12,
 ): Promise<void> {
   let nextIndex = 0;
-  await Promise.all(Array.from(
+  let failed = false;
+  let firstError: unknown;
+  const workers = Array.from(
     { length: Math.min(concurrency, values.length) },
     async () => {
-      while (nextIndex < values.length) {
+      while (!failed && nextIndex < values.length) {
         const value = values[nextIndex];
         nextIndex += 1;
-        await operation(value);
+        try {
+          await operation(value);
+        } catch (error) {
+          if (!failed) {
+            failed = true;
+            firstError = error;
+          }
+        }
       }
     },
-  ));
+  );
+  await Promise.all(workers);
+  if (failed) throw firstError;
 }
 
 export async function deletePhotoCatalogSnapshot(
@@ -1258,6 +1270,66 @@ export async function deletePhotoCatalogSnapshot(
       if (cosmosStatusCode(error) !== 404) throw error;
     }
   });
+}
+
+export async function deleteStalePhotoCatalogRows(
+  container: Container,
+  scope: string,
+  maxRows = PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT,
+  fenceStore: PhotoCatalogFenceStore = blobPhotoCatalogFenceStore,
+): Promise<number> {
+  if (!Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > 1_000) {
+    throw new Error("Photo catalog stale-row cleanup limit must be between 1 and 1000");
+  }
+
+  const blobFence = await readReadyPhotoCatalogFence(fenceStore, scope);
+  const summary = await readCatalogSummary(container, scope);
+  const activeSnapshotId = summary.activeSnapshotId;
+  if (
+    !activeSnapshotId
+    || blobFence.state.ready.snapshotId !== activeSnapshotId
+    || blobFence.state.ready.revision !== summary.revision
+  ) {
+    throw new StalePhotoCatalogCursorError();
+  }
+
+  const { resources } = await container.items
+    .query<Pick<PhotoCatalogRow, "id" | "snapshotId">>({
+      query: [
+        `SELECT TOP ${maxRows} c.id, c.snapshotId FROM c`,
+        "WHERE c.scope = @scope",
+        `AND c.docType = "${PHOTO_CATALOG_DOC_TYPE}"`,
+        "AND c.snapshotId != @activeSnapshotId",
+      ].join(" "),
+      parameters: [
+        { name: "@scope", value: scope },
+        { name: "@activeSnapshotId", value: activeSnapshotId },
+      ],
+    }, { partitionKey: scope })
+    .fetchAll();
+
+  if (resources.some((row) => (
+    typeof row.id !== "string"
+    || !row.id
+    || typeof row.snapshotId !== "string"
+    || !row.snapshotId
+    || row.snapshotId === activeSnapshotId
+  ))) {
+    throw new Error(`Photo catalog stale-row cleanup returned invalid rows for ${scope}`);
+  }
+
+  // A rebuild that started during the query may already have written rows.
+  // Refuse deletion unless the ready fence is still the exact snapshot we queried around.
+  await assertPhotoCatalogFenceUnchanged(fenceStore, scope, blobFence);
+  await forEachBounded(resources, async (row) => {
+    try {
+      await container.item(row.id, scope).delete();
+    } catch (error) {
+      if (cosmosStatusCode(error) !== 404) throw error;
+    }
+  });
+  await assertPhotoCatalogFenceUnchanged(fenceStore, scope, blobFence);
+  return resources.length;
 }
 
 export async function replacePhotoCatalogSnapshot(

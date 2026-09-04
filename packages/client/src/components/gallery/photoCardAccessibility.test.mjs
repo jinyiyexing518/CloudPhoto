@@ -87,7 +87,7 @@ test("selection and disabled PhotoCards cannot expose or mutate GIF playback", (
     /\{!selectionMode && !interactionDisabled && \(\s*<div className="photo-card-controls">/,
   );
   assert.doesNotMatch(card, /\{\(isGif \|\| \(!selectionMode && !interactionDisabled\)\) && \(/);
-  assert.match(card, /src=\{isGif \? \(gifInteractionBlocked \? staticAnimatedSrc : gifDisplaySrc\) : staticAnimatedSrc\}/);
+  assert.match(card, /src=\{coverAttemptSource \?\? \(isGif\s*\?\s*\(gifInteractionBlocked \? retryStaticAnimatedSrc : retryGifDisplaySrc\)\s*:\s*retryStaticAnimatedSrc\)\}/);
 });
 
 test("timeline, moments, and folder surfaces share the accessible PhotoCard", () => {
@@ -188,7 +188,7 @@ test("audio PhotoCards stay local, are named accurately, and retain keyboard act
   assert.match(audioBranch, />音频</);
   assert.doesNotMatch(audioBranch, /<(?:img|video|audio)\b/);
   assert.doesNotMatch(audioBranch, /\bsrc=/);
-  assert.match(card, /\{!isAudio && !imgLoaded && \(!isVideo \|\| useVideoThumb\)/);
+  assert.match(card, /\{!isAudio && !imgLoaded && !imgFailed && \(!isVideo \|\| useVideoThumb\)/);
 
   const primary = card.match(/<button[\s\S]*?ref=\{primaryActionRef\}[\s\S]*?<\/button>/)?.[0];
   assert.ok(primary, "audio cards must use the shared native primary action");

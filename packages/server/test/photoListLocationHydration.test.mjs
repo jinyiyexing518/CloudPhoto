@@ -156,6 +156,8 @@ test("bulk location queries stay within the exact authorized request scope", asy
   for (const query of queries) {
     assert.match(query.query, /c\.sourceBlobEtag/);
     assert.match(query.query, /c\.photoName/);
+    assert.match(query.query, /NOT IS_DEFINED\(c\.docType\)/);
+    assert.match(query.query, /IS_NUMBER\(c\.lat\) AND IS_NUMBER\(c\.lon\)/);
   }
   assert.equal(PHOTO_LOCATION_QUERY_TIMEOUT_MS, 1_500);
   for (const options of queryOptions) {
@@ -259,6 +261,36 @@ test("legacy identifiers hydrate only when aliases agree and version fences rema
       { name: "cross-scope.jpg", gpsLat: undefined, gpsLon: undefined },
     ],
   );
+});
+
+test("catalog documents cannot make a valid location row ambiguous", () => {
+  const photo = {
+    name: "personal/user/_/shared-name.jpg",
+    gpsLat: undefined,
+    gpsLon: undefined,
+  };
+  const diagnostics = hydrateListedPhotoLocations(
+    [{
+      photo,
+      scope: "personal/user",
+      blobEtag: '"etag-current"',
+      hasGpsMetadata: false,
+    }],
+    [
+      location(photo.name, { sourceBlobEtag: '"etag-current"' }),
+      {
+        docType: "photo-catalog",
+        scope: "personal/user",
+        name: photo.name,
+        sourceBlobEtag: '"etag-current"',
+      },
+    ],
+  );
+
+  assert.deepEqual([photo.gpsLat, photo.gpsLon], ["31.2304", "121.4737"]);
+  assert.equal(diagnostics.hydrated, 1);
+  assert.equal(diagnostics.ambiguousRows, 0);
+  assert.equal(diagnostics.orphanedOrOutOfScope, 1);
 });
 
 test("list hydration restores only valid current-scope rows with fresh provenance", () => {
@@ -389,5 +421,10 @@ test("listPhotos hydrates its response from one scoped location inventory", asyn
     (locationsSource.match(/IS_NUMBER\(c\.lat\) AND IS_NUMBER\(c\.lon\)/g) ?? []).length,
     3,
     "every authorized location query must exclude malformed coordinate rows",
+  );
+  assert.equal(
+    (locationsSource.match(/NOT IS_DEFINED\(c\.docType\)/g) ?? []).length,
+    3,
+    "catalog documents sharing the container must never enter map results",
   );
 });

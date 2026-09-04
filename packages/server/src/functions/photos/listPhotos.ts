@@ -22,6 +22,7 @@ import {
   CatalogNotReadyError,
   InvalidPhotoCatalogCursorError,
   MAX_PHOTO_PAGE_SIZE,
+  PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT,
   PhotoCatalogMutationInProgressError,
   PhotoCatalogRebuildInProgressError,
   PhotoCatalogRow,
@@ -30,13 +31,14 @@ import {
   abandonPhotoCatalogRebuild,
   beginPhotoCatalogRebuild,
   buildPhotoCatalogRow,
-  deletePhotoCatalogSnapshot,
+  deleteStalePhotoCatalogRows,
   listCompletePhotoCatalog,
   listPhotoCatalogPage,
   photoCatalogBlobCopyIsStable,
   replacePhotoCatalogSnapshot,
   renewPhotoCatalogRebuild,
 } from "../../utils/cosmos/photoCatalog";
+import { photoCatalogPagingIsEnabled } from "../../utils/cosmos/photoCatalogRollout";
 import {
   PhotoDerivativeNames,
   resolveListedPhotoDerivatives,
@@ -51,6 +53,23 @@ import {
   type HydratablePhoto,
   type ListedPhotoLocationSource,
 } from "./photoListLocationHydration";
+
+const cleanCatalogRevisions = new Map<string, number>();
+const MAX_CLEAN_CATALOG_REVISION_MARKERS = 256;
+
+function catalogRevisionIsClean(scope: string, revision: number): boolean {
+  return cleanCatalogRevisions.get(scope) === revision;
+}
+
+function markCatalogRevisionClean(scope: string, revision: number): void {
+  cleanCatalogRevisions.delete(scope);
+  cleanCatalogRevisions.set(scope, revision);
+  while (cleanCatalogRevisions.size > MAX_CLEAN_CATALOG_REVISION_MARKERS) {
+    const oldestScope = cleanCatalogRevisions.keys().next().value;
+    if (typeof oldestScope !== "string") break;
+    cleanCatalogRevisions.delete(oldestScope);
+  }
+}
 
 // Azure Blob metadata is ASCII-only; free-text fields are stored as base64
 function decodeMeta(raw: string | undefined): string | undefined {
@@ -158,6 +177,7 @@ app.http("listPhotos", {
 
     const groupId = request.query.get("groupId") ?? "";
     const pagedRequest = request.query.has("limit") || request.query.has("cursor");
+    const catalogPagingEnabled = photoCatalogPagingIsEnabled();
 
     // For group photos, verify membership
     if (groupId && !await isGroupMember(groupId, payload.userId)) {
@@ -170,6 +190,17 @@ app.http("listPhotos", {
         : payload.role === "admin"
           ? null
           : `personal/${payload.userId}`;
+
+      if (pagedRequest && !catalogPagingEnabled) {
+        return {
+          status: 409,
+          headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+          body: JSON.stringify({
+            error: "Photo catalog rollout is not active",
+            code: "photo-catalog-not-ready",
+          }),
+        };
+      }
 
       if (pagedRequest) {
         if (!catalogScope) {
@@ -202,14 +233,31 @@ app.http("listPhotos", {
         }
 
         try {
+          const pageContainer = await getPhotoCatalogContainer();
           const page = await listPhotoCatalogPage(
-            await getPhotoCatalogContainer(),
+            pageContainer,
             {
               scope: catalogScope,
               limit,
               cursor: request.query.get("cursor") ?? undefined,
             },
           );
+          if (
+            !request.query.has("cursor")
+            && !catalogRevisionIsClean(catalogScope, page.revision)
+          ) {
+            try {
+              const deleted = await deleteStalePhotoCatalogRows(
+                pageContainer,
+                catalogScope,
+              );
+              if (deleted < PHOTO_CATALOG_STALE_ROW_CLEANUP_LIMIT) {
+                markCatalogRevisionClean(catalogScope, page.revision);
+              }
+            } catch (error) {
+              context.warn("Stale photo catalog row cleanup failed:", error);
+            }
+          }
           const delegationKey = await getUserDelegationKey();
           return {
             status: 200,
@@ -269,7 +317,7 @@ app.http("listPhotos", {
         }
       }
 
-      const catalogContainer = catalogScope
+      const catalogContainer = catalogPagingEnabled && catalogScope
         ? await getPhotoCatalogContainer()
         : null;
       if (catalogContainer && catalogScope) {
@@ -278,6 +326,11 @@ app.http("listPhotos", {
             catalogContainer,
             catalogScope,
           );
+          try {
+            await deleteStalePhotoCatalogRows(catalogContainer, catalogScope);
+          } catch (error) {
+            context.warn("Stale photo catalog row cleanup failed:", error);
+          }
           const delegationKey = await getUserDelegationKey();
           return {
             status: 200,
@@ -510,16 +563,10 @@ app.http("listPhotos", {
             catalogRebuild,
           );
           catalogRebuildPublished = true;
-          if (catalogRebuild.previousSnapshotId) {
-            try {
-              await deletePhotoCatalogSnapshot(
-                catalogContainer,
-                catalogScope,
-                catalogRebuild.previousSnapshotId,
-              );
-            } catch (error) {
-              context.warn("Previous photo catalog snapshot cleanup failed:", error);
-            }
+          try {
+            await deleteStalePhotoCatalogRows(catalogContainer, catalogScope);
+          } catch (error) {
+            context.warn("Stale photo catalog row cleanup failed:", error);
           }
         } catch (error) {
           if (error instanceof PhotoCatalogMutationInProgressError) {
