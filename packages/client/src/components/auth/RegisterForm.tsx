@@ -5,6 +5,7 @@ import {
   setChineseNativeValidation,
 } from "./nativeValidation";
 import PasswordField from "./PasswordField";
+import { registerApi } from "../../services/registrationApi";
 
 interface RegisterFormProps {
   active: boolean;
@@ -12,7 +13,7 @@ interface RegisterFormProps {
 }
 
 export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps) {
-  const { register } = useAuth();
+  const { completeAuth } = useAuth();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
@@ -46,12 +47,13 @@ export default function RegisterForm({ active, onAuthIntent }: RegisterFormProps
     onAuthIntent?.();
     setLoading(true);
     try {
-      await register({
+      const response = await registerApi({
         username: username.trim(),
         email: email.trim(),
         displayName: displayName.trim(),
         password,
       });
+      if (!await completeAuth(response)) throw new Error("登录状态已变更，请重试");
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败，请稍后重试");
     } finally {

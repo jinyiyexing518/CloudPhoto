@@ -16,6 +16,13 @@ export function isProxySiteHost(hostname: string): boolean {
   return hostname === "cloudphotos.top" || hostname === "cn.cloudphotos.top";
 }
 
+export function isLocalSiteHost(hostname: string): boolean {
+  return hostname === "localhost"
+    || hostname === "127.0.0.1"
+    || hostname === "::1"
+    || hostname === "[::1]";
+}
+
 /**
  * Use same-origin API only on the dedicated proxy entry. `www` and global
  * entries prefer Azure directly, then http.ts can fall back to the proxy.
@@ -24,7 +31,7 @@ export const API_BASE: string = (() => {
   if (typeof window !== "undefined") {
     const { hostname } = window.location;
     if (isProxySiteHost(hostname)) return "/api";
-    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    if (isLocalSiteHost(hostname)) {
       return configuredApiBase?.replace(/\/+$/, "") ?? "/api";
     }
     return configuredApiBase?.replace(/\/+$/, "") ?? DIRECT_API_BASE;

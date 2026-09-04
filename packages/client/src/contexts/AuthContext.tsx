@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import type { AuthResponse, AuthUser } from "../services/authApi";
 import {
   loginApi,
-  registerApi,
   getMeApi,
   updateProfileApi,
 } from "../services/authApi";
@@ -28,7 +27,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (data: { username: string; email: string; displayName: string; password: string }) => Promise<void>;
+  completeAuth: (response: AuthResponse) => Promise<boolean>;
   logout: () => Promise<void>;
   updateProfile: (displayName: string) => Promise<void>;
 }
@@ -139,11 +138,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!await saveAuth(resp)) throw new Error("登录状态已变更，请重试");
   }, [saveAuth]);
 
-  const register = useCallback(async (data: { username: string; email: string; displayName: string; password: string }) => {
-    const resp = await registerApi(data);
-    if (!await saveAuth(resp)) throw new Error("登录状态已变更，请重试");
-  }, [saveAuth]);
-
   const updateProfile = useCallback(async (displayName: string) => {
     const expectedUser = currentUserRef.current;
     if (!expectedUser) throw new Error("登录状态已失效");
@@ -215,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [cancelAuthSync, restoreCurrentUser, user?.id, user?.role]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, completeAuth: saveAuth, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

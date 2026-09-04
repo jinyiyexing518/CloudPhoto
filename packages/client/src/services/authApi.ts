@@ -57,31 +57,6 @@ export async function loginApi(
   return res.json() as Promise<AuthResponse>;
 }
 
-export async function registerApi(data: {
-  username: string;
-  email: string;
-  displayName: string;
-  password: string;
-}): Promise<AuthResponse> {
-  const res = await fetchWithTimeout(
-    `${API_BASE}/auth/register`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    },
-  ).catch((e: unknown) => {
-    throw new Error(
-      e instanceof Error && e.name === "AbortError" ? "注册超时，请稍后重试" : "网络错误",
-    );
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Registration failed" }));
-    throw new Error((err as { error?: string }).error ?? "Registration failed");
-  }
-  return res.json() as Promise<AuthResponse>;
-}
-
 export async function getMeApi(signal?: AbortSignal): Promise<AuthUser> {
   const res = await fetchWithTimeout(`${API_BASE}/auth/me`, {
     headers: authHeaders(),

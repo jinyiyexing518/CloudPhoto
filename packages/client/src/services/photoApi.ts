@@ -59,7 +59,8 @@ export {
 } from "./http";
 export { authCacheOwner } from "./authScope";
 export type { AuthUser, AuthResponse } from "./authApi";
-export { loginApi, registerApi, getMeApi, addAdminApi, updateProfileApi, changePasswordApi } from "./authApi";
+export { loginApi, getMeApi, addAdminApi, updateProfileApi, changePasswordApi } from "./authApi";
+export { registerApi } from "./registrationApi";
 export {
   AuthSessionChangedError,
   uploadPhoto,

@@ -132,11 +132,6 @@ function isLoginRequest(input: RequestInfo, init?: RequestInit): boolean {
   return requestMethod(input, init) === "POST" && request?.suffix === "/auth/login";
 }
 
-function isRegistrationRequest(input: RequestInfo, init?: RequestInit): boolean {
-  const request = parseApiRequest(input);
-  return requestMethod(input, init) === "POST" && request?.suffix === "/auth/register";
-}
-
 function canRetryOnAlternateRoute(input: RequestInfo, init?: RequestInit): boolean {
   const method = requestMethod(input, init);
   const request = parseApiRequest(input);
@@ -373,15 +368,7 @@ async function fetchWithProxyFallback(
   init?: RequestInit,
   hedgeDelayMs?: number,
 ): Promise<Response> {
-  const resolvedPrimaryInput = await resolvePrimaryApiInput(input, init);
-  const resolvedRequest = parseApiRequest(resolvedPrimaryInput);
-  const primaryInput = (
-    isRegistrationRequest(resolvedPrimaryInput, init)
-    && resolvedRequest?.kind === "direct"
-    && !(typeof Request !== "undefined" && resolvedPrimaryInput instanceof Request)
-  )
-    ? buildApiUrl(PROXY_API_BASE, resolvedRequest)
-    : resolvedPrimaryInput;
+  const primaryInput = await resolvePrimaryApiInput(input, init);
   const fallbackUrl = canRetryOnAlternateRoute(primaryInput, init)
     ? getFallbackApiUrl(primaryInput)
     : null;
@@ -419,8 +406,7 @@ async function fetchWithProxyFallback(
       const primaryRequest = parseApiRequest(primaryInput);
       const boundLoginPrimary = (
         isLoginRequest(primaryInput, init)
-        && primaryRequest !== null
-        && fallbackUrl !== null
+        && (primaryRequest?.kind === "same-origin" || fallbackUrl !== null)
       );
       primaryResponse = await (
         boundLoginPrimary
