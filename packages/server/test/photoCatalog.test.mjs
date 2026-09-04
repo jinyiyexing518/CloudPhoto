@@ -2094,23 +2094,23 @@ test("keeps paged reads on Cosmos and legacy materialization behind the page bra
     "bounded photo pages must return before the legacy Blob scan",
   );
   assert.match(listPhotos, /await listPhotoCatalogPage\(/);
-  assert.equal(PHOTO_CATALOG_ROLLOUT_PHASE, "writers-only");
-  assert.equal(photoCatalogPagingIsEnabled(), false);
-  assert.equal(photoCatalogPagingIsEnabled("enabled"), true);
+  assert.equal(PHOTO_CATALOG_ROLLOUT_PHASE, "enabled");
+  assert.equal(photoCatalogPagingIsEnabled(), true);
+  assert.equal(photoCatalogPagingIsEnabled("writers-only"), false);
   assert.match(
     listPhotos,
     /if \(pagedRequest && !catalogPagingEnabled\)/,
-    "the first release must make paged reads fall back while fence-aware writers drain",
+    "the rollback phase must make paged reads fall back",
   );
   assert.match(
     listPhotos,
     /const catalogContainer = catalogPagingEnabled && catalogScope/,
-    "writers-only rollout must not materialize a catalog that legacy instances can stale",
+    "writers-only rollback must not materialize a catalog",
   );
   assert.match(
     rollout,
-    /PHOTO_CATALOG_ROLLOUT_PHASE: PhotoCatalogRolloutPhase = "writers-only"/,
-    "paging activation must be an explicit follow-up commit",
+    /PHOTO_CATALOG_ROLLOUT_PHASE: PhotoCatalogRolloutPhase = "enabled"/,
+    "paging activation must remain an explicit rollout value",
   );
   assert(
     listPhotos.indexOf("await listCompletePhotoCatalog(")

@@ -540,7 +540,11 @@ requireText(
   "row.snapshotId !== rebuild.id",
   "cross-snapshot row publication rejection",
 );
-requireText(photoCatalogRollout, '"writers-only"', "two-phase catalog rollout default");
+requireText(
+  photoCatalogRollout,
+  'PHOTO_CATALOG_ROLLOUT_PHASE: PhotoCatalogRolloutPhase = "enabled"',
+  "activated catalog rollout default",
+);
 requireText(
   listPhotos,
   "if (pagedRequest && !catalogPagingEnabled)",
