@@ -3,6 +3,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  backendDeploymentPaths,
+  backendDeploymentTriggerPaths,
+} from "./check-backend-deployment-target.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = dirname(dirname(scriptPath));
@@ -17,6 +21,121 @@ const productionHealthWorkingDirectory = ".deployment";
 const productionHealthWorkflow = ".github/workflows/production-health.yml";
 const productionHealthConcurrencyGroup =
   "production-health-${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && format('frontend-event-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('failure-{0}-{1}', github.event.workflow_run.id, github.event.workflow_run.run_attempt) || github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && 'backend-deployment' || 'latest' }}";
+const backendWorkflow = ".github/workflows/deploy-backend.yml";
+const backendProductionConcurrencyGroup =
+  "deploy-backend-${{ github.ref == 'refs/heads/main' && 'production' || format('validation-{0}', github.ref_name) }}";
+const backendCancelInProgress = "${{ github.ref != 'refs/heads/main' }}";
+const backendProductionJobCondition = "github.ref == 'refs/heads/main'";
+const backendDeploymentPackageCommand = [
+  "mkdir -p deploy-stage",
+  "cp -r packages/server/dist deploy-stage/",
+  "cp packages/server/package.json deploy-stage/",
+  "cp packages/server/host.json deploy-stage/",
+  "cp yarn.lock deploy-stage/",
+  "cp packages/server/.funcignore deploy-stage/ 2>/dev/null || true",
+  `printf '{"sha":"%s"}\\n' "$GITHUB_SHA" > deploy-stage/deployment.json`,
+  "cd deploy-stage",
+  "yarn install --frozen-lockfile --production --offline --non-interactive",
+  "cd ..",
+  "node scripts/check-backend-package-dependencies.mjs",
+  "cd deploy-stage",
+  "# Azure Functions runs on Windows — directly download the Windows sharp binary",
+  "# from npm registry, bypassing npm's platform check entirely.",
+  `SHARP_VER=$(node -e "console.log(require('./node_modules/sharp/package.json').version)")`,
+  'SHARP_TARBALL="sharp-win32-x64-${SHARP_VER}.tgz"',
+  "curl --fail --silent --show-error --location --retry 3 \\",
+  '  --output "$SHARP_TARBALL" \\',
+  '  "https://registry.npmjs.org/@img/sharp-win32-x64/-/${SHARP_TARBALL}"',
+  "cd ..",
+  "node scripts/check-backend-package-dependencies.mjs \\",
+  '  --verify-windows-sharp "deploy-stage/${SHARP_TARBALL}" "$SHARP_VER"',
+  "cd deploy-stage",
+  "mkdir -p node_modules/@img/sharp-win32-x64",
+  'tar xzf "$SHARP_TARBALL" --strip-components=1 -C node_modules/@img/sharp-win32-x64',
+  'rm "$SHARP_TARBALL"',
+  "zip -r ../deployment.zip .",
+].join("\n");
+const backendReceiptCommand = "node scripts/production-smoke.mjs";
+const backendReceiptExpectedSha = "${{ github.sha }}";
+const backendReceiptScope = "backend-deployment";
+const backendRequeueTargetCommand =
+  "node scripts/check-backend-deployment-target.mjs --requeue-current";
+const backendReadOnlyTargetCommand =
+  "node scripts/check-backend-deployment-target.mjs";
+const backendTargetToken = "${{ secrets.GITHUB_TOKEN }}";
+const backendPolicyTestCommand =
+  "node --test scripts/backend-deployment-target.test.mjs scripts/production-smoke.test.mjs scripts/workflow-runtime-contracts.test.mjs";
+const backendRequeueTargetStepNames = [
+  "Verify backend deployment target before Azure login",
+  "Reverify backend deployment target before Azure upload",
+];
+const backendDeployTargetStepNames = [
+  "Verify deployment target inside deploy before Azure login",
+  "Reverify deployment target immediately before Azure upload",
+];
+const backendTargetStepNames = [
+  ...backendRequeueTargetStepNames,
+  ...backendDeployTargetStepNames,
+];
+const backendRequiredStepNames = [
+  "Checkout target history",
+  "Setup target Node.js",
+  "Verify backend deployment target before Azure login",
+  "Checkout build revision",
+  "Setup build Node.js",
+  "Verify workflow runtimes",
+  "Test backend deployment policy",
+  "Install dependencies",
+  "Build TypeScript",
+  "Test backend",
+  "Create deployment package",
+  "Stage backend deployment package",
+  "Checkout target history",
+  "Setup target Node.js",
+  "Reverify backend deployment target before Azure upload",
+  "Checkout deployment receipt",
+  "Checkout deployment target history",
+  "Setup deployment Node.js",
+  "Download backend deployment package",
+  "Verify deployment package identity",
+  "Verify deployment target inside deploy before Azure login",
+  "Azure Login (attempt 1)",
+  "Azure Login (attempt 2)",
+  "Verify Azure Login",
+  "Reverify deployment target immediately before Azure upload",
+  "Deploy to Azure Functions",
+  "Record canonical backend deployment receipt",
+];
+const backendConditionalStepPolicy = {
+  "Azure Login (attempt 1)": {
+    condition: null,
+    continueOnError: "true",
+  },
+  "Azure Login (attempt 2)": {
+    condition: "steps.azure_login_first.outcome == 'failure'",
+    continueOnError: null,
+  },
+  "Verify Azure Login": {
+    condition:
+      "steps.azure_login_first.outcome == 'failure' && steps.azure_login_second.outcome == 'failure'",
+    continueOnError: null,
+  },
+};
+const backendArtifactName = "backend-package";
+const backendArtifactPath = "deployment.zip";
+const backendPackageIdentityStepId = "backend_package_identity";
+const backendPackageIdentityCommand = [
+  `test "$(unzip -Z1 deployment.zip | grep -c '^deployment.json$')" -eq 1`,
+  `test "$(unzip -p deployment.zip deployment.json)" = "{\\"sha\\":\\"$GITHUB_SHA\\"}"`,
+  `echo "sha256=$(sha256sum deployment.zip | awk '{print $1}')" >> "$GITHUB_OUTPUT"`,
+].join("\n");
+const backendDeploymentCommand = [
+  `test "$(sha256sum deployment.zip | awk '{print $1}')" = "\${{ steps.backend_package_identity.outputs.sha256 }}"`,
+  "az functionapp deployment source config-zip \\",
+  "  --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
+  "  --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
+  "  --src deployment.zip",
+].join("\n");
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const frontendProductionConcurrencyGroup =
   "deploy-frontend-${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production')) && 'production' || github.event_name == 'pull_request' && format('validation-pr-{0}', github.event.pull_request.number) || format('validation-{0}', github.ref_name) }}";
@@ -65,8 +184,12 @@ const productionHealthClassifierEnv = {
 };
 const productionHealthExpectedSha =
   "${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && steps.deployment_event.outputs.deployed_sha || '' }}";
+const productionHealthExpectedBackendSha =
+  "${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && steps.deployment_event.outputs.deployed_sha || '' }}";
 const productionHealthIdentityCondition =
   "github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && steps.deployment_event.outputs.should_check == 'true'";
+const productionHealthBackendIdentityCondition =
+  "github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && steps.deployment_event.outputs.should_check == 'true'";
 const productionHealthClassificationValidationCommand = [
   'for value in "$CANONICAL_DEPLOYMENT" "$DEPLOYMENT_RECEIPT" "$DEPLOYMENT_STARTED" "$SHOULD_CHECK" "$SHOULD_REJECT"; do',
   '  case "$value" in',
@@ -91,6 +214,8 @@ const productionHealthClassificationValidationCommand = [
   "  exit 1",
   "fi",
 ].join("\n");
+const productionHealthWorkflowTestCommand =
+  "node --test scripts/backend-deployment-target.test.mjs scripts/workflow-runtime-contracts.test.mjs";
 const productionHealthGuardedSteps = [
   "Test workflow runtime parser",
   "Verify workflow runtimes",
@@ -99,7 +224,7 @@ const productionHealthGuardedSteps = [
   "Check production",
 ];
 const deployWorkflows = [
-  ".github/workflows/deploy-backend.yml",
+  backendWorkflow,
   frontendWorkflow,
 ];
 const retentionCommand =
@@ -120,6 +245,111 @@ function indentation(line) {
   return line.match(/^\s*/)[0].length;
 }
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function yamlKeyPattern(key) {
+  const escaped = escapeRegex(key);
+  return `(?:${escaped}|"${escaped}"|'${escaped}')`;
+}
+
+const yamlKeyCapture = `(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\\w-]*))`;
+
+function capturedYamlKey(match) {
+  return match[1] ?? match[2] ?? match[3];
+}
+
+const yamlMappingKeyToken =
+  `(?:"(?:\\\\.|[^"\\\\])*"|'(?:''|[^'])*'|[A-Za-z_][\\w-]*|<<)`;
+
+function decodeYamlMappingKey(token) {
+  if (token.startsWith('"')) {
+    if (token.includes("\\")) return null;
+    return token.slice(1, -1);
+  }
+  if (token.startsWith("'")) {
+    if (token.slice(1, -1).includes("''")) return null;
+    return token.slice(1, -1);
+  }
+  return token;
+}
+
+function inspectSupportedYamlSubset(text) {
+  const lines = text.split(/\r?\n/);
+  const issues = [];
+  const contexts = [];
+  let blockScalarIndent = null;
+
+  for (const [index, line] of lines.entries()) {
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+    const lineIndent = indentation(line);
+    if (blockScalarIndent !== null) {
+      if (lineIndent > blockScalarIndent) continue;
+      blockScalarIndent = null;
+    }
+    const trimmed = line.trim();
+    if (
+      /^\?(?:\s|$)/.test(trimmed)
+      || /^:(?:\s|$)/.test(trimmed)
+      || /^-\s*(?:$|[\[{!?&*])/.test(trimmed)
+      || /^(?:<<|"<<"|'<<')\s*:/.test(trimmed)
+      || /:\s*[&*][A-Za-z_]/.test(trimmed)
+      || /:\s*\{/.test(trimmed)
+    ) {
+      issues.push(index + 1);
+      continue;
+    }
+
+    const sequenceMatch = line.match(
+      new RegExp(`^(\\s*)-\\s+(${yamlMappingKeyToken}):\\s*(.*)$`)
+    );
+    const mappingMatch = sequenceMatch
+      ? null
+      : line.match(
+        new RegExp(`^(\\s*)(${yamlMappingKeyToken}):\\s*(.*)$`)
+      );
+    if (!sequenceMatch && !mappingMatch) continue;
+
+    const isSequence = Boolean(sequenceMatch);
+    const match = sequenceMatch ?? mappingMatch;
+    const keyToken = match[2];
+    const key = decodeYamlMappingKey(keyToken);
+    const value = match[3].replace(/\s+#.*$/, "").trim();
+    if (key === null) {
+      issues.push(index + 1);
+      continue;
+    }
+
+    if (isSequence) {
+      while (contexts.at(-1)?.indent > lineIndent) contexts.pop();
+      const context = { indent: lineIndent + 2, keys: new Set([key]) };
+      contexts.push(context);
+    } else {
+      while (contexts.at(-1)?.indent > lineIndent) contexts.pop();
+      let context = contexts.findLast((candidate) => candidate.indent === lineIndent);
+      if (!context) {
+        context = { indent: lineIndent, keys: new Set() };
+        contexts.push(context);
+      }
+      if (context.keys.has(key)) {
+        issues.push(index + 1);
+        continue;
+      }
+      context.keys.add(key);
+    }
+
+    if (/^[|>][+-]?\d?$/.test(value)) {
+      blockScalarIndent = isSequence ? lineIndent + 2 : lineIndent;
+    } else if (value === "") {
+      const childIndent = isSequence ? lineIndent + 4 : lineIndent + 2;
+      while (contexts.at(-1)?.indent >= childIndent) contexts.pop();
+      contexts.push({ indent: childIndent, keys: new Set() });
+    }
+  }
+  return issues;
+}
+
 function scalarValue(value) {
   const trimmed = value.replace(/\s+#.*$/, "").trim();
   const quoted = trimmed.match(/^(["'])(.*)\1$/);
@@ -128,10 +358,12 @@ function scalarValue(value) {
 
 function rootChildField(text, parent, field) {
   const lines = text.split(/\r?\n/);
-  const escapedParent = parent.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parentPattern = new RegExp(`^${escapedParent}:\\s*(?:#.*)?$`);
-  const fieldPattern = new RegExp(`^\\s+${escapedField}:\\s*(.*)$`);
+  const parentPattern = new RegExp(
+    `^${yamlKeyPattern(parent)}:\\s*(?:#.*)?$`
+  );
+  const fieldPattern = new RegExp(
+    `^\\s+${yamlKeyPattern(field)}:\\s*(.*)$`
+  );
   const parentIndex = lines.findIndex((line) => parentPattern.test(line));
   if (parentIndex < 0) return null;
 
@@ -146,8 +378,10 @@ function rootChildField(text, parent, field) {
 }
 
 function quotedRootScalar(text, field) {
-  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`^${escaped}:\\s*"([^"]*)"\\s*$`, "m");
+  const pattern = new RegExp(
+    `^${yamlKeyPattern(field)}:\\s*"([^"]*)"\\s*$`,
+    "m"
+  );
   return text.match(pattern)?.[1] ?? null;
 }
 
@@ -157,16 +391,19 @@ function nestedListItems(text, keys) {
   let parentIndent = -1;
 
   for (const [depth, key] of keys.entries()) {
-    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (depth === 0) {
-      const pattern = new RegExp(`^${escaped}:\\s*(?:#.*)?$`);
+      const pattern = new RegExp(
+        `^${yamlKeyPattern(key)}:\\s*(?:#.*)?$`
+      );
       parentIndex = lines.findIndex((line) => pattern.test(line));
       if (parentIndex < 0) return [];
       parentIndent = 0;
       continue;
     }
 
-    const pattern = new RegExp(`^\\s+${escaped}:\\s*(?:#.*)?$`);
+    const pattern = new RegExp(
+      `^\\s+${yamlKeyPattern(key)}:\\s*(?:#.*)?$`
+    );
     let childIndent;
     let childIndex = -1;
     for (let index = parentIndex + 1; index < lines.length; index += 1) {
@@ -200,16 +437,86 @@ function nestedListItems(text, keys) {
   return items;
 }
 
+function nestedMapEntries(text, keys) {
+  const lines = text.split(/\r?\n/);
+  let parentIndex = -1;
+  let parentIndent = -1;
+
+  for (const [depth, key] of keys.entries()) {
+    const pattern = depth === 0
+      ? new RegExp(`^${yamlKeyPattern(key)}:\\s*(?:#.*)?$`)
+      : new RegExp(`^\\s+${yamlKeyPattern(key)}:\\s*(?:#.*)?$`);
+    let childIndent;
+    let childIndex = -1;
+    for (let index = parentIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/^\s*(?:#.*)?$/.test(line)) continue;
+      const lineIndent = indentation(line);
+      if (depth > 0 && lineIndent <= parentIndent) break;
+      if (depth > 0 && childIndent === undefined) childIndent = lineIndent;
+      if (depth > 0 && lineIndent !== childIndent) continue;
+      if (pattern.test(line)) {
+        childIndex = index;
+        childIndent = lineIndent;
+        break;
+      }
+    }
+    if (childIndex < 0) return {};
+    parentIndex = childIndex;
+    parentIndent = childIndent ?? 0;
+  }
+
+  const entries = {};
+  let entryIndent;
+  for (let index = parentIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+    const lineIndent = indentation(line);
+    if (lineIndent <= parentIndent) break;
+    if (entryIndent === undefined) entryIndent = lineIndent;
+    if (lineIndent !== entryIndent) continue;
+    const match = line.match(
+      new RegExp(`^\\s*${yamlKeyCapture}:\\s*(.*)$`)
+    );
+    if (match) entries[capturedYamlKey(match)] = scalarValue(match[4]);
+  }
+  return entries;
+}
+
+function rootMapKeys(text, field) {
+  const lines = text.split(/\r?\n/);
+  const parentIndex = lines.findIndex(
+    (line) =>
+      new RegExp(`^${yamlKeyPattern(field)}:\\s*(?:#.*)?$`).test(line)
+  );
+  if (parentIndex < 0) return [];
+
+  const keys = [];
+  let childIndent;
+  for (let index = parentIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+    const lineIndent = indentation(line);
+    if (lineIndent === 0) break;
+    if (childIndent === undefined) childIndent = lineIndent;
+    if (lineIndent !== childIndent) continue;
+    const match = line.match(
+      new RegExp(`^\\s*${yamlKeyCapture}:(?:\\s|$)`)
+    );
+    if (match) keys.push(capturedYamlKey(match));
+  }
+  return keys;
+}
+
 function nestedScalarValue(text, keys) {
   const lines = text.split(/\r?\n/);
   let parentIndex = -1;
   let parentIndent = -1;
 
   for (const [depth, key] of keys.entries()) {
-    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = depth === 0
-      ? new RegExp(`^${escaped}:\\s*(.*)$`)
-      : new RegExp(`^\\s+${escaped}:\\s*(.*)$`);
+      ? new RegExp(`^${yamlKeyPattern(key)}:\\s*(.*)$`)
+      : new RegExp(`^\\s+${yamlKeyPattern(key)}:\\s*(.*)$`);
     let childIndent;
     let matchIndex = -1;
     let matchValue = null;
@@ -238,12 +545,25 @@ function nestedScalarValue(text, keys) {
   return null;
 }
 
+function hasExactEntries(actual, expected) {
+  const actualKeys = Object.keys(actual).sort();
+  const expectedKeys = Object.keys(expected).sort();
+  return actualKeys.length === expectedKeys.length
+    && expectedKeys.every(
+      (key, index) =>
+        actualKeys[index] === key
+        && actual[key] === expected[key]
+    );
+}
+
 function activeStepBlocks(text) {
   const lines = text.split(/\r?\n/);
   const steps = [];
 
   for (let index = 0; index < lines.length; index += 1) {
-    const stepsLine = lines[index].match(/^(\s*)steps:\s*(?:#.*)?$/);
+    const stepsLine = lines[index].match(
+      new RegExp(`^(\\s*)${yamlKeyPattern("steps")}:\\s*(?:#.*)?$`)
+    );
     if (!stepsLine) continue;
 
     const stepsIndent = stepsLine[1].length;
@@ -254,8 +574,10 @@ function activeStepBlocks(text) {
       const ownerIndent = indentation(ownerLine);
       if (ownerIndent < stepsIndent - 2) break;
       if (ownerIndent !== stepsIndent - 2) continue;
-      const owner = ownerLine.match(/^\s*([A-Za-z_][\w-]*):\s*(?:#.*)?$/);
-      if (owner) job = owner[1];
+      const owner = ownerLine.match(
+        new RegExp(`^\\s*${yamlKeyCapture}:\\s*(?:#.*)?$`)
+      );
+      if (owner) job = capturedYamlKey(owner);
       break;
     }
     let stepIndent;
@@ -272,7 +594,11 @@ function activeStepBlocks(text) {
       const lineIndent = indentation(line);
       if (lineIndent <= stepsIndent) break;
 
-      if (/^\s*-\s+[A-Za-z_][\w-]*:/.test(line)) {
+      if (
+        new RegExp(
+          `^\\s*-\\s+(?:"[^"]+"|'[^']+'|[A-Za-z_][\\w-]*):`
+        ).test(line)
+      ) {
         if (stepIndent === undefined) stepIndent = lineIndent;
         if (lineIndent === stepIndent) {
           if (current) steps.push(current);
@@ -292,9 +618,13 @@ function activeStepBlocks(text) {
 }
 
 function stepField(step, field) {
-  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const firstLine = new RegExp(`^\\s{${step.indent}}-\\s+${escaped}:\\s*(.*)$`);
-  const otherLine = new RegExp(`^\\s{${step.indent + 2}}${escaped}:\\s*(.*)$`);
+  const key = yamlKeyPattern(field);
+  const firstLine = new RegExp(
+    `^\\s{${step.indent}}-\\s+${key}:\\s*(.*)$`
+  );
+  const otherLine = new RegExp(
+    `^\\s{${step.indent + 2}}${key}:\\s*(.*)$`
+  );
   for (const [index, line] of step.lines.entries()) {
     if (/^\s*#/.test(line)) continue;
     const match = line.match(index === 0 ? firstLine : otherLine);
@@ -304,8 +634,12 @@ function stepField(step, field) {
 }
 
 function stepChildField(step, parent, field) {
-  const parentPattern = new RegExp(`^\\s{${step.indent + 2}}${parent}:\\s*(?:#.*)?$`);
-  const childPattern = new RegExp(`^\\s{${step.indent + 4}}${field}:\\s*(.*)$`);
+  const parentPattern = new RegExp(
+    `^\\s{${step.indent + 2}}${yamlKeyPattern(parent)}:\\s*(?:#.*)?$`
+  );
+  const childPattern = new RegExp(
+    `^\\s{${step.indent + 4}}${yamlKeyPattern(field)}:\\s*(.*)$`
+  );
   const parentIndex = step.lines.findIndex((line) => parentPattern.test(line));
   if (parentIndex < 0) return null;
 
@@ -320,8 +654,9 @@ function stepChildField(step, parent, field) {
 }
 
 function stepBlockScalar(step, field) {
-  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const fieldPattern = new RegExp(`^\\s{${step.indent + 2}}${escaped}:\\s*\\|\\s*$`);
+  const fieldPattern = new RegExp(
+    `^\\s{${step.indent + 2}}${yamlKeyPattern(field)}:\\s*\\|\\s*$`
+  );
   const fieldIndex = step.lines.findIndex((line) => fieldPattern.test(line));
   if (fieldIndex < 0) return null;
 
@@ -341,6 +676,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const runCommands = [];
   const runSteps = [];
   const pushPaths = nestedListItems(text, ["on", "push", "paths"]);
+  const unsupportedYamlLines = inspectSupportedYamlSubset(text);
   const workflowDispatchModes = nestedListItems(text, [
     "on",
     "workflow_dispatch",
@@ -372,6 +708,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   const staticWebAppActions = [];
   const artifactActions = [];
   const artifactSteps = [];
+  const steps = [];
   const checkoutRefs = [];
   const activeSource = text
     .split(/\r?\n/)
@@ -381,7 +718,11 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     /secrets\s*(?:\.\s*AZURE_STATIC_WEB_APPS_API_TOKEN|\[\s*["']AZURE_STATIC_WEB_APPS_API_TOKEN["']\s*\])/i
       .test(activeSource);
   const stepConditions = {};
+  const stepOrders = {};
   const stepWorkingDirectories = {};
+  let backendDeploymentPackage = null;
+  let backendDeploymentReceipt = null;
+  const backendDeploymentTargetChecks = [];
   let frontendTokenResolver = null;
   let frontendDeploymentMarker = null;
   const frontendDeploymentOwnershipChecks = [];
@@ -390,30 +731,81 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   let productionHealthClassification = null;
   let productionHealthClassificationValidation = null;
   let productionHealthCheck = null;
+  let productionHealthBackendIdentityCheck = null;
   let productionHealthIdentityCheck = null;
   const concurrency = {
     group: rootChildField(text, "concurrency", "group"),
     cancelInProgress: rootChildField(text, "concurrency", "cancel-in-progress"),
   };
+  const workflowPermissions = {
+    actions: nestedScalarValue(text, ["permissions", "actions"]),
+    contents: nestedScalarValue(text, ["permissions", "contents"]),
+    idToken: nestedScalarValue(text, ["permissions", "id-token"]),
+  };
+  const workflowPermissionEntries = nestedMapEntries(text, ["permissions"]);
+  const jobPolicies = rootMapKeys(text, "jobs").map((job) => ({
+    actionsPermission: nestedScalarValue(text, [
+      "jobs",
+      job,
+      "permissions",
+      "actions",
+    ]),
+    condition: nestedScalarValue(text, ["jobs", job, "if"]),
+    contentsPermission: nestedScalarValue(text, [
+      "jobs",
+      job,
+      "permissions",
+      "contents",
+    ]),
+    continueOnError: nestedScalarValue(text, ["jobs", job, "continue-on-error"]),
+    displayName: nestedScalarValue(text, ["jobs", job, "name"]),
+    idTokenPermission: nestedScalarValue(text, [
+      "jobs",
+      job,
+      "permissions",
+      "id-token",
+    ]),
+    job,
+    needs: nestedScalarValue(text, ["jobs", job, "needs"]),
+    permissionEntries: nestedMapEntries(text, ["jobs", job, "permissions"]),
+    permissionsMode: nestedScalarValue(text, ["jobs", job, "permissions"]),
+  }));
 
   for (const [order, step] of activeStepBlocks(text).entries()) {
     const name = stepField(step, "name");
     const uses = stepField(step, "uses");
-    const run = stepField(step, "run");
+    const run = stepBlockScalar(step, "run") ?? stepField(step, "run");
+    steps.push({
+      command: run,
+      condition: stepField(step, "if"),
+      continueOnError: stepField(step, "continue-on-error"),
+      job: step.job,
+      name,
+      order,
+      uses,
+    });
     if (run) {
       runCommands.push(run);
       runSteps.push({
         command: run,
         condition: stepField(step, "if"),
         continueOnError: stepField(step, "continue-on-error"),
+        id: stepField(step, "id"),
         job: step.job,
+        name,
         order,
       });
     }
     if (uses?.startsWith("actions/checkout@")) {
+      const persistCredentials = stepChildField(step, "with", "persist-credentials");
+      const targetPath = stepChildField(step, "with", "path");
       checkoutFetchDepths.push({
         path,
         depth: stepChildField(step, "with", "fetch-depth"),
+        job: step.job,
+        ...(persistCredentials === null ? {} : { persistCredentials }),
+        ...(name === null ? {} : { stepName: name }),
+        ...(targetPath === null ? {} : { targetPath }),
       });
     }
     const azureLogin = uses?.match(/^azure\/login@(.+)$/);
@@ -481,7 +873,44 @@ export function inspectWorkflow(text, path = "workflow.yml") {
 
     if (name) {
       stepConditions[name] = stepField(step, "if");
+      stepOrders[name] = order;
       stepWorkingDirectories[name] = stepField(step, "working-directory");
+    }
+    if (name === "Create deployment package") {
+      backendDeploymentPackage = {
+        command: run,
+        condition: stepField(step, "if"),
+        continueOnError: stepField(step, "continue-on-error"),
+        job: step.job,
+        order,
+      };
+    }
+    if (name === "Record canonical backend deployment receipt") {
+      backendDeploymentReceipt = {
+        command: run,
+        condition: stepField(step, "if"),
+        continueOnError: stepField(step, "continue-on-error"),
+        expectedSha: stepChildField(
+          step,
+          "env",
+          "PRODUCTION_BACKEND_DEPLOYED_SHA"
+        ),
+        job: step.job,
+        order,
+        scope: stepChildField(step, "env", "PRODUCTION_SMOKE_SCOPE"),
+      };
+    }
+    if (backendTargetStepNames.includes(name)) {
+      backendDeploymentTargetChecks.push({
+        command: run,
+        condition: stepField(step, "if"),
+        continueOnError: stepField(step, "continue-on-error"),
+        ghToken: stepChildField(step, "env", "GH_TOKEN"),
+        job: step.job,
+        name,
+        order,
+        workingDirectory: stepField(step, "working-directory"),
+      });
     }
     if (name === "Classify deployment event") {
       productionHealthClassification = {
@@ -499,6 +928,11 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     }
     if (name === "Check production") {
       productionHealthCheck = {
+        expectedBackendSha: stepChildField(
+          step,
+          "env",
+          "PRODUCTION_BACKEND_DEPLOYED_SHA"
+        ),
         expectedSha: stepChildField(step, "env", "PRODUCTION_DEPLOYED_SHA"),
       };
     }
@@ -506,6 +940,18 @@ export function inspectWorkflow(text, path = "workflow.yml") {
       productionHealthIdentityCheck = {
         command: stepField(step, "run"),
         expectedSha: stepChildField(step, "env", "PRODUCTION_DEPLOYED_SHA"),
+        scope: stepChildField(step, "env", "PRODUCTION_SMOKE_SCOPE"),
+      };
+    }
+    if (name === "Verify deployed backend identity") {
+      productionHealthBackendIdentityCheck = {
+        command: run,
+        continueOnError: stepField(step, "continue-on-error"),
+        expectedSha: stepChildField(
+          step,
+          "env",
+          "PRODUCTION_BACKEND_DEPLOYED_SHA"
+        ),
         scope: stepChildField(step, "env", "PRODUCTION_SMOKE_SCOPE"),
       };
     }
@@ -574,6 +1020,8 @@ export function inspectWorkflow(text, path = "workflow.yml") {
   return {
     artifactActions,
     artifactSteps,
+    steps,
+    unsupportedYamlLines,
     azureLoginRefs,
     checkoutRefs,
     setupNodeVersions,
@@ -582,10 +1030,106 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     runCommands,
     runSteps,
     concurrency,
+    jobPolicies,
+    workflowPermissions,
+    workflowPermissionEntries,
+    workflowPermissionsMode: nestedScalarValue(text, ["permissions"]),
+    backendDeploymentJob: {
+      actionsPermission: nestedScalarValue(text, [
+        "jobs",
+        "deploy",
+        "permissions",
+        "actions",
+      ]),
+      condition: nestedScalarValue(text, ["jobs", "deploy", "if"]),
+      contentsPermission: nestedScalarValue(text, [
+        "jobs",
+        "deploy",
+        "permissions",
+        "contents",
+      ]),
+      idTokenPermission: nestedScalarValue(text, [
+        "jobs",
+        "deploy",
+        "permissions",
+        "id-token",
+      ]),
+      needs: nestedScalarValue(text, ["jobs", "deploy", "needs"]),
+    },
+    backendAuthorizeJob: {
+      actionsPermission: nestedScalarValue(text, [
+        "jobs",
+        "authorize",
+        "permissions",
+        "actions",
+      ]),
+      condition: nestedScalarValue(text, ["jobs", "authorize", "if"]),
+      contentsPermission: nestedScalarValue(text, [
+        "jobs",
+        "authorize",
+        "permissions",
+        "contents",
+      ]),
+      idTokenPermission: nestedScalarValue(text, [
+        "jobs",
+        "authorize",
+        "permissions",
+        "id-token",
+      ]),
+      needs: nestedScalarValue(text, ["jobs", "authorize", "needs"]),
+    },
+    backendBuildJob: {
+      actionsPermission: nestedScalarValue(text, [
+        "jobs",
+        "build",
+        "permissions",
+        "actions",
+      ]),
+      condition: nestedScalarValue(text, ["jobs", "build", "if"]),
+      contentsPermission: nestedScalarValue(text, [
+        "jobs",
+        "build",
+        "permissions",
+        "contents",
+      ]),
+      idTokenPermission: nestedScalarValue(text, [
+        "jobs",
+        "build",
+        "permissions",
+        "id-token",
+      ]),
+      needs: nestedScalarValue(text, ["jobs", "build", "needs"]),
+    },
+    backendPreflightJob: {
+      actionsPermission: nestedScalarValue(text, [
+        "jobs",
+        "preflight",
+        "permissions",
+        "actions",
+      ]),
+      condition: nestedScalarValue(text, ["jobs", "preflight", "if"]),
+      contentsPermission: nestedScalarValue(text, [
+        "jobs",
+        "preflight",
+        "permissions",
+        "contents",
+      ]),
+      idTokenPermission: nestedScalarValue(text, [
+        "jobs",
+        "preflight",
+        "permissions",
+        "id-token",
+      ]),
+      needs: nestedScalarValue(text, ["jobs", "preflight", "needs"]),
+    },
+    backendDeploymentPackage,
+    backendDeploymentReceipt,
+    backendDeploymentTargetChecks,
     pushPaths,
     runName: quotedRootScalar(text, "run-name"),
     staticWebAppActions,
     stepConditions,
+    stepOrders,
     stepWorkingDirectories,
     frontendTokenResolver,
     frontendDeploymentMarker,
@@ -605,6 +1149,7 @@ export function inspectWorkflow(text, path = "workflow.yml") {
     productionHealthClassification,
     productionHealthClassificationValidation,
     productionHealthCheck,
+    productionHealthBackendIdentityCheck,
     productionHealthIdentityCheck,
     usesRepositorySwaToken,
     workflowDispatchModeDefault,
@@ -619,7 +1164,9 @@ export function checkWorkflowRuntimeContracts(workflows) {
   const healthWorkflow = workflows.find(
     (workflow) => workflow.path === productionHealthWorkflow
   );
+  const backend = workflows.find((workflow) => workflow.path === backendWorkflow);
   const frontend = workflows.find((workflow) => workflow.path === frontendWorkflow);
+  const backendPolicy = backend ? inspectWorkflow(backend.text, backend.path) : null;
   const inspectedFrontend = frontend
     ? inspectWorkflow(frontend.text, frontend.path)
     : null;
@@ -658,6 +1205,15 @@ export function checkWorkflowRuntimeContracts(workflows) {
         `${setup.path} must use actions/setup-node@v7, found @${setup.actionVersion}`
       );
     }
+    for (const workflow of workflows) {
+      const unsupportedYamlLines =
+        inspectWorkflow(workflow.text, workflow.path).unsupportedYamlLines;
+      if (unsupportedYamlLines.length > 0) {
+        issues.push(
+          `${workflow.path} must use the supported block-style YAML subset without duplicate, explicit, flow-mapping, anchor, alias, or escaped keys (lines ${unsupportedYamlLines.join(", ")})`
+        );
+      }
+    }
     if (setup.version !== "24") {
       issues.push(
         `${setup.path} setup-node must select Node 24, found ${setup.version ?? "no version"}`
@@ -667,8 +1223,8 @@ export function checkWorkflowRuntimeContracts(workflows) {
   if (aggregate.azureLoginRefs.length !== 6) {
     issues.push(`expected six Azure login steps, found ${aggregate.azureLoginRefs.length}`);
   }
-  if (aggregate.setupNodeVersions.length !== 4) {
-    issues.push(`expected four setup-node steps, found ${aggregate.setupNodeVersions.length}`);
+  if (aggregate.setupNodeVersions.length !== 7) {
+    issues.push(`expected seven setup-node steps, found ${aggregate.setupNodeVersions.length}`);
   }
   for (const workflow of requiredContractWorkflows) {
     if (!aggregate.contractInvocations.includes(workflow)) {
@@ -679,6 +1235,280 @@ export function checkWorkflowRuntimeContracts(workflows) {
     issues.push(
       `expected ${requiredContractWorkflows.length} workflow contract steps, found ${aggregate.contractInvocations.length}`
     );
+  }
+  if (!backendPolicy) {
+    issues.push(`${backendWorkflow} is missing`);
+  } else {
+    const backendTargetSteps = backendPolicy.backendDeploymentTargetChecks;
+    const backendTargetStepsByName = Object.fromEntries(
+      backendTargetSteps.map((step) => [step.name, step])
+    );
+    const initialBackendTargetStep =
+      backendTargetStepsByName[backendRequeueTargetStepNames[0]];
+    const authorizationBackendTargetStep =
+      backendTargetStepsByName[backendRequeueTargetStepNames[1]];
+    const deployPreloginTargetStep =
+      backendTargetStepsByName[backendDeployTargetStepNames[0]];
+    const deployPreuploadTargetStep =
+      backendTargetStepsByName[backendDeployTargetStepNames[1]];
+    const backendPolicyTestStep = backendPolicy.runSteps.find(
+      (step) => step.name === "Test backend deployment policy"
+    );
+    const backendLoginOrder = backendPolicy.stepOrders["Azure Login (attempt 1)"];
+    const backendDeploymentOrder =
+      backendPolicy.stepOrders["Deploy to Azure Functions"];
+    const backendArtifactUploads = backendPolicy.artifactActions.filter(
+      (action) => action.action === "upload-artifact"
+    );
+    const backendArtifactDownloads = backendPolicy.artifactActions.filter(
+      (action) => action.action === "download-artifact"
+    );
+    const backendArtifactUpload = backendArtifactUploads[0];
+    const backendArtifactDownload = backendArtifactDownloads[0];
+    const backendArtifactUploadOrder =
+      backendPolicy.stepOrders["Stage backend deployment package"];
+    const backendArtifactDownloadOrder =
+      backendPolicy.stepOrders["Download backend deployment package"];
+    const backendPackageIdentityStep = backendPolicy.runSteps.find(
+      (step) => step.name === "Verify deployment package identity"
+    );
+    const backendDeploymentStep = backendPolicy.runSteps.find(
+      (step) => step.name === "Deploy to Azure Functions"
+    );
+    const backendDeployTargetCheckout = backendPolicy.checkoutFetchDepths.find(
+      (checkout) => checkout.stepName === "Checkout deployment target history"
+    );
+    const backendStepNames = backendPolicy.steps.map((step) => step.name).sort();
+    const expectedBackendStepNames = [...backendRequiredStepNames].sort();
+    const backendJobNames = backendPolicy.jobPolicies
+      .map((job) => job.job)
+      .sort();
+    const expectedBackendJobNames = ["authorize", "build", "deploy", "preflight"];
+    const expectedBackendPermissions = {
+      authorize: { actions: "write", contents: "read" },
+      build: { contents: "read" },
+      deploy: { contents: "read", "id-token": "write" },
+      preflight: { actions: "write", contents: "read" },
+    };
+    const normalizedBackendPushPaths = [...backendPolicy.pushPaths].sort();
+    const normalizedBackendDeploymentPaths =
+      [...backendDeploymentTriggerPaths].sort();
+    if (
+      backendPolicy.concurrency.group !== backendProductionConcurrencyGroup
+      || backendPolicy.concurrency.cancelInProgress !== backendCancelInProgress
+    ) {
+      issues.push(
+        `${backendWorkflow} must isolate non-main runs and serialize production without orphaning the latest pending deployment`
+      );
+    }
+    if (
+      backendPolicy.backendPreflightJob.condition !== backendProductionJobCondition
+      || backendPolicy.backendBuildJob.condition !== backendProductionJobCondition
+      || backendPolicy.backendAuthorizeJob.condition !== backendProductionJobCondition
+      || backendPolicy.backendDeploymentJob.condition !== backendProductionJobCondition
+    ) {
+      issues.push(`${backendWorkflow} must block non-main production deployment`);
+    }
+    if (
+      backendJobNames.length !== expectedBackendJobNames.length
+      || expectedBackendJobNames.some(
+        (job, index) => backendJobNames[index] !== job
+      )
+      || backendPolicy.workflowPermissions.actions !== null
+      || backendPolicy.workflowPermissions.contents !== null
+      || backendPolicy.workflowPermissions.idToken !== null
+      || backendPolicy.workflowPermissionsMode !== null
+      || !hasExactEntries(backendPolicy.workflowPermissionEntries, {})
+      || backendPolicy.jobPolicies.some(
+        (job) => !hasExactEntries(
+          job.permissionEntries,
+          expectedBackendPermissions[job.job] ?? {}
+        )
+      )
+      || backendPolicy.backendPreflightJob.needs !== null
+      || backendPolicy.backendPreflightJob.actionsPermission !== "write"
+      || backendPolicy.backendPreflightJob.contentsPermission !== "read"
+      || backendPolicy.backendPreflightJob.idTokenPermission !== null
+      || backendPolicy.backendBuildJob.needs !== "preflight"
+      || backendPolicy.backendBuildJob.actionsPermission !== null
+      || backendPolicy.backendBuildJob.contentsPermission !== "read"
+      || backendPolicy.backendBuildJob.idTokenPermission !== null
+      || backendPolicy.backendAuthorizeJob.needs !== "build"
+      || backendPolicy.backendAuthorizeJob.actionsPermission !== "write"
+      || backendPolicy.backendAuthorizeJob.contentsPermission !== "read"
+      || backendPolicy.backendAuthorizeJob.idTokenPermission !== null
+      || backendPolicy.backendDeploymentJob.needs !== "authorize"
+      || backendPolicy.backendDeploymentJob.actionsPermission !== null
+      || backendPolicy.backendDeploymentJob.contentsPermission !== "read"
+      || backendPolicy.backendDeploymentJob.idTokenPermission !== "write"
+    ) {
+      issues.push(
+        `${backendWorkflow} must keep target/build/authorization unprivileged and grant OIDC only after final authorization`
+      );
+    }
+    if (backendPolicy.jobPolicies.some((job) => job.displayName !== null)) {
+      issues.push(
+        `${backendWorkflow} must keep stable API job identities for deployment classification`
+      );
+    }
+    if (
+      backendPolicy.jobPolicies.some(
+        (job) => ![null, "false"].includes(job.continueOnError)
+      )
+      || backendStepNames.length !== expectedBackendStepNames.length
+      || expectedBackendStepNames.some(
+        (name, index) => backendStepNames[index] !== name
+      )
+      || backendPolicy.steps.some(
+        (step) => {
+          const expected = backendConditionalStepPolicy[step.name];
+          if (expected) {
+            return step.condition !== expected.condition
+              || step.continueOnError !== expected.continueOnError;
+          }
+          return step.condition !== null
+            || ![null, "false"].includes(step.continueOnError);
+        }
+      )
+      || backendDeploymentStep?.job !== "deploy"
+    ) {
+      issues.push(
+        `${backendWorkflow} must run every production step unconditionally and fail hard`
+      );
+    }
+    if (
+      normalizedBackendPushPaths.length !== normalizedBackendDeploymentPaths.length
+      || normalizedBackendDeploymentPaths.some(
+        (path, index) => normalizedBackendPushPaths[index] !== path
+      )
+    ) {
+      issues.push(
+        `${backendWorkflow} must keep stale-target paths aligned with Backend push paths`
+      );
+    }
+    if (
+      !["preflight", "authorize", "deploy"].every((job) =>
+        backendPolicy.checkoutFetchDepths.some(
+          (checkout) => checkout.job === job && checkout.depth === "0"
+        )
+      )
+      || backendDeployTargetCheckout?.job !== "deploy"
+      || backendDeployTargetCheckout?.targetPath !== ".deployment-target"
+      || backendDeployTargetCheckout?.persistCredentials !== "false"
+      || backendPolicyTestStep?.command !== backendPolicyTestCommand
+      || backendPolicyTestStep.job !== "build"
+      || backendPolicyTestStep.condition !== null
+      || ![null, "false"].includes(backendPolicyTestStep.continueOnError)
+      || !Number.isInteger(backendPolicyTestStep.order)
+      || backendTargetSteps.length !== backendTargetStepNames.length
+      || backendTargetSteps.some(
+        (step) => {
+          const deployLocal = backendDeployTargetStepNames.includes(step.name);
+          return step.command !== (
+            deployLocal ? backendReadOnlyTargetCommand : backendRequeueTargetCommand
+          )
+          || step.condition !== null
+          || ![null, "false"].includes(step.continueOnError)
+          || step.ghToken !== (deployLocal ? null : backendTargetToken)
+          || step.workingDirectory !== (deployLocal ? ".deployment-target" : null);
+        }
+      )
+      || initialBackendTargetStep?.job !== "preflight"
+      || authorizationBackendTargetStep?.job !== "authorize"
+      || deployPreloginTargetStep?.job !== "deploy"
+      || deployPreuploadTargetStep?.job !== "deploy"
+      || !Number.isInteger(initialBackendTargetStep?.order)
+      || !Number.isInteger(authorizationBackendTargetStep?.order)
+      || !Number.isInteger(deployPreloginTargetStep?.order)
+      || !Number.isInteger(deployPreuploadTargetStep?.order)
+      || !Number.isInteger(backendPackageIdentityStep?.order)
+      || !Number.isInteger(backendLoginOrder)
+      || !Number.isInteger(backendDeploymentOrder)
+      || initialBackendTargetStep.order >= backendPolicyTestStep.order
+      || backendPolicyTestStep.order >= authorizationBackendTargetStep.order
+      || authorizationBackendTargetStep.order >= deployPreloginTargetStep.order
+      || backendPackageIdentityStep.order >= deployPreloginTargetStep.order
+      || deployPreloginTargetStep.order >= backendLoginOrder
+      || backendLoginOrder >= deployPreuploadTargetStep.order
+      || deployPreuploadTargetStep.order >= backendDeploymentOrder
+    ) {
+      issues.push(
+        `${backendWorkflow} must fence stale Backend revisions, requeue current main from unprivileged jobs, and recheck full history inside every deploy attempt before login and immediately before upload`
+      );
+    }
+    if (
+      backendPolicy.backendDeploymentPackage?.job !== "build"
+      || backendPolicy.backendDeploymentPackage?.condition !== null
+      || ![null, "false"].includes(
+        backendPolicy.backendDeploymentPackage?.continueOnError
+      )
+      || backendPolicy.backendDeploymentPackage?.command
+        !== backendDeploymentPackageCommand
+      || !Number.isInteger(backendPolicy.backendDeploymentPackage?.order)
+      || !Number.isInteger(backendDeploymentOrder)
+      || backendPolicy.backendDeploymentPackage.order >= backendDeploymentOrder
+      || backendArtifactUploads.length !== 1
+      || backendArtifactUpload?.uses !== "actions/upload-artifact@v7"
+      || backendArtifactUpload?.job !== "build"
+      || backendArtifactUpload?.stepName !== "Stage backend deployment package"
+      || backendArtifactUpload?.condition !== null
+      || backendArtifactUpload?.name !== backendArtifactName
+      || backendArtifactUpload?.path !== backendArtifactPath
+      || backendArtifactUpload?.ifNoFilesFound !== "error"
+      || backendArtifactUpload?.retentionDays !== "1"
+      || backendArtifactDownloads.length !== 1
+      || backendArtifactDownload?.uses !== "actions/download-artifact@v8"
+      || backendArtifactDownload?.job !== "deploy"
+      || backendArtifactDownload?.stepName !== "Download backend deployment package"
+      || backendArtifactDownload?.condition !== null
+      || backendArtifactDownload?.name !== backendArtifactName
+      || backendArtifactDownload?.path !== "."
+      || backendArtifactDownload?.ifNoFilesFound !== null
+      || backendArtifactDownload?.retentionDays !== null
+      || backendPackageIdentityStep?.command !== backendPackageIdentityCommand
+      || backendPackageIdentityStep?.id !== backendPackageIdentityStepId
+      || backendPackageIdentityStep?.job !== "deploy"
+      || backendPackageIdentityStep?.condition !== null
+      || ![null, "false"].includes(backendPackageIdentityStep?.continueOnError)
+      || !Number.isInteger(backendArtifactUploadOrder)
+      || !Number.isInteger(backendArtifactDownloadOrder)
+      || !Number.isInteger(backendPackageIdentityStep?.order)
+      || backendPolicy.backendDeploymentPackage.order >= backendArtifactUploadOrder
+      || backendArtifactDownloadOrder >= backendPackageIdentityStep.order
+      || backendPackageIdentityStep.order >= backendLoginOrder
+    ) {
+      issues.push(
+        `${backendWorkflow} must hand off one exact-SHA backend package whose production dependencies match the frozen tested graph`
+      );
+    }
+    if (
+      backendDeploymentStep?.command !== backendDeploymentCommand
+      || backendDeploymentStep?.condition !== null
+      || ![null, "false"].includes(backendDeploymentStep?.continueOnError)
+      || backendDeploymentStep?.job !== "deploy"
+    ) {
+      issues.push(
+        `${backendWorkflow} must upload the verified backend artifact without changing its digest`
+      );
+    }
+    if (
+      backendPolicy.backendDeploymentReceipt?.job !== "deploy"
+      || backendPolicy.backendDeploymentReceipt?.condition !== null
+      || ![null, "false"].includes(
+        backendPolicy.backendDeploymentReceipt?.continueOnError
+      )
+      || backendPolicy.backendDeploymentReceipt?.command !== backendReceiptCommand
+      || backendPolicy.backendDeploymentReceipt?.expectedSha
+        !== backendReceiptExpectedSha
+      || backendPolicy.backendDeploymentReceipt?.scope !== backendReceiptScope
+      || !Number.isInteger(backendPolicy.backendDeploymentReceipt?.order)
+      || !Number.isInteger(backendDeploymentOrder)
+      || backendPolicy.backendDeploymentReceipt.order <= backendDeploymentOrder
+    ) {
+      issues.push(
+        `${backendWorkflow} must read back an exact-SHA backend deployment receipt after Azure deployment`
+      );
+    }
   }
   if (!inspectedFrontend) {
     issues.push(`${frontendWorkflow} is missing`);
@@ -754,6 +1584,65 @@ export function checkWorkflowRuntimeContracts(workflows) {
   ) {
     issues.push(
       `${productionHealthWorkflow} must pin classifier jobs to the triggering workflow attempt`
+    );
+  }
+  if (
+    healthPolicy?.stepConditions["Verify deployed backend identity"]
+      !== productionHealthBackendIdentityCondition
+    || healthPolicy.stepWorkingDirectories["Verify deployed backend identity"]
+      !== ".health-control"
+    || healthPolicy.productionHealthBackendIdentityCheck?.expectedSha
+      !== "${{ steps.deployment_event.outputs.deployed_sha }}"
+    || healthPolicy.productionHealthBackendIdentityCheck?.scope
+      !== backendReceiptScope
+    || healthPolicy.productionHealthBackendIdentityCheck?.command
+      !== backendReceiptCommand
+    || ![null, "false"].includes(
+      healthPolicy.productionHealthBackendIdentityCheck?.continueOnError
+    )
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must keep a controller-owned backend identity gate`
+    );
+  }
+  const productionHealthWorkflowTestStep = healthPolicy?.runSteps.find(
+    (step) => step.name === "Test workflow runtime parser"
+  );
+  const healthJobNames = (healthPolicy?.jobPolicies ?? [])
+    .map((job) => job.job)
+    .sort();
+  if (
+    healthJobNames.length !== 1
+    || healthJobNames[0] !== "smoke"
+    || healthPolicy?.workflowPermissions.actions !== "read"
+    || healthPolicy.workflowPermissions.contents !== "read"
+    || healthPolicy.workflowPermissions.idToken !== null
+    || healthPolicy.workflowPermissionsMode !== ""
+    || !hasExactEntries(healthPolicy.workflowPermissionEntries, {
+      actions: "read",
+      contents: "read",
+    })
+    || healthPolicy.jobPolicies.some(
+      (job) =>
+        job.condition !== null
+        || ![null, "false"].includes(job.continueOnError)
+        || job.idTokenPermission !== null
+        || !hasExactEntries(job.permissionEntries, {})
+        || job.permissionsMode !== null
+    )
+    || healthPolicy.steps.some(
+      (step) => ![null, "false"].includes(step.continueOnError)
+    )
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must keep its sole controller job unprivileged and fail hard`
+    );
+  }
+  if (
+    productionHealthWorkflowTestStep?.command !== productionHealthWorkflowTestCommand
+  ) {
+    issues.push(
+      `${productionHealthWorkflow} must test Backend target and workflow policies before network health`
     );
   }
   if (
@@ -842,6 +1731,8 @@ export function checkWorkflowRuntimeContracts(workflows) {
       (name) => healthPolicy.stepWorkingDirectories[name] !== productionHealthWorkingDirectory
     )
     || healthPolicy.productionHealthCheck?.expectedSha !== productionHealthExpectedSha
+    || healthPolicy.productionHealthCheck?.expectedBackendSha
+      !== productionHealthExpectedBackendSha
   ) {
     issues.push(
       `${productionHealthWorkflow} must checkout and verify the triggering deployed SHA instead of the current main SHA`
@@ -1071,7 +1962,7 @@ function main() {
   }
 
   console.log(
-    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress} frontend-production=main-tip+serialized+coalesced frontend-dispatch=validation-guarded backend-algorithm-runtime-paths=${runtimeAlgorithmPaths.length}`
+    `Workflow runtime contract passed: azure-login=${result.azureLoginRefs.length}@v3 setup-node=${result.setupNodeVersions.length}@v7/node24 enforced-by=${result.contractInvocations.length} health-cancel-stale=${result.healthConcurrency.cancelInProgress} frontend-production=main-tip+serialized+coalesced frontend-dispatch=validation-guarded backend-production=relevant-tip+serialized+receipt backend-runtime-paths=${backendDeploymentPaths.length} backend-algorithm-runtime-paths=${runtimeAlgorithmPaths.length}`
   );
 }
 

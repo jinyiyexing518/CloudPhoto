@@ -1,5 +1,15 @@
 # 更新日志
 
+### 2026-09-04 — 锁定后端生产版本身份
+
+**工程修复**
+- **🎯 后端 exact-SHA receipt** — Function zip 写入 canonical `deployment.json`，部署后由主域、`www` 与 Azure 直连 `/api/deployment` 同时精确回读；缺失、旧 SHA、缓存响应、重定向或损坏 marker 都不能把 Azure CLI 成功伪装成生产成功
+- **🚦 历史发布与最小权限保护** — 非 main run 不再替换 production pending；preflight、无特权 build、final authorization 与唯一 OIDC deploy 串行执行，上游两次拒绝并 requeue 被后续 Backend-relevant commit 取代的 SHA，同时允许纯前端/文档前移。deploy 内部另在 Azure login 前和 upload 前双重只读复核，因此只重跑失败 job 也不能跳过 freshness fence；上线前旧 workflow 仍不得 rerun
+- **📦 冻结测试与部署依赖图** — Backend package 改用根 `yarn.lock` 的 production-only offline install，并逐项证明部署 `name@version` 已出现在测试图；Windows sharp tarball 还需通过 lock 中的精确版本与 SHA-512 integrity，caret 最新版本不能再漂入同一 SHA
+- **🩺 Production Health 后端身份** — classifier 只有在 attempt-specific Azure upload 与 receipt 都成功时才接受 Backend deployment；deployed revision 执行 22 项 full smoke，controller 再独立执行三入口 marker gate
+
+---
+
 ### 2026-08-11 — 只读恢复原图内的历史位置
 
 **紧急修复**

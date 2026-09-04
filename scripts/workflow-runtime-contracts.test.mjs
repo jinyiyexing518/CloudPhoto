@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  classifyBackendDeploymentJob,
   classifyDeploymentEvent,
   classifyDeploymentStarted,
 } from "./classify-deployment-event.mjs";
@@ -1252,13 +1253,535 @@ test("fails closed when Azure upload succeeds without a canonical receipt", () =
   });
 });
 
-test("keeps backend workflow failures classified as deployment events", () => {
+test("fails closed when a Backend deployment has no exact-SHA receipt", () => {
+  const result = classifyDeploymentEvent({
+    workflowName: ".github/workflows/deploy-backend.yml",
+    workflowEvent: "push",
+    headBranch: "main",
+    headSha: "c".repeat(40),
+    conclusion: "success",
+    jobs: [{
+      name: "deploy",
+      started_at: "2026-09-04T00:00:00Z",
+      conclusion: "success",
+      steps: [
+        { name: "Deploy to Azure Functions", conclusion: "success" },
+        {
+          name: "Record canonical backend deployment receipt",
+          conclusion: "skipped",
+        },
+      ],
+    }],
+  });
+
+  assert.deepEqual(result, {
+    canonicalDeployment: false,
+    deployedSha: "c".repeat(40),
+    deploymentReceipt: false,
+    deploymentStarted: true,
+    shouldCheck: false,
+    shouldReject: true,
+  });
+});
+
+test("accepts a Backend deployment only after upload and exact-SHA receipt", () => {
+  const jobs = [{
+    name: "deploy",
+    started_at: "2026-09-04T00:00:00Z",
+    conclusion: "success",
+    steps: [
+      { name: "Deploy to Azure Functions", conclusion: "success" },
+      {
+        name: "Record canonical backend deployment receipt",
+        conclusion: "success",
+      },
+    ],
+  }];
+
+  assert.deepEqual(classifyBackendDeploymentJob({ jobs }), {
+    deploymentReceipt: true,
+    deploymentStarted: true,
+  });
+  assert.deepEqual(classifyBackendDeploymentJob({ jobs: [] }), {
+    deploymentReceipt: false,
+    deploymentStarted: false,
+  });
+  assert.throws(
+    () => classifyBackendDeploymentJob({ jobs: [...jobs, ...jobs] }),
+    /Expected one deploy job, found 2/,
+  );
+});
+
+test("distinguishes skipped Backend jobs from failed Azure upload attempts", () => {
   assert.equal(
     classifyDeploymentStarted(".github/workflows/deploy-backend.yml", {
       jobs: [{ name: "deploy", started_at: null, conclusion: "failure" }],
     }),
+    false
+  );
+  assert.equal(
+    classifyDeploymentStarted(".github/workflows/deploy-backend.yml", {
+      jobs: [{
+        name: "deploy",
+        started_at: "2026-09-04T00:00:00Z",
+        conclusion: "failure",
+        steps: [{ name: "Deploy to Azure Functions", conclusion: "skipped" }],
+      }],
+    }),
+    false
+  );
+  assert.equal(
+    classifyDeploymentStarted(".github/workflows/deploy-backend.yml", {
+      jobs: [{
+        name: "deploy",
+        started_at: "2026-09-04T00:00:00Z",
+        conclusion: "failure",
+        steps: [{ name: "Deploy to Azure Functions", conclusion: "failure" }],
+      }],
+    }),
     true
   );
+});
+
+test("rejects a successful main Backend run that never reaches deployment", () => {
+  assert.deepEqual(
+    classifyDeploymentEvent({
+      workflowName: ".github/workflows/deploy-backend.yml",
+      workflowEvent: "push",
+      headBranch: "main",
+      headSha: "9".repeat(40),
+      conclusion: "success",
+      jobs: [{
+        name: "deploy",
+        started_at: "2026-09-04T00:00:00Z",
+        conclusion: "skipped",
+        steps: [],
+      }],
+    }),
+    {
+      canonicalDeployment: false,
+      deployedSha: "9".repeat(40),
+      deploymentReceipt: false,
+      deploymentStarted: false,
+      shouldCheck: false,
+      shouldReject: true,
+    },
+  );
+});
+
+test("locks Backend deployment serialization, main scope, marker, and receipt", () => {
+  const path = ".github/workflows/deploy-backend.yml";
+  const source = readFileSync(
+    new URL("../.github/workflows/deploy-backend.yml", import.meta.url),
+    "utf8",
+  );
+  const deployFinalTargetBlock = [
+    "      - name: Reverify deployment target immediately before Azure upload",
+    "        working-directory: .deployment-target",
+    "        run: node scripts/check-backend-deployment-target.mjs",
+  ].join("\n");
+  const backendUploadBlock = [
+    "      - name: Deploy to Azure Functions",
+    "        run: |",
+    `          test "$(sha256sum deployment.zip | awk '{print $1}')" = "\${{ steps.backend_package_identity.outputs.sha256 }}"`,
+    "          az functionapp deployment source config-zip \\",
+    "            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
+    "            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
+    "            --src deployment.zip",
+  ].join("\n");
+  assert.ok(source.includes(`${deployFinalTargetBlock}\n\n${backendUploadBlock}`));
+  const cases = [
+    [
+      source.replace(
+        "group: deploy-backend-${{ github.ref == 'refs/heads/main' && 'production' || format('validation-{0}', github.ref_name) }}",
+        "group: deploy-backend-production",
+      ),
+      "isolate non-main runs",
+    ],
+    [
+      source.replace(
+        "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
+        "cancel-in-progress: false",
+      ),
+      "isolate non-main runs",
+    ],
+    [
+      source.replace(
+        "if: github.ref == 'refs/heads/main'",
+        "if: github.event_name == 'workflow_dispatch'",
+      ),
+      "block non-main production deployment",
+    ],
+    [
+      source.replace("fetch-depth: 0", "fetch-depth: 1"),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read",
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      id-token: write\n      contents: read",
+      ),
+      "grant OIDC only after final authorization",
+    ],
+    [
+      source.replace(
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read",
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      \"id-token\": write",
+      ),
+      "grant OIDC only after final authorization",
+    ],
+    [
+      source.replace(
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read",
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      packages: write",
+      ),
+      "grant OIDC only after final authorization",
+    ],
+    [
+      source.replace(
+        "\nconcurrency:\n",
+        "\npermissions:\n  id-token: write\n\nconcurrency:\n",
+      ),
+      "grant OIDC only after final authorization",
+    ],
+    [
+      source.replace(
+        "  build:\n",
+        "  bypass:\n    runs-on: ubuntu-latest\n    permissions:\n      id-token: write\n    steps:\n      - run: echo bypass\n\n  build:\n",
+      ),
+      "grant OIDC only after final authorization",
+    ],
+    [
+      source.replace(
+        "  deploy:\n    needs: authorize\n",
+        "  deploy:\n    needs: authorize\n    continue-on-error: true\n",
+      ),
+      "run every production step unconditionally and fail hard",
+    ],
+    [
+      source.replace(
+        "  deploy:\n    needs: authorize\n",
+        "  deploy:\n    name: Backend deployment\n    needs: authorize\n",
+      ),
+      "stable API job identities",
+    ],
+    [
+      source.replace(
+        '      - "packages/server/**"',
+        '      - "packages/server/**"\n      - "README.md"',
+      ),
+      "keep stale-target paths aligned",
+    ],
+    [
+      source.replace('      - "yarn.lock"\n', ""),
+      "keep stale-target paths aligned",
+    ],
+    [
+      source.replace(
+        '      - "packages/server/**"',
+        '      - "packages/server"',
+      ),
+      "keep stale-target paths aligned",
+    ],
+    [
+      source.replace(
+        "      - name: Verify backend deployment target before Azure login\n        env:\n          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n        run: node scripts/check-backend-deployment-target.mjs --requeue-current\n",
+        "",
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        "node scripts/check-backend-deployment-target.mjs --requeue-current",
+        "node scripts/check-backend-deployment-target.mjs",
+      ),
+      "requeue current main",
+    ],
+    [
+      source.replace(
+        "        run: node --test scripts/backend-deployment-target.test.mjs scripts/production-smoke.test.mjs scripts/workflow-runtime-contracts.test.mjs",
+        "        run: node --test scripts/workflow-runtime-contracts.test.mjs",
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        "      - name: Reverify backend deployment target before Azure upload",
+        "      - name: Reverify backend deployment target after Azure upload",
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        "      - name: Verify deployment target inside deploy before Azure login",
+        "      - name: Skip deployment target inside deploy before Azure login",
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        "      - name: Reverify deployment target immediately before Azure upload",
+        "      - name: Reverify deployment target after Azure upload",
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        "          persist-credentials: false",
+        "          persist-credentials: true",
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        [
+          "      - name: Verify deployment target inside deploy before Azure login",
+          "        working-directory: .deployment-target",
+          "        run: node scripts/check-backend-deployment-target.mjs",
+        ].join("\n"),
+        [
+          "      - name: Verify deployment target inside deploy before Azure login",
+          "        working-directory: .deployment-target",
+          "        run: node scripts/check-backend-deployment-target.mjs --requeue-current",
+        ].join("\n"),
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        deployFinalTargetBlock,
+        [
+          "      - name: Reverify deployment target immediately before Azure upload",
+          "        env:",
+          "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+          "        working-directory: .deployment-target",
+          "        run: node scripts/check-backend-deployment-target.mjs",
+        ].join("\n"),
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        `${deployFinalTargetBlock}\n\n${backendUploadBlock}`,
+        `${backendUploadBlock}\n\n${deployFinalTargetBlock}`,
+      ),
+      "fence stale Backend revisions",
+    ],
+    [
+      source.replace(
+        `          printf '{"sha":"%s"}\\n' "$GITHUB_SHA" > deploy-stage/deployment.json\n`,
+        "",
+      ),
+      "hand off one exact-SHA backend package",
+    ],
+    [
+      source.replace(
+        "yarn install --frozen-lockfile --production --offline --non-interactive",
+        "npm install --production --no-package-lock",
+      ),
+      "production dependencies match the frozen tested graph",
+    ],
+    [
+      source.replace(
+        "          node scripts/check-backend-package-dependencies.mjs\n",
+        "",
+      ),
+      "production dependencies match the frozen tested graph",
+    ],
+    [
+      source.replace(
+        "uses: actions/upload-artifact@v7",
+        "uses: actions/upload-artifact@v6",
+      ),
+      "hand off one exact-SHA backend package",
+    ],
+    [
+      source.replace(
+        "      - name: Verify deployment package identity\n",
+        "      - name: Trust deployment package identity\n",
+      ),
+      "hand off one exact-SHA backend package",
+    ],
+    [
+      source.replace(
+        "PRODUCTION_SMOKE_SCOPE: backend-deployment",
+        "PRODUCTION_SMOKE_SCOPE: full",
+      ),
+      "read back an exact-SHA backend deployment receipt",
+    ],
+    [
+      source.replace(
+        "      - name: Record canonical backend deployment receipt\n        env:",
+        "      - name: Record canonical backend deployment receipt\n        if: false\n        env:",
+      ),
+      "read back an exact-SHA backend deployment receipt",
+    ],
+    [
+      source.replace(
+        "      - name: Deploy to Azure Functions\n        run:",
+        "      - name: Deploy to Azure Functions\n        if: false\n        run:",
+      ),
+      "run every production step unconditionally and fail hard",
+    ],
+    [
+      source.replace(
+        "      - name: Deploy to Azure Functions\n",
+        "      - { name: Hidden privileged step, run: echo hidden }\n\n      - name: Deploy to Azure Functions\n",
+      ),
+      "supported block-style YAML subset",
+    ],
+    [
+      source.replace(
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read",
+        "  build:\n    needs: preflight\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      ? id-token\n      : write",
+      ),
+      "supported block-style YAML subset",
+    ],
+    [
+      source.replace(
+        "      - name: Deploy to Azure Functions\n        run:",
+        "      - name: Deploy to Azure Functions\n        continue-on-error: false\n        'continue-on-error': true\n        run:",
+      ),
+      "supported block-style YAML subset",
+    ],
+    [
+      source.replace(
+        "      - name: Deploy to Azure Functions\n        run:",
+        "      - name: Deploy to Azure Functions\n        'continue-on-error': true\n        run:",
+      ),
+      "run every production step unconditionally and fail hard",
+    ],
+    [
+      source.replace(
+        [
+          "      - name: Deploy to Azure Functions",
+          "        run: |",
+          `          test "$(sha256sum deployment.zip | awk '{print $1}')" = "\${{ steps.backend_package_identity.outputs.sha256 }}"`,
+          "          az functionapp deployment source config-zip \\",
+          "            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
+          "            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
+          "            --src deployment.zip",
+        ].join("\n"),
+        [
+          "      - name: Deploy to Azure Functions",
+          "        run: echo upload omitted",
+        ].join("\n"),
+      ),
+      "upload the verified backend artifact",
+    ],
+  ];
+
+  for (const [mutated, expectedIssue] of cases) {
+    assert.notEqual(mutated, source, `mutation for ${expectedIssue} must apply`);
+    const result = checkWorkflowRuntimeContracts([{ path, text: mutated }]);
+    assert.ok(
+      result.issues.some((issue) => issue.includes(expectedIssue)),
+      `${expectedIssue}\n${result.issues.join("\n")}`,
+    );
+  }
+});
+
+test("locks Backend SHA into full and controller-owned Production Health checks", () => {
+  const path = ".github/workflows/production-health.yml";
+  const source = readFileSync(
+    new URL("../.github/workflows/production-health.yml", import.meta.url),
+    "utf8",
+  );
+  const cases = [
+    [
+      source.replace(
+        "          PRODUCTION_BACKEND_DEPLOYED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && steps.deployment_event.outputs.deployed_sha || '' }}\n",
+        "",
+      ),
+      "checkout and verify the triggering deployed SHA",
+    ],
+    [
+      source.replace(
+        "      - name: Verify deployed backend identity",
+        "      - name: Verify backend availability only",
+      ),
+      "controller-owned backend identity gate",
+    ],
+    [
+      source.replace(
+        "      - name: Verify deployed backend identity\n        if:",
+        "      - name: Verify deployed backend identity\n        continue-on-error: true\n        if:",
+      ),
+      "controller-owned backend identity gate",
+    ],
+    [
+      source.replace(
+        "jobs:\n  smoke:\n",
+        "jobs:\n  bypass:\n    runs-on: ubuntu-latest\n    permissions:\n      id-token: write\n    steps:\n      - run: echo bypass\n\n  smoke:\n",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "  smoke:\n    runs-on: ubuntu-latest\n",
+        "  smoke:\n    runs-on: ubuntu-latest\n    continue-on-error: true\n",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "  smoke:\n    runs-on: ubuntu-latest\n",
+        "  smoke:\n    if: false\n    runs-on: ubuntu-latest\n",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "  smoke:\n    runs-on: ubuntu-latest\n",
+        "  smoke:\n    runs-on: ubuntu-latest\n    permissions: write-all\n",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "permissions:\n  actions: read\n  contents: read",
+        "permissions: write-all",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "permissions:\n  actions: read\n  contents: read",
+        "permissions:\n  actions: read\n  contents: read\n  issues: write",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "      - name: Validate deployment classification\n        if:",
+        "      - name: Validate deployment classification\n        continue-on-error: true\n        if:",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "      - name: Reject failed deployment\n        if:",
+        "      - name: Reject failed deployment\n        continue-on-error: true\n        if:",
+      ),
+      "sole controller job unprivileged and fail hard",
+    ],
+    [
+      source.replace(
+        "        run: node --test scripts/backend-deployment-target.test.mjs scripts/workflow-runtime-contracts.test.mjs",
+        "        run: node --test scripts/workflow-runtime-contracts.test.mjs",
+      ),
+      "test Backend target and workflow policies",
+    ],
+  ];
+
+  for (const [mutated, expectedIssue] of cases) {
+    assert.notEqual(mutated, source, `mutation for ${expectedIssue} must apply`);
+    const result = checkWorkflowRuntimeContracts([{ path, text: mutated }]);
+    assert.ok(
+      result.issues.some((issue) => issue.includes(expectedIssue)),
+      `${expectedIssue}\n${result.issues.join("\n")}`,
+    );
+  }
 });
 
 test("rejects unsupported workflow paths instead of treating them as backend", () => {
@@ -1454,6 +1977,7 @@ jobs:
   assert.deepEqual(inspected.checkoutFetchDepths, [{
     path: ".github/workflows/deploy-frontend.yml",
     depth: "0",
+    job: "deploy",
   }]);
   assert.ok(inspected.runCommands.includes("node scripts/deployment-assets.mjs"));
 

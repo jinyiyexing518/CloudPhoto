@@ -222,8 +222,8 @@ async function validateProxyHealth(response) {
   }
 }
 
-function deploymentUrl(override, baseUrl, expectedSha) {
-  const url = new URL(override ?? "/deployment.json", baseUrl);
+function deploymentUrl(override, defaultUrl, expectedSha) {
+  const url = new URL(override ?? defaultUrl);
   url.searchParams.set("sha", expectedSha);
   return url.href;
 }
@@ -236,19 +236,24 @@ function validateDeployment(expectedSha) {
     if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
       throw new Error("deployment marker is not JSON");
     }
-    if (!headerValues(response, "cache-control").includes("no-store")) {
-      throw new Error("deployment marker must use Cache-Control: no-store");
+    const cacheControl = headerValues(response, "cache-control");
+    if (cacheControl.length !== 1 || cacheControl[0] !== "no-store") {
+      throw new Error("deployment marker must use only Cache-Control: no-store");
     }
 
     let body;
+    let serialized;
     try {
-      body = await response.json();
+      serialized = await response.text();
+      body = JSON.parse(serialized);
     } catch {
       throw new Error("deployment marker is not valid JSON");
     }
+    const canonical = JSON.stringify({ sha: expectedSha });
     if (
       body?.sha !== expectedSha
       || Object.keys(body ?? {}).length !== 1
+      || (serialized !== canonical && serialized !== `${canonical}\n`)
     ) {
       throw new Error(`deployment marker does not match expected SHA ${expectedSha}`);
     }
@@ -263,15 +268,36 @@ export function createChecks(env = process.env) {
   const azureApiBaseUrl =
     env.PRODUCTION_AZURE_API_BASE_URL ?? DEFAULT_AZURE_API_BASE_URL;
   const expectedDeployedSha = env.PRODUCTION_DEPLOYED_SHA?.toLowerCase() ?? "";
+  const expectedBackendDeployedSha =
+    env.PRODUCTION_BACKEND_DEPLOYED_SHA?.toLowerCase() ?? "";
   const scope = env.PRODUCTION_SMOKE_SCOPE ?? "full";
-  if (scope !== "full" && scope !== "deployment") {
-    throw new Error("PRODUCTION_SMOKE_SCOPE must be full or deployment");
+  if (
+    scope !== "full"
+    && scope !== "deployment"
+    && scope !== "backend-deployment"
+  ) {
+    throw new Error(
+      "PRODUCTION_SMOKE_SCOPE must be full, deployment, or backend-deployment"
+    );
   }
   if (scope === "deployment" && !expectedDeployedSha) {
     throw new Error("deployment scope requires PRODUCTION_DEPLOYED_SHA");
   }
+  if (scope === "backend-deployment" && !expectedBackendDeployedSha) {
+    throw new Error(
+      "backend-deployment scope requires PRODUCTION_BACKEND_DEPLOYED_SHA"
+    );
+  }
   if (expectedDeployedSha && !COMMIT_SHA_PATTERN.test(expectedDeployedSha)) {
     throw new Error("PRODUCTION_DEPLOYED_SHA must be a 40-character commit SHA");
+  }
+  if (
+    expectedBackendDeployedSha
+    && !COMMIT_SHA_PATTERN.test(expectedBackendDeployedSha)
+  ) {
+    throw new Error(
+      "PRODUCTION_BACKEND_DEPLOYED_SHA must be a 40-character commit SHA"
+    );
   }
 
   const checks = [
@@ -423,14 +449,15 @@ export function createChecks(env = process.env) {
     },
   ];
 
+  const deploymentChecks = [];
   if (expectedDeployedSha) {
-    checks.splice(5, 0,
+    deploymentChecks.push(
       {
         target: "primary",
         name: "deployment",
         url: deploymentUrl(
           env.PRODUCTION_DEPLOYMENT_URL,
-          primaryBaseUrl,
+          new URL("/deployment.json", primaryBaseUrl).href,
           expectedDeployedSha,
         ),
         validate: validateDeployment(expectedDeployedSha),
@@ -440,7 +467,7 @@ export function createChecks(env = process.env) {
         name: "deployment",
         url: deploymentUrl(
           env.PRODUCTION_WWW_DEPLOYMENT_URL,
-          wwwBaseUrl,
+          new URL("/deployment.json", wwwBaseUrl).href,
           expectedDeployedSha,
         ),
         validate: validateDeployment(expectedDeployedSha),
@@ -450,17 +477,58 @@ export function createChecks(env = process.env) {
         name: "deployment",
         url: deploymentUrl(
           env.PRODUCTION_AZURE_DEPLOYMENT_URL,
-          azureFrontendUrl,
+          new URL("/deployment.json", azureFrontendUrl).href,
           expectedDeployedSha,
         ),
         validate: validateDeployment(expectedDeployedSha),
       },
     );
   }
+  if (expectedBackendDeployedSha) {
+    deploymentChecks.push(
+      {
+        target: "primary",
+        name: "backend-deployment",
+        url: deploymentUrl(
+          env.PRODUCTION_BACKEND_DEPLOYMENT_URL,
+          joinUrl(primaryBaseUrl, "/api/deployment"),
+          expectedBackendDeployedSha,
+        ),
+        validate: validateDeployment(expectedBackendDeployedSha),
+      },
+      {
+        target: "www",
+        name: "backend-deployment",
+        url: deploymentUrl(
+          env.PRODUCTION_WWW_BACKEND_DEPLOYMENT_URL,
+          joinUrl(wwwBaseUrl, "/api/deployment"),
+          expectedBackendDeployedSha,
+        ),
+        validate: validateDeployment(expectedBackendDeployedSha),
+      },
+      {
+        target: "azure",
+        name: "backend-deployment",
+        url: deploymentUrl(
+          env.PRODUCTION_AZURE_BACKEND_DEPLOYMENT_URL,
+          joinUrl(azureApiBaseUrl, "/deployment"),
+          expectedBackendDeployedSha,
+        ),
+        validate: validateDeployment(expectedBackendDeployedSha),
+      },
+    );
+  }
+  if (deploymentChecks.length > 0) {
+    checks.splice(5, 0, ...deploymentChecks);
+  }
 
-  return scope === "deployment"
-    ? checks.filter(({ name }) => name === "deployment")
-    : checks;
+  if (scope === "deployment") {
+    return checks.filter(({ name }) => name === "deployment");
+  }
+  if (scope === "backend-deployment") {
+    return checks.filter(({ name }) => name === "backend-deployment");
+  }
+  return checks;
 }
 
 function delay(milliseconds) {

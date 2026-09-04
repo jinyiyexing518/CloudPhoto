@@ -9,9 +9,54 @@ const scriptPath = fileURLToPath(import.meta.url);
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const backendWorkflow = ".github/workflows/deploy-backend.yml";
 const commitShaPattern = /^[0-9a-f]{40}$/i;
+const backendDeployJobName = "deploy";
+const backendUploadStepName = "Deploy to Azure Functions";
+const backendReceiptStepName = "Record canonical backend deployment receipt";
+
+function isStartedStep(step) {
+  return typeof step?.conclusion === "string" && step.conclusion !== "skipped";
+}
+
+export function classifyBackendDeploymentJob(payload) {
+  if (!Array.isArray(payload?.jobs)) {
+    throw new TypeError("GitHub jobs response must contain a jobs array");
+  }
+  const deployJobs = payload.jobs.filter((job) => job?.name === backendDeployJobName);
+  if (deployJobs.length === 0) {
+    return { deploymentReceipt: false, deploymentStarted: false };
+  }
+  if (deployJobs.length !== 1) {
+    throw new Error(`Expected one ${backendDeployJobName} job, found ${deployJobs.length}`);
+  }
+  const deployJob = deployJobs[0];
+  const jobStarted = (
+    typeof deployJob.started_at === "string"
+    && deployJob.started_at.length > 0
+    && deployJob.conclusion !== "skipped"
+  );
+  if (!jobStarted) {
+    return { deploymentReceipt: false, deploymentStarted: false };
+  }
+  const steps = Array.isArray(deployJob.steps) ? deployJob.steps : [];
+  const uploadStep = steps.find((step) => step?.name === backendUploadStepName);
+  const receiptStep = steps.find((step) => step?.name === backendReceiptStepName);
+  if (!uploadStep) {
+    return { deploymentReceipt: false, deploymentStarted: true };
+  }
+  const deploymentStarted = isStartedStep(uploadStep);
+  return {
+    deploymentReceipt: (
+      uploadStep.conclusion === "success"
+      && receiptStep?.conclusion === "success"
+    ),
+    deploymentStarted,
+  };
+}
 
 export function classifyDeploymentStarted(workflowName, payload) {
-  if (workflowName === backendWorkflow) return true;
+  if (workflowName === backendWorkflow) {
+    return classifyBackendDeploymentJob(payload).deploymentStarted;
+  }
   if (workflowName !== frontendWorkflow) {
     throw new Error(`Unsupported deployment workflow: ${workflowName}`);
   }
@@ -29,16 +74,24 @@ export function classifyDeploymentEvent({
   if (workflowName !== frontendWorkflow && workflowName !== backendWorkflow) {
     throw new Error(`Unsupported deployment workflow: ${workflowName}`);
   }
-  const frontendDeployment = workflowName === frontendWorkflow
+  const deployment = workflowName === frontendWorkflow
     ? classifyFrontendDeploymentJob({ jobs })
-    : { deploymentReceipt: true, deploymentStarted: true };
-  const { deploymentReceipt, deploymentStarted } = frontendDeployment;
+    : classifyBackendDeploymentJob({ jobs });
+  const { deploymentReceipt, deploymentStarted } = deployment;
   const deployedSha = commitShaPattern.test(headSha ?? "")
     ? headSha.toLowerCase()
     : "";
   const canonicalDeployment = (
     deploymentStarted
     && deploymentReceipt
+    && headBranch === "main"
+    && (workflowEvent === "push" || workflowEvent === "workflow_dispatch")
+    && deployedSha.length > 0
+  );
+  const successfulBackendTargetWithoutDeployment = (
+    workflowName === backendWorkflow
+    && !deploymentStarted
+    && conclusion === "success"
     && headBranch === "main"
     && (workflowEvent === "push" || workflowEvent === "workflow_dispatch")
     && deployedSha.length > 0
@@ -50,8 +103,9 @@ export function classifyDeploymentEvent({
     deploymentReceipt,
     deploymentStarted,
     shouldCheck: canonicalDeployment && conclusion === "success",
-    shouldReject: deploymentStarted && (
-      !canonicalDeployment || conclusion !== "success"
+    shouldReject: successfulBackendTargetWithoutDeployment || (
+      deploymentStarted
+      && (!canonicalDeployment || conclusion !== "success")
     ),
   };
 }

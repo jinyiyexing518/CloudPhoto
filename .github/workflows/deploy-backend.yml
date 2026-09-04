@@ -8,21 +8,59 @@ on:
       - "packages/algorithm/package.json"
       - "packages/algorithm/tsconfig.json"
       - "packages/server/**"
+      - "package.json"
+      - "yarn.lock"
       - ".github/workflows/deploy-backend.yml"
+      - ".github/workflows/production-health.yml"
+      - "scripts/check-backend-deployment-target.mjs"
+      - "scripts/check-backend-package-dependencies.mjs"
+      - "scripts/check-frontend-deployment-ownership.mjs"
+      - "scripts/check-workflow-runtime-contracts.mjs"
+      - "scripts/classify-deployment-event.mjs"
+      - "scripts/png-contract.mjs"
+      - "scripts/production-smoke.mjs"
   workflow_dispatch:
 
+concurrency:
+  group: deploy-backend-${{ github.ref == 'refs/heads/main' && 'production' || format('validation-{0}', github.ref_name) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
-  deploy:
+  preflight:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      actions: write
       contents: read
 
     steps:
-      - name: Checkout
+      - name: Checkout target history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup target Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Verify backend deployment target before Azure login
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-backend-deployment-target.mjs --requeue-current
+
+  build:
+    needs: preflight
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout build revision
         uses: actions/checkout@v5
 
-      - name: Setup Node.js
+      - name: Setup build Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -32,6 +70,9 @@ jobs:
       - name: Verify workflow runtimes
         run: node scripts/check-workflow-runtime-contracts.mjs
 
+      - name: Test backend deployment policy
+        run: node --test scripts/backend-deployment-target.test.mjs scripts/production-smoke.test.mjs scripts/workflow-runtime-contracts.test.mjs
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
@@ -40,6 +81,109 @@ jobs:
 
       - name: Test backend
         run: yarn workspace cloudphoto-server test:unit
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deploy-stage
+          cp -r packages/server/dist deploy-stage/
+          cp packages/server/package.json deploy-stage/
+          cp packages/server/host.json deploy-stage/
+          cp yarn.lock deploy-stage/
+          cp packages/server/.funcignore deploy-stage/ 2>/dev/null || true
+          printf '{"sha":"%s"}\n' "$GITHUB_SHA" > deploy-stage/deployment.json
+          cd deploy-stage
+          yarn install --frozen-lockfile --production --offline --non-interactive
+          cd ..
+          node scripts/check-backend-package-dependencies.mjs
+          cd deploy-stage
+          # Azure Functions runs on Windows — directly download the Windows sharp binary
+          # from npm registry, bypassing npm's platform check entirely.
+          SHARP_VER=$(node -e "console.log(require('./node_modules/sharp/package.json').version)")
+          SHARP_TARBALL="sharp-win32-x64-${SHARP_VER}.tgz"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$SHARP_TARBALL" \
+            "https://registry.npmjs.org/@img/sharp-win32-x64/-/${SHARP_TARBALL}"
+          cd ..
+          node scripts/check-backend-package-dependencies.mjs \
+            --verify-windows-sharp "deploy-stage/${SHARP_TARBALL}" "$SHARP_VER"
+          cd deploy-stage
+          mkdir -p node_modules/@img/sharp-win32-x64
+          tar xzf "$SHARP_TARBALL" --strip-components=1 -C node_modules/@img/sharp-win32-x64
+          rm "$SHARP_TARBALL"
+          zip -r ../deployment.zip .
+
+      - name: Stage backend deployment package
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-package
+          path: deployment.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  authorize:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Checkout target history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup target Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Reverify backend deployment target before Azure upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-backend-deployment-target.mjs --requeue-current
+
+  deploy:
+    needs: authorize
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout deployment receipt
+        uses: actions/checkout@v5
+
+      - name: Checkout deployment target history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          path: .deployment-target
+          persist-credentials: false
+
+      - name: Setup deployment Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Download backend deployment package
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-package
+          path: .
+
+      - name: Verify deployment package identity
+        id: backend_package_identity
+        run: |
+          test "$(unzip -Z1 deployment.zip | grep -c '^deployment.json$')" -eq 1
+          test "$(unzip -p deployment.zip deployment.json)" = "{\"sha\":\"$GITHUB_SHA\"}"
+          echo "sha256=$(sha256sum deployment.zip | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployment target inside deploy before Azure login
+        working-directory: .deployment-target
+        run: node scripts/check-backend-deployment-target.mjs
 
       - name: Azure Login (attempt 1)
         id: azure_login_first
@@ -65,26 +209,20 @@ jobs:
           echo "Azure login failed twice. Please verify OIDC federated credential and subscription access for the configured service principal."
           exit 1
 
-      - name: Create deployment package
-        run: |
-          mkdir -p deploy-stage
-          cp -r packages/server/dist deploy-stage/
-          cp packages/server/package.json deploy-stage/
-          cp packages/server/host.json deploy-stage/
-          cp packages/server/.funcignore deploy-stage/ 2>/dev/null || true
-          cd deploy-stage
-          npm install --production --no-package-lock
-          # Azure Functions runs on Windows — directly download the Windows sharp binary
-          # from npm registry, bypassing npm's platform check entirely.
-          SHARP_VER=$(node -e "console.log(require('./node_modules/sharp/package.json').version)")
-          mkdir -p node_modules/@img/sharp-win32-x64
-          curl -sL "https://registry.npmjs.org/@img/sharp-win32-x64/-/sharp-win32-x64-${SHARP_VER}.tgz" \
-            | tar xz --strip-components=1 -C node_modules/@img/sharp-win32-x64
-          zip -r ../deployment.zip .
+      - name: Reverify deployment target immediately before Azure upload
+        working-directory: .deployment-target
+        run: node scripts/check-backend-deployment-target.mjs
 
       - name: Deploy to Azure Functions
         run: |
+          test "$(sha256sum deployment.zip | awk '{print $1}')" = "${{ steps.backend_package_identity.outputs.sha256 }}"
           az functionapp deployment source config-zip \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \
             --src deployment.zip
+
+      - name: Record canonical backend deployment receipt
+        env:
+          PRODUCTION_BACKEND_DEPLOYED_SHA: ${{ github.sha }}
+          PRODUCTION_SMOKE_SCOPE: backend-deployment
+        run: node scripts/production-smoke.mjs

@@ -118,7 +118,7 @@ jobs:
       - name: Test workflow runtime parser
         if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'
         working-directory: .deployment
-        run: node --test scripts/workflow-runtime-contracts.test.mjs
+        run: node --test scripts/backend-deployment-target.test.mjs scripts/workflow-runtime-contracts.test.mjs
 
       - name: Verify workflow runtimes
         if: github.event_name != 'workflow_run' || steps.deployment_event.outputs.should_check == 'true'
@@ -140,6 +140,7 @@ jobs:
         working-directory: .deployment
         env:
           PRODUCTION_DEPLOYED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-frontend.yml' && steps.deployment_event.outputs.deployed_sha || '' }}
+          PRODUCTION_BACKEND_DEPLOYED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && steps.deployment_event.outputs.deployed_sha || '' }}
         run: node scripts/production-smoke.mjs
 
       - name: Verify deployed artifact identity
@@ -148,4 +149,12 @@ jobs:
         env:
           PRODUCTION_DEPLOYED_SHA: ${{ steps.deployment_event.outputs.deployed_sha }}
           PRODUCTION_SMOKE_SCOPE: deployment
+        run: node scripts/production-smoke.mjs
+
+      - name: Verify deployed backend identity
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.path == '.github/workflows/deploy-backend.yml' && steps.deployment_event.outputs.should_check == 'true'
+        working-directory: .health-control
+        env:
+          PRODUCTION_BACKEND_DEPLOYED_SHA: ${{ steps.deployment_event.outputs.deployed_sha }}
+          PRODUCTION_SMOKE_SCOPE: backend-deployment
         run: node scripts/production-smoke.mjs

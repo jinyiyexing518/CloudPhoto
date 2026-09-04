@@ -40,3 +40,4 @@ import "./functions/invites/cancelInvite";
 import "./functions/changelogs/getChangelogs";
 import "./functions/geocode/searchGeocode";
 import "./functions/geocode/reverseGeocode";
+import "./functions/deployment/getDeployment";

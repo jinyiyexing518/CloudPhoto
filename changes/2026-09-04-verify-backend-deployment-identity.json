@@ -1,0 +1,10 @@
+{
+  "id": "2026-09-04-verify-backend-deployment-identity",
+  "date": "2026-09-04",
+  "icon": "🎯",
+  "title": "后端发布加入精确版本回读",
+  "type": "fix",
+  "desc": "Azure Functions 发布现在同时锁定提交和生产依赖图；主域、www 与 Azure 直连必须共同回读同一版本，部署命令成功但线上仍旧或依赖漂移时不会再假绿。",
+  "details": "非 main run 与 production pending 隔离；发布按 preflight、无特权 build/package、final authorization 与唯一 OIDC deploy 串行执行，完整权限 map 禁止未知 write scope，未覆盖的 YAML 结构 fail closed。上游两次完整历史检查会拒绝并 requeue 已被后续 Backend 或根依赖清单变更取代的 SHA；deploy 自己还以隔离、无持久凭据的 full-history checkout 在 Azure login 前和 upload 前双重只读复核，使 partial failed-job rerun 也不能复用旧 artifact 回滚生产，同时不合并 Actions write 与 OIDC。目录 trigger 保留递归语义，纯前端或文档前移不会误停。build/tests 与 production-only offline deploy-stage 共用根 frozen yarn.lock；打包后遍历全部嵌套 name@version，任何缺失直接依赖或未出现在测试图的版本都硬失败。Windows sharp tarball 还必须匹配 lock 中的精确 selector、版本与 SHA-512 integrity，禁止无 lock npm caret 漂移。跨 job artifact 在 Azure 登录前复核，upload 同一步重算 SHA-256，部署包携带 raw canonical lowercase 40 位 SHA marker，重复键和替代格式均拒绝；公开 /api/deployment 仅返回 no-store canonical JSON。部署 job 和 Production Health 都会以 cache-busting、禁止重定向的请求检查 cloudphotos.top、www.cloudphotos.top 与 Azure Functions 直连三条 marker。只有真实 attempt-specific Azure upload 和 exact-SHA receipt 都成功才接受该部署，deployed revision 的 22 项 full smoke 之外还保留 controller-owned 三项身份闸门。保护不追溯到上线前历史 workflow；旧 run 不得 rerun，误触发后必须从当前 main dispatch 恢复。",
+  "seq": 1788525120451
+}

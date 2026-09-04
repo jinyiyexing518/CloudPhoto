@@ -264,6 +264,36 @@ test("adds exact deployment marker checks when a deployed SHA is expected", () =
   );
 });
 
+test("adds exact backend deployment markers for both proxies and the direct API", () => {
+  const sha = "b".repeat(40);
+  const checks = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
+    PRODUCTION_AZURE_API_BASE_URL: "https://api.example/api",
+    PRODUCTION_BACKEND_DEPLOYED_SHA: sha,
+  });
+
+  assert.deepEqual(
+    checks
+      .filter(({ name }) => name === "backend-deployment")
+      .map(({ target, url }) => ({ target, url })),
+    [
+      {
+        target: "primary",
+        url: `https://primary.example/api/deployment?sha=${sha}`,
+      },
+      {
+        target: "www",
+        url: `https://www.example/api/deployment?sha=${sha}`,
+      },
+      {
+        target: "azure",
+        url: `https://api.example/api/deployment?sha=${sha}`,
+      },
+    ],
+  );
+});
+
 test("accepts only the exact no-store deployment marker SHA", async () => {
   const expectedSha = "a".repeat(40);
   const deploymentCheck = createChecks({
@@ -292,10 +322,31 @@ test("accepts only the exact no-store deployment marker SHA", async () => {
     /does not match expected SHA/
   );
   await assert.rejects(
+    deploymentCheck.validate(new Response(
+      `{"sha":"${"b".repeat(40)}","sha":"${expectedSha}"}`,
+      {
+        headers: {
+          "cache-control": "no-store",
+          "content-type": "application/json",
+        },
+      }
+    )),
+    /does not match expected SHA/
+  );
+  await assert.rejects(
     deploymentCheck.validate(new Response(JSON.stringify({ sha: expectedSha }), {
       headers: { "content-type": "application/json" },
     })),
     /Cache-Control: no-store/
+  );
+  await assert.rejects(
+    deploymentCheck.validate(new Response(JSON.stringify({ sha: expectedSha }), {
+      headers: {
+        "cache-control": "public, no-store",
+        "content-type": "application/json",
+      },
+    })),
+    /only Cache-Control: no-store/
   );
 });
 
@@ -380,6 +431,69 @@ test("deployment-only scope requires a SHA and runs only identity checks", () =>
   assert.throws(
     () => createChecks({ PRODUCTION_SMOKE_SCOPE: "deployment" }),
     /requires PRODUCTION_DEPLOYED_SHA/
+  );
+});
+
+test("backend-deployment scope requires a SHA and runs only backend identity checks", () => {
+  const sha = "b".repeat(40);
+  const checks = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
+    PRODUCTION_AZURE_API_BASE_URL: "https://api.example/api",
+    PRODUCTION_BACKEND_DEPLOYED_SHA: sha,
+    PRODUCTION_SMOKE_SCOPE: "backend-deployment",
+  });
+
+  assert.deepEqual(
+    checks.map(({ target, name }) => ({ target, name })),
+    [
+      { target: "primary", name: "backend-deployment" },
+      { target: "www", name: "backend-deployment" },
+      { target: "azure", name: "backend-deployment" },
+    ],
+  );
+  assert.throws(
+    () => createChecks({ PRODUCTION_SMOKE_SCOPE: "backend-deployment" }),
+    /backend-deployment scope requires PRODUCTION_BACKEND_DEPLOYED_SHA/,
+  );
+});
+
+test("passes all three exact backend deployment markers concurrently", async () => {
+  const sha = "c".repeat(40);
+  let requests = 0;
+
+  await withServer(
+    (request, response) => {
+      requests += 1;
+      assert.match(request.url ?? "", /\/deployment\?sha=c{40}$/);
+      response.writeHead(200, {
+        "cache-control": "no-store",
+        "content-type": "application/json",
+      });
+      response.end(JSON.stringify({ sha }));
+    },
+    async (origin) => {
+      const messages = logger();
+      const passed = await runSmoke({
+        env: {
+          PRODUCTION_BASE_URL: `${origin}/primary`,
+          PRODUCTION_WWW_BASE_URL: `${origin}/www`,
+          PRODUCTION_AZURE_API_BASE_URL: `${origin}/azure/api`,
+          PRODUCTION_BACKEND_DEPLOYED_SHA: sha,
+          PRODUCTION_SMOKE_SCOPE: "backend-deployment",
+        },
+        logger: messages,
+        attempts: 1,
+        requestTimeoutMs: 1_000,
+      });
+
+      assert.equal(passed, true, messages.output.join("\n"));
+      assert.equal(requests, 3);
+      assert.equal(
+        messages.output.filter((message) => message.startsWith("PASS ")).length,
+        3,
+      );
+    },
   );
 });
 
