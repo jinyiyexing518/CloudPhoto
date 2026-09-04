@@ -17,6 +17,7 @@ const waitForAbort = (signal) => new Promise((_, reject) => {
 });
 const renameFolderBlobs = (options) => renameFolderBlobsWithDefaults({
   copyPollIntervalMs: 0,
+  renewCatalogMutation: async () => {},
   ...options,
 });
 
@@ -396,6 +397,37 @@ test("uses an atomic destination no-overwrite condition and preserves relative d
   );
   assert.ok(firstDelete > lastCopy, "all copies must finish before any source delete");
   assert.ok(container.sourceDeleteOptions.every((item) => /^"source-/.test(item.conditions.ifMatch)));
+});
+
+test("stops before the next Blob mutation when the catalog lease is lost", async () => {
+  const oldPrefix = "personal/user/Old/";
+  const newPrefix = "personal/user/New/";
+  const container = createContainer([`${oldPrefix}photo.jpg`]);
+  let renewals = 0;
+
+  await assert.rejects(
+    renameFolderBlobs({
+      container,
+      oldPrefix,
+      newPrefix,
+      generateSourceUrl: async (name) => `sas:${name}`,
+      renewCatalogMutation: async () => {
+        renewals += 1;
+        throw new Error("catalog lease lost");
+      },
+      context: { error() {} },
+    }),
+    (error) => {
+      assert.ok(error instanceof FolderRenameError);
+      assert.equal(error.status, 500);
+      return true;
+    },
+  );
+
+  assert.equal(renewals, 1);
+  assert.equal(container.copyCalls.length, 0);
+  assert.equal(container.sourceDeletes.length, 0);
+  assert.equal(container.destinationDeletes.length, 0);
 });
 
 test("a middle copy failure rolls back only created destinations and never deletes a source", async () => {

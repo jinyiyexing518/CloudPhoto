@@ -93,6 +93,15 @@ export async function getPhotoLocationsContainer(): Promise<Container> {
   return getContainer("photoLocations");
 }
 
+/**
+ * Photo catalog rows share the existing scope-partitioned container with
+ * location projections. `docType` keeps both projections independently
+ * queryable without provisioning a second runtime resource.
+ */
+export async function getPhotoCatalogContainer(): Promise<Container> {
+  return getContainer("photoLocations");
+}
+
 export interface PhotoLocationDoc {
   /** Blob name — e.g. "personal/userId/folder/1234-photo.jpg" */
   id: string;

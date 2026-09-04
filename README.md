@@ -72,6 +72,8 @@ Nginx 反向代理  ← Let's Encrypt SSL · 自动续签
 
 照片列表使用按 `userId + role + groupId` 隔离的一小时 SWR 缓存：冷启动只发起一次列表请求；刷新页面时可先绘制最近的非空列表，再后台刷新，刷新失败仍显示错误提示。内存和 Cache Storage 各最多保留 24 个列表，过期项会清除。PWA 仅缓存可验证的 `200 GET` 媒体响应，Range/HEAD 和跨域 opaque 响应绕过缓存；媒体缓存保留 SAS 查询作为授权边界并限制为一小时，避免注销竞态中的迟到写入被其他账号复用。重要片段的离线浏览统计和诊断按 `userId + role + groupId` 派生本地键，浏览器内的近期公开分享链接按 `userId + role` 派生本地键；所有私有本地 JSON 都执行结构、大小和条目上限校验。注销、401、无效会话恢复、角色变化或账号切换会在认证 UI 更新前同步失效内存并删除照片列表、私有媒体、重要片段数据和近期分享链接；同时定向清除 Workbox expiration 数据库中仅属于私有照片缓存的元数据，并在活动写入结束后重复执行以阻止迟到记录复活。登录入口只保留轻量生命周期 shell；私有清理调用先 await 预缓存但不由 HTML preload 的最小 Cache Storage/fence reset chunk，再从该边界按需加载并 await 独立的 Workbox IndexedDB 扫描与删除实现。IDB purge chunk 不进入登录入口静态依赖或 service worker precache，且清理只通过 `cacheName` 索引游标删除，不读取 URL、SAS、照片名或包含 URL 的主键。私有媒体 Workbox 请求在开始时捕获清理 generation；SW 启动默认禁止私有写入，认证 owner 完成准备后才通过受确认的 fence 恢复，cleanup 则在删除前再次禁止写入。列表单独失效不会重开媒体 fence；Cache Storage、IDB、chunk 或 fence 任一失败都不会采用新 owner，并保留重试状态。应用壳/precache、`app-code-v1` 的 Cache Storage 与 expiration 元数据以及 service worker 注册均保持不变；数据库或对象仓库不存在时也不会创建、升级或整库删除。
 
+个人和群组照片列表使用服务端目录游标分页：每页默认 24 张、最多 100 张，游标绑定授权 scope、目录 revision、不可变 snapshot 和最后一个稳定排序键。每次重建只写自己的 snapshot，Cosmos summary 通过 ETag 原子切换 active snapshot；同一 Blob 容器内按 scope 哈希保存的强一致 ETag fence 先后包围每次媒体 mutation、目录扫描和发布，跨 Functions 实例的分页读也必须在 Cosmos 查询前后看到同一 ready fence，且其 snapshot/revision 与 summary 完全一致。被取代或失败的重建不能覆盖当前目录行，只能清理自己的隔离行。目录就绪后，分页请求只查询同一 Cosmos partition 的 active snapshot，并仅为本页生成 SAS，不再扫描 Blob prefix、逐项读取属性或先签发整个图库。冷启动会立即显示最多 24 张仅含 thumbnail/preview 的只读预览和精确加载进度；完整数组到达前，筛选、周报、侧边栏统计、文件夹、重要片段、地图、胶囊与故事保持明确加载态。已有完整 SWR 缓存时继续显示旧完整图库，直到新完整结果原子替换；partial page 永不写入内存或持久化列表缓存。首次访问尚未建立目录的 scope 会兼容性执行一次完整列表并原子建目录；旧 Backend 返回数组时，新客户端也把它作为完整单页处理，避免前后端分阶段部署中断。
+
 旧版全局 `cloudphoto_moments_*_v1` 和 `cf_recent_share_links` 数据没有可信账号归属，首次会话准备或退出页刷新时会直接删除而不会自动迁移给当前账号；只留下不含照片名、账号、诊断正文或公开分享 token 的清理标记。所有延迟写入都携带授权 owner + generation，分享请求在联网前固定 generation，退出或切号后返回的旧响应无法重建旧全局键或已失效范围的数据。私有键清理通过标准 `Storage.length` / `Storage.key()` 快照枚举，不依赖浏览器是否把存储键暴露为可枚举对象属性。云端托管分享仍由服务端管理；网格大小、FAB 位置、安装提示和按工作区限定的文件夹路径不属于这次私有数据清理范围。
 
 公开分享链接由服务端成功创建后，即使浏览器因配额、隐私模式或存储权限无法写入近期记录，当前链接仍会正常显示并复制，界面会单独提示“未保存到最近记录”且不会重试非幂等的创建请求。近期记录的读取、删除和清空也会安全处理浏览器存储异常；认证 generation 失效仍优先中止显示与持久化，避免旧账号链接跨会话出现。
@@ -117,6 +119,7 @@ SWA 与 Nginx 模板统一使用 `Strict-Transport-Security: max-age=31536000; i
 - **历史视频封面自修复** — 仅接近视口且缺少、加载失败或内容近乎纯白/纯灰的派生图在浏览器空闲时进入全局去重队列；未知网络并发 1、明确快速网络最多 2，省流量/离线/2G 自动暂停，并受 48 MiB 单文件与 160 MiB 会话估算预算约束。修复会在视频稍后位置采样多个候选帧、选择信息量最高的画面，再复用既有 ETag 持久化端点。超过被动上限的视频仍可在用户主动播放、已有同源代理帧解码后修复，不创建第二个媒体元素，不上传低信息帧；成功 URL 立即同步时间线、重要片段与文件夹
 - **下载票据预热** — 打开查看器后预取最多 8 个、按登录代次隔离的附件 SAS；点击下载不再串行等待 Blob metadata 与媒体 HEAD，仍由浏览器原生传输原文件
 - **用户隔离照片 SWR** — 最近非空照片列表按用户/群组持久化并限量保留；刷新先本地绘制再联网，注销/切号清除列表与私有媒体缓存
+- **服务端照片目录分页** — 个人/群组目录按 scope partition、revision、不可变 active snapshot 与稳定时间键分页，每页默认 24 张；Cosmos summary ETag 负责原子换代，同容器 Blob ETag fence 负责跨实例 mutation/rebuild/read 一致性，旧重建与 session-stale Cosmos 读都无法发布旧目录；首批只读预览先显示，完整消费者与私有 cache 仅接受 exact-total 完整结果
 - **认证限流** — 内存中按 IP 滑动窗口：登录 10 次/分，注册 5 次/分，刷新 20 次/分；超限返回 `429 + Retry-After: 60`
 - **委托密钥缓存** — Azure 用户委托密钥进程内缓存，有效期剩余 > 10 分钟时复用，省去每次列表请求的一次控制面调用
 - **角色系统** — 全局 `admin` / `viewer`；群组内 `admin` / `member`
@@ -166,7 +169,7 @@ SWA 与 Nginx 模板统一使用 `Strict-Transport-Security: max-age=31536000; i
 - **传输进度横幅** — 上传、下载、回收站 mutation、批量 mutation、文件夹重命名与历史维护任务共用固定横幅；文件夹重命名明确显示 `旧名称 → 新名称`，未知服务端进度时不伪造百分比
 - **跨部署 lazy chunk 自恢复** — 每次生产发布保留最多 24 代、合计不超过 64 MiB 的历史 hashed JS/CSS；首次迁移也会从受 pin 的当前生产 HTML 出发，同源递归抓取其完整 hashed JS/CSS 原始字节，因此发布瞬间仍由旧 active Service Worker 控制的应用壳不会丢失当前代依赖。未来超出窗口的可信同源 chunk 失败再由 React 启动前恢复器最多自动恢复一次。上传、下载、语音、批量、回收站、维护或文件夹重命名期间不激活 waiting worker、不刷新，任务结束后才继续；每个 Tab 使用独立错误边界，界面不显示 chunk URL、SAS 或技术错误
 - **返回顶部按钮** — 滚动 500px 后出现悬浮圆形按钮，一键平滑回顶；侧边栏锁定滚动时隐藏
-- **窗口聚焦自动刷新** — 切回应用时静默重新获取照片列表（每 60 秒最多一次），多设备编辑无需手动刷新
+- **窗口聚焦自动刷新** — 切回应用时按工作区静默刷新照片页序列（同一完整工作区 5 分钟内不重复，进行中的分页也不重启），多设备编辑无需手动刷新
 - **键盘快捷键** — R=刷新；1–6=切换 Tab；S=切换侧边栏；Backspace/Delete=清空筛选；?=快捷键速查表；Esc=关闭任意浮层；输入、按钮、链接、可编辑控件、IME、已处理事件与打开的模态层均不会触发背景快捷键，长按 R/数字也不会重复刷新或切换
 - **无障碍工作区页签** — 六个主视图使用具名 WAI-ARIA tablist/tab/tabpanel 关系、稳定 ID 与 roving tabindex；左右方向键循环自动激活，Home/End 跳到首尾，Enter/Space 保留原生按钮行为。所有入口继续复用统一切换与 mutation guard，拒绝切换时 selected 和焦点留在原页签；弹窗打开时不允许后台页签响应，移动端聚焦页签仅在横向条内滚动到可见位置；浅色界面的默认、悬停、选中与禁用文字及数字徽章满足 4.5:1，实色焦点环满足 3:1，选中状态同时使用粗体、底边和底纹
 - **跳到主要内容** — 已登录工作区的首个键盘焦点是仅在聚焦时显示的中文 skip link，动态指向当前 active tabpanel；聚焦使用受控滚动且不改变横向文档位置，320px 仍保留 12px 边距。侧边栏打开时该入口退出 Tab 序列，模态层继续通过共享 inert/focus boundary 阻止焦点逃到后台
@@ -392,7 +395,7 @@ previewName       2048 px WebP 名称（仅在 derivative 上传成功后以 ETa
 
 | 方法 | 路由 | 鉴权 | 说明 |
 |------|------|------|------|
-| `GET`    | `/api/photos[?groupId=<id>]` | ✓ | 列出照片；每个 URL 为 2 小时用户委托 SAS |
+| `GET`    | `/api/photos[?groupId=<id>&limit=24&cursor=<opaque>]` | ✓ | 带 `limit` 时返回 `{ items, nextCursor, done, revision, total }`（默认 24、最大 100）；省略 `limit/cursor` 保留完整数组兼容路径；每个 URL 为 2 小时用户委托 SAS |
 | `POST`   | `/api/photos/upload?filename=<name>[&uploadId=<uuid>&folder=<path>&groupId=<id>&gpsLat=<lat>&gpsLon=<lon>]` | ✓ | 上传（原始二进制 body）；`uploadId` 令重试幂等，群组上传要求成员身份；拒绝非图片/视频 MIME（415）和超大文件（413） |
 | `GET`    | `/api/photos/download?name=<blobName>&filename=<displayName>` | ✓ | 校验个人/群组路径后返回短效附件 SAS；不代理文件体 |
 | `GET`    | `/api/photos/share?name=<blobName>&hours=<1..168>` | ✓ | 创建过期分享链接（`{ url, expiresAt }`） |
@@ -409,6 +412,8 @@ previewName       2048 px WebP 名称（仅在 derivative 上传成功后以 ETa
 **`GET /api/photos` 所有权规则：**
 - `?groupId=<id>` — 请求者必须是该群组成员
 - 无 `groupId` — 返回请求者的私有照片（管理员可看全部私有照片）
+- 个人 viewer 与群组列表可使用 scope/revision 绑定的不透明游标；管理员跨全部 personal partition 的列表暂时保留完整数组路径，不伪造跨 partition 全局游标
+- `photo-catalog-mutating` / `photo-catalog-rebuilding` 表示目录处于受保护写入或重建窗口，客户端不得绕过为实时 Blob 扫描；旧 journal 超过恢复窗口后会通过下一次完整兼容请求自动重建
 
 ### 地理编码
 
@@ -702,7 +707,7 @@ push 到 `main` 时按变更路径运行部署和同步 workflow，并由独立 
 - `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
 - `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖
 - 私有本地数据统一由授权 owner/generation 生命周期管理：照片列表、媒体、重要片段统计、诊断和近期公开分享链接在注销/401/切号/角色变化时清理，旧版无归属 moments/share-link 键 fail-closed 删除；应用壳和 `app-code-v1`、界面偏好以及已带 workspace context 的文件夹路径不清理
-- 已认证刷新会先完成账号绑定的上次群组选择恢复，再读取对应授权范围的照片缓存并刷新列表；同一工作区 5 分钟内返回或 focus 不重复拉取/解码全量列表，进行中的请求也不会被 focus 重启。时间线和文件夹网格只允许 `_th_`/preview derivative，旧缓存缺少衍生图时显示本地占位，不得隐式请求原图。原图仅由显式查看器或下载操作触发。服务端 cursor pagination 需在照片缓存、MemoryMap 与统计消费方完整迁移后单独实施，本次不做不完整的半分页。
+- 已认证刷新会先完成账号绑定的上次群组选择恢复，再读取对应授权范围的完整照片缓存并启动服务端目录分页；同一工作区 5 分钟内返回或 focus 不重复拉取页面序列，进行中的请求也不会被 focus 重启。服务端只有在查询前后 Blob ETag fence 未变化且其 ready snapshot/revision 与 Cosmos summary 一致时才返回页面；长媒体 mutation 在每次 Blob 写前续租 token，长目录扫描同时续租 Cosmos/Blob rebuild owner，失去 lease 或遇到 pending server-side copy 就停止而不发布。冷启动首 page 仅渲染最多 24 张 thumbnail/preview 只读预览；完整计数、筛选、文件夹、MemoryMap、统计、故事与 mutation UI 必须等 exact-total 完成，partial page 不写任何列表 cache。时间线和文件夹网格仍只允许 `_th_`/preview derivative，旧缓存缺少衍生图时显示本地占位，不得隐式请求原图；原图仅由显式查看器或下载操作触发。
 
 ---
 

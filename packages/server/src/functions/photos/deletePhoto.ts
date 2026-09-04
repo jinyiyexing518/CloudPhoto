@@ -8,6 +8,11 @@ import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorag
 import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember, getPhotoLocationsContainer } from "../../utils/cosmos/cosmosClient";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 
@@ -50,7 +55,10 @@ app.http("deletePhoto", {
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      const scope = blobName.split("/").slice(0, 2).join("/");
+      const catalogMutation = await beginPhotoCatalogMutation(scope, [blobName]);
 
+      try {
       const maxAttempts = 3;
       let deleted = false;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -66,6 +74,7 @@ app.http("deletePhoto", {
         existing.deletedByName = b64(payload.displayName || payload.username || payload.userId);
 
         try {
+          await renewPhotoCatalogMutation(catalogMutation);
           await blockBlobClient.setMetadata(existing, {
             conditions: props.etag ? { ifMatch: props.etag } : undefined,
           });
@@ -94,7 +103,6 @@ app.http("deletePhoto", {
 
       // Remove GPS cache from Cosmos so soft-deleted photos don't appear on the map
       try {
-        const scope = blobName.split("/").slice(0, 2).join("/");
         const locsContainer = await getPhotoLocationsContainer();
         await locsContainer.item(encodeURIComponent(blobName), scope).delete();
       } catch { /* photo may not have had GPS — ignore */ }
@@ -104,6 +112,13 @@ app.http("deletePhoto", {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: "Photo moved to trash" }),
       };
+      } finally {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after soft delete:", error);
+        }
+      }
     } catch (error) {
       context.error("Soft-delete error:", error);
       return {

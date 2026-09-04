@@ -15,6 +15,18 @@ import {
 } from "../../utils/auth/photoAccess";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
+import {
+  copyBlobForMove,
+  MoveDestinationChangedError,
+  MoveCopyProperties,
+  removeCompletedMoveDestination,
+  withVerifiedCompletedMoveDestination,
+} from "./movePhotoSafety";
 
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -24,6 +36,10 @@ function getStatusCode(error: unknown): number | undefined {
 
 function isPreconditionFailed(error: unknown): boolean {
   return getStatusCode(error) === 412;
+}
+
+function isNotFound(error: unknown): boolean {
+  return getStatusCode(error) === 404;
 }
 
 app.http("movePhoto", {
@@ -113,32 +129,96 @@ app.http("movePhoto", {
 
       const sourceProps = await sourceBlob.getProperties();
       const sourceEtag = sourceProps.etag;
+      if (!sourceEtag) {
+        throw new Error("Photo move source is missing an ETag");
+      }
+      const catalogScope = name.split("/").slice(0, 2).join("/");
+      const catalogMutation = await beginPhotoCatalogMutation(
+        catalogScope,
+        [name, newBlobName],
+      );
 
+      try {
       // Server-side copy using a short-lived SAS on the source blob
       const sourceSasUrl = await generateSasUrl(name, 1);
-      const copyPoller = await destBlob.beginCopyFromURL(sourceSasUrl, {
-        sourceConditions: sourceEtag ? { ifMatch: sourceEtag } : undefined,
+      const completedCopy = await copyBlobForMove({
+        destinationBlob: destBlob,
+        sourceUrl: sourceSasUrl,
+        sourceEtag,
+        sourceMetadata: sourceProps.metadata,
+        renewCatalogMutation: () => renewPhotoCatalogMutation(catalogMutation),
       });
-      await copyPoller.pollUntilDone();
+
+      const conflictResponse = async (
+        error: string,
+        completed: MoveCopyProperties,
+      ): Promise<HttpResponseInit> => {
+        try {
+          await removeCompletedMoveDestination({
+            destinationBlob: destBlob,
+            completedCopy: completed,
+            renewCatalogMutation: () => renewPhotoCatalogMutation(catalogMutation),
+          });
+          return {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error }),
+          };
+        } catch (cleanupError) {
+          context.error(
+            "Photo move conflict left a destination that requires recovery:",
+            cleanupError,
+          );
+          return {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              error: "Move conflict requires destination recovery before retry",
+              code: "move-destination-recovery-required",
+            }),
+          };
+        }
+      };
 
       // Remove the original blob
       try {
-        const deleted = await sourceBlob.deleteIfExists({
-          conditions: sourceEtag ? { ifMatch: sourceEtag } : undefined,
+        await withVerifiedCompletedMoveDestination({
+          destinationBlob: destBlob,
+          completedCopy,
+          renewCatalogMutation: () => renewPhotoCatalogMutation(catalogMutation),
+          onLeaseReleaseError: (error) => {
+            context.error("Photo move destination lease release failed:", error);
+          },
+          operation: async (abortSignal) => {
+            await renewPhotoCatalogMutation(catalogMutation);
+            try {
+              return await sourceBlob.deleteIfExists({
+                abortSignal,
+                conditions: { ifMatch: sourceEtag },
+              });
+            } catch (error) {
+              if (isNotFound(error)) return { succeeded: false };
+              throw error;
+            }
+          },
         });
-        if (!deleted.succeeded) {
-          return {
-            status: 409,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ error: "Move conflict detected, please retry" }),
-          };
-        }
       } catch (e) {
         if (isPreconditionFailed(e)) {
+          const response = await conflictResponse(
+            "Photo changed during move, please retry",
+            completedCopy,
+          );
+          return response;
+        }
+        if (e instanceof MoveDestinationChangedError || getStatusCode(e) === 409) {
+          context.error("Photo move destination could not be secured:", e);
           return {
             status: 409,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ error: "Photo changed during move, please retry" }),
+            body: JSON.stringify({
+              error: "Move destination requires recovery before retry",
+              code: "move-destination-recovery-required",
+            }),
           };
         }
         throw e;
@@ -149,7 +229,21 @@ app.http("movePhoto", {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ newName: newBlobName }),
       };
+      } finally {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after move:", error);
+        }
+      }
     } catch (error) {
+      if (isPreconditionFailed(error)) {
+        return {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Move conflict detected, please retry" }),
+        };
+      }
       context.error("Move photo error:", error);
       return {
         status: 500,

@@ -44,6 +44,7 @@
 
 - **IntersectionObserver 无限滚动** — 首屏仅渲染 40 张，sentinel 节点触发分批加载；首屏流量减少 **66%**
 - **2048px WebP 预览图** — 上传时服务端（sharp）同步生成 2048px WebP 预览；查看器加载预览而非原图，流量减少 **95%+**；缩略图和 EXIF 历史回填都按游标分批且单次最多读取一个 Blob 页，不把完整图库保留在 Function 内存，也不会在空/视频库中无界扫描
+- **服务端照片目录分页** — 个人与群组目录按授权 scope、revision、不可变 active snapshot 和稳定时间键执行 Cosmos keyset 分页，每页默认 24 张；summary 通过 ETag 原子换代，同一存储容器内的 Blob ETag fence 以带 heartbeat 的 mutation token 集合和双层 rebuild owner 跨 Functions 实例串联写入、扫描、发布与分页前后校验，失去 lease 的恢复任务、迟到旧重建、pending Blob copy 和 session-stale Cosmos 读都无法发布旧目录；热路径不再扫描 Blob prefix、逐项 HEAD 或签发整库 SAS，冷启动先显示只读 derivative 预览，完整消费者与私有缓存只接受 exact-total 完成结果
 - **SAS 安全复用** — Workbox 仍以完整 SAS 查询作为私有缓存键；仅当同一资源的旧 URL 尚有 10 分钟以上有效期且不早于新 URL 过期时才复用，绝不以缓存命中换取更短可用期
 - **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px 优先 thumbnail，其余优先 preview；缺少 preview 时继续复用 thumbnail，只有没有任何派生图才回退 original
 - **首屏封面优先级** — 时间线、重点片段和文件夹仅将前 6 张派生图标记为 `loading="eager"` + `fetchpriority="high"`，其余继续原生 lazy，避免首屏封面与屏外资源争抢连接

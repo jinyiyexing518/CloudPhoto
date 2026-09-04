@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import "./authenticated.css";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, subscribeToVideoThumbnailResults, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, subscribeToVideoThumbnailResults, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, PhotoCatalogUpdatingError, PHOTO_PAGE_SIZE, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
 import { subscribeToPreferredMediaRoute } from "./services/mediaRoute";
@@ -338,6 +338,44 @@ function getQuickDateRanges(referenceDate = new Date()): Record<QuickDateFilter,
   };
 }
 
+function ProgressivePhotoPreview({
+  photos,
+  loaded,
+  total,
+}: {
+  photos: Photo[];
+  loaded: number;
+  total: number;
+}) {
+  return (
+    <section className="photo-page-preview" aria-busy="true" aria-live="polite">
+      <div className="photo-page-progress" role="status">
+        <span className="loading-spinner" aria-hidden="true" />
+        <span>已加载 {loaded} / {total} 张，正在继续加载完整图库…</span>
+      </div>
+      <div className="photo-page-preview-grid" aria-label="已加载的照片预览">
+        {photos.slice(0, PHOTO_PAGE_SIZE).map((photo, index) => {
+          const source = photo.thumbnailUrl ?? photo.previewUrl;
+          return (
+            <figure className="photo-page-preview-card" key={photo.name}>
+              {source ? (
+                <img
+                  src={source}
+                  alt={photo.originalName ?? "照片"}
+                  loading={index < 6 ? "eager" : "lazy"}
+                  fetchPriority={index < 6 ? "high" : "auto"}
+                />
+              ) : (
+                <span className="photo-page-preview-placeholder" aria-label="照片缩略图生成中">📷</span>
+              )}
+            </figure>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 interface HomeDiagnosticsSnapshot {
   localMomentsCount: number;
   persistenceStatus: "unknown" | "local-only" | "server-synced" | "server-unavailable";
@@ -572,6 +610,8 @@ function AppContent() {
   photosRef.current = photos;
   const [photosGroupId, setPhotosGroupId] = useState<string | null>(resolvedPhotoWorkspaceId);
   const [loading, setLoading] = useState(true);
+  const [photoListComplete, setPhotoListComplete] = useState(false);
+  const [photoListProgress, setPhotoListProgress] = useState({ loaded: 0, total: 0 });
   const [showWhatsNewPopup, setShowWhatsNewPopup] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<(UploadAggregateProgress & {
@@ -779,9 +819,13 @@ function AppContent() {
   }, []);
 
   const openWorkspaceSidebar = useCallback((trigger: HTMLButtonElement) => {
+    if (!photoListComplete) {
+      showToast("完整图库仍在加载，请稍候", "info");
+      return;
+    }
     sidebarRestoreFocusRef.current = trigger;
     setSidebarOpen(true);
-  }, []);
+  }, [photoListComplete, showToast]);
 
   const switchTab = useCallback((tab: ViewTab) => {
     if (tab === activeTabRef.current) return true;
@@ -1061,19 +1105,23 @@ function AppContent() {
     timeline: {
       label: "时间线",
       icon: "🕐",
-      count: filteredPhotos.length,
-      filterActive: activeFiltersCount > 0,
+      count: photoListComplete ? filteredPhotos.length : null,
+      filterActive: photoListComplete && activeFiltersCount > 0,
     },
-    folder: { label: "文件夹", icon: "📁", count: folderCount },
+    folder: { label: "文件夹", icon: "📁", count: photoListComplete ? folderCount : null },
     moments: {
       label: "重要片段",
       icon: "⭐",
-      count: momentsDisplayCount ?? Math.min(importantPhotos.length, 20),
+      count: photoListComplete
+        ? momentsDisplayCount ?? Math.min(importantPhotos.length, 20)
+        : null,
     },
     map: {
       label: "记忆地图",
       icon: "🗺️",
-      count: photos.filter((photo) => hasValidGps(photo.gpsLat, photo.gpsLon)).length || null,
+      count: photoListComplete
+        ? photos.filter((photo) => hasValidGps(photo.gpsLat, photo.gpsLon)).length || null
+        : null,
     },
     capsule: { label: "时光胶囊", icon: "💌", count: null },
     story: { label: "自动故事", icon: "🎬", count: null },
@@ -1163,6 +1211,9 @@ function AppContent() {
     fetchAbortRef.current?.abort();
     setPhotos([]);
     setPhotosGroupId(resolvedPhotoWorkspaceId);
+    setPhotoListComplete(false);
+    setPhotoListProgress({ loaded: 0, total: 0 });
+    setSidebarOpen(false);
   }, [photoCacheScope, resolvedPhotoWorkspaceId]);
 
   useEffect(() => subscribeToPreferredMediaRoute(() => {
@@ -1172,7 +1223,7 @@ function AppContent() {
   const fetchPhotos = useCallback(async () => {
     if (batchMutationActiveRef.current) return;
     if (resolvedPhotoWorkspaceId === null || !resolvedPhotoWorkspaceKey) return;
-    // Cancel any in-flight previous request before starting another full Blob listing.
+    // Cancel any in-flight page sequence before starting another workspace refresh.
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
@@ -1186,6 +1237,8 @@ function AppContent() {
     if (hasStale && isCurrent()) {
       setPhotos(stale!);
       setPhotosGroupId(resolvedPhotoWorkspaceId);
+      setPhotoListComplete(true);
+      setPhotoListProgress({ loaded: stale!.length, total: stale!.length });
       setLoading(false);
     } else {
       setLoading(true);
@@ -1202,6 +1255,8 @@ function AppContent() {
         if (hasStale) {
           setPhotos(stale!);
           setPhotosGroupId(resolvedPhotoWorkspaceId);
+          setPhotoListComplete(true);
+          setPhotoListProgress({ loaded: stale!.length, total: stale!.length });
           setLoading(false);
         }
       }
@@ -1210,10 +1265,22 @@ function AppContent() {
         cacheScope: photoCacheScope,
         signal: controller.signal,
         isCurrent,
+        onPage: (progress) => {
+          if (!isCurrent()) return;
+          setPhotoListProgress({ loaded: progress.loaded, total: progress.total });
+          if (!hasStale || progress.complete) {
+            setPhotos(progress.photos);
+            setPhotosGroupId(resolvedPhotoWorkspaceId);
+          }
+          setPhotoListComplete(progress.complete || hasStale);
+          if (progress.loaded > 0 || progress.complete) setLoading(false);
+        },
       });
       if (!isCurrent()) return;
       setPhotos(data);
       setPhotosGroupId(resolvedPhotoWorkspaceId);
+      setPhotoListComplete(true);
+      setPhotoListProgress({ loaded: data.length, total: data.length });
       lastPhotoRefreshRef.current = Date.now();
       lastPhotoRefreshWorkspaceRef.current = resolvedPhotoWorkspaceKey;
     } catch (error) {
@@ -1223,11 +1290,18 @@ function AppContent() {
       if (isAuthorizationDriftError(error)) {
         setPhotos([]);
         setPhotosGroupId(resolvedPhotoWorkspaceId);
+        setPhotoListComplete(false);
+        setPhotoListProgress({ loaded: 0, total: 0 });
         return;
       }
       // Always show the error — even when stale data is shown the user needs to
       // know the refresh failed (otherwise they'd silently see outdated photos).
-      showToast("加载照片失败，请检查网络或服务器状态", "error");
+      showToast(
+        error instanceof PhotoCatalogUpdatingError
+          ? "图库正在更新，请稍后重试"
+          : "加载照片失败，请检查网络或服务器状态",
+        error instanceof PhotoCatalogUpdatingError ? "info" : "error",
+      );
       if (!hasStale) setLoadError(true);
     } finally {
       if (fetchAbortRef.current === controller) {
@@ -1251,8 +1325,8 @@ function AppContent() {
   }, [activeBatchMutation, fetchPhotos]);
 
   // Browsers commonly emit both visibilitychange and focus when returning to
-  // the app. Both events share one 60 s gate so they cannot launch duplicate
-  // full photo-list requests.
+  // the app. Both events share one gate so they cannot launch duplicate page
+  // sequences.
   useEffect(() => {
     let wasHidden = false;
     const refreshIfStale = () => {
@@ -2282,6 +2356,17 @@ function AppContent() {
     return "可安装为 App：打开安装指引，按设备步骤安装到桌面/主屏幕。";
   }, [canInstall, pwaInstall.mode]);
   const workspaceUnavailable = loading || loadError || photos.length === 0;
+  const renderPhotoListProgress = () => (
+    <div className="loading" role="status" aria-live="polite">
+      <div className="loading-spinner" />
+      <span>
+        正在加载完整图库
+        {photoListProgress.total > 0
+          ? `（${photoListProgress.loaded} / ${photoListProgress.total}）`
+          : "…"}
+      </span>
+    </div>
+  );
   const renderWorkspaceStatus = () => {
     if (loading) {
       return (
@@ -2369,8 +2454,12 @@ function AppContent() {
           disabled={transferring}
         />
         <span className="photo-count">
-          {photos.length.toLocaleString()} 张
-          {recentUploads.length > 0 && (
+          {photoListComplete
+            ? `${photos.length.toLocaleString()} 张`
+            : photoListProgress.total > 0
+              ? `${photoListProgress.loaded.toLocaleString()} / ${photoListProgress.total.toLocaleString()} 张`
+              : "正在加载…"}
+          {photoListComplete && recentUploads.length > 0 && (
             <span className="photo-count-recent">+{recentUploads.length} 近7天</span>
           )}
         </span>
@@ -2750,7 +2839,7 @@ function AppContent() {
             })}
           </div>
           </div>
-          {activeTab === "timeline" && (
+          {activeTab === "timeline" && photoListComplete && (
             <div className="quick-date-chips">
               {QUICK_DATE_FILTER_OPTIONS.map(({ key, label, title }) => (
                 <button
@@ -2809,7 +2898,7 @@ function AppContent() {
           )}
         </div>{/* /view-tabs-shell */}
 
-        {activeTab === "timeline" && photos.length > 0 && (
+        {activeTab === "timeline" && photoListComplete && photos.length > 0 && (
             <div className="weekly-summary-card">
               <button
                 className="weekly-summary-toggle"
@@ -2856,7 +2945,7 @@ function AppContent() {
 
         <div className="workspace-layout">
           <div className="workspace-main">
-            {(activeTab === "timeline" || activeTab === "moments") && (
+            {photoListComplete && (activeTab === "timeline" || activeTab === "moments") && (
               <WorkspaceFab
                 activeTab={activeTab as "timeline" | "moments"}
                 hidden={sidebarOpen}
@@ -2878,6 +2967,13 @@ function AppContent() {
             >
               {workspaceUnavailable
                 ? (activeTab === "timeline" ? renderWorkspaceStatus() : null)
+                : !photoListComplete ? (
+                  <ProgressivePhotoPreview
+                    photos={photos}
+                    loaded={photoListProgress.loaded}
+                    total={photoListProgress.total}
+                  />
+                )
                 : (
               <ErrorBoundary
                 key={`timeline:${currentGroupId || "personal"}`}
@@ -2957,6 +3053,8 @@ function AppContent() {
             >
               {workspaceUnavailable
                 ? (activeTab === "moments" ? renderWorkspaceStatus() : null)
+                : !photoListComplete
+                  ? (activeTab === "moments" ? renderPhotoListProgress() : null)
                 : (momentsMounted || activeTab === "moments") ? (
               <ErrorBoundary
                 key={`moments:${currentGroupId || "personal"}`}
@@ -3006,6 +3104,8 @@ function AppContent() {
             >
               {workspaceUnavailable
                 ? (activeTab === "folder" ? renderWorkspaceStatus() : null)
+                : !photoListComplete
+                  ? (activeTab === "folder" ? renderPhotoListProgress() : null)
                 : (folderMounted || activeTab === "folder") ? (
               <ErrorBoundary
                 key={`folder:${currentGroupId || "personal"}`}
@@ -3051,6 +3151,8 @@ function AppContent() {
             >
               {workspaceUnavailable
                 ? (activeTab === "map" ? renderWorkspaceStatus() : null)
+                : !photoListComplete
+                  ? (activeTab === "map" ? renderPhotoListProgress() : null)
                 : activeTab === "map" && resolvedPhotoWorkspaceId !== null ? (
                   <ErrorBoundary
                     key={`map:${currentGroupId || "personal"}`}
@@ -3084,6 +3186,8 @@ function AppContent() {
             >
               {workspaceUnavailable
                 ? (activeTab === "capsule" ? renderWorkspaceStatus() : null)
+                : !photoListComplete
+                  ? (activeTab === "capsule" ? renderPhotoListProgress() : null)
                 : activeTab === "capsule" && user ? (
                   <ErrorBoundary
                     key={`capsule:${currentGroupId || "personal"}`}
@@ -3111,6 +3215,8 @@ function AppContent() {
             >
               {workspaceUnavailable
                 ? (activeTab === "story" ? renderWorkspaceStatus() : null)
+                : !photoListComplete
+                  ? (activeTab === "story" ? renderPhotoListProgress() : null)
                 : activeTab === "story" ? (
                   <ErrorBoundary
                     key={`story:${currentGroupId || "personal"}`}
@@ -3126,7 +3232,7 @@ function AppContent() {
             </div>
           </div>
 
-          <WorkspaceSidebar
+          {photoListComplete && <WorkspaceSidebar
             activeTab={(activeTab === "map" || activeTab === "capsule" || activeTab === "story" ? "timeline" : activeTab) as "timeline" | "folder" | "moments"}
             isOpen={sidebarOpen}
             filters={filters}
@@ -3155,7 +3261,7 @@ function AppContent() {
             gridSize={gridSize}
             onGridSizeChange={handleGridSizeChange}
             filterResetVersion={filterResetVersion}
-          />
+          />}
         </div>
       </main>
 

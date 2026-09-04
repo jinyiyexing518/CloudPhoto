@@ -13,6 +13,11 @@ import {
   encodeBackfillCursor,
 } from "./backfillCursor";
 import { expectedPhotoDerivativeNames } from "./photoDerivatives";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 import type sharpT from "sharp";
 
 // Lazy-load sharp so a missing native binary doesn't crash the function app
@@ -92,6 +97,8 @@ app.http("backfillThumbnails", {
     const prefix = `${scope}/`;
 
     const containerClient = getBlobServiceClient().getContainerClient(containerName);
+    const catalogMutation = await beginPhotoCatalogMutation(scope, [`${scope}/*`]);
+    try {
     let processed = 0, generated = 0, skipped = 0, failed = 0;
     let lastProcessedName = "";
     let hasMore = false;
@@ -186,6 +193,7 @@ app.http("backfillThumbnails", {
                 .webp({ quality: 75 })
                 .toBuffer();
               const thumbClient = containerClient.getBlockBlobClient(thumbName);
+              await renewPhotoCatalogMutation(catalogMutation);
               await thumbClient.uploadData(thumbBuf, {
                 blobHTTPHeaders: {
                   blobContentType: "image/webp",
@@ -206,6 +214,7 @@ app.http("backfillThumbnails", {
                 .webp({ quality: 82 })
                 .toBuffer();
               const previewClient = containerClient.getBlockBlobClient(previewName);
+              await renewPhotoCatalogMutation(catalogMutation);
               await previewClient.uploadData(previewBuf, {
                 blobHTTPHeaders: {
                   blobContentType: "image/webp",
@@ -233,6 +242,7 @@ app.http("backfillThumbnails", {
             if (needsPreview) setMeta(latestMeta, "previewName", b64(previewName));
             try {
               if (!props.etag) throw new Error("Missing photo ETag");
+              await renewPhotoCatalogMutation(catalogMutation);
               await blockBlobClient.setMetadata(latestMeta, {
                 conditions: { ifMatch: props.etag },
               });
@@ -280,6 +290,13 @@ app.http("backfillThumbnails", {
           ...(hasMore && nextCursor ? { cursor: nextCursor } : {}),
         }),
       };
+    } finally {
+      try {
+        await finishPhotoCatalogMutation(catalogMutation);
+      } catch (error) {
+        context.error("Photo catalog finalization failed after thumbnail backfill:", error);
+      }
+    }
     } catch (error) {
       context.error("backfillThumbnails error:", error);
       return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "回填失败", detail: error instanceof Error ? error.message : String(error) }) };

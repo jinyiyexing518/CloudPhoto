@@ -78,6 +78,129 @@ const policy = {
   ...await import(hedgePolicyUrl),
 };
 const renderPolicy = await importTypeScript("packages/algorithm/src/render.ts");
+const photoPaging = await importTypeScript("packages/client/src/services/photoPaging.ts");
+
+{
+  const events = [];
+  const pages = new Map([
+    ["", {
+      items: [{ name: "a", value: 1 }, { name: "b", value: 1 }],
+      nextCursor: "cursor-1",
+      done: false,
+      revision: 7,
+      total: 3,
+    }],
+    ["cursor-1", {
+      items: [{ name: "b", value: 2 }, { name: "c", value: 1 }],
+      nextCursor: null,
+      done: true,
+      revision: 7,
+      total: 3,
+    }],
+  ]);
+  const result = await photoPaging.loadPagedCollection({
+    fetchPage: async (cursor) => {
+      events.push(`fetch:${cursor ?? ""}`);
+      return pages.get(cursor ?? "");
+    },
+    keyOf: (item) => item.name,
+    assertCurrent: () => events.push("current"),
+    onProgress: (progress) => events.push(
+      `progress:${progress.items.length}:${progress.complete}`,
+    ),
+  });
+
+  assert.deepEqual(result, [
+    { name: "a", value: 1 },
+    { name: "b", value: 2 },
+    { name: "c", value: 1 },
+  ]);
+  assert.deepEqual(events, [
+    "current",
+    "fetch:",
+    "current",
+    "progress:2:false",
+    "current",
+    "fetch:cursor-1",
+    "current",
+    "progress:3:true",
+  ]);
+}
+
+{
+  let current = true;
+  let requests = 0;
+  await assert.rejects(
+    () => photoPaging.loadPagedCollection({
+      fetchPage: async () => {
+        requests += 1;
+        return {
+          items: [{ name: "a" }],
+          nextCursor: "cursor-1",
+          done: false,
+          revision: 1,
+          total: 2,
+        };
+      },
+      keyOf: (item) => item.name,
+      assertCurrent: () => {
+        if (!current) throw new Error("stale workspace");
+      },
+      onProgress: () => {
+        current = false;
+      },
+    }),
+    /stale workspace/,
+  );
+  assert.equal(requests, 1, "stale workspaces must stop before requesting another page");
+}
+
+for (const [label, pages, expected] of [
+  ["revision drift", [
+    {
+      items: [{ name: "a" }],
+      nextCursor: "next",
+      done: false,
+      revision: 1,
+      total: 2,
+    },
+    {
+      items: [{ name: "b" }],
+      nextCursor: null,
+      done: true,
+      revision: 2,
+      total: 2,
+    },
+  ], /revision changed/],
+  ["cursor stall", [
+    {
+      items: [{ name: "a" }],
+      nextCursor: "",
+      done: false,
+      revision: 1,
+      total: 2,
+    },
+  ], /must advance/],
+  ["incomplete final count", [
+    {
+      items: [{ name: "a" }],
+      nextCursor: null,
+      done: true,
+      revision: 1,
+      total: 2,
+    },
+  ], /expected 2 items but received 1/],
+]) {
+  let index = 0;
+  await assert.rejects(
+    () => photoPaging.loadPagedCollection({
+      fetchPage: async () => pages[index++],
+      keyOf: (item) => item.name,
+    }),
+    expected,
+    label,
+  );
+}
 
 {
   assert.equal(

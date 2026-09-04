@@ -19,6 +19,11 @@ import {
   renameFolderBlobs,
 } from "./renameFolderSafety";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 
 const ENDPOINT_BUDGET_MS = 215_000;
 const LOCATION_RECONCILE_BUDGET_MS = 8_000;
@@ -144,7 +149,12 @@ app.http("renameFolder", {
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
       let delegationKeyPromise: ReturnType<typeof getUserDelegationKey> | null = null;
+      const catalogMutation = await beginPhotoCatalogMutation(
+        scope,
+        [oldPrefix, newPrefix],
+      );
 
+      try {
       const result = await renameFolderBlobs({
         container: containerClient,
         oldPrefix,
@@ -153,6 +163,7 @@ app.http("renameFolder", {
           delegationKeyPromise ??= getUserDelegationKey(2, { abortSignal });
           return generateSasUrlWithKey(blobName, await delegationKeyPromise, 2);
         },
+        renewCatalogMutation: () => renewPhotoCatalogMutation(catalogMutation),
         context,
         requestTimeoutMs: Math.min(
           FOLDER_RENAME_REQUEST_LIMITS.requestTimeoutMs,
@@ -195,6 +206,13 @@ app.http("renameFolder", {
           }),
         }),
       };
+      } finally {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after folder rename:", error);
+        }
+      }
     } catch (error) {
       if (error instanceof FolderRenameError) {
         if (error.status >= 500) {

@@ -8,6 +8,11 @@ import { getBlobServiceClient, containerName } from "../../utils/blob/blobStorag
 import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember, getPhotoLocationsContainer } from "../../utils/cosmos/cosmosClient";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -46,7 +51,10 @@ app.http("deleteTrashItem", {
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      const scope = blobName.split("/").slice(0, 2).join("/");
+      const catalogMutation = await beginPhotoCatalogMutation(scope, [blobName]);
 
+      try {
       const maxAttempts = 3;
       let removed = false;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -62,6 +70,7 @@ app.http("deleteTrashItem", {
         }
 
         try {
+          await renewPhotoCatalogMutation(catalogMutation);
           const deleted = await blockBlobClient.deleteIfExists({
             conditions: props.etag ? { ifMatch: props.etag } : undefined,
           });
@@ -97,12 +106,18 @@ app.http("deleteTrashItem", {
 
       // Remove GPS cache from Cosmos (best-effort — photo may not have had GPS)
       try {
-        const scope = blobName.split("/").slice(0, 2).join("/");
         const locsContainer = await getPhotoLocationsContainer();
         await locsContainer.item(encodeURIComponent(blobName), scope).delete();
       } catch { /* not all photos have GPS — ignore 404 */ }
 
       return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Permanently deleted" }) };
+      } finally {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after permanent delete:", error);
+        }
+      }
     } catch (error) {
       context.error("Permanent delete error:", error);
       return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Failed to delete" }) };

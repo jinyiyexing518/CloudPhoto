@@ -13,6 +13,11 @@ import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
 import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
+import {
   readGpsMetadata,
   setGpsMetadata,
 } from "../../utils/photos/gpsCoordinates";
@@ -102,7 +107,10 @@ app.http("updatePhotoMetadata", {
       const containerClient =
         blobServiceClient.getContainerClient(containerName);
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      const scope = blobName.split("/").slice(0, 2).join("/");
+      const catalogMutation = await beginPhotoCatalogMutation(scope, [blobName]);
 
+      try {
       const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
       const maxAttempts = 3;
       let updated = false;
@@ -149,6 +157,7 @@ app.http("updatePhotoMetadata", {
         existing.lastModifiedAt = now;
 
         try {
+          await renewPhotoCatalogMutation(catalogMutation);
           await blockBlobClient.setMetadata(existing, {
             conditions: props.etag ? { ifMatch: props.etag } : undefined,
           });
@@ -178,8 +187,6 @@ app.http("updatePhotoMetadata", {
       // Sync GPS changes to Cosmos photoLocations cache (best-effort)
       if (body.gpsLat !== undefined || body.gpsLon !== undefined) {
         try {
-          const segs = blobName.split("/");
-          const scope = segs.slice(0, 2).join("/"); // "personal/{userId}" or "groups/{groupId}"
           await syncPhotoLocationFromBlob(blockBlobClient, blobName, scope);
         } catch (e) {
           context.warn("photoLocations GPS sync failed (non-fatal):", e);
@@ -191,6 +198,13 @@ app.http("updatePhotoMetadata", {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ success: true }),
       };
+      } finally {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after metadata update:", error);
+        }
+      }
     } catch (error) {
       context.error("Update metadata error:", error);
       return {

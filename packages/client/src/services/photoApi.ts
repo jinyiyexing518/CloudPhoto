@@ -40,6 +40,11 @@ import {
   privatePhotoListCacheKey,
 } from "./photoLoadingPolicy";
 import {
+  loadPagedCollection,
+  type CursorPage,
+  type PagedCollectionProgress,
+} from "./photoPaging";
+import {
   getPreferredMediaUrl,
   routeMediaUrls,
   selectFastestMediaRoute,
@@ -133,6 +138,24 @@ function parsePhotoListPayload(value: unknown): Photo[] {
     throw new Error("Invalid photo-list response");
   }
   return value;
+}
+
+function parsePhotoPagePayload(value: unknown): CursorPage<Photo> {
+  if (!value || typeof value !== "object") {
+    throw new Error("Invalid photo-page response");
+  }
+  const candidate = value as Partial<CursorPage<unknown>>;
+  if (
+    !Array.isArray(candidate.items)
+    || !candidate.items.every(isPhotoPayload)
+    || typeof candidate.done !== "boolean"
+    || typeof candidate.revision !== "number"
+    || typeof candidate.total !== "number"
+    || (candidate.nextCursor !== null && typeof candidate.nextCursor !== "string")
+  ) {
+    throw new Error("Invalid photo-page response");
+  }
+  return candidate as CursorPage<Photo>;
 }
 
 // ── Adaptive Blob routing ─────────────────────────────────────────────────
@@ -304,40 +327,180 @@ interface ListPhotosOptions {
   cacheScope?: string;
   signal?: AbortSignal;
   isCurrent?: () => boolean;
+  onPage?: (progress: {
+    photos: Photo[];
+    complete: boolean;
+    loaded: number;
+    total: number;
+    revision: number;
+  }) => void;
+}
+
+export const PHOTO_PAGE_SIZE = 24;
+
+class PhotoCatalogFallbackError extends Error {
+  constructor() {
+    super("Photo catalog is not ready");
+    this.name = "PhotoCatalogFallbackError";
+  }
+}
+
+class StalePhotoCursorResponseError extends Error {
+  constructor() {
+    super("Photo catalog changed while paging");
+    this.name = "StalePhotoCursorResponseError";
+  }
+}
+
+export class PhotoCatalogUpdatingError extends Error {
+  constructor() {
+    super("Photo library is being updated");
+    this.name = "PhotoCatalogUpdatingError";
+  }
+}
+
+function photoListUrl(groupId: string, paged: boolean, cursor: string | null = null): string {
+  const params = new URLSearchParams();
+  if (groupId) params.set("groupId", groupId);
+  if (paged) params.set("limit", String(PHOTO_PAGE_SIZE));
+  if (cursor) params.set("cursor", cursor);
+  const query = params.toString();
+  return `${API_BASE}/photos${query ? `?${query}` : ""}`;
+}
+
+async function photoListErrorCode(response: Response): Promise<string | null> {
+  try {
+    const body = await response.json() as { code?: unknown };
+    return typeof body.code === "string" ? body.code : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function listPhotos(groupId = "", options: ListPhotosOptions = {}): Promise<Photo[]> {
   const expectedOwner = options.cacheScope ?? "";
   const authorization = assertAuthorizationOwner(expectedOwner);
   const cacheGeneration = getPrivatePhotoCacheGeneration();
-  const url = groupId ? `${API_BASE}/photos?groupId=${encodeURIComponent(groupId)}` : `${API_BASE}/photos`;
-  const response = await fetchWithTimeout(
-    url,
-    { headers: authHeadersForSnapshot(authorization), signal: options.signal },
-    45_000,
-  );
-  if (!response.ok) throw new Error("Failed to fetch photos");
-  const rawPhotos = parsePhotoListPayload(await response.json() as unknown);
-  assertAuthorizationOwner(expectedOwner);
-  if (options.isCurrent?.() === false) throw new AuthorizationDriftError();
-  const currentOwner = getAuthorizationSnapshot()?.cacheOwner ?? null;
-  if (!canPublishPhotoList({
-    expectedOwner,
-    currentOwner,
-    expectedCacheGeneration: cacheGeneration,
-    currentCacheGeneration: getPrivatePhotoCacheGeneration(),
-  }) || options.isCurrent?.() === false) {
-    if (currentOwner !== expectedOwner) signalAuthIdentityChange();
-    throw new AuthorizationDriftError();
-  }
   const key = privatePhotoListCacheKey(groupId, expectedOwner);
   const previousPhotos = key ? readMemoryPhotoListCache<Photo>(key) : null;
   const previousByName = new Map(previousPhotos?.map((photo) => [photo.name, photo]));
-  const photos = rawPhotos
+  let routeProbeStarted = false;
+  const assertCurrent = () => {
+    assertAuthorizationOwner(expectedOwner);
+    const currentOwner = getAuthorizationSnapshot()?.cacheOwner ?? null;
+    if (
+      options.isCurrent?.() === false
+      || !canPublishPhotoList({
+        expectedOwner,
+        currentOwner,
+        expectedCacheGeneration: cacheGeneration,
+        currentCacheGeneration: getPrivatePhotoCacheGeneration(),
+      })
+    ) {
+      if (currentOwner !== expectedOwner) signalAuthIdentityChange();
+      throw new AuthorizationDriftError();
+    }
+  };
+  const preparePhotos = (rawPhotos: Photo[]) => rawPhotos
     .map(proxyPhoto)
     .map((photo) => reuseFreshMediaUrls(photo, previousByName.get(photo.name)));
-  const routeProbeSample = photos.find((photo) => photo.thumbnailUrl || photo.previewUrl);
-  void selectFastestMediaRoute(routeProbeSample?.thumbnailUrl ?? routeProbeSample?.previewUrl);
+  const publishProgress = (progress: PagedCollectionProgress<Photo>) => {
+    if (!routeProbeStarted) {
+      const sample = progress.items.find((photo) => photo.thumbnailUrl || photo.previewUrl);
+      if (sample) {
+        routeProbeStarted = true;
+        void selectFastestMediaRoute(sample.thumbnailUrl ?? sample.previewUrl);
+      }
+    }
+    options.onPage?.({
+      photos: progress.items,
+      complete: progress.complete,
+      loaded: progress.loaded,
+      total: progress.total,
+      revision: progress.revision,
+    });
+  };
+  const fetchLegacyList = async (): Promise<Photo[]> => {
+    const response = await fetchWithTimeout(
+      photoListUrl(groupId, false),
+      { headers: authHeadersForSnapshot(authorization), signal: options.signal },
+      45_000,
+    );
+    if (!response.ok) {
+      const code = await photoListErrorCode(response);
+      if (
+        code === "photo-catalog-mutating"
+        || code === "photo-catalog-rebuilding"
+      ) {
+        throw new PhotoCatalogUpdatingError();
+      }
+      throw new Error("Failed to fetch photos");
+    }
+    const photos = preparePhotos(parsePhotoListPayload(await response.json() as unknown));
+    assertCurrent();
+    publishProgress({
+      items: photos,
+      complete: true,
+      loaded: photos.length,
+      total: photos.length,
+      revision: 0,
+    });
+    return photos;
+  };
+  const fetchPagedList = async (): Promise<Photo[]> => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await loadPagedCollection({
+          fetchPage: async (cursor) => {
+            const response = await fetchWithTimeout(
+              photoListUrl(groupId, true, cursor),
+              { headers: authHeadersForSnapshot(authorization), signal: options.signal },
+              45_000,
+            );
+            if (!response.ok) {
+              const code = await photoListErrorCode(response);
+              if (code === "photo-catalog-not-ready") throw new PhotoCatalogFallbackError();
+              if (code === "stale-photo-cursor") throw new StalePhotoCursorResponseError();
+              if (
+                code === "photo-catalog-mutating"
+                || code === "photo-catalog-rebuilding"
+              ) {
+                throw new PhotoCatalogUpdatingError();
+              }
+              throw new Error("Failed to fetch photos");
+            }
+            const payload = await response.json() as unknown;
+            if (Array.isArray(payload)) {
+              const items = preparePhotos(parsePhotoListPayload(payload));
+              return {
+                items,
+                nextCursor: null,
+                done: true,
+                revision: 0,
+                total: items.length,
+              };
+            }
+            const page = parsePhotoPagePayload(payload);
+            return {
+              ...page,
+              items: preparePhotos(page.items),
+            };
+          },
+          keyOf: (photo) => photo.name,
+          assertCurrent,
+          onProgress: publishProgress,
+        });
+      } catch (error) {
+        if (error instanceof PhotoCatalogFallbackError) return fetchLegacyList();
+        if (error instanceof StalePhotoCursorResponseError && attempt === 0) continue;
+        throw error;
+      }
+    }
+    throw new Error("Photo pagination restart failed");
+  };
+
+  const photos = await fetchPagedList();
+  assertCurrent();
   if (key) {
     writeMemoryPhotoListCache(key, photos);
     void writePhotoListCache(key, photos, cacheGeneration);

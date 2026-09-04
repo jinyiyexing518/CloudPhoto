@@ -56,7 +56,7 @@ test("registered /photos hydrates an authorized current Blob from a legacy photo
       handler = options.handler;
     }
   };
-  jwtUtils.extractTokenFromHeader = () => ({ role: "viewer", userId: "user" });
+  jwtUtils.extractTokenFromHeader = () => ({ role: "admin", userId: "user" });
   blobStorage.generateSasUrlWithKey = (name) => `https://media.invalid/${encodeURIComponent(name)}`;
   blobStorage.getUserDelegationKey = async () => ({});
   blobStorage.getBlobServiceClient = () => ({
@@ -347,6 +347,10 @@ test("listPhotos hydrates its response from one scoped location inventory", asyn
   assert.match(listSource, /blobEtag: blob\.properties\.etag/);
   assert.match(listSource, /await listAuthorizedPhotoLocationRows\(/);
   assert.match(listSource, /hydrateListedPhotoLocations\(locationSources, locationRows\)/);
+  assert.match(listSource, /blobEtag: row\.sourceBlobEtag/);
+  assert.match(listSource, /gpsMetadataPresent: row\.gpsMetadataPresent/);
+  assert.match(listSource, /gpsLat: photo\.gpsLat/);
+  assert.match(listSource, /gpsLon: photo\.gpsLon/);
   assert.match(listSource, /photoLocations list hydration failed \(non-fatal\)/);
   assert.match(
     listSource,
@@ -380,5 +384,10 @@ test("listPhotos hydrates its response from one scoped location inventory", asyn
     (locationsSource.match(/SELECT c\.scope, c\.name, c\.photoName/g) ?? []).length,
     3,
     "every authorized location query must carry scope into client validation",
+  );
+  assert.equal(
+    (locationsSource.match(/IS_NUMBER\(c\.lat\) AND IS_NUMBER\(c\.lon\)/g) ?? []).length,
+    3,
+    "every authorized location query must exclude malformed coordinate rows",
   );
 });

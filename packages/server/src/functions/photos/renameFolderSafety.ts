@@ -42,6 +42,7 @@ interface RenameFolderBlobsOptions {
   oldPrefix: string;
   newPrefix: string;
   generateSourceUrl: (blobName: string, abortSignal: AbortSignal) => Promise<string>;
+  renewCatalogMutation: () => Promise<void>;
   context: RenameContext;
   copyPhaseTimeoutMs?: number;
   copyPollIntervalMs?: number;
@@ -191,9 +192,11 @@ async function pollCopyToCompletion<TResult>(
   },
   signal: AbortSignal,
   intervalMs: number,
+  renewCatalogMutation: () => Promise<void>,
 ): Promise<TResult> {
   while (!poller.isDone()) {
     if (intervalMs > 0) await delayWithAbort(intervalMs, signal);
+    await renewCatalogMutation();
     await poller.poll({ abortSignal: signal });
   }
   const result = poller.getResult();
@@ -264,6 +267,7 @@ async function rollbackCreatedDestinations(
   createdDestinations: readonly CreatedDestination[],
   context: RenameContext,
   parentSignal: AbortSignal,
+  renewCatalogMutation: () => Promise<void>,
 ): Promise<string[]> {
   const rollbackScope = createAbortScope(
     FOLDER_RENAME_REQUEST_LIMITS.rollbackPhaseTimeoutMs,
@@ -287,6 +291,7 @@ async function rollbackCreatedDestinations(
         if (!properties.etag || properties.copyId !== destination.copyId) {
           throw new Error("Destination no longer belongs to this rename operation");
         }
+        await renewCatalogMutation();
         await destinationBlob.deleteIfExists({
           abortSignal: rollbackScope.signal,
           conditions: { ifMatch: properties.etag },
@@ -348,6 +353,7 @@ async function renameFolderBlobsWithinDeadline({
   oldPrefix,
   newPrefix,
   generateSourceUrl,
+  renewCatalogMutation,
   context,
   copyPhaseTimeoutMs = FOLDER_RENAME_REQUEST_LIMITS.copyPhaseTimeoutMs,
   copyPollIntervalMs = FOLDER_RENAME_REQUEST_LIMITS.copyPollIntervalMs,
@@ -404,6 +410,7 @@ async function renameFolderBlobsWithinDeadline({
       const sourceUrl = await generateSourceUrl(source.name, copyScope.signal);
       let uncertainDestinationName: string | null = destinationName;
       try {
+        await renewCatalogMutation();
         const copyPoller = await destinationBlob.beginCopyFromURL(sourceUrl, {
           abortSignal: copyScope.signal,
           conditions: { ifNoneMatch: "*" },
@@ -422,6 +429,7 @@ async function renameFolderBlobsWithinDeadline({
             copyPoller,
             copyScope.signal,
             copyPollIntervalMs,
+            renewCatalogMutation,
           );
         } catch (error) {
           if (createdDestination.copyId) {
@@ -431,6 +439,7 @@ async function renameFolderBlobsWithinDeadline({
               requestSignal,
             );
             try {
+              await renewCatalogMutation();
               await destinationBlob.abortCopyFromURL(
                 createdDestination.copyId,
                 { abortSignal: cancelScope.signal },
@@ -472,6 +481,7 @@ async function renameFolderBlobsWithinDeadline({
       trackedDestinations,
       context,
       requestSignal,
+      renewCatalogMutation,
     );
     const uncertainDestinations: string[] = [];
     for (const failure of copyFailures) {
@@ -538,6 +548,7 @@ async function renameFolderBlobsWithinDeadline({
       completedDestinations,
       context,
       requestSignal,
+      renewCatalogMutation,
     );
     if (rollbackFailures.length > 0) {
       throw new FolderRenameError(500, "复制完成后检测到并发修改且回滚不完整，需要人工恢复", {
@@ -582,6 +593,7 @@ async function renameFolderBlobsWithinDeadline({
         ) {
           throw new Error("Destination changed before source deletion");
         }
+        await renewCatalogMutation();
         const deleted = await container.getBlockBlobClient(source.name).deleteIfExists({
           abortSignal: criticalScope.signal,
           conditions: { ifMatch: source.etag },

@@ -34,6 +34,7 @@ const workboxCleanup = read("packages/client/src/services/privateCachePurge.ts")
 const privateCacheFence = read("packages/client/public/private-cache-fence.js");
 const listCache = read("packages/client/src/services/photoListCache.ts");
 const photoApi = read("packages/client/src/services/photoApi.ts");
+const photoPaging = read("packages/client/src/services/photoPaging.ts");
 const maintenanceBackfillPaging = read("packages/client/src/services/maintenanceBackfillPaging.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
@@ -53,6 +54,12 @@ const vite = read("packages/client/vite.config.mts");
 const nginx = read("infra/nginx.conf");
 const setup = read("infra/setup.sh");
 const upload = read("packages/server/src/functions/photos/uploadPhoto.ts");
+const updatePhotoMetadata = read("packages/server/src/functions/photos/updatePhotoMetadata.ts");
+const deletePhoto = read("packages/server/src/functions/photos/deletePhoto.ts");
+const movePhoto = read("packages/server/src/functions/photos/movePhoto.ts");
+const movePhotoSafety = read("packages/server/src/functions/photos/movePhotoSafety.ts");
+const renameFolder = read("packages/server/src/functions/photos/renameFolder.ts");
+const renameFolderSafety = read("packages/server/src/functions/photos/renameFolderSafety.ts");
 const metadataBackfill = read("packages/server/src/functions/photos/backfillPhotoMetadata.ts");
 const metadataRecovery = read("packages/server/src/functions/photos/photoMetadataRecovery.ts");
 const backfill = read("packages/server/src/functions/photos/backfillThumbnails.ts");
@@ -60,9 +67,12 @@ const backfillCursor = read("packages/server/src/functions/photos/backfillCursor
 const photoLocationSync = read("packages/server/src/utils/cosmos/photoLocationSync.ts");
 const setVideoThumb = read("packages/server/src/functions/photos/setVideoThumbnail.ts");
 const listPhotos = read("packages/server/src/functions/photos/listPhotos.ts");
+const photoCatalog = read("packages/server/src/utils/cosmos/photoCatalog.ts");
+const photoCatalogFence = read("packages/server/src/utils/blob/photoCatalogFence.ts");
 const download = read("packages/server/src/functions/photos/downloadPhoto.ts");
 const trash = read("packages/server/src/functions/trash/listTrash.ts");
 const restore = read("packages/server/src/functions/trash/restorePhoto.ts");
+const deleteTrashItem = read("packages/server/src/functions/trash/deleteTrashItem.ts");
 const productionSmoke = read("scripts/production-smoke.mjs");
 const staticWebApp = JSON.parse(read("packages/client/public/staticwebapp.config.json"));
 const frontendHealth = JSON.parse(read("packages/client/public/healthz.json"));
@@ -75,7 +85,12 @@ requireText(app, "requestInFlight: fetchAbortRef.current !== null", "in-flight l
 requireText(app, 'window.addEventListener("focus", refreshIfStale)', "focus gate");
 requireText(app, "refreshIfStale();", "visibility gate");
 requireText(app, "if (!isCurrent()) return;", "superseded revision guard");
-requireText(app, 'showToast("加载照片失败，请检查网络或服务器状态", "error")', "stale refresh error");
+requireText(app, '"加载照片失败，请检查网络或服务器状态"', "stale refresh error");
+requireText(
+  app,
+  'error instanceof PhotoCatalogUpdatingError ? "info" : "error"',
+  "catalog-update status severity",
+);
 requireText(app, '(momentsMounted || activeTab === "moments")', "deferred Moments mount");
 assert(
   !app.includes('import PhotoGallery from "./components/gallery/PhotoGallery";'),
@@ -459,6 +474,354 @@ requireText(app, "selectFresherMediaUrl(p.thumbnailUrl, thumbnailUrl)", "non-reg
 requireText(app, "const uploadIds = new Map", "stable per-file upload idempotency keys");
 requireText(app, "if (isBatchCancellation(error)) throw error;", "non-retryable auth cancellation");
 requireText(photoApi, "canPublishPhotoList({", "stale list write guard");
+requireText(photoApi, "loadPagedCollection({", "bounded catalog page loop");
+requireText(photoApi, "export const PHOTO_PAGE_SIZE = 24", "bounded initial photo page");
+requireText(photoApi, 'code === "photo-catalog-not-ready"', "legacy catalog materialization fallback");
+requireText(photoApi, 'code === "stale-photo-cursor"', "stale catalog restart");
+requireText(photoApi, 'code === "photo-catalog-mutating"', "mutation fallback refusal");
+requireText(photoApi, 'code === "photo-catalog-rebuilding"', "rebuild fallback refusal");
+requireText(photoApi, "PhotoCatalogUpdatingError", "explicit catalog update UX");
+requireText(photoApi, "if (Array.isArray(payload))", "legacy backend page compatibility");
+requireText(photoApi, "onProgress: publishProgress", "progressive page publication");
+requireText(photoPaging, "page.nextCursor === cursor", "cursor progress guard");
+requireText(photoPaging, "page.revision !== revision", "catalog revision guard");
+requireText(photoPaging, "items.length !== total", "complete-page accounting");
+requireText(app, "onPage: (progress) =>", "progressive React publication");
+requireText(app, "<ProgressivePhotoPreview", "read-only first-page paint");
+requireText(app, "photos.slice(0, PHOTO_PAGE_SIZE)", "bounded progressive derivative preview");
+requireText(app, "setPhotoListComplete(progress.complete || hasStale)", "warm-cache completeness preservation");
+requireText(app, "{photoListComplete && <WorkspaceSidebar", "complete-only sidebar aggregates");
+requireText(
+  app,
+  'activeTab === "timeline" && photoListComplete && photos.length > 0',
+  "complete-only weekly statistics",
+);
+requireText(
+  app,
+  'activeTab === "timeline" && photoListComplete && (',
+  "complete-only timeline filters",
+);
+assert(
+  listPhotos.indexOf("await beginPhotoCatalogRebuild(")
+    < listPhotos.indexOf("listBlobsFlat("),
+  "catalog rebuild fence must start before the legacy Blob scan",
+);
+requireText(listPhotos, "StalePhotoCatalogRebuildError", "scan-to-publish rebuild race rejection");
+requireText(listPhotos, "await abandonPhotoCatalogRebuild(", "aborted rebuild marker cleanup");
+requireText(
+  photoCatalog,
+  'update(`${snapshotId}\\0${name}`)',
+  "snapshot-scoped catalog row identity",
+);
+requireText(photoCatalog, "activeSnapshotId: rebuild.id", "atomic active snapshot publication");
+requireText(
+  photoCatalog,
+  "blobPhotoCatalogFenceStore",
+  "cross-instance Blob catalog fence",
+);
+requireText(
+  photoCatalog,
+  '"AND c.snapshotId = @snapshotId"',
+  "active snapshot page and cleanup filtering",
+);
+requireText(
+  photoCatalog,
+  "row.snapshotId !== rebuild.id",
+  "cross-snapshot row publication rejection",
+);
+requireText(
+  listPhotos,
+  "catalogRebuild.previousSnapshotId",
+  "post-publication previous snapshot cleanup",
+);
+const beginCatalogRebuild = photoCatalog.slice(
+  photoCatalog.indexOf("export async function beginPhotoCatalogRebuild"),
+  photoCatalog.indexOf("export async function abandonPhotoCatalogRebuild"),
+);
+requireText(beginCatalogRebuild, 'type: "IfMatch"', "conditional rebuild fence");
+requireText(beginCatalogRebuild, "container.items.create(nextSummary)", "conditional initial rebuild fence");
+assert(
+  !beginCatalogRebuild.includes("items.upsert"),
+  "a stale rebuild acquisition must not overwrite a newer summary",
+);
+const completeCatalogRead = photoCatalog.slice(
+  photoCatalog.indexOf("export async function listCompletePhotoCatalog"),
+  photoCatalog.indexOf("export async function listPhotoCatalogPage"),
+);
+const pagedCatalogRead = photoCatalog.slice(
+  photoCatalog.indexOf("export async function listPhotoCatalogPage"),
+);
+for (const [label, source] of [
+  ["complete", completeCatalogRead],
+  ["paged", pagedCatalogRead],
+]) {
+  assert(
+    source.indexOf("await readReadyPhotoCatalogFence(")
+      < source.indexOf("await readCatalogSummary("),
+    `${label} catalog reads must establish the Blob fence before Cosmos`,
+  );
+  assert(
+    source.indexOf(".fetchAll()")
+      < source.indexOf("await assertPhotoCatalogFenceUnchanged("),
+    `${label} catalog reads must recheck the Blob fence after Cosmos rows`,
+  );
+}
+requireText(
+  photoCatalog,
+  "activeMutations.filter(",
+  "independent catalog mutation-token cleanup",
+);
+requireText(
+  photoCatalogFence,
+  "!validDate(mutation.heartbeatAt)",
+  "canonical mutation heartbeat parsing",
+);
+requireText(
+  photoCatalogFence,
+  "!validDate(candidate.rebuild.heartbeatAt)",
+  "canonical rebuild heartbeat parsing",
+);
+requireText(photoCatalog, "rebuildHeartbeatAt?: string;", "Cosmos rebuild heartbeat");
+const renewCatalogRebuild = photoCatalog.slice(
+  photoCatalog.indexOf("export async function renewPhotoCatalogRebuild"),
+  photoCatalog.indexOf("async function readReadyPhotoCatalogFence"),
+);
+assert(
+  renewCatalogRebuild.indexOf(".replace(renewedSummary")
+    < renewCatalogRebuild.indexOf("await updatePhotoCatalogFence("),
+  "rebuild renewal must refresh its conditional Cosmos fence before its Blob lease",
+);
+requireText(
+  listPhotos,
+  "await renewPhotoCatalogRebuild(catalogRebuild, catalogContainer);",
+  "live Blob-scan rebuild renewal",
+);
+requireText(
+  listPhotos,
+  "includeCopy: true",
+  "server-side copy status listing",
+);
+requireText(
+  listPhotos,
+  "photoCatalogBlobCopyIsStable(blob)",
+  "pending server-side copy publication fence",
+);
+requireText(
+  photoCatalog,
+  'blob.properties.copyStatus === "pending"',
+  "pending server-side copy rejection",
+);
+requireText(
+  photoCatalog,
+  'blob.properties.copyStatus === "success"',
+  "terminal incomplete-copy exclusion",
+);
+requireText(
+  photoCatalog,
+  "await renewPhotoCatalogRebuild(rebuild, container, fenceStore",
+  "snapshot-write rebuild renewal",
+);
+assert(
+  !movePhotoSafety.includes("pollUntilDone"),
+  "photo move copy must not use unbounded polling",
+);
+requireText(
+  movePhotoSafety,
+  "while (!poller.isDone())",
+  "bounded photo move copy polling",
+);
+assert.match(
+  movePhotoSafety,
+  /await options\.renewCatalogMutation\(\);\s+await poller\.poll\(\{ abortSignal: deadline\.signal \}\);/,
+  "photo move copy must heartbeat before every poll",
+);
+assert.match(
+  movePhotoSafety,
+  /await options\.renewCatalogMutation\(\);\s+await options\.destinationBlob\.abortCopyFromURL/,
+  "photo move cleanup must heartbeat before aborting the copy",
+);
+requireText(
+  movePhotoSafety,
+  "abortSignal: deadline.signal",
+  "photo move copy deadline propagation",
+);
+requireText(
+  movePhoto,
+  "const completedCopy = await copyBlobForMove",
+  "photo move completed-copy ownership retention",
+);
+requireText(
+  movePhoto,
+  "await removeCompletedMoveDestination({",
+  "photo move source-conflict destination cleanup",
+);
+requireText(
+  movePhotoSafety,
+  'destination.etag !== completedCopy.etag',
+  "photo move completed destination ETag ownership check",
+);
+requireText(
+  movePhotoSafety,
+  "await leaseClient.acquireLease(MOVE_DESTINATION_LEASE_SECONDS",
+  "photo move destination lease",
+);
+requireText(
+  movePhotoSafety,
+  "[MOVE_OPERATION_METADATA_KEY]: operationId",
+  "photo move lost-copy durable ownership marker",
+);
+requireText(
+  movePhotoSafety,
+  "...options.sourceMetadata",
+  "photo move source metadata preservation",
+);
+requireText(
+  movePhoto,
+  "await withVerifiedCompletedMoveDestination({",
+  "photo move destination verification before source deletion",
+);
+requireText(
+  movePhoto,
+  "if (isNotFound(error)) return { succeeded: false };",
+  "photo move ambiguous source-delete completion reconciliation",
+);
+requireText(
+  photoCatalog,
+  "new Date(timestamp).toISOString() === value",
+  "canonical Cosmos catalog timestamp validation",
+);
+let previousMoveMutation = -1;
+for (const call of movePhotoSafety.matchAll(
+  /\.(?:beginCopyFromURL|abortCopyFromURL|deleteIfExists|acquireLease|releaseLease)\(/g,
+)) {
+  const renewal = movePhotoSafety.lastIndexOf(
+    "await options.renewCatalogMutation();",
+    call.index,
+  );
+  assert(
+    renewal > previousMoveMutation,
+    "photo move must renew its catalog lease before every Blob mutation",
+  );
+  previousMoveMutation = call.index;
+}
+for (const [label, source] of [
+  ["upload", upload],
+  ["metadata update", updatePhotoMetadata],
+  ["soft delete", deletePhoto],
+  ["move", movePhoto],
+  ["metadata backfill", metadataBackfill],
+  ["thumbnail backfill", backfill],
+  ["video thumbnail", setVideoThumb],
+  ["trash restore", restore],
+  ["trash delete", deleteTrashItem],
+]) {
+  let previousMutation = -1;
+  const mutationCalls = [
+    ...source.matchAll(
+      /\.(?:uploadData|setMetadata|deleteIfExists|beginCopyFromURL|abortCopyFromURL)\(/g,
+    ),
+  ];
+  assert(mutationCalls.length > 0, `${label} Blob mutation probe must remain live`);
+  for (const call of mutationCalls) {
+    const renewal = source.lastIndexOf("await renewPhotoCatalogMutation(", call.index);
+    assert(
+      renewal > previousMutation,
+      `${label} must renew its catalog lease before every Blob mutation`,
+    );
+    previousMutation = call.index;
+  }
+}
+for (const [label, source] of [
+  ["upload", upload],
+  ["metadata update", updatePhotoMetadata],
+  ["soft delete", deletePhoto],
+  ["move", movePhoto],
+  ["folder rename", renameFolder],
+  ["metadata backfill", metadataBackfill],
+  ["thumbnail backfill", backfill],
+  ["video thumbnail", setVideoThumb],
+  ["trash restore", restore],
+  ["trash delete", deleteTrashItem],
+]) {
+  const finish = source.lastIndexOf("await finishPhotoCatalogMutation(");
+  assert(finish >= 0, `${label} catalog finalization probe must remain live`);
+  assert(
+    source.indexOf("Photo catalog finalization failed", finish) > finish,
+    `${label} must report catalog finalization without overriding the media result`,
+  );
+}
+requireText(
+  renameFolder,
+  "renewCatalogMutation: () => renewPhotoCatalogMutation(catalogMutation)",
+  "folder rename lease assertion wiring",
+);
+let previousRenameMutation = -1;
+for (const call of renameFolderSafety.matchAll(
+  /\.(?:beginCopyFromURL|abortCopyFromURL|deleteIfExists)\(/g,
+)) {
+  const renewal = renameFolderSafety.lastIndexOf(
+    "await renewCatalogMutation();",
+    call.index,
+  );
+  assert(
+    renewal > previousRenameMutation,
+    "folder rename must renew its catalog lease before every Blob mutation",
+  );
+  previousRenameMutation = call.index;
+}
+const finishCatalogMutation = photoCatalog.slice(
+  photoCatalog.indexOf("export async function finishPhotoCatalogMutation"),
+  photoCatalog.indexOf("export async function beginPhotoCatalogRebuild"),
+);
+assert(
+  finishCatalogMutation.indexOf("await finishPhotoCatalogFenceMutation(")
+    < finishCatalogMutation.indexOf("await invalidatePhotoCatalogSummary("),
+  "mutation completion must invalidate the cross-instance Blob fence before Cosmos",
+);
+requireText(
+  photoCatalog,
+  "rebuild.blobFenceEtag",
+  "rebuild-owned Blob publication CAS",
+);
+requireText(
+  photoCatalog,
+  "readyBlobFence.etag",
+  "conditional Blob marker rollback",
+);
+requireText(
+  photoCatalogFence,
+  '`_photo-catalog-fence/${scopeHash}.json`',
+  "scope-hashed internal catalog fence path",
+);
+requireText(photoCatalogFence, "MAX_FENCE_BYTES = 64 * 1024", "bounded fence read");
+requireText(
+  photoCatalogFence,
+  "if (body.length > MAX_FENCE_BYTES)",
+  "bounded fence write",
+);
+requireText(photoCatalogFence, '{ ifMatch: expectedEtag }', "Blob fence ETag CAS");
+requireText(photoCatalogFence, '{ ifNoneMatch: "*" }', "Blob fence create CAS");
+requireText(photoCatalogFence, 'blobCacheControl: "no-store"', "uncacheable fence response");
+assert(
+  !listPhotos.includes("legacy list remains available"),
+  "scoped catalog publication failures must not return an unproven Blob scan",
+);
+assert(
+  listPhotos.indexOf("await listCompletePhotoCatalog(")
+    < listPhotos.indexOf("await beginPhotoCatalogRebuild("),
+  "ready legacy requests must reuse the active snapshot instead of rebuilding",
+);
+assert(
+  (app.match(/!photoListComplete/g) ?? []).length >= 7,
+  "partial lists must gate sidebar and every complete-library surface",
+);
+assert(
+  photoApi.indexOf(
+    "writeMemoryPhotoListCache(key, photos)",
+    photoApi.indexOf("const photos = await fetchPagedList();"),
+  ) > photoApi.indexOf("const photos = await fetchPagedList();"),
+  "partial photo pages must never enter the private list cache",
+);
 requireText(photoApi, "MEDIA_URL_REUSE_MIN_MS", "fresh SAS reuse threshold");
 requireText(photoApi, "previousExpiry >= nextExpiry", "non-regressing SAS reuse");
 requireText(photoApi, "export function selectFresherMediaUrl", "shared media freshness merge");

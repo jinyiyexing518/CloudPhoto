@@ -20,6 +20,11 @@ import {
   scanPhotoMetadataCandidate,
   type PhotoMetadataRecoveryResult,
 } from "./photoMetadataRecovery";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 
 const PAGE_BYTE_BUDGET = 8 * 1024 * 1024;
 const REQUEST_DEADLINE_MS = 100_000;
@@ -134,6 +139,10 @@ export async function backfillPhotoMetadataHandler(
   const prefix = `${scope}/`;
   try {
     const containerClient = getBlobServiceClient().getContainerClient(containerName);
+    const catalogMutation = dryRun
+      ? null
+      : await beginPhotoCatalogMutation(scope, [`${scope}/*`]);
+    try {
     const listing = containerClient.listBlobsFlat({
       prefix,
       includeMetadata: true,
@@ -204,6 +213,10 @@ export async function backfillPhotoMetadataHandler(
               },
             ),
             writeMetadata: async (nextMetadata, sourceEtag, signal) => {
+              if (!catalogMutation) {
+                throw new Error("Photo catalog mutation lease is missing");
+              }
+              await renewPhotoCatalogMutation(catalogMutation);
               await blockBlobClient.setMetadata(nextMetadata, {
                 abortSignal: signal,
                 conditions: { ifMatch: sourceEtag },
@@ -268,6 +281,15 @@ export async function backfillPhotoMetadataHandler(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(responseBody(processed, metrics, hasMore, nextCursor)),
     };
+    } finally {
+      if (catalogMutation) {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after metadata backfill:", error);
+        }
+      }
+    }
   } catch (error) {
     context.error("Backfill error:", error);
     return {

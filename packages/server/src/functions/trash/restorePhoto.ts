@@ -9,6 +9,11 @@ import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
 import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 
 function getStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -46,7 +51,10 @@ app.http("restorePhoto", {
       const blobServiceClient = getBlobServiceClient();
       const containerClient = blobServiceClient.getContainerClient(containerName);
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      const scope = blobName.split("/").slice(0, 2).join("/");
+      const catalogMutation = await beginPhotoCatalogMutation(scope, [blobName]);
 
+      try {
       const maxAttempts = 3;
       let restored = false;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -63,6 +71,7 @@ app.http("restorePhoto", {
         }
 
         try {
+          await renewPhotoCatalogMutation(catalogMutation);
           await blockBlobClient.setMetadata(existing, {
             conditions: props.etag ? { ifMatch: props.etag } : undefined,
           });
@@ -92,11 +101,17 @@ app.http("restorePhoto", {
       // Reconcile from the latest Blob snapshot so a stale restore cannot
       // overwrite a newer GPS update in Cosmos.
       try {
-        const scope = blobName.split("/").slice(0, 2).join("/");
         await syncPhotoLocationFromBlob(blockBlobClient, blobName, scope);
       } catch { /* best-effort, non-fatal */ }
 
       return { status: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Photo restored" }) };
+      } finally {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after trash restore:", error);
+        }
+      }
     } catch (error) {
       context.error("Restore error:", error);
       return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Failed to restore photo" }) };

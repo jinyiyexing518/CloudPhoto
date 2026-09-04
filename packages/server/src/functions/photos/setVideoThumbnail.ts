@@ -14,6 +14,11 @@ import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { canAccessPhotoPath } from "../../utils/auth/photoAccess";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { expectedPhotoDerivativeNames } from "./photoDerivatives";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 import type sharpT from "sharp";
 let _sharp: typeof sharpT | null = null;
 function getSharp(): typeof sharpT | null {
@@ -121,8 +126,12 @@ app.http("setVideoThumbnail", {
         return { status: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Invalid thumbnail image" }) };
       }
 
+      const scope = blobName.split("/").slice(0, 2).join("/");
+      const catalogMutation = await beginPhotoCatalogMutation(scope, [blobName]);
+      try {
       // Store the thumbnail blob
       const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);
+      await renewPhotoCatalogMutation(catalogMutation);
       await thumbClient.uploadData(resizedBuf, {
         blobHTTPHeaders: {
           blobContentType: "image/webp",
@@ -141,6 +150,7 @@ app.http("setVideoThumbnail", {
         setMeta(metadata, "thumbnailName", b64(thumbnailBlobName));
         try {
           if (!props.etag) throw new Error("Missing photo ETag");
+          await renewPhotoCatalogMutation(catalogMutation);
           await origClient.setMetadata(metadata, { conditions: { ifMatch: props.etag } });
           metadataUpdated = true;
           break;
@@ -162,6 +172,13 @@ app.http("setVideoThumbnail", {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ thumbnailUrl }),
       };
+      } finally {
+        try {
+          await finishPhotoCatalogMutation(catalogMutation);
+        } catch (error) {
+          context.error("Photo catalog finalization failed after video thumbnail update:", error);
+        }
+      }
     } catch (err) {
       context.error("setVideoThumbnail error:", err);
       return { status: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Internal error" }) };

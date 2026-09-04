@@ -13,6 +13,11 @@ import { extractTokenFromHeader } from "../../utils/auth/jwtUtils";
 import { isPhotoFolderPath } from "../../utils/auth/photoAccess";
 import { isGroupMember } from "../../utils/cosmos/cosmosClient";
 import { syncPhotoLocationFromBlob } from "../../utils/cosmos/photoLocationSync";
+import {
+  beginPhotoCatalogMutation,
+  finishPhotoCatalogMutation,
+  renewPhotoCatalogMutation,
+} from "../../utils/cosmos/photoCatalog";
 import type { BlockBlobClient } from "@azure/storage-blob";
 import { expectedPhotoDerivativeNames } from "./photoDerivatives";
 import {
@@ -304,6 +309,7 @@ app.http("uploadPhoto", {
           body: JSON.stringify({ error: "上传繁忙，请稍后重试" }),
         };
       }
+      let catalogMutation: Awaited<ReturnType<typeof beginPhotoCatalogMutation>> | null = null;
       try {
         const arrayBuffer = await request.arrayBuffer();
         if (!validateBufferedUploadLength(
@@ -378,7 +384,9 @@ app.http("uploadPhoto", {
         ...(isAnimated && { isAnimated: "1" }),
         ...(rawUploadId && { uploadId: rawUploadId }),
       };
+      catalogMutation = await beginPhotoCatalogMutation(scope, [blobName]);
       try {
+        await renewPhotoCatalogMutation(catalogMutation);
         await blockBlobClient.uploadData(buf, {
           blobHTTPHeaders: {
             blobContentType: mimeType,
@@ -406,6 +414,7 @@ app.http("uploadPhoto", {
               .webp({ quality: 75 })
               .toBuffer();
             const thumbClient = containerClient.getBlockBlobClient(thumbnailBlobName);
+            await renewPhotoCatalogMutation(catalogMutation);
             await thumbClient.uploadData(thumbBuf, {
               blobHTTPHeaders: {
                 blobContentType: "image/webp",
@@ -421,6 +430,7 @@ app.http("uploadPhoto", {
               .webp({ quality: 82 })
               .toBuffer();
             const previewClient = containerClient.getBlockBlobClient(previewBlobName);
+            await renewPhotoCatalogMutation(catalogMutation);
             await previewClient.uploadData(previewBuf, {
               blobHTTPHeaders: {
                 blobContentType: "image/webp",
@@ -454,6 +464,7 @@ app.http("uploadPhoto", {
             if (previewGenerated) setValue("previewName", b64(previewBlobName));
             try {
               if (!latest.etag) throw new Error("Missing photo ETag");
+              await renewPhotoCatalogMutation(catalogMutation);
               await blockBlobClient.setMetadata(metadata, {
                 conditions: { ifMatch: latest.etag },
               });
@@ -478,7 +489,17 @@ app.http("uploadPhoto", {
 
         return buildUploadResponse(blockBlobClient, blobName, safeFolderPath, groupId, scope, context);
       } finally {
-        admission.lease.release();
+        try {
+          if (catalogMutation) {
+            try {
+              await finishPhotoCatalogMutation(catalogMutation);
+            } catch (error) {
+              context.error("Photo catalog finalization failed after upload:", error);
+            }
+          }
+        } finally {
+          admission.lease.release();
+        }
       }
     } catch (error) {
       context.error("Upload error:", error);
