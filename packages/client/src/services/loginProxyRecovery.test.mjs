@@ -126,6 +126,117 @@ test("a hung same-origin login gets a bounded serial direct attempt within the c
   assert.deepEqual(await response.json(), { route: "direct" });
 });
 
+test("a hung direct login gets a bounded serial proxy attempt", async (t) => {
+  const fastHttpUrl = await compileTypeScript(
+    new URL("./http.ts", import.meta.url),
+    (source) => source
+      .replace("export const LOGIN_PRIMARY_ROUTE_DEADLINE_MS = 5_000;", "export const LOGIN_PRIMARY_ROUTE_DEADLINE_MS = 20;")
+      .replace('"../utils/apiBase"', JSON.stringify(apiBaseUrl))
+      .replace('"./authScope"', JSON.stringify(authScopeUrl))
+      .replace('"./apiRoutingPolicy"', JSON.stringify(routingPolicyUrl)),
+  );
+  const fastHttp = await import(fastHttpUrl);
+  const previousOrigin = window.location.origin;
+  const previousHostname = window.location.hostname;
+  window.location.origin = "https://brave-sand-053b07a00.7.azurestaticapps.net";
+  window.location.hostname = "brave-sand-053b07a00.7.azurestaticapps.net";
+  const calls = [];
+  globalThis.fetch = (input, init) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.startsWith("https://cloudphoto-api.azurewebsites.net")) {
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => {
+          reject(init.signal.reason ?? new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+    }
+    return Promise.resolve(Response.json({ route: "proxy" }));
+  };
+  t.after(() => {
+    delete globalThis.fetch;
+    window.location.origin = previousOrigin;
+    window.location.hostname = previousHostname;
+  });
+
+  const response = await fastHttp.fetchWithTimeout(
+    "https://cloudphoto-api.azurewebsites.net/api/auth/login",
+    { method: "POST", body: "{}" },
+    100,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, [
+    "https://cloudphoto-api.azurewebsites.net/api/auth/login",
+    "https://cloudphotos.top/api/auth/login",
+  ]);
+  assert.deepEqual(await response.json(), { route: "proxy" });
+});
+
+test("direct frontends send registration exactly once through the proxy", async (t) => {
+  const previousOrigin = window.location.origin;
+  const previousHostname = window.location.hostname;
+  window.location.origin = "https://brave-sand-053b07a00.7.azurestaticapps.net";
+  window.location.hostname = "brave-sand-053b07a00.7.azurestaticapps.net";
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return Response.json({ created: true }, { status: 201 });
+  };
+  t.after(() => {
+    delete globalThis.fetch;
+    window.location.origin = previousOrigin;
+    window.location.hostname = previousHostname;
+  });
+
+  const response = await fetchWithTimeout(
+    "https://cloudphoto-api.azurewebsites.net/api/auth/register",
+    { method: "POST", body: "{}" },
+    100,
+  );
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(calls, ["https://cloudphotos.top/api/auth/register"]);
+});
+
+test("a Request registration preserves its direct URL, method, and body", async (t) => {
+  const previousOrigin = window.location.origin;
+  const previousHostname = window.location.hostname;
+  window.location.origin = "https://brave-sand-053b07a00.7.azurestaticapps.net";
+  window.location.hostname = "brave-sand-053b07a00.7.azurestaticapps.net";
+  const calls = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({
+      body: input instanceof Request ? await input.clone().text() : init?.body,
+      method: init?.method ?? (input instanceof Request ? input.method : "GET"),
+      url: input instanceof Request ? input.url : String(input),
+    });
+    return Response.json({ created: true }, { status: 201 });
+  };
+  t.after(() => {
+    delete globalThis.fetch;
+    window.location.origin = previousOrigin;
+    window.location.hostname = previousHostname;
+  });
+  const body = JSON.stringify({ username: "synthetic" });
+
+  const response = await fetchWithTimeout(new Request(
+    "https://cloudphoto-api.azurewebsites.net/api/auth/register",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    },
+  ), undefined, 100);
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(calls, [{
+    body,
+    method: "POST",
+    url: "https://cloudphoto-api.azurewebsites.net/api/auth/register",
+  }]);
+});
+
 test("caller abort cancels a hung login without alternate-route fallback", async (t) => {
   const calls = [];
   globalThis.fetch = (input, init) => {
