@@ -230,7 +230,7 @@ export async function launchBrowser(executableOverride, profileParent = tmpdir()
         }
         return 0;
       }
-    });
+    }, 30_000);
     browserClient = new CdpClient(
       `ws://127.0.0.1:${endpoint.debugPort}${endpoint.path}`,
     );
