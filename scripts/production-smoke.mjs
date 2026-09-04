@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { inspectPng } from "./png-contract.mjs";
 
 const DEFAULT_BASE_URL = "https://cloudphotos.top";
+const DEFAULT_WWW_BASE_URL = "https://www.cloudphotos.top";
 const DEFAULT_AZURE_FRONTEND_URL =
   "https://brave-sand-053b07a00.7.azurestaticapps.net";
 const DEFAULT_AZURE_API_BASE_URL =
@@ -256,6 +257,7 @@ function validateDeployment(expectedSha) {
 
 export function createChecks(env = process.env) {
   const primaryBaseUrl = env.PRODUCTION_BASE_URL ?? DEFAULT_BASE_URL;
+  const wwwBaseUrl = env.PRODUCTION_WWW_BASE_URL ?? DEFAULT_WWW_BASE_URL;
   const azureFrontendUrl =
     env.PRODUCTION_AZURE_FRONTEND_URL ?? DEFAULT_AZURE_FRONTEND_URL;
   const azureApiBaseUrl =
@@ -283,6 +285,20 @@ export function createChecks(env = process.env) {
       target: "primary",
       name: "healthz",
       url: env.PRODUCTION_HEALTH_URL ?? new URL("/healthz", primaryBaseUrl).href,
+      validate: validateProxyHealth,
+    },
+    {
+      target: "www",
+      name: "homepage",
+      url: env.PRODUCTION_WWW_HOME_URL ?? new URL("/", wwwBaseUrl).href,
+      validate: validateProxyHomepage,
+    },
+    {
+      target: "www",
+      name: "healthz",
+      url:
+        env.PRODUCTION_WWW_HEALTH_URL ??
+        new URL("/healthz", wwwBaseUrl).href,
       validate: validateProxyHealth,
     },
     {
@@ -366,6 +382,14 @@ export function createChecks(env = process.env) {
       validate: validateAuthMe,
     },
     {
+      target: "www",
+      name: "auth/me",
+      url:
+        env.PRODUCTION_WWW_AUTH_ME_URL ??
+        joinUrl(wwwBaseUrl, "/api/auth/me"),
+      validate: validateAuthMe,
+    },
+    {
       target: "azure",
       name: "auth/me",
       url:
@@ -382,6 +406,14 @@ export function createChecks(env = process.env) {
       validate: validateChangelogs,
     },
     {
+      target: "www",
+      name: "changelogs",
+      url:
+        env.PRODUCTION_WWW_CHANGELOGS_URL ??
+        joinUrl(wwwBaseUrl, "/api/changelogs"),
+      validate: validateChangelogs,
+    },
+    {
       target: "azure",
       name: "changelogs",
       url:
@@ -392,13 +424,23 @@ export function createChecks(env = process.env) {
   ];
 
   if (expectedDeployedSha) {
-    checks.splice(3, 0,
+    checks.splice(5, 0,
       {
         target: "primary",
         name: "deployment",
         url: deploymentUrl(
           env.PRODUCTION_DEPLOYMENT_URL,
           primaryBaseUrl,
+          expectedDeployedSha,
+        ),
+        validate: validateDeployment(expectedDeployedSha),
+      },
+      {
+        target: "www",
+        name: "deployment",
+        url: deploymentUrl(
+          env.PRODUCTION_WWW_DEPLOYMENT_URL,
+          wwwBaseUrl,
           expectedDeployedSha,
         ),
         validate: validateDeployment(expectedDeployedSha),
@@ -428,9 +470,12 @@ function delay(milliseconds) {
 async function runCheck(check, fetchImpl, requestTimeoutMs) {
   const response = await fetchImpl(check.url, {
     headers: { "User-Agent": "cloudphoto-production-smoke/1.0" },
-    redirect: "follow",
+    redirect: "manual",
     signal: AbortSignal.timeout(requestTimeoutMs),
   });
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error("redirects are not allowed for independent production targets");
+  }
   await check.validate(response);
 }
 

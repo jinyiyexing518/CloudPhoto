@@ -77,6 +77,8 @@ function testEnvironment(origin) {
   return {
     PRODUCTION_HOME_URL: `${origin}/primary`,
     PRODUCTION_HEALTH_URL: `${origin}/primary/healthz`,
+    PRODUCTION_WWW_HOME_URL: `${origin}/www`,
+    PRODUCTION_WWW_HEALTH_URL: `${origin}/www/healthz`,
     PRODUCTION_MANIFEST_URL: `${origin}/primary/manifest.webmanifest`,
     PRODUCTION_AZURE_HOME_URL: `${origin}/azure`,
     PRODUCTION_AZURE_MANIFEST_URL: `${origin}/azure/manifest.webmanifest`,
@@ -87,8 +89,10 @@ function testEnvironment(origin) {
     PRODUCTION_APPLE_TOUCH_ICON_URL: `${origin}/primary/apple-touch-icon.png`,
     PRODUCTION_AZURE_APPLE_TOUCH_ICON_URL: `${origin}/azure/apple-touch-icon.png`,
     PRODUCTION_AUTH_ME_URL: `${origin}/primary/api/auth/me`,
+    PRODUCTION_WWW_AUTH_ME_URL: `${origin}/www/api/auth/me`,
     PRODUCTION_AZURE_AUTH_ME_URL: `${origin}/azure/api/auth/me`,
     PRODUCTION_CHANGELOGS_URL: `${origin}/primary/api/changelogs`,
+    PRODUCTION_WWW_CHANGELOGS_URL: `${origin}/www/api/changelogs`,
     PRODUCTION_AZURE_CHANGELOGS_URL: `${origin}/azure/api/changelogs`,
   };
 }
@@ -102,9 +106,10 @@ function logger() {
   };
 }
 
-test("builds primary and Azure checks from base URL overrides", () => {
+test("builds primary, www, and Azure checks from base URL overrides", () => {
   const checks = createChecks({
     PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
     PRODUCTION_AZURE_FRONTEND_URL: "https://frontend.example",
     PRODUCTION_AZURE_API_BASE_URL: "https://api.example/api",
   });
@@ -121,6 +126,16 @@ test("builds primary and Azure checks from base URL overrides", () => {
         target: "primary",
         name: "healthz",
         url: "https://primary.example/healthz",
+      },
+      {
+        target: "www",
+        name: "homepage",
+        url: "https://www.example/",
+      },
+      {
+        target: "www",
+        name: "healthz",
+        url: "https://www.example/healthz",
       },
       {
         target: "azure",
@@ -173,6 +188,11 @@ test("builds primary and Azure checks from base URL overrides", () => {
         url: "https://primary.example/api/auth/me",
       },
       {
+        target: "www",
+        name: "auth/me",
+        url: "https://www.example/api/auth/me",
+      },
+      {
         target: "azure",
         name: "auth/me",
         url: "https://api.example/api/auth/me",
@@ -183,6 +203,11 @@ test("builds primary and Azure checks from base URL overrides", () => {
         url: "https://primary.example/api/changelogs",
       },
       {
+        target: "www",
+        name: "changelogs",
+        url: "https://www.example/api/changelogs",
+      },
+      {
         target: "azure",
         name: "changelogs",
         url: "https://api.example/api/changelogs",
@@ -191,10 +216,29 @@ test("builds primary and Azure checks from base URL overrides", () => {
   );
 });
 
+test("builds independent checks for the deployed www entry", () => {
+  const checks = createChecks({
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
+  });
+
+  assert.deepEqual(
+    checks
+      .filter(({ target }) => target === "www")
+      .map(({ name, url }) => ({ name, url })),
+    [
+      { name: "homepage", url: "https://www.example/" },
+      { name: "healthz", url: "https://www.example/healthz" },
+      { name: "auth/me", url: "https://www.example/api/auth/me" },
+      { name: "changelogs", url: "https://www.example/api/changelogs" },
+    ],
+  );
+});
+
 test("adds exact deployment marker checks when a deployed SHA is expected", () => {
   const sha = "a".repeat(40);
   const checks = createChecks({
     PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
     PRODUCTION_AZURE_FRONTEND_URL: "https://frontend.example",
     PRODUCTION_DEPLOYED_SHA: sha,
   });
@@ -207,6 +251,10 @@ test("adds exact deployment marker checks when a deployed SHA is expected", () =
       {
         target: "primary",
         url: `https://primary.example/deployment.json?sha=${sha}`,
+      },
+      {
+        target: "www",
+        url: `https://www.example/deployment.json?sha=${sha}`,
       },
       {
         target: "azure",
@@ -251,6 +299,59 @@ test("accepts only the exact no-store deployment marker SHA", async () => {
   );
 });
 
+test("rejects redirects instead of borrowing another target's deployment marker", async () => {
+  const expectedSha = "a".repeat(40);
+  let destinationRequests = 0;
+
+  await withServer(
+    (_request, response) => {
+      destinationRequests += 1;
+      response.writeHead(200, {
+        "cache-control": "no-store",
+        "content-type": "application/json",
+      });
+      response.end(JSON.stringify({ sha: expectedSha }));
+    },
+    async (destinationOrigin) => {
+      await withServer(
+        (request, response) => {
+          response.writeHead(302, {
+            location: `${destinationOrigin}${request.url}`,
+          });
+          response.end();
+        },
+        async (redirectingOrigin) => {
+          const messages = logger();
+          const passed = await runSmoke({
+            env: {
+              PRODUCTION_BASE_URL: destinationOrigin,
+              PRODUCTION_WWW_BASE_URL: redirectingOrigin,
+              PRODUCTION_AZURE_FRONTEND_URL: destinationOrigin,
+              PRODUCTION_DEPLOYED_SHA: expectedSha,
+              PRODUCTION_SMOKE_SCOPE: "deployment",
+            },
+            logger: messages,
+            attempts: 1,
+            requestTimeoutMs: 1_000,
+          });
+
+          assert.equal(passed, false);
+          assert.equal(destinationRequests, 2);
+          assert.ok(
+            messages.output.some((message) => (
+              message.startsWith("FAIL www deployment:")
+              && message.includes(
+                "redirects are not allowed for independent production targets"
+              )
+            )),
+            messages.output.join("\n"),
+          );
+        },
+      );
+    },
+  );
+});
+
 test("rejects an invalid expected deployment SHA before issuing requests", () => {
   assert.throws(
     () => createChecks({ PRODUCTION_DEPLOYED_SHA: "7e2862c" }),
@@ -262,6 +363,7 @@ test("deployment-only scope requires a SHA and runs only identity checks", () =>
   const sha = "a".repeat(40);
   const checks = createChecks({
     PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
     PRODUCTION_AZURE_FRONTEND_URL: "https://frontend.example",
     PRODUCTION_DEPLOYED_SHA: sha,
     PRODUCTION_SMOKE_SCOPE: "deployment",
@@ -271,6 +373,7 @@ test("deployment-only scope requires a SHA and runs only identity checks", () =>
     checks.map(({ target, name }) => ({ target, name })),
     [
       { target: "primary", name: "deployment" },
+      { target: "www", name: "deployment" },
       { target: "azure", name: "deployment" },
     ]
   );
@@ -311,11 +414,16 @@ test("requires canonical HSTS on direct and proxied frontend entries", async () 
   const primaryHomepage = checks.find(
     ({ target, name }) => target === "primary" && name === "homepage",
   );
+  const wwwHomepage = checks.find(
+    ({ target, name }) => target === "www" && name === "homepage",
+  );
   const azureHomepage = checks.find(
     ({ target, name }) => target === "azure" && name === "homepage",
   );
   assert(primaryHomepage);
+  assert(wwwHomepage);
   assert(azureHomepage);
+  assert.equal(wwwHomepage.validate, primaryHomepage.validate);
 
   for (const value of [
     "",
@@ -520,13 +628,20 @@ test("rejects missing hashed assets that are successful or disguised as HTML", a
   );
 });
 
-test("passes the primary and Azure production contracts with timings", async () => {
+test("passes the primary, www, and Azure production contracts with timings", async () => {
   await withServer(
     (request, response) => {
-      if (request.url === "/primary" || request.url === "/azure") {
+      if (
+        request.url === "/primary"
+        || request.url === "/www"
+        || request.url === "/azure"
+      ) {
         response.writeHead(200, SECURE_HOMEPAGE_HEADERS);
         response.end(INSTALLABLE_HOME_HTML);
-      } else if (request.url === "/primary/healthz") {
+      } else if (
+        request.url === "/primary/healthz"
+        || request.url === "/www/healthz"
+      ) {
         response.writeHead(200, { "content-type": "application/json" });
         response.end('{"status":"ok","route":"cloudphoto-frontend"}');
       } else if (request.url?.endsWith("/manifest.webmanifest")) {
@@ -561,11 +676,16 @@ test("passes the primary and Azure production contracts with timings", async () 
       assert.equal(passed, true);
       assert.equal(
         messages.output.filter((message) => message.startsWith("PASS ")).length,
-        15
+        19
       );
       assert.ok(
         messages.output.some((message) =>
           /^PASS primary homepage: .+ \(\d+ms\)$/.test(message)
+        )
+      );
+      assert.ok(
+        messages.output.some((message) =>
+          /^PASS www changelogs: .+ \(\d+ms\)$/.test(message)
         )
       );
       assert.ok(
@@ -577,14 +697,21 @@ test("passes the primary and Azure production contracts with timings", async () 
   );
 });
 
-test("retries and fails when either changelog response is not an array", async () => {
+test("retries and fails when any changelog response is not an array", async () => {
   let invalidRequests = 0;
   await withServer(
     (request, response) => {
-      if (request.url === "/primary" || request.url === "/azure") {
+      if (
+        request.url === "/primary"
+        || request.url === "/www"
+        || request.url === "/azure"
+      ) {
         response.writeHead(200, SECURE_HOMEPAGE_HEADERS);
         response.end(INSTALLABLE_HOME_HTML);
-      } else if (request.url === "/primary/healthz") {
+      } else if (
+        request.url === "/primary/healthz"
+        || request.url === "/www/healthz"
+      ) {
         response.writeHead(200, { "content-type": "application/json" });
         response.end('{"status":"ok","route":"cloudphoto-frontend"}');
       } else if (request.url?.endsWith("/manifest.webmanifest")) {
@@ -685,8 +812,8 @@ test("runs all checks concurrently and reports an isolated failure in order", as
   });
 
   assert.equal(passed, false);
-  assert.equal(maxInFlight, 15);
-  assert.equal(completed, 15);
+  assert.equal(maxInFlight, 19);
+  assert.equal(completed, 19);
   assert.deepEqual(
     messages.output
       .filter((message) => /^(PASS|FAIL) /.test(message))
@@ -694,6 +821,8 @@ test("runs all checks concurrently and reports an isolated failure in order", as
     [
       "primary homepage",
       "primary healthz",
+      "www homepage",
+      "www healthz",
       "azure homepage",
       "primary manifest",
       "azure manifest",
@@ -704,12 +833,14 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       "primary apple-touch-icon",
       "azure apple-touch-icon",
       "primary auth/me",
+      "www auth/me",
       "azure auth/me",
       "primary changelogs",
+      "www changelogs",
       "azure changelogs",
     ]
   );
-  assert.match(messages.output[14], /^FAIL azure changelogs:/);
+  assert.match(messages.output[18], /^FAIL azure changelogs:/);
   assert.match(
     messages.output.at(-1),
     /Production smoke checks failed after 1 attempts:/

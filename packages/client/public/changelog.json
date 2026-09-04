@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-09-04-monitor-www-production-entry",
+    "date": "2026-09-04",
+    "icon": "🩺",
+    "title": "生产健康检查覆盖 www 入口",
+    "type": "improvement",
+    "desc": "已部署的 www.cloudphotos.top 现在独立纳入持续健康检查，单独的证书、DNS、路由或版本漂移不再被主域成功掩盖。",
+    "details": "每轮 Production Health 都会分别验证 www 首页与安全头、healthz 路由身份、未登录认证边界和更新日志 JSON；前端部署事件还要求 www、主域与 SWA 的 no-store deployment marker 同时精确匹配 triggering SHA。受检 URL 的重定向会直接失败，不能借用另一入口响应制造假绿。主域与 Azure 直连的 manifest、图标、缺失资源、API 和重试契约保持不变，所有目标仍在同一轮并发执行；权威 DNS 尚未配置的 cn/global 不会被伪装为已覆盖入口。",
+    "seq": 1788525119694
+  },
+  {
     "id": "2026-09-04-auth-mainland-route-recovery",
     "date": "2026-09-04",
     "type": "fix",
