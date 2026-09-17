@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import ts from "typescript";
 
 const styles = readFileSync(
   new URL("../packages/client/src/index.css", import.meta.url),
@@ -155,4 +156,89 @@ test("auth controls inherit the system font stack", () => {
       `${selector} must inherit the auth page font`,
     );
   }
+});
+
+function moduleUrl(source) {
+  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+}
+
+test("a blocked registration chunk degrades only the register panel", async () => {
+  const reactUrl = moduleUrl(`
+    export const lazy = (loader) => ({ loader });
+    export const Suspense = () => null;
+    export const useEffect = () => {};
+    export const useRef = (current = null) => ({ current });
+    export const useState = (initial) => [
+      typeof initial === "function" ? initial() : initial,
+      () => {}
+    ];
+  `);
+  const jsxRuntimeUrl = moduleUrl(`
+    export const Fragment = Symbol("Fragment");
+    export const jsx = (type, props) => ({ type, props });
+    export const jsxs = jsx;
+  `);
+  const authContextUrl = moduleUrl(
+    "export const useAuth = () => ({ login: async () => {} });",
+  );
+  const passwordFieldUrl = moduleUrl(
+    "export default function PasswordField() { return null; }",
+  );
+  const errorBoundaryUrl = moduleUrl(`
+    export function renderErrorFallback(...args) {
+      return { type: "error-fallback", args };
+    }
+  `);
+  const recoveryUrl = moduleUrl(`
+    globalThis.__cloudPhotoRegisterRecoveryCalls = [];
+    export function reportLazyBoundaryFailure(error) {
+      globalThis.__cloudPhotoRegisterRecoveryCalls.push(String(error));
+      return true;
+    }
+    export function requestDeploymentRefresh() {}
+  `);
+  const blockedRegisterUrl = moduleUrl(
+    'throw new Error("register chunk blocked");',
+  );
+  const source = readFileSync(
+    new URL("../packages/client/src/components/auth/AuthPage.tsx", import.meta.url),
+    "utf8",
+  )
+    .replace('"react"', JSON.stringify(reactUrl))
+    .replace('"../../contexts/AuthContext"', JSON.stringify(authContextUrl))
+    .replace('"./PasswordField"', JSON.stringify(passwordFieldUrl))
+    .replace('"../shared/ErrorBoundary"', JSON.stringify(errorBoundaryUrl))
+    .replace(
+      '"../../pwa/deploymentRecovery"',
+      JSON.stringify(recoveryUrl),
+    )
+    .replaceAll('"./RegisterForm"', JSON.stringify(blockedRegisterUrl))
+    + "\nexport { loadRegisterForm };\n";
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      jsx: ts.JsxEmit.ReactJSX,
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: "AuthPage.tsx",
+  }).outputText.replace('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
+  const { loadRegisterForm } = await import(moduleUrl(compiled));
+
+  const first = await loadRegisterForm();
+  const second = await loadRegisterForm();
+
+  assert.equal(first, second);
+  assert.equal(typeof first.default, "function");
+  assert.equal(first.default({ active: false }).props.hidden, true);
+  const fallback = first.default({ active: true });
+  assert.equal(fallback.props.id, "register-panel");
+  assert.equal(fallback.props.hidden, false);
+  assert.equal(fallback.props.children.type, "error-fallback");
+  assert.equal(fallback.props.children.args[0], "注册表单");
+  assert.equal(fallback.props.children.args[1], true);
+  assert.equal(typeof fallback.props.children.args[2], "function");
+  assert.deepEqual(globalThis.__cloudPhotoRegisterRecoveryCalls, [
+    "Error: register chunk blocked",
+  ]);
+  delete globalThis.__cloudPhotoRegisterRecoveryCalls;
 });

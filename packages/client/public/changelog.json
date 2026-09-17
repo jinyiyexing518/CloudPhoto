@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-09-17-isolate-register-chunk-failure",
+    "date": "2026-09-17",
+    "icon": "🛟",
+    "title": "隔离注册表单加载失败",
+    "type": "fix",
+    "desc": "注册表单资源被瞬时网络或浏览器策略拦截时，只降级注册面板；登录保持可用并可刷新新版恢复。",
+    "details": "注册 lazy loader 现在会消化并上报动态 chunk 失败，返回与原表单同契约的本地降级面板，避免 rejected Promise 越过 AuthPage 并触发整个“登录与注册”错误边界。hover、focus 和 click 预载失败也不会产生未处理 rejection；同一失败只记录一次，注册仍保持独立 chunk，登录入口继续受 36,000 B raw 硬门禁保护。",
+    "seq": 1789603600000
+  },
+  {
     "id": "2026-09-17-fix-www-auth-availability",
     "date": "2026-09-17",
     "icon": "🔐",

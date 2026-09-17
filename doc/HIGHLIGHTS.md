@@ -70,6 +70,7 @@
 - **API hedge 按认证意图加载** — 安全 GET 的 primary/fallback 竞速、取消和 release 状态机迁入独立 1,510 B lazy chunk；默认登录页、HTML preload 与 service worker precache 均不携带它，已有 token 或登录/注册提交会提前并行加载。生产配置入口由 35,855 B 降至 34,501 B，在不修改 36,000 B 硬门禁的前提下把余量从 145 B 提升到 1,499 B
 - **`www` 认证线路与 CORS 闭环** — `www.cloudphotos.top` 的登录和注册会先识别 Nginx/SWA 真实落点，再分别选择同源 `/api` 或 Azure Functions，注册全程只发起一次；Backend 发布幂等补齐主域、`www` 与精确 SWA CORS origin 并拒绝通配，Production Health 用真实无副作用 POST 与浏览器预检阻止 `/auth/me` 假绿
 - **注册表单按意图加载** — 默认登录页不再携带注册字段、校验和提交逻辑；注册 Tab hover/focus 预载同一个 lazy Promise，打开后保持表单状态并继续在提交前预载工作区。入口由 28.48 kB 降至 26.58 kB（gzip 10.31 kB → 9.91 kB），注册逻辑成为独立 2.79 kB chunk
+- **注册资源失败不再拖垮登录** — 注册 lazy chunk 被网络或浏览器策略瞬时拦截时，loader 在边界内上报并解析为注册专用 fallback；登录 tab 继续可用，用户可通过统一的“刷新新版”恢复
 - **更新弹窗 Idle 延后加载** — `WhatsNewPopup` 从 `AuthenticatedApp` 拆为独立 lazy chunk，照片列表 `loading=true` 时不挂载也不请求 changelog；`loading` 结束后仅在 `requestIdleCallback({ timeout: 2000 })`（含 `setTimeout` 兼容 fallback）空闲窗口挂载，且切回 loading/卸载会取消旧任务，避免迟到弹窗覆盖加载态。`AuthenticatedApp` 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB），并新增 `WhatsNewPopup-*.js` 3.81 kB chunk
 - **最近更新完整模态键盘路径** — 打开后显式聚焦关闭按钮，Escape 关闭，Tab/Shift+Tab 基于每次按键时的可见控件动态循环；键盘聚焦/交互会 pin 弹窗并清空自动淡出计时器，关闭动画完成或组件卸载后仅向仍连接的原控件恢复焦点。更新摘要使用原生 `button` 与稳定 `aria-expanded`/`aria-controls` 关联
 - **共享模态焦点与快捷键隔离** — Settings 与最近更新复用同一套动态焦点枚举、Tab 首尾循环和 connected-only 恢复能力；Settings 的 Escape 继续走维护/回收站 guard，普通键只阻断冒泡而不破坏输入、复制粘贴。全局快捷键额外拒绝 IME、已处理事件、交互目标、打开的 aria-modal 与重复刷新/Tab mutation

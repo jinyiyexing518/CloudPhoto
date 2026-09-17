@@ -142,6 +142,26 @@ requireText(
 requireText(authPage, "registerFormPromise ??=", "cached registration loader");
 requireText(authPage, "const RegisterForm = lazy(loadRegisterForm);", "lazy registration form");
 requireText(authPage, "void loadRegisterForm();", "registration intent preload");
+requireText(
+  authPage,
+  'import("./RegisterForm").catch((error) => {',
+  "registration chunk failure recovery",
+);
+requireText(
+  authPage,
+  "reportLazyBoundaryFailure(error);",
+  "registration chunk deployment recovery",
+);
+requireText(
+  authPage,
+  'renderErrorFallback(',
+  "registration-only chunk failure fallback",
+);
+requireText(
+  authPage,
+  "requestDeploymentRefresh",
+  "registration chunk manual refresh",
+);
 assert(!authPage.includes("handleRegister"), "registration submission must stay out of the login entry");
 assert(!authPage.includes("正在创建账号…"), "registration copy must stay out of the login entry");
 requireText(registerForm, "handleRegister", "deferred registration submission");

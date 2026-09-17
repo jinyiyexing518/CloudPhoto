@@ -1,4 +1,4 @@
-import { Component, createRef, ErrorInfo, ReactNode } from "react";
+import { Component, createRef, ErrorInfo, ReactNode, type Ref } from "react";
 import { requestDeploymentRefresh } from "../../pwa/deploymentRecovery";
 
 interface Props {
@@ -13,6 +13,35 @@ interface Props {
 
 interface State {
   error: Error | null;
+}
+
+export function renderErrorFallback(
+  label: string | undefined,
+  recovery: boolean | undefined,
+  onRetry: () => void,
+  buttonRef?: Ref<HTMLButtonElement>,
+) {
+  return (
+    <div className="error-boundary-card" role="alert" aria-live="assertive">
+      <div className="error-boundary-icon">⚠️</div>
+      <p className="error-boundary-title">
+        {label ? `「${label}」暂时无法加载` : "页面暂时无法加载"}
+      </p>
+      <p className="error-boundary-detail">
+        {recovery
+          ? "应用可能已有新版本，请刷新新版资源后继续。"
+          : "请稍后重试；如果问题持续，请刷新页面。"}
+      </p>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="error-boundary-retry"
+        onClick={onRetry}
+      >
+        {recovery ? "刷新新版" : "重试"}
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -59,26 +88,11 @@ export default class ErrorBoundary extends Component<Props, State> {
       return typeof fallback === "function" ? fallback(error) : fallback;
     }
 
-    return (
-      <div className="error-boundary-card" role="alert" aria-live="assertive">
-        <div className="error-boundary-icon">⚠️</div>
-        <p className="error-boundary-title">
-          {label ? `「${label}」暂时无法加载` : "页面暂时无法加载"}
-        </p>
-        <p className="error-boundary-detail">
-          {recovery
-            ? "应用可能已有新版本，请刷新新版资源后继续。"
-            : "请稍后重试；如果问题持续，请刷新页面。"}
-        </p>
-        <button
-          ref={this.retryButtonRef}
-          type="button"
-          className="error-boundary-retry"
-          onClick={this.handleReset}
-        >
-          {recovery ? "刷新新版" : "重试"}
-        </button>
-      </div>
+    return renderErrorFallback(
+      label,
+      recovery,
+      this.handleReset,
+      this.retryButtonRef,
     );
   }
 }

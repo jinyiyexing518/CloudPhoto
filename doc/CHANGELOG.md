@@ -6,6 +6,7 @@
 - **🔐 `www` 认证线路闭合** — 注册继续严格单次提交，但会与登录一样识别 `www.cloudphotos.top` 的真实落点：Nginx 使用同源 `/api`，直达 SWA 使用 Azure Functions；默认 SWA 域名仍固定走主域代理，不引入非幂等重放
 - **🛡️ 发布时校正 CORS** — Backend OIDC job 幂等确保主域、`www` 与精确 SWA 源都在 Function App allowlist 中，并拒绝通配 `*`；部署包 `host.json` 使用同一非通配集合
 - **🩺 登录注册不再被 Health 假绿** — 常规生产检查从 19 项扩为 23 项，新增不存在账号登录、空注册校验、`www`→Functions 与 SWA→主域代理的浏览器预检；exact-SHA full smoke 相应为 26 项
+- **🛟 注册 chunk 故障隔离** — 注册资源的一次瞬时加载失败不再污染整个认证页：登录保持可用，注册面板单独提示并复用安全的“刷新新版”恢复；hover/focus 预载失败也不会产生未处理 rejection
 
 ---
 

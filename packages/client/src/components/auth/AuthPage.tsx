@@ -8,7 +8,13 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  reportLazyBoundaryFailure,
+  requestDeploymentRefresh,
+} from "../../pwa/deploymentRecovery";
+import { renderErrorFallback } from "../shared/ErrorBoundary";
 import PasswordField from "./PasswordField";
+import type { RegisterFormProps } from "./RegisterForm";
 
 type AuthTab = "login" | "register";
 
@@ -17,8 +23,34 @@ interface AuthPageProps {
 }
 
 let registerFormPromise: Promise<typeof import("./RegisterForm")> | null = null;
+
+function RegisterFormUnavailable({ active }: RegisterFormProps) {
+  return (
+    <div
+      id="register-panel"
+      className="auth-form"
+      role="tabpanel"
+      aria-labelledby="register-tab"
+      hidden={!active}
+    >
+      {renderErrorFallback(
+        "注册表单",
+        true,
+        requestDeploymentRefresh,
+      )}
+    </div>
+  );
+}
+
+const unavailableRegisterFormModule: typeof import("./RegisterForm") = {
+  default: RegisterFormUnavailable,
+};
+
 const loadRegisterForm = () => {
-  registerFormPromise ??= import("./RegisterForm");
+  registerFormPromise ??= import("./RegisterForm").catch((error) => {
+    reportLazyBoundaryFailure(error);
+    return unavailableRegisterFormModule;
+  });
   return registerFormPromise;
 };
 const RegisterForm = lazy(loadRegisterForm);

@@ -7,7 +7,7 @@ import {
 import PasswordField from "./PasswordField";
 import { registerApi } from "../../services/registrationApi";
 
-interface RegisterFormProps {
+export interface RegisterFormProps {
   active: boolean;
   onAuthIntent?: () => void;
 }

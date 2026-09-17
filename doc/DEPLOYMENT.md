@@ -169,6 +169,7 @@ https://cloudphoto-api.azurewebsites.net/api
 - 在 `cloudphotos.top` 下，前端优先走同源 `/api`（VM Nginx 反代）
 - 在 `cn.cloudphotos.top` 下同样优先走同源 `/api` 和 `/media`
 - 在 `www.cloudphotos.top` 下先探测智能 DNS 落点：Nginx 响应的登录和单次注册都使用同源 `/api`，直达 SWA 时两者使用已显式允许 `www` origin 的 Azure Functions
+- 注册表单仍作为独立 lazy chunk 按意图加载；chunk 被瞬时拦截时只降级注册面板并通过 deployment recovery 提供“刷新新版”，登录表单继续可用
 - 若首选线路发生网络/网关失败，可安全重试的读取及认证请求自动回退；照片列表、动态视频、回收站和地理搜索等高成本读取不因短时慢响应自动重放，非幂等写请求也不重复发送
 - 直接访问 Azure Static Web Apps 域名时，也使用该直连地址
 - 媒体使用 Blob 与 `/media` 的无响应体 HEAD 竞速；Range 请求和 HEAD 探测不进入 PWA 媒体缓存
