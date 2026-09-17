@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
 
-async function compileTypeScript(relativeUrl, transform = (source) => source) {
+async function compileTypeScript(
+  relativeUrl,
+  transform = (source) => source,
+  cacheTag = "",
+) {
   const source = transform(await readFile(relativeUrl, "utf8"));
   const output = ts.transpileModule(source, {
     compilerOptions: {
@@ -12,7 +16,8 @@ async function compileTypeScript(relativeUrl, transform = (source) => source) {
     },
     fileName: relativeUrl.pathname,
   }).outputText;
-  return `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`;
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`;
+  return cacheTag ? `${dataUrl}#${encodeURIComponent(cacheTag)}` : dataUrl;
 }
 
 const authScopeUrl = await compileTypeScript(new URL("./authScope.ts", import.meta.url));
@@ -62,6 +67,40 @@ const registrationApiUrl = await compileTypeScript(
     .replace('"./http"', JSON.stringify(httpUrl)),
 );
 const { registerApi } = await import(registrationApiUrl);
+
+async function importRegistrationApiForLocation(cacheTag) {
+  const locationApiBaseUrl = await compileTypeScript(
+    new URL("../utils/apiBase.ts", import.meta.url),
+    (source) => source
+      .replace(/import\.meta\.env\.VITE_API_BASE as string \| undefined/g, "undefined")
+      .replace(/import\.meta\.env\.VITE_PROXY_API_BASE as string \| undefined/g, "undefined"),
+    `${cacheTag}-api-base`,
+  );
+  const locationHttpUrl = await compileTypeScript(
+    new URL("./http.ts", import.meta.url),
+    (source) => source
+      .replace('"../utils/apiBase"', JSON.stringify(locationApiBaseUrl))
+      .replace('"./authScope"', JSON.stringify(authScopeUrl))
+      .replace('"./apiRoutingPolicy"', JSON.stringify(routingPolicyUrl)),
+    `${cacheTag}-http`,
+  );
+  const locationAuthApiUrl = await compileTypeScript(
+    new URL("./authApi.ts", import.meta.url),
+    (source) => source
+      .replace('"../utils/apiBase"', JSON.stringify(locationApiBaseUrl))
+      .replace('"./http"', JSON.stringify(locationHttpUrl)),
+    `${cacheTag}-auth-api`,
+  );
+  const locationRegistrationApiUrl = await compileTypeScript(
+    new URL("./registrationApi.ts", import.meta.url),
+    (source) => source
+      .replace('"../utils/apiBase"', JSON.stringify(locationApiBaseUrl))
+      .replace('"./authApi"', JSON.stringify(locationAuthApiUrl))
+      .replace('"./http"', JSON.stringify(locationHttpUrl)),
+    `${cacheTag}-registration-api`,
+  );
+  return import(locationRegistrationApiUrl);
+}
 
 function jwt(payload) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -213,6 +252,81 @@ test("direct frontends send registration exactly once through the proxy", async 
 
   assert.deepEqual(response, { created: true });
   assert.deepEqual(calls, ["https://cloudphotos.top/api/auth/register"]);
+});
+
+test("www registration uses its same-origin Nginx route exactly once", async (t) => {
+  const previousOrigin = window.location.origin;
+  const previousHostname = window.location.hostname;
+  window.location.origin = "https://www.cloudphotos.top";
+  window.location.hostname = "www.cloudphotos.top";
+  const { registerApi: registerFromWww } =
+    await importRegistrationApiForLocation("www-nginx");
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url === "https://www.cloudphotos.top/healthz") {
+      return Response.json(
+        { status: "ok", route: "cloudphoto-frontend" },
+        { headers: { Server: "nginx/1.24.0" } },
+      );
+    }
+    return Response.json({ created: true }, { status: 201 });
+  };
+  t.after(() => {
+    delete globalThis.fetch;
+    window.location.origin = previousOrigin;
+    window.location.hostname = previousHostname;
+  });
+
+  const response = await registerFromWww({
+    username: "synthetic",
+    email: "synthetic@example.invalid",
+    displayName: "Synthetic",
+    password: "synthetic-password",
+  });
+
+  assert.deepEqual(response, { created: true });
+  assert.deepEqual(calls, [
+    "https://www.cloudphotos.top/healthz",
+    "https://www.cloudphotos.top/api/auth/register",
+  ]);
+});
+
+test("www registration uses direct Functions exactly once when it is not behind Nginx", async (t) => {
+  const previousOrigin = window.location.origin;
+  const previousHostname = window.location.hostname;
+  window.location.origin = "https://www.cloudphotos.top";
+  window.location.hostname = "www.cloudphotos.top";
+  const { registerApi: registerFromWww } =
+    await importRegistrationApiForLocation("www-direct");
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url === "https://www.cloudphotos.top/healthz") {
+      return Response.json({ status: "ok", route: "cloudphoto-frontend" });
+    }
+    return Response.json({ created: true }, { status: 201 });
+  };
+  t.after(() => {
+    delete globalThis.fetch;
+    window.location.origin = previousOrigin;
+    window.location.hostname = previousHostname;
+  });
+
+  const response = await registerFromWww({
+    username: "synthetic",
+    email: "synthetic@example.invalid",
+    displayName: "Synthetic",
+    password: "synthetic-password",
+  });
+
+  assert.deepEqual(response, { created: true });
+  assert.deepEqual(calls, [
+    "https://www.cloudphotos.top/healthz",
+    "https://cloudphoto-api.azurewebsites.net/api/auth/register",
+  ]);
 });
 
 test("caller abort cancels a hung login without alternate-route fallback", async (t) => {

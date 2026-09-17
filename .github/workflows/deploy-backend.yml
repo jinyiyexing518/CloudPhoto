@@ -209,6 +209,36 @@ jobs:
           echo "Azure login failed twice. Please verify OIDC federated credential and subscription access for the configured service principal."
           exit 1
 
+      - name: Ensure production auth CORS origins
+        run: |
+          az functionapp cors add \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \
+            --allowed-origins \
+              https://cloudphotos.top \
+              https://www.cloudphotos.top \
+              https://brave-sand-053b07a00.7.azurestaticapps.net \
+            --output none
+          allowed_origins="$(az functionapp cors show \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \
+            --query 'allowedOrigins[]' \
+            --output tsv)"
+          for required_origin in \
+            https://cloudphotos.top \
+            https://www.cloudphotos.top \
+            https://brave-sand-053b07a00.7.azurestaticapps.net
+          do
+            if ! grep -Fqx "$required_origin" <<< "$allowed_origins"; then
+              echo "Required production auth CORS origin is missing: $required_origin"
+              exit 1
+            fi
+          done
+          if grep -Fqx "*" <<< "$allowed_origins"; then
+            echo "Wildcard production auth CORS is forbidden"
+            exit 1
+          fi
+
       - name: Reverify deployment target immediately before Azure upload
         working-directory: .deployment-target
         run: node scripts/check-backend-deployment-target.mjs

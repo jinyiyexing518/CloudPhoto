@@ -152,7 +152,7 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 | `/media/` | `photostorage.blob.core.windows.net/photos/` | 保留 `Range` / `If-Range` 与 206 响应；`private, max-age=3600, immutable` |
 | `/` | `brave-sand-053b07a00.7.azurestaticapps.net` | 前端 HTML/静态资源反代；透传 SWA `Cache-Control` |
 
-三个 location 均设置 `proxy_set_header Host <upstream-host>`（SNI 必须）和 `proxy_ssl_server_name on`。`/api` 与 `/media` 的 CORS allowlist 只包含 `cloudphotos.top` 受信子域和精确 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`；禁止配置通配 `*.azurestaticapps.net`。受信 OPTIONS/GET 会回显相同 `Access-Control-Allow-Origin`，其他源不返回 ACAO。
+三个 location 均设置 `proxy_set_header Host <upstream-host>`（SNI 必须）和 `proxy_ssl_server_name on`。`/api` 与 `/media` 的 CORS allowlist 只包含 `cloudphotos.top` 受信子域和精确 SWA 源 `https://brave-sand-053b07a00.7.azurestaticapps.net`；禁止配置通配 `*.azurestaticapps.net`。受信 OPTIONS/GET 会回显相同 `Access-Control-Allow-Origin`，其他源不返回 ACAO。Azure Functions 平台 CORS 由 Backend workflow 独立维护：每次 OIDC 发布幂等加入 `https://cloudphotos.top`、`https://www.cloudphotos.top` 与精确 SWA 源，回读缺失或出现 `*` 都在代码上传前失败；部署包 `host.json` 固定相同的非通配集合。
 
 `/healthz` 在新版 Nginx 中直接返回 `cloudphoto-proxy`。前端也部署一个 `cloudphoto-frontend` JSON 兜底；直达 SWA 时客户端继续使用 Azure API，旧 Nginx 反代该 fallback 时则通过同源响应的 Nginx `Server` 标识确认 `/api` 仍可用。生产 smoke 接受两个入口标识并继续独立检查 API。
 
@@ -168,7 +168,7 @@ https://cloudphoto-api.azurewebsites.net/api
 运行时行为：
 - 在 `cloudphotos.top` 下，前端优先走同源 `/api`（VM Nginx 反代）
 - 在 `cn.cloudphotos.top` 下同样优先走同源 `/api` 和 `/media`
-- 在 `www.cloudphotos.top` 下先探测智能 DNS 落点：Nginx 响应使用同源 `/api`，直达 SWA 才使用 Azure Functions
+- 在 `www.cloudphotos.top` 下先探测智能 DNS 落点：Nginx 响应的登录和单次注册都使用同源 `/api`，直达 SWA 时两者使用已显式允许 `www` origin 的 Azure Functions
 - 若首选线路发生网络/网关失败，可安全重试的读取及认证请求自动回退；照片列表、动态视频、回收站和地理搜索等高成本读取不因短时慢响应自动重放，非幂等写请求也不重复发送
 - 直接访问 Azure Static Web Apps 域名时，也使用该直连地址
 - 媒体使用 Blob 与 `/media` 的无响应体 HEAD 竞速；Range 请求和 HEAD 探测不进入 PWA 媒体缓存
@@ -191,6 +191,8 @@ https://cloudphoto-api.azurewebsites.net/api
 
 上游 authorization 不是 deploy rerun 的可信前置条件：GitHub “重新运行失败的作业”会保留原 SHA/artifact，并跳过已经成功的 dependency jobs。为此 deploy job 自己另外 checkout 一个不持久化凭据的 full-history tree；在 Azure login 前和紧邻 upload 前分别运行无 `--requeue-current`、无 `GH_TOKEN` 的 target checker。两次只读 fence 都必须证明原 SHA 仍未被 Backend-relevant main commit 取代，覆盖 partial rerun 和 Azure 登录窗口竞态，同时不把 Actions write 与 OIDC 放入同一 job。失败时不上传；当前 main 的正常 push run 或 unprivileged authorization 负责自动 requeue，若操作员误重跑旧 attempt，则从当前 main dispatch，不得给 deploy 增加 requeue 权限。
 
+Azure 登录成功后、最终 deploy-local target fence 前，workflow 使用 `az functionapp cors add` 幂等确保主域、`www` 与精确 SWA 默认域名都在 allowlist，并立即回读；任一必需 origin 缺失或存在 `*` 都硬失败。该平台配置步骤不携带 Actions write，随后仍必须通过最终 full-history fence 才能上传 zip，因此 main 在 CORS 校正期间出现 Backend-relevant 前移时不会发布旧 artifact。
+
 生产依赖必须与测试依赖是同一个冻结图。build 先以根 `yarn.lock` 执行 frozen install 和 server tests；deploy-stage 只包含 server manifest，并复用同一 lock 与已填充的 Yarn cache 执行 offline、production-only frozen install。`check-backend-package-dependencies.mjs` 会遍历部署包的嵌套 `node_modules`，要求每个 `name@version` 都存在于刚测试的根图，且所有 server 直接依赖都已暂存。Linux runner 额外下载的 Windows `@img/sharp-win32-x64` tarball 必须通过同一 lock 中的精确 selector、version 和 SHA-512 integrity 后才可解包。任何无 lock 安装、registry 最新 caret 解析、缺依赖或版本漂移都是发布阻断。
 
 构建包根目录必须包含 raw canonical `deployment.json`：`{"sha":"<lowercase-40-char-sha>"}`，只允许末尾单个换行；重复 `sha`、额外字段或替代格式一律拒绝。`az functionapp deployment source config-zip` 返回成功后，同一 job 立即以 `PRODUCTION_SMOKE_SCOPE=backend-deployment` 并发回读主域、`www` 与 Azure Functions 直连的 `/api/deployment`；三者都必须 200、且仅有 `Cache-Control: no-store`、无重定向且正文精确等于 triggering SHA，最多使用既有 8 轮/10 秒请求/15 秒间隔的传播预算。缺失、损坏、旧 SHA 或任一入口不可达都令 Backend workflow 失败，不能把 Azure CLI 接受 zip 当成 canonical receipt。
@@ -207,7 +209,7 @@ Frontend workflow 对每次 `main` push 都创建 production 候选 run；即使
 
 `.github/workflows/production-health.yml` 在前端或后端 workflow 完成后运行，并每 30 分钟定时检查一次。`workflow_run` 使用稳定的 workflow 文件路径识别前后端部署，不依赖会被自定义 `run-name` 覆盖的名称；并发分组、事件分类、SHA marker gate 和报告使用同一身份。该路径先在隔离的 controller checkout 中读取当前 canonical classifier；classifier 使用事件的 run ID 与 `run_attempt` 调用 attempt-specific jobs API，不能因重跑复用 run ID 而混合不同 attempt 的 conclusion 与 jobs。Frontend 只有该 attempt 的 `Deploy to Azure Static Web Apps` step 实际 started，且紧随其后的 `Record canonical deployment receipt` 成功，才被视为 actual deployment；Backend 同样要求 `Deploy to Azure Functions` 与 `Record canonical backend deployment receipt` 都成功。validation、build-before-deploy failure、旧 Frontend SHA和重复 SHA的 coalesced success 都不会产生 actual Frontend health verdict；任一实际 upload 失败、receipt 缺失或身份非法必须 fail closed。分类通过后，部署 SHA、报告文本和 `.deployment` checkout ref 均固定使用 `github.event.workflow_run.head_sha`，禁止以健康 workflow 的 `github.sha` 或已经前移的当前 `main` 代替实际部署版本。
 
-网络检查前会从该 deployed revision 执行 workflow/runtime、production smoke 和安全头契约。`scripts/production-smoke.mjs` 把权威 DNS 已部署的 `cloudphotos.top`、`www.cloudphotos.top` 与 Azure 直连作为独立 target：主域和 `www` 分别验证首页 HTML/安全头、`/healthz` 路由身份、未登录认证状态和更新日志 JSON；主域与 Azure 继续验证 manifest MIME/身份/语言/PNG 安装字段、180px Apple Touch PNG及随机缺失 hashed JS/CSS 的 404 JSON。所有受检 URL 都禁用重定向，防止一个入口借用另一入口的成功响应。Frontend marker 由主域、`www` 与 SWA 直连回读；Backend marker 由主域 `/api/deployment`、`www` `/api/deployment` 与 Azure Functions 直连 `/api/deployment` 回读。普通轮次并行执行 19 个检查；Frontend 或 Backend deployed-SHA full smoke 各增加对应三条 marker，共 22 项，并各自再从 controller checkout 执行独立 3 项 marker-only identity gate。结果按固定顺序输出，跨轮仍串行重试。`cn` 与 `global` 在权威 DNS 仍为 NXDOMAIN 时不得加入健康 target 或被宣称已部署。
+网络检查前会从该 deployed revision 执行 workflow/runtime、production smoke 和安全头契约。`scripts/production-smoke.mjs` 把权威 DNS 已部署的 `cloudphotos.top`、`www.cloudphotos.top` 与 Azure 直连作为独立 target：主域和 `www` 分别验证首页 HTML/安全头、`/healthz` 路由身份、未登录认证状态和更新日志 JSON；主域与 Azure 继续验证 manifest MIME/身份/语言/PNG 安装字段、180px Apple Touch PNG及随机缺失 hashed JS/CSS 的 404 JSON。认证可用性不再由 `/auth/me` 401 代替：主域以固定不存在账号执行无副作用登录，以空对象触发注册 validation；另模拟 `www`→Functions 和 SWA→主域代理的浏览器 JSON POST 预检，要求 exact ACAO 与 `Content-Type` allow-header。所有受检 URL 都禁用重定向，防止一个入口借用另一入口的成功响应。Frontend marker 由主域、`www` 与 SWA 直连回读；Backend marker 由主域 `/api/deployment`、`www` `/api/deployment` 与 Azure Functions 直连 `/api/deployment` 回读。普通轮次并行执行 23 个检查；Frontend 或 Backend deployed-SHA full smoke 各增加对应三条 marker，共 26 项，并各自再从 controller checkout 执行独立 3 项 marker-only identity gate。结果按固定顺序输出，跨轮仍串行重试。`cn` 与 `global` 在权威 DNS 仍为 NXDOMAIN 时不得加入健康 target 或被宣称已部署。
 
 每个 Frontend workflow completion 都以 triggering run ID + attempt 隔离 Health concurrency；因此 duplicate/coalesced success 的快速跳过 run 不能取消 actual deployment 的 marker/full-smoke verdict。Backend 和定时/手动检查使用各自 group；真实失败也不会被后续成功事件隐藏。按 10 秒请求超时、8 轮和 15 秒轮次间隔计算，最坏检查时长为 185 秒（不含 runner setup），低于 workflow 的 10 分钟上限。部署成功但传播尚未完成时，检查使用有限重试，不会用静态 changelog fallback 掩盖 API 错误。
 

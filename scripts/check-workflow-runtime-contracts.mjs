@@ -102,6 +102,7 @@ const backendRequiredStepNames = [
   "Azure Login (attempt 1)",
   "Azure Login (attempt 2)",
   "Verify Azure Login",
+  "Ensure production auth CORS origins",
   "Reverify deployment target immediately before Azure upload",
   "Deploy to Azure Functions",
   "Record canonical backend deployment receipt",
@@ -135,6 +136,35 @@ const backendDeploymentCommand = [
   "  --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
   "  --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
   "  --src deployment.zip",
+].join("\n");
+const backendCorsCommand = [
+  "az functionapp cors add \\",
+  "  --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
+  "  --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
+  "  --allowed-origins \\",
+  "    https://cloudphotos.top \\",
+  "    https://www.cloudphotos.top \\",
+  "    https://brave-sand-053b07a00.7.azurestaticapps.net \\",
+  "  --output none",
+  'allowed_origins="$(az functionapp cors show \\',
+  "  --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
+  "  --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
+  "  --query 'allowedOrigins[]' \\",
+  '  --output tsv)"',
+  "for required_origin in \\",
+  "  https://cloudphotos.top \\",
+  "  https://www.cloudphotos.top \\",
+  "  https://brave-sand-053b07a00.7.azurestaticapps.net",
+  "do",
+  '  if ! grep -Fqx "$required_origin" <<< "$allowed_origins"; then',
+  '    echo "Required production auth CORS origin is missing: $required_origin"',
+  "    exit 1",
+  "  fi",
+  "done",
+  'if grep -Fqx "*" <<< "$allowed_origins"; then',
+  '  echo "Wildcard production auth CORS is forbidden"',
+  "  exit 1",
+  "fi",
 ].join("\n");
 const frontendWorkflow = ".github/workflows/deploy-frontend.yml";
 const frontendProductionConcurrencyGroup =
@@ -1275,6 +1305,9 @@ export function checkWorkflowRuntimeContracts(workflows) {
     const backendDeploymentStep = backendPolicy.runSteps.find(
       (step) => step.name === "Deploy to Azure Functions"
     );
+    const backendCorsStep = backendPolicy.runSteps.find(
+      (step) => step.name === "Ensure production auth CORS origins"
+    );
     const backendDeployTargetCheckout = backendPolicy.checkoutFetchDepths.find(
       (checkout) => checkout.stepName === "Checkout deployment target history"
     );
@@ -1434,6 +1467,21 @@ export function checkWorkflowRuntimeContracts(workflows) {
     ) {
       issues.push(
         `${backendWorkflow} must fence stale Backend revisions, requeue current main from unprivileged jobs, and recheck full history inside every deploy attempt before login and immediately before upload`
+      );
+    }
+    if (
+      backendCorsStep?.command !== backendCorsCommand
+      || backendCorsStep?.condition !== null
+      || ![null, "false"].includes(backendCorsStep?.continueOnError)
+      || backendCorsStep?.job !== "deploy"
+      || !Number.isInteger(backendCorsStep?.order)
+      || !Number.isInteger(backendLoginOrder)
+      || !Number.isInteger(deployPreuploadTargetStep?.order)
+      || backendCorsStep.order <= backendLoginOrder
+      || backendCorsStep.order >= deployPreuploadTargetStep.order
+    ) {
+      issues.push(
+        `${backendWorkflow} must enforce production auth CORS origins before the final deployment target fence`
       );
     }
     if (

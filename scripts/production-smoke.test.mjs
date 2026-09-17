@@ -91,6 +91,12 @@ function testEnvironment(origin) {
     PRODUCTION_AUTH_ME_URL: `${origin}/primary/api/auth/me`,
     PRODUCTION_WWW_AUTH_ME_URL: `${origin}/www/api/auth/me`,
     PRODUCTION_AZURE_AUTH_ME_URL: `${origin}/azure/api/auth/me`,
+    PRODUCTION_AUTH_LOGIN_URL: `${origin}/primary/api/auth/login`,
+    PRODUCTION_AUTH_REGISTER_URL: `${origin}/primary/api/auth/register`,
+    PRODUCTION_WWW_AUTH_PREFLIGHT_URL: `${origin}/www/direct/auth/login`,
+    PRODUCTION_AZURE_REGISTER_PREFLIGHT_URL: `${origin}/azure/proxy/auth/register`,
+    PRODUCTION_WWW_ORIGIN: "https://www.example",
+    PRODUCTION_AZURE_FRONTEND_ORIGIN: "https://frontend.example",
     PRODUCTION_CHANGELOGS_URL: `${origin}/primary/api/changelogs`,
     PRODUCTION_WWW_CHANGELOGS_URL: `${origin}/www/api/changelogs`,
     PRODUCTION_AZURE_CHANGELOGS_URL: `${origin}/azure/api/changelogs`,
@@ -199,6 +205,26 @@ test("builds primary, www, and Azure checks from base URL overrides", () => {
       },
       {
         target: "primary",
+        name: "auth/login",
+        url: "https://primary.example/api/auth/login",
+      },
+      {
+        target: "primary",
+        name: "auth/register",
+        url: "https://primary.example/api/auth/register",
+      },
+      {
+        target: "www",
+        name: "auth/login-preflight",
+        url: "https://api.example/api/auth/login",
+      },
+      {
+        target: "azure",
+        name: "auth/register-preflight",
+        url: "https://primary.example/api/auth/register",
+      },
+      {
+        target: "primary",
         name: "changelogs",
         url: "https://primary.example/api/changelogs",
       },
@@ -219,6 +245,7 @@ test("builds primary, www, and Azure checks from base URL overrides", () => {
 test("builds independent checks for the deployed www entry", () => {
   const checks = createChecks({
     PRODUCTION_WWW_BASE_URL: "https://www.example",
+    PRODUCTION_AZURE_API_BASE_URL: "https://api.example/api",
   });
 
   assert.deepEqual(
@@ -229,8 +256,88 @@ test("builds independent checks for the deployed www entry", () => {
       { name: "homepage", url: "https://www.example/" },
       { name: "healthz", url: "https://www.example/healthz" },
       { name: "auth/me", url: "https://www.example/api/auth/me" },
+      {
+        name: "auth/login-preflight",
+        url: "https://api.example/api/auth/login",
+      },
       { name: "changelogs", url: "https://www.example/api/changelogs" },
     ],
+  );
+});
+
+test("auth availability checks are non-mutating and preserve browser CORS origins", () => {
+  const checks = createChecks({
+    PRODUCTION_BASE_URL: "https://primary.example",
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
+    PRODUCTION_AZURE_FRONTEND_URL: "https://frontend.example",
+    PRODUCTION_AZURE_API_BASE_URL: "https://api.example/api",
+  });
+  const find = (target, name) =>
+    checks.find((check) => check.target === target && check.name === name);
+
+  assert.deepEqual(find("primary", "auth/login")?.request, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "__cloudphoto_production_health_missing_account__",
+      password: "__cloudphoto_production_health_invalid_password__",
+    }),
+  });
+  assert.deepEqual(find("primary", "auth/register")?.request, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.deepEqual(find("www", "auth/login-preflight")?.request, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://www.example",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assert.deepEqual(find("azure", "auth/register-preflight")?.request, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://frontend.example",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+});
+
+test("rejects browser auth preflights without the exact trusted origin", async () => {
+  const check = createChecks({
+    PRODUCTION_WWW_BASE_URL: "https://www.example",
+    PRODUCTION_AZURE_API_BASE_URL: "https://api.example/api",
+  }).find(({ target, name }) => (
+    target === "www" && name === "auth/login-preflight"
+  ));
+  assert(check);
+
+  await assert.rejects(
+    check.validate(new Response(null, {
+      status: 204,
+      headers: { "access-control-allow-headers": "content-type" },
+    })),
+    /CORS does not allow https:\/\/www\.example/,
+  );
+  await assert.rejects(
+    check.validate(new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-origin": "https://other.example",
+        "access-control-allow-headers": "content-type",
+      },
+    })),
+    /CORS does not allow https:\/\/www\.example/,
+  );
+  await assert.rejects(
+    check.validate(new Response(null, {
+      status: 204,
+      headers: { "access-control-allow-origin": "https://www.example" },
+    })),
+    /does not allow Content-Type/,
   );
 });
 
@@ -770,6 +877,21 @@ test("passes the primary, www, and Azure production contracts with timings", asy
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
+      } else if (request.url === "/primary/api/auth/login") {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end('{"error":"account_not_found"}');
+      } else if (request.url === "/primary/api/auth/register") {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end('{"error":"validation_failed"}');
+      } else if (
+        request.url === "/www/direct/auth/login"
+        || request.url === "/azure/proxy/auth/register"
+      ) {
+        response.writeHead(204, {
+          "access-control-allow-origin": request.headers.origin,
+          "access-control-allow-headers": "content-type",
+        });
+        response.end();
       } else if (request.url?.endsWith("/api/changelogs")) {
         response.writeHead(200, { "content-type": "application/json" });
         response.end("[]");
@@ -790,7 +912,7 @@ test("passes the primary, www, and Azure production contracts with timings", asy
       assert.equal(passed, true);
       assert.equal(
         messages.output.filter((message) => message.startsWith("PASS ")).length,
-        19
+        23
       );
       assert.ok(
         messages.output.some((message) =>
@@ -840,6 +962,21 @@ test("retries and fails when any changelog response is not an array", async () =
       } else if (request.url?.endsWith("/api/auth/me")) {
         response.writeHead(401, { "content-type": "application/json" });
         response.end('{"error":"Unauthorized"}');
+      } else if (request.url === "/primary/api/auth/login") {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end('{"error":"account_not_found"}');
+      } else if (request.url === "/primary/api/auth/register") {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end('{"error":"validation_failed"}');
+      } else if (
+        request.url === "/www/direct/auth/login"
+        || request.url === "/azure/proxy/auth/register"
+      ) {
+        response.writeHead(204, {
+          "access-control-allow-origin": request.headers.origin,
+          "access-control-allow-headers": "content-type",
+        });
+        response.end();
       } else if (request.url === "/azure/api/changelogs") {
         invalidRequests += 1;
         response.writeHead(200, { "content-type": "application/json" });
@@ -878,7 +1015,7 @@ test("runs all checks concurrently and reports an isolated failure in order", as
   let maxInFlight = 0;
   let completed = 0;
 
-  const fetchImpl = async (url) => {
+  const fetchImpl = async (url, init) => {
     inFlight += 1;
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -908,6 +1045,24 @@ test("runs all checks concurrently and reports an isolated failure in order", as
     if (url.endsWith("/api/auth/me")) {
       return new Response('{"error":"Unauthorized"}', { status: 401 });
     }
+    if (url.endsWith("/primary/api/auth/login")) {
+      return Response.json({ error: "account_not_found" }, { status: 404 });
+    }
+    if (url.endsWith("/primary/api/auth/register")) {
+      return Response.json({ error: "validation_failed" }, { status: 400 });
+    }
+    if (
+      url.endsWith("/www/direct/auth/login")
+      || url.endsWith("/azure/proxy/auth/register")
+    ) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": new Headers(init?.headers).get("Origin"),
+          "access-control-allow-headers": "content-type",
+        },
+      });
+    }
     if (url.endsWith("/api/changelogs")) {
       return Response.json([]);
     }
@@ -926,8 +1081,8 @@ test("runs all checks concurrently and reports an isolated failure in order", as
   });
 
   assert.equal(passed, false);
-  assert.equal(maxInFlight, 19);
-  assert.equal(completed, 19);
+  assert.equal(maxInFlight, 23);
+  assert.equal(completed, 23);
   assert.deepEqual(
     messages.output
       .filter((message) => /^(PASS|FAIL) /.test(message))
@@ -949,12 +1104,16 @@ test("runs all checks concurrently and reports an isolated failure in order", as
       "primary auth/me",
       "www auth/me",
       "azure auth/me",
+      "primary auth/login",
+      "primary auth/register",
+      "www auth/login-preflight",
+      "azure auth/register-preflight",
       "primary changelogs",
       "www changelogs",
       "azure changelogs",
     ]
   );
-  assert.match(messages.output[18], /^FAIL azure changelogs:/);
+  assert.match(messages.output[22], /^FAIL azure changelogs:/);
   assert.match(
     messages.output.at(-1),
     /Production smoke checks failed after 1 attempts:/

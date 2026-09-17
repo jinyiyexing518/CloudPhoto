@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-09-17-fix-www-auth-availability",
+    "date": "2026-09-17",
+    "icon": "🔐",
+    "title": "修复 www 登录注册持续不可用",
+    "type": "fix",
+    "desc": "www 入口现在会按实际 Nginx 或直连落点为登录和注册选择唯一可达线路，后端发布同步补齐精确 CORS 白名单。",
+    "details": "注册仍只提交一次：www 落在 Nginx 时使用同源 /api，直达静态站点时使用 Azure Functions；默认 SWA 入口继续固定走主域代理。Backend 发布会幂等加入 cloudphotos.top、www.cloudphotos.top 与精确 SWA 源并拒绝通配 CORS。Production Health 新增无副作用的不存在账号登录、空注册校验以及 www 直连和 SWA 代理预检，共 23 项常规检查、26 项 exact-SHA full smoke，避免仅凭 /auth/me 401 把登录注册故障误报为健康。",
+    "seq": 1789600000000
+  },
+  {
     "id": "2026-09-04-verify-backend-deployment-identity",
     "date": "2026-09-04",
     "icon": "🎯",

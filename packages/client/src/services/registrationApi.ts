@@ -3,7 +3,9 @@ import type { AuthResponse } from "./authApi";
 import { fetchWithTimeout } from "./http";
 
 const registrationApiBase = (
-  typeof window !== "undefined" && !isLocalSiteHost(window.location.hostname)
+  typeof window !== "undefined"
+    && !isLocalSiteHost(window.location.hostname)
+    && window.location.hostname !== "www.cloudphotos.top"
     ? PROXY_API_BASE
     : API_BASE
 );

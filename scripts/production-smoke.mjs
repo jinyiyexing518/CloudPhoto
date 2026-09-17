@@ -191,6 +191,48 @@ async function validateAuthMe(response) {
   }
 }
 
+function validateAuthError(expectedStatuses) {
+  return async (response) => {
+    if (!expectedStatuses.has(response.status)) {
+      throw new Error(
+        `expected ${[...expectedStatuses].join(" or ")}, received ${response.status}`
+      );
+    }
+    if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+      throw new Error("auth response is not JSON");
+    }
+    let body;
+    try {
+      body = await response.json();
+    } catch {
+      throw new Error("auth response is not valid JSON");
+    }
+    if (typeof body?.error !== "string" || body.error.trim().length === 0) {
+      throw new Error("auth response is missing an error");
+    }
+  };
+}
+
+function validateCorsPreflight(expectedOrigin) {
+  return async (response) => {
+    const status = response.status;
+    await response.arrayBuffer();
+    if (status !== 200 && status !== 204) {
+      throw new Error(`expected 200 or 204, received ${status}`);
+    }
+    if (response.headers.get("access-control-allow-origin") !== expectedOrigin) {
+      throw new Error(`CORS does not allow ${expectedOrigin}`);
+    }
+    const allowedHeaders = (response.headers.get("access-control-allow-headers") ?? "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    if (!allowedHeaders.includes("content-type")) {
+      throw new Error("CORS preflight does not allow Content-Type");
+    }
+  };
+}
+
 async function validateChangelogs(response) {
   if (response.status !== 200) {
     throw new Error(`expected 200, received ${response.status}`);
@@ -267,6 +309,10 @@ export function createChecks(env = process.env) {
     env.PRODUCTION_AZURE_FRONTEND_URL ?? DEFAULT_AZURE_FRONTEND_URL;
   const azureApiBaseUrl =
     env.PRODUCTION_AZURE_API_BASE_URL ?? DEFAULT_AZURE_API_BASE_URL;
+  const wwwOrigin =
+    env.PRODUCTION_WWW_ORIGIN ?? new URL(wwwBaseUrl).origin;
+  const azureFrontendOrigin =
+    env.PRODUCTION_AZURE_FRONTEND_ORIGIN ?? new URL(azureFrontendUrl).origin;
   const expectedDeployedSha = env.PRODUCTION_DEPLOYED_SHA?.toLowerCase() ?? "";
   const expectedBackendDeployedSha =
     env.PRODUCTION_BACKEND_DEPLOYED_SHA?.toLowerCase() ?? "";
@@ -425,6 +471,67 @@ export function createChecks(env = process.env) {
     },
     {
       target: "primary",
+      name: "auth/login",
+      url:
+        env.PRODUCTION_AUTH_LOGIN_URL ??
+        joinUrl(primaryBaseUrl, "/api/auth/login"),
+      request: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: "__cloudphoto_production_health_missing_account__",
+          password: "__cloudphoto_production_health_invalid_password__",
+        }),
+      },
+      validate: validateAuthError(new Set([401, 404])),
+    },
+    {
+      target: "primary",
+      name: "auth/register",
+      url:
+        env.PRODUCTION_AUTH_REGISTER_URL ??
+        joinUrl(primaryBaseUrl, "/api/auth/register"),
+      request: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      },
+      validate: validateAuthError(new Set([400])),
+    },
+    {
+      target: "www",
+      name: "auth/login-preflight",
+      url:
+        env.PRODUCTION_WWW_AUTH_PREFLIGHT_URL ??
+        joinUrl(azureApiBaseUrl, "/auth/login"),
+      request: {
+        method: "OPTIONS",
+        headers: {
+          Origin: wwwOrigin,
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "content-type",
+        },
+      },
+      validate: validateCorsPreflight(wwwOrigin),
+    },
+    {
+      target: "azure",
+      name: "auth/register-preflight",
+      url:
+        env.PRODUCTION_AZURE_REGISTER_PREFLIGHT_URL ??
+        joinUrl(primaryBaseUrl, "/api/auth/register"),
+      request: {
+        method: "OPTIONS",
+        headers: {
+          Origin: azureFrontendOrigin,
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "content-type",
+        },
+      },
+      validate: validateCorsPreflight(azureFrontendOrigin),
+    },
+    {
+      target: "primary",
       name: "changelogs",
       url:
         env.PRODUCTION_CHANGELOGS_URL ??
@@ -536,8 +643,11 @@ function delay(milliseconds) {
 }
 
 async function runCheck(check, fetchImpl, requestTimeoutMs) {
+  const headers = new Headers(check.request?.headers);
+  headers.set("User-Agent", "cloudphoto-production-smoke/1.0");
   const response = await fetchImpl(check.url, {
-    headers: { "User-Agent": "cloudphoto-production-smoke/1.0" },
+    ...check.request,
+    headers,
     redirect: "manual",
     signal: AbortSignal.timeout(requestTimeoutMs),
   });

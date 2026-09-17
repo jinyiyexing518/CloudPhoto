@@ -18,7 +18,11 @@
     }
   },
   "cors": {
-    "allowedOrigins": ["*"],
+    "allowedOrigins": [
+      "https://cloudphotos.top",
+      "https://www.cloudphotos.top",
+      "https://brave-sand-053b07a00.7.azurestaticapps.net"
+    ],
     "supportCredentials": false
   }
 }

@@ -1389,6 +1389,38 @@ test("locks Backend deployment serialization, main scope, marker, and receipt", 
     "            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
     "            --src deployment.zip",
   ].join("\n");
+  const backendCorsBlock = [
+    "      - name: Ensure production auth CORS origins",
+    "        run: |",
+    "          az functionapp cors add \\",
+    "            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
+    "            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
+    "            --allowed-origins \\",
+    "              https://cloudphotos.top \\",
+    "              https://www.cloudphotos.top \\",
+    "              https://brave-sand-053b07a00.7.azurestaticapps.net \\",
+    "            --output none",
+    "          allowed_origins=\"$(az functionapp cors show \\",
+    "            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \\",
+    "            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} \\",
+    "            --query 'allowedOrigins[]' \\",
+    "            --output tsv)\"",
+    "          for required_origin in \\",
+    "            https://cloudphotos.top \\",
+    "            https://www.cloudphotos.top \\",
+    "            https://brave-sand-053b07a00.7.azurestaticapps.net",
+    "          do",
+    "            if ! grep -Fqx \"$required_origin\" <<< \"$allowed_origins\"; then",
+    "              echo \"Required production auth CORS origin is missing: $required_origin\"",
+    "              exit 1",
+    "            fi",
+    "          done",
+    "          if grep -Fqx \"*\" <<< \"$allowed_origins\"; then",
+    "            echo \"Wildcard production auth CORS is forbidden\"",
+    "            exit 1",
+    "          fi",
+  ].join("\n");
+  assert.ok(source.includes(`${backendCorsBlock}\n\n${deployFinalTargetBlock}`));
   assert.ok(source.includes(`${deployFinalTargetBlock}\n\n${backendUploadBlock}`));
   const cases = [
     [
@@ -1568,6 +1600,24 @@ test("locks Backend deployment serialization, main scope, marker, and receipt", 
       "fence stale Backend revisions",
     ],
     [
+      source.replace(`${backendCorsBlock}\n\n`, ""),
+      "enforce production auth CORS origins",
+    ],
+    [
+      source.replace(
+        "              https://www.cloudphotos.top \\\n",
+        "",
+      ),
+      "enforce production auth CORS origins",
+    ],
+    [
+      source.replace(
+        `${backendCorsBlock}\n\n${deployFinalTargetBlock}`,
+        `${deployFinalTargetBlock}\n\n${backendCorsBlock}`,
+      ),
+      "enforce production auth CORS origins",
+    ],
+    [
       source.replace(
         `          printf '{"sha":"%s"}\\n' "$GITHUB_SHA" > deploy-stage/deployment.json\n`,
         "",
@@ -1679,6 +1729,21 @@ test("locks Backend deployment serialization, main scope, marker, and receipt", 
       `${expectedIssue}\n${result.issues.join("\n")}`,
     );
   }
+});
+
+test("keeps the packaged Function host CORS allowlist exact and non-wildcard", () => {
+  const host = JSON.parse(readFileSync(
+    new URL("../packages/server/host.json", import.meta.url),
+    "utf8",
+  ));
+  assert.deepEqual(host.cors, {
+    allowedOrigins: [
+      "https://cloudphotos.top",
+      "https://www.cloudphotos.top",
+      "https://brave-sand-053b07a00.7.azurestaticapps.net",
+    ],
+    supportCredentials: false,
+  });
 });
 
 test("locks Backend SHA into full and controller-owned Production Health checks", () => {
