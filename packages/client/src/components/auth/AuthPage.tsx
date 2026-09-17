@@ -47,10 +47,13 @@ const unavailableRegisterFormModule: typeof import("./RegisterForm") = {
 };
 
 const loadRegisterForm = () => {
-  registerFormPromise ??= import("./RegisterForm").catch((error) => {
-    reportLazyBoundaryFailure(error);
-    return unavailableRegisterFormModule;
-  });
+  registerFormPromise ??= import("./RegisterForm").then(
+    (module) => module ?? unavailableRegisterFormModule,
+    (error) => {
+      reportLazyBoundaryFailure(error);
+      return unavailableRegisterFormModule;
+    },
+  );
   return registerFormPromise;
 };
 const RegisterForm = lazy(loadRegisterForm);

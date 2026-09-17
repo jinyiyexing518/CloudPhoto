@@ -162,7 +162,7 @@ function moduleUrl(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 }
 
-test("a blocked registration chunk degrades only the register panel", async () => {
+async function loadRegisterLoader({ suppressedPreloadFailure = false } = {}) {
   const reactUrl = moduleUrl(`
     export const lazy = (loader) => ({ loader });
     export const Suspense = () => null;
@@ -190,7 +190,6 @@ test("a blocked registration chunk degrades only the register panel", async () =
     }
   `);
   const recoveryUrl = moduleUrl(`
-    globalThis.__cloudPhotoRegisterRecoveryCalls = [];
     export function reportLazyBoundaryFailure(error) {
       globalThis.__cloudPhotoRegisterRecoveryCalls.push(String(error));
       return true;
@@ -204,6 +203,12 @@ test("a blocked registration chunk degrades only the register panel", async () =
     new URL("../packages/client/src/components/auth/AuthPage.tsx", import.meta.url),
     "utf8",
   )
+    .replace(
+      'registerFormPromise ??= import("./RegisterForm")',
+      suppressedPreloadFailure
+        ? "registerFormPromise ??= Promise.resolve(undefined)"
+        : 'registerFormPromise ??= import("./RegisterForm")',
+    )
     .replace('"react"', JSON.stringify(reactUrl))
     .replace('"../../contexts/AuthContext"', JSON.stringify(authContextUrl))
     .replace('"./PasswordField"', JSON.stringify(passwordFieldUrl))
@@ -222,11 +227,10 @@ test("a blocked registration chunk degrades only the register panel", async () =
     },
     fileName: "AuthPage.tsx",
   }).outputText.replace('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
-  const { loadRegisterForm } = await import(moduleUrl(compiled));
+  return (await import(moduleUrl(compiled))).loadRegisterForm;
+}
 
-  const first = await loadRegisterForm();
-  const second = await loadRegisterForm();
-
+function assertRegisterFallback(first, second) {
   assert.equal(first, second);
   assert.equal(typeof first.default, "function");
   assert.equal(first.default({ active: false }).props.hidden, true);
@@ -237,8 +241,25 @@ test("a blocked registration chunk degrades only the register panel", async () =
   assert.equal(fallback.props.children.args[0], "注册表单");
   assert.equal(fallback.props.children.args[1], true);
   assert.equal(typeof fallback.props.children.args[2], "function");
+}
+
+test("a blocked registration chunk degrades only the register panel", async () => {
+  globalThis.__cloudPhotoRegisterRecoveryCalls = [];
+  const rejectedLoader = await loadRegisterLoader();
+  const first = await rejectedLoader();
+  const second = await rejectedLoader();
+  assertRegisterFallback(first, second);
   assert.deepEqual(globalThis.__cloudPhotoRegisterRecoveryCalls, [
     "Error: register chunk blocked",
   ]);
+
+  globalThis.__cloudPhotoRegisterRecoveryCalls = [];
+  const suppressedLoader = await loadRegisterLoader({
+    suppressedPreloadFailure: true,
+  });
+  const suppressedFirst = await suppressedLoader();
+  const suppressedSecond = await suppressedLoader();
+  assertRegisterFallback(suppressedFirst, suppressedSecond);
+  assert.deepEqual(globalThis.__cloudPhotoRegisterRecoveryCalls, []);
   delete globalThis.__cloudPhotoRegisterRecoveryCalls;
 });

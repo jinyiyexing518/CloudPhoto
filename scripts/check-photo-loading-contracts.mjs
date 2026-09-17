@@ -144,8 +144,13 @@ requireText(authPage, "const RegisterForm = lazy(loadRegisterForm);", "lazy regi
 requireText(authPage, "void loadRegisterForm();", "registration intent preload");
 requireText(
   authPage,
-  'import("./RegisterForm").catch((error) => {',
+  'import("./RegisterForm").then(',
   "registration chunk failure recovery",
+);
+requireText(
+  authPage,
+  "module ?? unavailableRegisterFormModule",
+  "Vite-suppressed registration preload recovery",
 );
 requireText(
   authPage,

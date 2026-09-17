@@ -7,6 +7,7 @@
 - **🛡️ 发布时校正 CORS** — Backend OIDC job 幂等确保主域、`www` 与精确 SWA 源都在 Function App allowlist 中，并拒绝通配 `*`；部署包 `host.json` 使用同一非通配集合
 - **🩺 登录注册不再被 Health 假绿** — 常规生产检查从 19 项扩为 23 项，新增不存在账号登录、空注册校验、`www`→Functions 与 SWA→主域代理的浏览器预检；exact-SHA full smoke 相应为 26 项
 - **🛟 注册 chunk 故障隔离** — 注册资源的一次瞬时加载失败不再污染整个认证页：登录保持可用，注册面板单独提示并复用安全的“刷新新版”恢复；hover/focus 预载失败也不会产生未处理 rejection
+- **🧯 Vite 空模块路径闭合** — `vite:preloadError` 被全局恢复层安全接管后可能把失败的 import 解析为 `undefined`；注册 loader 现在也将该结果替换为合法 fallback，避免 `React.lazy` 再次读取 `undefined.default`
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "id": "2026-09-17-handle-suppressed-register-preload",
+  "date": "2026-09-17",
+  "icon": "🧯",
+  "title": "修复被拦截注册预加载的持续故障",
+  "type": "fix",
+  "desc": "Vite 已接管注册 chunk 错误并返回空模块时，认证页现在仍会进入注册专用恢复面板，不再重新拖垮登录。",
+  "details": "真实生产故障注入发现：全局 vite:preloadError 被安全恢复层 preventDefault 后，Vite preload helper 会把动态 import 解析为 undefined，而不是 reject。注册 loader 现在同时处理 reject 和 fulfilled-undefined：前者在本地上报后降级，后者复用全局已完成的上报并降级；React.lazy 永远收到合法 module。回归测试执行两个分支并锁定同一 Promise、单次上报、注册专用恢复卡和登录回切。",
+  "seq": 1789607200000
+}
