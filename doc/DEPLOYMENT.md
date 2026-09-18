@@ -158,6 +158,8 @@ ssh -i "C:\Users\zhangchi\Desktop\CloudPhoto\cloudphoto-vm-key.pem" `
 
 前端缓存与全局响应头由 `packages/client/public/staticwebapp.config.json` 管理。该文件随 Vite 构建复制到 `dist` 根目录，SWA 对带内容哈希的 `/assets/*` 返回一年期 `immutable` 缓存；SPA shell、Service Worker、部署资产 manifest、稳定文件名图标和 `changelog.json` 保持重验证或短缓存。`navigationFallback` 必须排除 `/assets/*`，全局 404 rewrite 固定返回 `404.json` 并保留 404；`.js`/`.css` MIME 显式映射，缺失 hashed asset 不得伪装成 200/404 HTML。Nginx `/` location 未启用 `proxy_intercept_errors` 或本地 `try_files`，因此主域原样透传 SWA 的 404、JSON MIME 与正文。全局安全基线要求 `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`、`X-Frame-Options: SAMEORIGIN`、`Content-Security-Policy: frame-ancestors 'self'`、`X-Content-Type-Options: nosniff` 和 `Referrer-Policy: same-origin`，使 SWA 直连与 Nginx 主域都拒绝第三方页面嵌入；CSP 仅约束 framing，不限制脚本、图片、地图或 API 连接。`.webmanifest` 必须显式映射为 `application/manifest+json`，否则 SWA 会返回 `application/octet-stream`，在 `nosniff` 下无法可靠安装 PWA。manifest 固定使用根路径 `id`、`zh-CN` 语言以及 192/512 PNG 图标，另提供 512px maskable PNG；iOS 主屏幕入口使用独立 180px `apple-touch-icon.png`。构建契约会检查这些响应头、字段、用途、文件格式和实际像素尺寸；生产 smoke 要求 SWA 默认域名只返回 canonical HSTS，并要求 `cloudphotos.top` 的第一个 effective HSTS 为 canonical。Nginx 前端代理模板隐藏 SWA 的 HSTS、X-Content-Type-Options 与 X-Frame-Options 后再使用本地安全头，避免重复响应头；仓库变更不会自动热加载到 VM，必须按上文手动部署。未热加载期间首值已 canonical、尾部仍是旧本地值属于不阻断浏览器策略的 drift，但仍应手动部署模板以消除重复，且不得宣称 VM 已更新。不要在 Nginx 的 `/` location 重写 `Cache-Control`，否则会覆盖 SWA 的分层策略。
 
+PWA 注册在 React 首屏 render 完成后才调度：文档已完成则直接进入 idle 调度，否则先等待一次 `load`，随后使用 `requestIdleCallback({ timeout: 2000 })`，缺少该 API 时回退 `setTimeout(0)`。deployment recovery 监听器仍必须在 React root 创建前同步安装。注册 helper 自身负责首次更新检查，`onRegisteredSW` 不得再重复调用 `registration.update()`；后续 update policy 作为独立 0.96 kB chunk 动态加载并进入最小 precache，保证当前客户端能发现后续部署。它只在页面可见、网络在线且没有 update 在途时运行：standalone 每 5 分钟、普通浏览器每 15 分钟，focus/visibility 至少间隔 60 秒，online 恢复可强制一次但仍去重；同步抛错和异步 rejection 都会释放 in-flight 并允许后续重试。当前最小 precache 为 14 项、约 195.21 KiB；认证工作区及新建群组/群组设置等 intent-only chunk 不得进入 HTML preload 或 precache。
+
 ### 部署后更新 GitHub Secret
 
 将 `VITE_API_BASE` 设为 Azure Functions 直连地址：
@@ -170,6 +172,8 @@ https://cloudphoto-api.azurewebsites.net/api
 - 在 `cn.cloudphotos.top` 下同样优先走同源 `/api` 和 `/media`
 - 在 `www.cloudphotos.top` 下先探测智能 DNS 落点：Nginx 响应的登录和单次注册都使用同源 `/api`，直达 SWA 时两者使用已显式允许 `www` origin 的 Azure Functions
 - 注册表单仍作为独立 lazy chunk 按意图加载；chunk 被瞬时拦截时，无论 import reject，还是 Vite 的 preload error 被全局恢复层接管后解析为空模块，都只降级注册面板并提供“刷新新版”，登录表单继续可用
+- 无 token 冷启动先调用私有缓存生命周期的同步失效段，再结束认证 splash；完整 Workbox/Cache Storage/IndexedDB 清理 Promise 不得丢弃，失败需显式记录，后续登录/恢复的 scoped preparation 仍须等待同一清理链
+- 新建群组与群组设置仅在菜单 hover/focus/click 后加载；loading 与跨部署 fallback 使用真实 modal focus boundary，并可通过关闭按钮、Esc 或遮罩退出，失败时仍提供“刷新新版”
 - 若首选线路发生网络/网关失败，可安全重试的读取及认证请求自动回退；照片列表、动态视频、回收站和地理搜索等高成本读取不因短时慢响应自动重放，非幂等写请求也不重复发送
 - 直接访问 Azure Static Web Apps 域名时，也使用该直连地址
 - 媒体使用 Blob 与 `/media` 的无响应体 HEAD 竞速；Range 请求和 HEAD 探测不进入 PWA 媒体缓存

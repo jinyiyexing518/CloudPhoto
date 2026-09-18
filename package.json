@@ -33,7 +33,7 @@
     "test:authenticated-dates": "node --test scripts/authenticated-date-contracts.test.mjs",
     "test:whats-new-accessibility": "node --test packages/client/src/components/whats-new/WhatsNewPopup.test.mjs",
     "test:pwa-install": "node --test packages/client/src/pwa/installPrompt.test.mjs",
-    "test:pwa-update": "node --test packages/client/src/pwa/updatePolicy.test.mjs packages/client/src/pwa/deploymentRecovery.test.mjs packages/client/src/pwa/dangerousOperationGate.test.mjs",
+    "test:pwa-update": "node --test packages/client/src/pwa/updatePolicy.test.mjs packages/client/src/pwa/updateCheckPolicy.test.mjs packages/client/src/pwa/deploymentRecovery.test.mjs packages/client/src/pwa/dangerousOperationGate.test.mjs",
     "test:deployment-assets": "node --test --test-force-exit scripts/deployment-asset-retention.test.mjs scripts/stale-deployment-browser.test.mjs",
     "test:workflow-contracts": "node --test scripts/backend-deployment-target.test.mjs scripts/workflow-runtime-contracts.test.mjs && node scripts/check-workflow-runtime-contracts.mjs",
     "test:security": "node --test scripts/security-headers.test.mjs",

@@ -1,9 +1,108 @@
-import { useState, useRef, useEffect } from "react";
+import { lazy, Suspense, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useGroup } from "../../contexts/GroupContext";
+import {
+  reportLazyBoundaryFailure,
+  requestDeploymentRefresh,
+} from "../../pwa/deploymentRecovery";
+import { renderErrorFallback } from "../shared/ErrorBoundary";
 import { focusMenuItem, handleMenuKeyDown } from "../shared/menuKeyboard";
-import CreateGroupDialog from "./CreateGroupDialog";
-import GroupSettings from "./GroupSettings";
+import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
+
+let createGroupDialogPromise: Promise<typeof import("./CreateGroupDialog")> | null = null;
+let groupSettingsPromise: Promise<typeof import("./GroupSettings")> | null = null;
+
+function GroupDialogStatus({
+  label,
+  onClose,
+  failed = false,
+}: {
+  label: string;
+  onClose: () => void;
+  failed?: boolean;
+}) {
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  useModalFocusBoundary({
+    active: true,
+    layerRef,
+    containerRef: dialogRef,
+    initialFocusRef: closeButtonRef,
+    onEscape: () => {
+      onClose();
+      return true;
+    },
+  });
+
+  return (
+    <div
+      ref={layerRef}
+      className="dialog-overlay"
+      data-modal-layer
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="add-admin-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        aria-busy={!failed}
+        tabIndex={-1}
+      >
+        <div className="add-admin-header">
+          <span>{label}</span>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="dialog-close-btn"
+            onClick={onClose}
+            aria-label={`关闭${label}`}
+          >
+            ✕
+          </button>
+        </div>
+        {failed
+          ? renderErrorFallback(label, true, requestDeploymentRefresh)
+          : <div className="group-settings-loading" role="status">正在加载{label}…</div>}
+      </div>
+    </div>
+  );
+}
+
+const unavailableCreateGroupDialogModule: typeof import("./CreateGroupDialog") = {
+  default: ({ onClose }) => <GroupDialogStatus label="新建群组" onClose={onClose} failed />,
+};
+const unavailableGroupSettingsModule: typeof import("./GroupSettings") = {
+  default: ({ onClose }) => <GroupDialogStatus label="群组设置" onClose={onClose} failed />,
+};
+
+const loadCreateGroupDialog = () => {
+  createGroupDialogPromise ??= import("./CreateGroupDialog").then(
+    (module) => module ?? unavailableCreateGroupDialogModule,
+    (error) => {
+      reportLazyBoundaryFailure(error);
+      return unavailableCreateGroupDialogModule;
+    },
+  );
+  return createGroupDialogPromise;
+};
+const loadGroupSettings = () => {
+  groupSettingsPromise ??= import("./GroupSettings").then(
+    (module) => module ?? unavailableGroupSettingsModule,
+    (error) => {
+      reportLazyBoundaryFailure(error);
+      return unavailableGroupSettingsModule;
+    },
+  );
+  return groupSettingsPromise;
+};
+
+const CreateGroupDialog = lazy(loadCreateGroupDialog);
+const GroupSettings = lazy(loadGroupSettings);
 
 interface GroupSwitcherProps {
   disabled?: boolean;
@@ -198,6 +297,8 @@ export default function GroupSwitcher({
                       closeMenu(true);
                       setSettingsGroupId(g.id);
                     }}
+                    onPointerEnter={() => void loadGroupSettings()}
+                    onFocus={() => void loadGroupSettings()}
                   >
                     ⚙
                   </button>
@@ -215,6 +316,8 @@ export default function GroupSwitcher({
                 closeMenu(true);
                 setShowCreate(true);
               }}
+              onPointerEnter={() => void loadCreateGroupDialog()}
+              onFocus={() => void loadCreateGroupDialog()}
             >
               ＋ 新建群组
             </button>
@@ -223,20 +326,38 @@ export default function GroupSwitcher({
       </div>
 
       {showCreate && createPortal(
-        <CreateGroupDialog
-          onClose={() => setShowCreate(false)}
-          onCreated={handleCreated}
-        />,
+        <Suspense
+          fallback={(
+            <GroupDialogStatus
+              label="新建群组"
+              onClose={() => setShowCreate(false)}
+            />
+          )}
+        >
+          <CreateGroupDialog
+            onClose={() => setShowCreate(false)}
+            onCreated={handleCreated}
+          />
+        </Suspense>,
         document.body,
       )}
 
       {settingsGroupId && createPortal(
-        <GroupSettings
-          groupId={settingsGroupId}
-          onClose={() => setSettingsGroupId(null)}
-          onDeleted={() => { setSettingsGroupId(null); void refreshGroups(); }}
-          onUpdated={() => void refreshGroups()}
-        />,
+        <Suspense
+          fallback={(
+            <GroupDialogStatus
+              label="群组设置"
+              onClose={() => setSettingsGroupId(null)}
+            />
+          )}
+        >
+          <GroupSettings
+            groupId={settingsGroupId}
+            onClose={() => setSettingsGroupId(null)}
+            onDeleted={() => { setSettingsGroupId(null); void refreshGroups(); }}
+            onUpdated={() => void refreshGroups()}
+          />
+        </Suspense>,
         document.body,
       )}
     </>

@@ -86,7 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       try {
         if (!getToken()) {
-          await clearPrivatePhotoCaches();
+          const cleanup = clearPrivatePhotoCaches();
+          setLoading(false);
+          await cleanup.catch(logPrivateCacheFailure);
           return;
         }
         await restoreCurrentUser(controller, generation);

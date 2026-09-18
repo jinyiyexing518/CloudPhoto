@@ -142,6 +142,36 @@ requireText(
 requireText(authPage, "registerFormPromise ??=", "cached registration loader");
 requireText(authPage, "const RegisterForm = lazy(loadRegisterForm);", "lazy registration form");
 requireText(authPage, "void loadRegisterForm();", "registration intent preload");
+assert(
+  !groupSwitcher.includes('import CreateGroupDialog from "./CreateGroupDialog"')
+  && !groupSwitcher.includes('import GroupSettings from "./GroupSettings"'),
+  "group management dialogs must not ship in the initial authenticated chunk",
+);
+requireText(
+  groupSwitcher,
+  'import("./CreateGroupDialog").then(',
+  "deferred create-group dialog",
+);
+requireText(
+  groupSwitcher,
+  'import("./GroupSettings").then(',
+  "deferred group-settings dialog",
+);
+requireText(
+  groupSwitcher,
+  "(module) => module ?? unavailableCreateGroupDialogModule",
+  "Vite-suppressed create-group fallback",
+);
+requireText(
+  groupSwitcher,
+  "(module) => module ?? unavailableGroupSettingsModule",
+  "Vite-suppressed group-settings fallback",
+);
+requireText(groupSwitcher, "void loadCreateGroupDialog()", "create-group intent preload");
+requireText(groupSwitcher, "void loadGroupSettings()", "group-settings intent preload");
+requireText(groupSwitcher, "useModalFocusBoundary({", "group dialog loading/recovery focus boundary");
+requireText(groupSwitcher, "initialFocusRef: closeButtonRef", "group dialog recovery close focus");
+requireText(groupSwitcher, "if (event.target === event.currentTarget) onClose();", "group dialog recovery backdrop close");
 requireText(
   authPage,
   'import("./RegisterForm").then(',
@@ -367,7 +397,26 @@ requireText(
   "photo mutation cache invalidation context",
 );
 requireText(app, "logPrivateCacheDegradation(", "sanitized private-cache diagnostics");
-requireText(auth, "await clearPrivatePhotoCaches()", "awaited explicit/automatic logout cleanup");
+const logoutStart = auth.indexOf("const logout = useCallback");
+const logoutBody = auth.slice(logoutStart, auth.indexOf("useEffect", logoutStart));
+assert(
+  logoutBody.indexOf("const cleanup = clearPrivatePhotoCaches()")
+    < logoutBody.indexOf("setUser(null)")
+  && logoutBody.indexOf("setUser(null)") < logoutBody.indexOf("await cleanup"),
+  "explicit and active-token logout must retain and await private cleanup after clearing visible state",
+);
+const loggedOutRestoreStart = auth.indexOf("if (!getToken()) {");
+const loggedOutRestoreBody = auth.slice(
+  loggedOutRestoreStart,
+  auth.indexOf("await restoreCurrentUser", loggedOutRestoreStart),
+);
+assert(
+  loggedOutRestoreBody.indexOf("const cleanup = clearPrivatePhotoCaches()")
+    < loggedOutRestoreBody.indexOf("setLoading(false)")
+  && loggedOutRestoreBody.indexOf("setLoading(false)")
+    < loggedOutRestoreBody.indexOf("await cleanup.catch(logPrivateCacheFailure)"),
+  "logged-out bootstrap must reveal auth UI after starting cleanup without discarding the cleanup promise",
+);
 assert(
   !auth.includes("void clearPrivatePhotoCaches()"),
   "privacy-critical auth paths must not discard cleanup promises",
@@ -1024,6 +1073,7 @@ for (const pattern of [
   '"assets/react-vendor-*.js"',
   '"assets/privateCacheReset-*.js"',
   '"assets/virtual_pwa-register-*.js"',
+  '"assets/updateCheckPolicy-*.js"',
   '"assets/workbox-window*.js"',
 ]) {
   requireText(vite, pattern, "minimal app-shell precache");

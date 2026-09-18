@@ -286,7 +286,26 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
     "Cache Storage fallback and the worker fence must run before the purge chunk loads",
   );
   assert.ok(!auth.includes("void clearPrivatePhotoCaches()"));
-  assert.match(auth, /await clearPrivatePhotoCaches\(\)/);
+  const logoutStart = auth.indexOf("const logout = useCallback");
+  const logoutBody = auth.slice(logoutStart, auth.indexOf("useEffect", logoutStart));
+  assert.ok(
+    logoutBody.indexOf("const cleanup = clearPrivatePhotoCaches()")
+      < logoutBody.indexOf("setUser(null)")
+    && logoutBody.indexOf("setUser(null)") < logoutBody.indexOf("await cleanup"),
+    "logout must retain and await private cleanup after clearing visible state",
+  );
+  const loggedOutRestoreStart = auth.indexOf("if (!getToken()) {");
+  const loggedOutRestoreBody = auth.slice(
+    loggedOutRestoreStart,
+    auth.indexOf("await restoreCurrentUser", loggedOutRestoreStart),
+  );
+  assert.ok(
+    loggedOutRestoreBody.indexOf("const cleanup = clearPrivatePhotoCaches()")
+      < loggedOutRestoreBody.indexOf("setLoading(false)")
+    && loggedOutRestoreBody.indexOf("setLoading(false)")
+      < loggedOutRestoreBody.indexOf("await cleanup.catch(logPrivateCacheFailure)"),
+    "logged-out startup must reveal auth UI after synchronous cache invalidation without dropping cleanup",
+  );
   assert.match(auth, /setUnauthorizedHandler\(async \(failedToken\)/);
   assert.match(http, /await _onUnauthorized\?\.\(requestToken\)/);
   assert.match(http, /await _onUnauthorized\?\.\(null\)/);
@@ -391,10 +410,22 @@ test("built deferred support chunks stay outside login preload and service-worke
   const resetNames = currentAssets.filter(
     (name) => /^privateCacheReset-[\w-]{8,}\.js$/.test(name),
   );
+  const updateCheckNames = currentAssets.filter(
+    (name) => /^updateCheckPolicy-[\w-]{8,}\.js$/.test(name),
+  );
+  const createGroupNames = currentAssets.filter(
+    (name) => /^CreateGroupDialog-[\w-]{8,}\.js$/.test(name),
+  );
+  const groupSettingsNames = currentAssets.filter(
+    (name) => /^GroupSettings-[\w-]{8,}\.js$/.test(name),
+  );
   assert.equal(entryNames.length, 1, "build must emit exactly one login entry");
   assert.equal(cleanupNames.length, 1, "build must emit exactly one lazy Workbox cleanup chunk");
   assert.equal(hedgeNames.length, 1, "build must emit exactly one lazy API hedge chunk");
   assert.equal(resetNames.length, 1, "build must emit exactly one precached private reset chunk");
+  assert.equal(updateCheckNames.length, 1, "build must emit one deferred PWA update-check chunk");
+  assert.equal(createGroupNames.length, 1, "build must emit one deferred create-group dialog");
+  assert.equal(groupSettingsNames.length, 1, "build must emit one deferred group-settings dialog");
 
   const entryPath = new URL(`assets/${entryNames[0]}`, distPath);
   const cleanupPath = new URL(`assets/${cleanupNames[0]}`, distPath);
@@ -476,6 +507,20 @@ test("built deferred support chunks stay outside login preload and service-worke
   assert.ok(
     !html.includes(resetNames[0]),
     "unauthenticated HTML must not preload the private reset chunk",
+  );
+  for (const [name, label] of [
+    [createGroupNames[0], "create-group dialog"],
+    [groupSettingsNames[0], "group-settings dialog"],
+  ]) {
+    assert.ok(!html.includes(name), `unauthenticated HTML must not preload ${label}`);
+    assert.ok(
+      !serviceWorker.includes(`assets/${name}`),
+      `service worker must not precache ${label}`,
+    );
+  }
+  assert.ok(
+    serviceWorker.includes(`assets/${updateCheckNames[0]}`),
+    "service worker must precache the update-check policy used to discover later deployments",
   );
   assert.ok(
     entryStats.size <= 36_000,

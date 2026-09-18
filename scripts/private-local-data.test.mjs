@@ -2042,9 +2042,20 @@ assert(
   "cross-tab cleanup must adopt the current token when another tab replaces it during cleanup",
 );
 assert(
-  auth.includes("if (!getToken()) {")
-  && auth.includes("await clearPrivatePhotoCaches();"),
-  "invalid or absent token restore must fail closed and remove orphaned private data",
+  auth.includes("if (!getToken()) {"),
+  "invalid or absent token restore must remove orphaned private data",
+);
+const loggedOutRestoreStart = auth.indexOf("if (!getToken()) {");
+const loggedOutRestoreBody = auth.slice(
+  loggedOutRestoreStart,
+  auth.indexOf("await restoreCurrentUser", loggedOutRestoreStart),
+);
+assert(
+  loggedOutRestoreBody.indexOf("const cleanup = clearPrivatePhotoCaches()")
+    < loggedOutRestoreBody.indexOf("setLoading(false)")
+  && loggedOutRestoreBody.indexOf("setLoading(false)")
+    < loggedOutRestoreBody.indexOf("await cleanup.catch(logPrivateCacheFailure)"),
+  "logged-out bootstrap must start cleanup before revealing auth UI and retain the cleanup promise",
 );
 assert(
   !auth.includes("void clearPrivatePhotoCaches()"),

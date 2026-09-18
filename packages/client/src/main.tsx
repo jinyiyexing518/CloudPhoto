@@ -2,10 +2,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { installDeploymentRecovery } from "./pwa/deploymentRecovery";
+import {
+  installDeploymentRecovery,
+  reportLazyBoundaryFailure,
+} from "./pwa/deploymentRecovery";
 
 const PWA_UPDATE_READY_EVENT = "cloudphoto-pwa-update-ready";
 const PWA_OFFLINE_READY_EVENT = "cloudphoto-pwa-offline-ready";
+const PWA_REGISTRATION_IDLE_TIMEOUT_MS = 2_000;
 
 const installWindow = window as Window & {
   __CF_PWA__?: Event;
@@ -32,6 +36,8 @@ const isStandaloneMode = () =>
   window.matchMedia("(display-mode: standalone)").matches
   || ((navigator as Navigator & { standalone?: boolean }).standalone === true);
 
+let disposePwaUpdateChecks: (() => void) | undefined;
+
 const registerPwa = async () => {
   if (!("serviceWorker" in navigator)) return;
   // Browser and installed sessions share the same small app-shell precache.
@@ -42,16 +48,16 @@ const registerPwa = async () => {
     onRegisteredSW(_, registration) {
       if (!registration) return;
       installWindow.__CF_SW_REGISTRATION__ = registration;
-      const checkForUpdates = () => { void registration.update(); };
-      checkForUpdates();
-      // Poll for updates — only check frequently in PWA mode; browsers rely on page reload
-      const interval = isStandaloneMode() ? 30 * 1000 : 5 * 60 * 1000;
-      window.setInterval(checkForUpdates, interval);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") checkForUpdates();
-      });
-      window.addEventListener("focus", checkForUpdates);
-      window.addEventListener("online", checkForUpdates);
+      void import("./pwa/updateCheckPolicy").then(
+        (policy) => {
+          if (!policy) return;
+          disposePwaUpdateChecks?.();
+          disposePwaUpdateChecks = policy.installPwaUpdateChecks(registration, {
+            standalone: isStandaloneMode(),
+          });
+        },
+        reportLazyBoundaryFailure,
+      );
     },
     onNeedRefresh() {
       installWindow.__CF_PWA_UPDATE_READY__ = true;
@@ -69,10 +75,27 @@ const registerPwa = async () => {
   installWindow.__CF_UPDATE_SW__ = updateSW;
 };
 
-void registerPwa();
+const schedulePwaRegistration = () => {
+  const startRegistration = () => {
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(() => {
+        void registerPwa();
+      }, { timeout: PWA_REGISTRATION_IDLE_TIMEOUT_MS });
+      return;
+    }
+    window.setTimeout(() => {
+      void registerPwa();
+    }, 0);
+  };
+
+  if (document.readyState === "complete") startRegistration();
+  else window.addEventListener("load", startRegistration, { once: true });
+};
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
+
+schedulePwaRegistration();

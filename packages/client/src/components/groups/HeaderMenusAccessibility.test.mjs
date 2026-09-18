@@ -46,6 +46,9 @@ function contrastRatio(first, second) {
 }
 
 test("group switcher exposes one coherent menu contract with real buttons", () => {
+  const switcherComponent = groupSwitcher.slice(
+    groupSwitcher.indexOf("export default function GroupSwitcher"),
+  );
   assert.match(groupSwitcher, /const GROUP_SWITCHER_TRIGGER_ID = "group-switcher-trigger"/);
   assert.match(groupSwitcher, /const GROUP_SWITCHER_MENU_ID = "group-switcher-menu"/);
   assert.match(groupSwitcher, /aria-haspopup="menu"/);
@@ -55,8 +58,26 @@ test("group switcher exposes one coherent menu contract with real buttons", () =
   assert.match(groupSwitcher, /role="menuitemradio"/);
   assert.match(groupSwitcher, /aria-checked=\{currentGroupId ===/);
   assert.match(groupSwitcher, /role="menuitem"/);
-  assert.doesNotMatch(groupSwitcher, /<(?:div|span)[^>]+onClick=/);
+  assert.doesNotMatch(switcherComponent, /<(?:div|span)[^>]+onClick=/);
   assert.match(groupSwitcher, /onBeforeSelect && !onBeforeSelect\(id\)[\s\S]*return false/);
+});
+
+test("group management dialogs load on intent without weakening recovery", () => {
+  assert.doesNotMatch(groupSwitcher, /import CreateGroupDialog from/);
+  assert.doesNotMatch(groupSwitcher, /import GroupSettings from/);
+  assert.match(groupSwitcher, /import\("\.\/CreateGroupDialog"\)\.then/);
+  assert.match(groupSwitcher, /import\("\.\/GroupSettings"\)\.then/);
+  assert.match(groupSwitcher, /module \?\? unavailableCreateGroupDialogModule/);
+  assert.match(groupSwitcher, /module \?\? unavailableGroupSettingsModule/);
+  assert.match(groupSwitcher, /onPointerEnter=\{\(\) => void loadCreateGroupDialog\(\)\}/);
+  assert.match(groupSwitcher, /onFocus=\{\(\) => void loadCreateGroupDialog\(\)\}/);
+  assert.match(groupSwitcher, /onPointerEnter=\{\(\) => void loadGroupSettings\(\)\}/);
+  assert.match(groupSwitcher, /onFocus=\{\(\) => void loadGroupSettings\(\)\}/);
+  assert.match(groupSwitcher, /renderErrorFallback\(label, true, requestDeploymentRefresh\)/);
+  assert.match(groupSwitcher, /useModalFocusBoundary\(\{/);
+  assert.match(groupSwitcher, /initialFocusRef: closeButtonRef/);
+  assert.match(groupSwitcher, /aria-label=\{`关闭\$\{label\}`\}/);
+  assert.match(groupSwitcher, /if \(event\.target === event\.currentTarget\) onClose\(\)/);
 });
 
 test("group menu owns open focus, roving keys, dismissal, and guarded rejection", () => {

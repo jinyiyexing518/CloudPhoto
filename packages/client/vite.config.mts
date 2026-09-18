@@ -227,6 +227,7 @@ export default defineConfig({
           "assets/react-vendor-*.js",
           "assets/privateCacheReset-*.js",
           "assets/virtual_pwa-register-*.js",
+          "assets/updateCheckPolicy-*.js",
           "assets/workbox-window*.js",
         ],
         navigateFallback: "/index.html",
