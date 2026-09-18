@@ -32,10 +32,6 @@ window.addEventListener("appinstalled", () => {
   installWindow.__CF_PWA_INSTALLED__ = true;
 });
 
-const isStandaloneMode = () =>
-  window.matchMedia("(display-mode: standalone)").matches
-  || ((navigator as Navigator & { standalone?: boolean }).standalone === true);
-
 let disposePwaUpdateChecks: (() => void) | undefined;
 
 const registerPwa = async () => {
@@ -52,9 +48,7 @@ const registerPwa = async () => {
         (policy) => {
           if (!policy) return;
           disposePwaUpdateChecks?.();
-          disposePwaUpdateChecks = policy.installPwaUpdateChecks(registration, {
-            standalone: isStandaloneMode(),
-          });
+          disposePwaUpdateChecks = policy.installPwaUpdateChecks(registration);
         },
         reportLazyBoundaryFailure,
       );

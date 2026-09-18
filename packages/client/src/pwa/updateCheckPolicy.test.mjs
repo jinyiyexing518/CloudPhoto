@@ -34,6 +34,42 @@ test("uses lower-frequency visible polling for installed and browser sessions", 
   assert.equal(PWA_BROWSER_UPDATE_INTERVAL_MS, 15 * 60 * 1000);
 });
 
+test("detects installed display mode inside the deferred policy chunk", () => {
+  const target = new FakeWindow();
+  target.matchMedia = () => ({ matches: true });
+  const pageDocument = new FakeDocument();
+  const dispose = installPwaUpdateChecks(
+    { update: () => Promise.resolve() },
+    {
+      target,
+      document: pageDocument,
+      navigator: { onLine: true },
+    },
+  );
+
+  assert.equal(
+    [...target.intervals.values()][0].delay,
+    PWA_STANDALONE_UPDATE_INTERVAL_MS,
+  );
+  dispose();
+
+  const iosTarget = new FakeWindow();
+  iosTarget.matchMedia = () => ({ matches: false });
+  const disposeIos = installPwaUpdateChecks(
+    { update: () => Promise.resolve() },
+    {
+      target: iosTarget,
+      document: pageDocument,
+      navigator: { onLine: true, standalone: true },
+    },
+  );
+  assert.equal(
+    [...iosTarget.intervals.values()][0].delay,
+    PWA_STANDALONE_UPDATE_INTERVAL_MS,
+  );
+  disposeIos();
+});
+
 test("defers the first explicit update and coalesces foreground triggers", async () => {
   const target = new FakeWindow();
   const pageDocument = new FakeDocument();

@@ -6,7 +6,7 @@
     "title": "登录首屏提速并降低后台更新流量",
     "type": "improvement",
     "desc": "未登录首屏不再等待完整浏览器缓存清理，PWA 注册与更新检查后移并降频，群组管理对话框改为按需下载。",
-    "details": "同一 production preview 在 4× CPU、150ms RTT、约 1.6 Mbps 且禁用缓存/SW 的条件下，登录页 FCP/LCP 从 1712ms 降至 1376ms（约 -19.6%），表单约 988ms 可交互且 CLS 维持 0。私有缓存仍在显示认证 UI 前同步撤销 owner/generation，完整清理 Promise 继续保留并由后续认证 scope 等待。Service Worker 改为首屏 render 后的 load + idle 注册，移除重复首次 update；可见在线的 standalone/browser 轮询从 30 秒/5 分钟降为 5/15 分钟，并加入 60 秒前台去重和 in-flight 合并。新建群组与群组设置改为 hover/focus 预热的独立 lazy chunk，AuthenticatedApp 构建输出由 167.61 kB/gzip 54.65 kB 降至 161.05 kB/gzip 52.97 kB，加载或跨部署失败时仍可关闭并刷新新版。",
+    "details": "同一 production preview 在 4× CPU、150ms RTT、约 1.6 Mbps 且禁用缓存/SW 的条件下，登录页 FCP/LCP 从 1712ms 降至 1376ms（约 -19.6%），表单约 988ms 可交互且 CLS 维持 0；发布后以 retained f319e144 入口做三次 fresh-profile 对照，登录可见由 1454ms 降至 1024ms（-29.6%），LCP 由 1976ms 降至 1564ms（-20.9%）。私有缓存仍在显示认证 UI 前同步撤销 owner/generation，完整清理 Promise 继续保留并由后续认证 scope 等待。Service Worker 改为首屏 render 后的 load + idle 注册，移除重复首次 update；standalone 判定移入延迟策略 chunk，可见在线的 standalone/browser 轮询从 30 秒/5 分钟降为 5/15 分钟，并加入 60 秒前台去重和 in-flight 合并。新建群组与群组设置改为 hover/focus 预热的独立 lazy chunk，AuthenticatedApp 构建输出由 167.61 kB/gzip 54.65 kB 降至 161.05 kB/gzip 52.95 kB，加载或跨部署失败时仍可关闭并刷新新版。",
     "seq": 1789693600000
   },
   {

@@ -106,6 +106,8 @@ test("main.tsx onNeedRefresh contract: no immediate activation or reload", () =>
   assert.ok(renderIndex >= 0 && scheduleIndex > renderIndex);
   assert.match(source, /requestIdleCallback\([\s\S]*PWA_REGISTRATION_IDLE_TIMEOUT_MS/);
   assert.match(source, /import\("\.\/pwa\/updateCheckPolicy"\)/);
+  assert.match(source, /installPwaUpdateChecks\(registration\)/);
+  assert.doesNotMatch(source, /display-mode: standalone/);
   assert.doesNotMatch(source, /onRegisteredSW[\s\S]*registration\.update\(\)/);
   assert.match(source, /onNeedRefresh\(\)\s*\{[\s\S]*__CF_PWA_UPDATE_READY__\s*=\s*true/);
   assert.match(source, /onNeedRefresh\(\)\s*\{[\s\S]*dispatchEvent\(new Event\(PWA_UPDATE_READY_EVENT\)\)/);

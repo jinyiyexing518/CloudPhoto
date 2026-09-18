@@ -6,15 +6,15 @@ type UpdateRegistration = Pick<ServiceWorkerRegistration, "update">;
 type UpdateWindow = Pick<
   Window,
   "addEventListener" | "removeEventListener" | "setInterval" | "clearInterval"
->;
+> & Partial<Pick<Window, "matchMedia">>;
 type UpdateDocument = Pick<
   Document,
   "addEventListener" | "removeEventListener" | "visibilityState"
 >;
-type UpdateNavigator = Pick<Navigator, "onLine">;
+type UpdateNavigator = Pick<Navigator, "onLine"> & { standalone?: boolean };
 
 interface PwaUpdateCheckOptions {
-  standalone: boolean;
+  standalone?: boolean;
   target?: UpdateWindow;
   document?: UpdateDocument;
   navigator?: UpdateNavigator;
@@ -30,15 +30,19 @@ export function getPwaUpdateIntervalMs(standalone: boolean): number {
 
 export function installPwaUpdateChecks(
   registration: UpdateRegistration,
-  options: PwaUpdateCheckOptions,
+  options: PwaUpdateCheckOptions = {},
 ): () => void {
   const target = options.target ?? window;
   const pageDocument = options.document ?? document;
-  const connection = options.navigator ?? navigator;
+  const connection: UpdateNavigator = options.navigator ?? navigator;
   const now = options.now ?? Date.now;
   const onError = options.onError ?? ((error: unknown) => {
     console.warn("[PWA] Background update check failed:", error);
   });
+  const standalone = options.standalone ?? (
+    target.matchMedia?.("(display-mode: standalone)").matches === true
+    || connection.standalone === true
+  );
   let lastStartedAt = now();
   let updateInFlight = false;
 
@@ -75,7 +79,7 @@ export function installPwaUpdateChecks(
   const onOnline = () => checkForUpdates(true);
   const interval = target.setInterval(
     checkForUpdates,
-    getPwaUpdateIntervalMs(options.standalone),
+    getPwaUpdateIntervalMs(standalone),
   );
 
   pageDocument.addEventListener("visibilitychange", onVisibilityChange);

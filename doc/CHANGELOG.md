@@ -3,9 +3,9 @@
 ### 2026-09-18 — 登录首屏提速与后台流量降频
 
 **性能优化**
-- **⚡ 认证 UI 提前可交互** — 未登录冷启动先同步撤销私有缓存 owner/generation，再显示登录页；完整 Workbox/Cache Storage/IndexedDB 清理仍保留、记录失败并由后续认证等待。同条件 production preview 的 FCP/LCP 从 1712ms 降至 1376ms（约 -19.6%），表单约 988ms 可交互且 CLS 保持 0
+- **⚡ 认证 UI 提前可交互** — 未登录冷启动先同步撤销私有缓存 owner/generation，再显示登录页；完整 Workbox/Cache Storage/IndexedDB 清理仍保留、记录失败并由后续认证等待。同条件 production preview 的 FCP/LCP 从 1712ms 降至 1376ms（约 -19.6%），表单约 988ms 可交互且 CLS 保持 0；生产 retained-entry 三次对照中登录可见 1454→1024ms、LCP 1976→1564ms
 - **📡 PWA 注册后移并降低轮询** — Service Worker 在首屏 render 后等待 load + idle，移除重复首次 update；standalone/browser 周期从 30 秒/5 分钟降至 5/15 分钟，并通过页面可见、在线状态、60 秒前台间隔和 in-flight 合并减少无效请求
-- **👥 群组管理按意图分包** — 新建群组和群组设置仅在 hover/focus/click 后加载，跨部署失败仍可关闭并刷新新版；`AuthenticatedApp` 从 167.61 kB / gzip 54.65 kB 降至 161.05 kB / gzip 52.97 kB
+- **👥 群组管理按意图分包** — 新建群组和群组设置仅在 hover/focus/click 后加载，跨部署失败仍可关闭并刷新新版；`AuthenticatedApp` 从 167.61 kB / gzip 54.65 kB 降至 161.05 kB / gzip 52.95 kB
 
 ---
 

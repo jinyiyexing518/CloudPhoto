@@ -711,13 +711,13 @@ Production Health 只把 Azure upload step 与紧随其后的 exact-SHA receipt 
 - 部署前读取线上 `deployment-assets.json` 并按 SHA-256 拉回历史 JS/CSS；每次 workflow run 使用独立代次 ID，只保留最近 24 个完整代次、64 MiB 唯一字节，最旧代次整体淘汰，拒绝 source map、越界路径、摘要不符和显式撤销代次。首次迁移在固定 HTML 骨架和 512 资源上限内递归抓取当前生产入口可达的同源 hashed JS/CSS 原始字节，同时从固定历史 commit 确定性重建实证缺失的旧 CSS；两类 bootstrap 代次任一无法装入预算即拒绝发布，此后 JS/CSS 均保留线上原始字节，不使用旧 hash alias
 - `/deployment-assets.json`、SPA shell 与 Service Worker 均禁止长期缓存；随机缺失的 `.js`/`.css` 必须返回 404 JSON 而不是 SPA HTML，主域 Nginx 原样透传 SWA 状态与 MIME
 - SPA shell、Service Worker 和注册入口每次重验证；注册在首屏 render 后等待 `load` + idle，后台 update policy 只在可见在线时按 5/15 分钟周期检查，并合并前台重复触发
-- Service Worker 首装只预缓存 HTML、10.79 kB 登录样式、约 35 kB 入口 JS、React、注册运行时与 0.96 kB update policy（约 195.21 KiB）；工作区 JS/CSS、注册/群组对话框与图库等动态 chunk 首次使用后进入 `app-code-v1`，相较原始 894.44 KiB 首装资源减少约 78%
+- Service Worker 首装只预缓存 HTML、10.79 kB 登录样式、约 35 kB 入口 JS、React、注册运行时与 1.04 kB update policy（约 195.34 KiB）；工作区 JS/CSS、注册/群组对话框与图库等动态 chunk 首次使用后进入 `app-code-v1`，相较原始 894.44 KiB 首装资源减少约 78%
 - manifest、静态图标与 `changelog.json` 使用短缓存并重验证；`.webmanifest` 明确返回 `application/manifest+json`
 - `packages/client/public/staticwebapp.config.json` 会由 Vite 复制到 `dist` 根目录；CI 同时验证源配置、部署产物和资源文件名
 - `cloudphotos.top` 的 Nginx 前端反代透传 SWA 的 `Cache-Control`，不重复覆盖
-- 无 token 冷启动仍先同步撤销私有缓存 owner/generation、内存状态和作用域键，但不再等待 Workbox/Cache Storage/IndexedDB 完整清理才显示登录页；清理 Promise 继续保留并由后续认证 scope 等待。同一 production preview 在 4× CPU、150ms RTT、约 1.6 Mbps 且禁用缓存/SW 时，FCP/LCP 从 1712ms 降至 1376ms（约 -19.6%），表单约 988ms 可交互且 CLS=0
+- 无 token 冷启动仍先同步撤销私有缓存 owner/generation、内存状态和作用域键，但不再等待 Workbox/Cache Storage/IndexedDB 完整清理才显示登录页；清理 Promise 继续保留并由后续认证 scope 等待。同一 production preview 在 4× CPU、150ms RTT、约 1.6 Mbps 且禁用缓存/SW 时，FCP/LCP 从 1712ms 降至 1376ms（约 -19.6%），表单约 988ms 可交互且 CLS=0；生产 retained-entry 三次 fresh-profile 对照中，登录可见由 1454ms 降至 1024ms（-29.6%），LCP 由 1976ms 降至 1564ms（-20.9%）
 - Service Worker 注册完成后不再重复发起首次 `registration.update()`；standalone/browser 周期从 30 秒/5 分钟降至 5/15 分钟，周期请求约从 120/12 次每小时降至 12/4 次，并受 60 秒前台间隔、可见性、在线状态和 in-flight 去重保护
-- 新建群组与群组设置从认证工作区初始包拆为 hover/focus 预热的独立 lazy chunk；loading 与跨部署失败态可关闭、按 Esc 或遮罩退出并保留“刷新新版”。`AuthenticatedApp` 构建输出从 167.61 kB / gzip 54.65 kB 降至 161.05 kB / gzip 52.97 kB
+- 新建群组与群组设置从认证工作区初始包拆为 hover/focus 预热的独立 lazy chunk；loading 与跨部署失败态可关闭、按 Esc 或遮罩退出并保留“刷新新版”。`AuthenticatedApp` 构建输出从 167.61 kB / gzip 54.65 kB 降至 161.05 kB / gzip 52.95 kB
 - 私有本地数据统一由授权 owner/generation 生命周期管理：照片列表、媒体、重要片段统计、诊断和近期公开分享链接在注销/401/切号/角色变化时清理，旧版无归属 moments/share-link 键 fail-closed 删除；应用壳和 `app-code-v1`、界面偏好以及已带 workspace context 的文件夹路径不清理
 - 已认证刷新会先完成账号绑定的上次群组选择恢复，再读取对应授权范围的完整照片缓存并启动服务端目录分页；同一工作区 5 分钟内返回或 focus 不重复拉取页面序列，进行中的请求也不会被 focus 重启。服务端只有在查询前后 Blob ETag fence 未变化且其 ready snapshot/revision 与 Cosmos summary 一致时才返回页面；长媒体 mutation 在每次 Blob 写前续租 token，长目录扫描同时续租 Cosmos/Blob rebuild owner，失去 lease 或遇到 pending server-side copy 就停止而不发布。冷启动首 page 仅渲染最多 24 张 thumbnail/preview 只读预览；完整计数、筛选、文件夹、MemoryMap、统计、故事与 mutation UI 必须等 exact-total 完成，partial page 不写任何列表 cache。时间线和文件夹网格仍只允许 `_th_`/preview derivative，旧缓存缺少衍生图时显示本地占位，不得隐式请求原图；原图仅由显式查看器或下载操作触发。
 
