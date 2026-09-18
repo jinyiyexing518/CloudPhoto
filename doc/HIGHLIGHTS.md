@@ -47,7 +47,7 @@
 - **服务端照片目录分页** — 个人与群组目录按授权 scope、revision、不可变 active snapshot 和稳定时间键执行 Cosmos keyset 分页，每页默认 24 张；summary 通过 ETag 原子换代，同一存储容器内的 Blob ETag fence 以带 heartbeat 的 mutation token 集合和双层 rebuild owner 跨 Functions 实例串联写入、扫描、发布与分页前后校验，失去 lease 的恢复任务、迟到旧重建、pending Blob copy 和 session-stale Cosmos 读都无法发布旧目录；热路径不再扫描 Blob prefix、逐项 HEAD 或签发整库 SAS，冷启动先显示只读 derivative 预览，完整消费者与私有缓存只接受 exact-total 完成结果
 - **SAS 安全复用** — Workbox 仍以完整 SAS 查询作为私有缓存键；仅当同一资源的旧 URL 尚有 10 分钟以上有效期且不早于新 URL 过期时才复用，绝不以缓存命中换取更短可用期
 - **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px 优先 thumbnail，其余优先 preview；缺少 preview 时继续复用 thumbnail，只有没有任何派生图才回退 original
-- **首屏封面优先级** — 时间线、重点片段和文件夹仅将前 6 张派生图标记为 `loading="eager"` + `fetchpriority="high"`，其余继续原生 lazy，避免首屏封面与屏外资源争抢连接
+- **封面近视口有界调度** — 时间线、重点片段和文件夹仍只被动请求 thumbnail/preview；600px 近视口外不挂载真实媒体或启动 deadline，进入窗口后最多 6 路并发、每来源 8 秒并受 18 秒总边界约束，避免浏览器连接排队把健康慢图误切到 preview。只有用户明确重试普通静态图片时才允许 original 作为最后候选，且不会进入派生封面缓存
 - **视频封面体积压缩** — `setVideoThumbnail` 端点用 sharp 将 canvas 截帧（最大 1920×1080，~500KB）缩至 400px 再存储，体积缩小 **10–15×**
 - **视频按意图加载** — 网格只渲染持久化的 WebP 封面，不创建 video 元素；用户明确打开视频后才挂载 `preload="auto"` 播放器，由浏览器按 Range 获取起播数据
 - **视频中途卡死自恢复** — 同源 `/media` 用 2-byte Range 严格验证 `206`，跨域 Blob 由媒体元素 no-CORS 播放能力验证；播放态连续 4 秒无进展才有限换线，即使 `readyState=4` 也不会掩盖停滞，并恢复原时间点、播放意图、音量、静音与倍速。direct 不尝试 tainted canvas 截帧，pause/seek/切后台不会误切，两条线路都失败时结束 loading 并提供原位重试
@@ -63,7 +63,7 @@
 - **认证工作区整体分包** — `App.tsx` 只保留鉴权门与恢复 UI，2,200 行工作区迁入 `AuthenticatedApp.tsx`；入口进一步从 120.83 kB 降至 36.21 kB（约 -70%，gzip 12.82 kB，相对原始入口约 -80%），已有 token 与登录/注册提交都会提前并行下载
 - **认证前样式分包** — 8,170 行工作区样式由 `AuthenticatedApp` 延迟加载，登录页仅保留完全一致的鉴权、会话恢复和 chunk 错误样式；首屏 CSS 从 128.56 kB 降至 9.38 kB（约 -93%，gzip 23.58 kB → 2.77 kB）
 - **认证服务直接导入** — `AuthContext` 不再通过 `photoApi` 兼容 barrel 获取登录与 token API，照片线路、媒体 fallback 等工作区代码不再被 Rollup 提升到登录入口；入口由 36.25 kB 降至 30.45 kB（约 -16%，gzip 12.84 kB → 11.03 kB）
-- **私有缓存生命周期分层** — `AuthContext` 只同步持有账号归属、generation 失效、同步 reset 与 owner 键删除；Workbox IndexedDB schema/open/cursor/定向删除按需加载，并由注销、401、恢复失败和跨标签切号路径等待完成。移动端 CacheStorage/IndexedDB 被阻断时保持 owner 为空、持久缓存关闭和 marker 未完成，在线会话可继续并提示下次启动重试，不再因原始清理错误锁死登录；36,000 B raw 登录入口硬门禁及跨账号/角色隔离保持不变
+- **私有缓存生命周期分层** — `AuthContext` 只同步持有账号归属、generation 失效、同步 reset 与 owner 键删除；Workbox IndexedDB schema/open/cursor/定向删除按需加载，并由注销、401、恢复失败和跨标签切号路径等待完成。Service Worker 首屏后移注册时，cache enable 由 lazy chunk 监听 `ready`/`controllerchange` 并按账号、角色、generation 合并重放，注销或切号会取消旧 scope。移动端 CacheStorage/IndexedDB 被阻断时保持 owner 为空、持久缓存关闭和 marker 未完成，在线会话可继续并提示下次启动重试；36,000 B raw 登录入口硬门禁及跨账号/角色隔离保持不变
 - **未登录首屏与 PWA 启动调度** — 无 token 启动先同步撤销私有缓存 owner/generation，再立即显示认证 UI，完整 Workbox/Cache Storage/IndexedDB 清理继续保留并由后续认证等待；4× CPU、150ms RTT、约 1.6 Mbps 的同条件 production preview 中 FCP/LCP 由 1712ms 降至 1376ms（约 -19.6%），表单约 988ms 可交互且 CLS=0；生产 retained-entry 三次 fresh-profile 对照中登录可见 1454→1024ms、LCP 1976→1564ms。Service Worker 在 render 后等待 load + idle，移除重复首次 update，standalone 判定留在延迟 policy；standalone/browser 周期从 30 秒/5 分钟降至 5/15 分钟，并以可见性、在线状态、60 秒前台间隔和 in-flight 去重抑制后台流量
 - **重要片段本地数据授权隔离** — moments 离线统计与诊断按用户、角色、个人/群组工作区派生键，并复用 owner/generation 与延迟写入围栏；注销、401、切号或降权在 UI 更新前同步清理私有照片、媒体和 moments，旧无归属全局键 fail closed 删除，应用壳与 app-code 保留
 - **近期分享链接授权隔离** — 浏览器近期公开链接按用户+角色派生键；分享请求捕获 auth generation，注销/401/切号后的迟到响应写回为 **0**。旧全局键与损坏/超限 JSON fail closed 删除，云端托管分享和应用缓存不受影响
@@ -105,7 +105,7 @@
 - **单实例上传内存背压** — 正文前 Content-Length 快速 413/411/400，读取后真实长度与声明复核；每实例权重 3/256 MiB、每用户 3/220 MiB 的 lease 持有至派生图结束，用户状态归零清理。明确不是分布式限流，也不以 `host.json` 全站降并发替代端点级保护
 - **Tab 切换零重载** — 时间线常驻；重要片段和文件夹首次访问时才挂载，此后用 `display:none` 保持状态；Map/TimeCapsule/Story 等重型 Tab 仍按需加载
 - **GIF 渐进式加载** — 服务端 sharp 为 GIF 生成静态首帧 WebP 缩略图；客户端先显示首帧，再通过共享的有限次直连/代理 fallback 预载完整动图
-- **骨架屏** — 每张卡片渲染前展示闪光骨架，消除 CLS
+- **分层骨架屏** — 首次目录、完整图库分页及 PhotoGallery/FolderView lazy chunk 先显示 8 张真实比例卡片；单卡封面与渐进预览在解码前保留高对比品牌色 shimmer，成功后淡入、失败后切换稳定重试状态，同时尊重 `prefers-reduced-motion`
 - **防抖搜索** — 300ms 防抖，避免每次击键触发全列表重渲
 - **useMemo 隔离大计算** — 时间线分组、片段评分、可见切片均按依赖变化重算
 - **用户委托密钥缓存** — 有效期 > 10 分钟时复用，节省 Azure 控制面调用
@@ -121,7 +121,7 @@
 | `bandwidth.ts` | Range Request 策略（`VIDEO_THUMB_RANGE_BYTES = 524 287`）、预加载边距 | `PhotoCard.tsx` |
 | `priority.ts` | 照片重要性评分函数（收藏×120、标签×20、时效性 0-40）、`MOMENTS_MAX_PHOTOS` | `AuthenticatedApp.tsx` |
 | `pagination.ts` | `DEFAULT_PAGE_SIZE = 24`、`SCROLL_SENTINEL_MARGIN = "200px"` | `PhotoGallery.tsx` |
-| `render.ts` | preview-first 查看器选择、前 6 张封面优先级、`VIEWER_DPR_SCALE` | `photoApi.ts` / gallery surfaces |
+| `render.ts` | preview-first 查看器选择、被动 derivative-only 与显式原图重试边界、`VIEWER_DPR_SCALE` | `photoApi.ts` / gallery surfaces |
 | `media.ts` | `THUMBNAIL_MIME` 集合、`BLANK_GIF` 占位符、WebP 质量常量 | `PhotoCard.tsx` |
 
 **设计原则**：纯函数 + 常量，无副作用，所有数值均有注释说明选取依据；新增优化算法时在此包统一沉淀，避免魔法数字散落各组件。

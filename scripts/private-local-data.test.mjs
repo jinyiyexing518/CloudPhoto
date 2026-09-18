@@ -85,11 +85,11 @@ assert(
   "the reset boundary must load Workbox expiration cleanup only after its fallback starts",
 );
 assert(
-  lifecycleSource.includes("await reset.resetPrivateCaches("),
+  lifecycleSource.includes("await reset.resetCaches("),
   "private cleanup must await the precached Cache Storage reset boundary",
 );
 assert(
-  listLifecycleSource.includes("await reset.resetPrivateCaches("),
+  listLifecycleSource.includes("await reset.resetCaches("),
   "list-only cleanup must await its authenticated reset boundary",
 );
 assert(
@@ -987,7 +987,7 @@ function createFakeWorkboxExpirationDb(
     commands.length = 0;
     deletionFenceStates.length = 0;
     cacheWritesEnabled = false;
-    await cacheReset.enablePrivateCacheWrites();
+    assert.equal(await cacheReset.enablePrivateCacheWrites(), "enabled");
     assert.deepEqual(commands, ["enable"]);
     assert.equal(
       cacheWritesEnabled,
@@ -1050,7 +1050,7 @@ function createFakeWorkboxExpirationDb(
         },
       },
     });
-    await cacheReset.enablePrivateCacheWrites();
+    assert.equal(await cacheReset.enablePrivateCacheWrites(), "enabled");
     assert.deepEqual(
       commands,
       ["enable"],
@@ -2002,6 +2002,118 @@ assert.equal(availableCacheNames.has("workbox-precache-v2"), true, "logout must 
 assert.equal(lifecycleExpirationDb.count("photo-media-v1"), 0, "logout must remove private expiration metadata");
 assert.equal(lifecycleExpirationDb.count("app-code-v1"), 48, "logout must preserve app-code expiration metadata");
 assert.ok(lifecycleExpirationDb.openCount() >= 2, "logout must repeat targeted cleanup after active writes");
+
+{
+  const replaceNavigator = (serviceWorker) => {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { serviceWorker },
+    });
+  };
+  const createDelayedServiceWorker = () => {
+    const container = new EventTarget();
+    const commands = [];
+    let registration = null;
+    let resolveReady;
+    const ready = new Promise((resolve) => {
+      resolveReady = resolve;
+    });
+    const controller = {
+      postMessage(message, ports) {
+        commands.push(message.command);
+        ports[0].postMessage({ ok: message.command === "enable", generation: 1 });
+      },
+    };
+    Object.assign(container, {
+      controller: null,
+      ready,
+      async getRegistration() {
+        return registration;
+      },
+      activate() {
+        registration = { active: controller };
+        resolveReady(registration);
+        container.dispatchEvent(new Event("controllerchange"));
+      },
+    });
+    return { container, commands };
+  };
+  const preparePersistedScope = (scope) => {
+    localStorage.setItem("cloudphoto_private_cache_owner_v1", scope);
+    localStorage.setItem("cloudphoto_private_cleanup_v2", "1");
+  };
+
+  const lateWorker = createDelayedServiceWorker();
+  replaceNavigator(lateWorker.container);
+  preparePersistedScope("late-worker:viewer");
+  assert.equal(
+    await lifecycle.preparePrivatePhotoCachesForScope("late-worker:viewer"),
+    true,
+    "authenticated network access must not wait for delayed PWA registration",
+  );
+  assert.deepEqual(
+    lateWorker.commands,
+    [],
+    "worker enable must remain deferred until an active registration exists",
+  );
+  lateWorker.container.activate();
+  assert.equal(
+    await cacheReset.replayDeferredPrivateCacheWrites(),
+    true,
+    "worker readiness must replay the current authenticated enable request",
+  );
+  assert.deepEqual(
+    lateWorker.commands,
+    ["enable"],
+    "ready and controllerchange notifications must coalesce to one enable",
+  );
+  assert.equal(
+    await cacheReset.replayDeferredPrivateCacheWrites(),
+    false,
+    "a committed delayed enable must not replay again",
+  );
+
+  const noWorkerForLogout = createDelayedServiceWorker();
+  replaceNavigator(noWorkerForLogout.container);
+  await lifecycle.clearPrivatePhotoCaches();
+  const cancelledWorker = createDelayedServiceWorker();
+  replaceNavigator(cancelledWorker.container);
+  preparePersistedScope("cancelled-worker:viewer");
+  assert.equal(
+    await lifecycle.preparePrivatePhotoCachesForScope("cancelled-worker:viewer"),
+    true,
+  );
+  await lifecycle.clearPrivatePhotoCaches();
+  cancelledWorker.container.activate();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(await cacheReset.replayDeferredPrivateCacheWrites(), false);
+  assert.deepEqual(
+    cancelledWorker.commands,
+    [],
+    "logout before worker readiness must cancel the stale enable request",
+  );
+
+  const switchedWorker = createDelayedServiceWorker();
+  replaceNavigator(switchedWorker.container);
+  preparePersistedScope("switch-a:viewer");
+  assert.equal(await lifecycle.preparePrivatePhotoCachesForScope("switch-a:viewer"), true);
+  assert.equal(await lifecycle.preparePrivatePhotoCachesForScope("switch-b:admin"), true);
+  switchedWorker.container.activate();
+  assert.equal(await cacheReset.replayDeferredPrivateCacheWrites(), true);
+  assert.equal(lifecycle.getPrivatePhotoCacheOwner(), "switch-b:admin");
+  assert.deepEqual(
+    switchedWorker.commands,
+    ["enable"],
+    "account and role changes must replace, not duplicate, the delayed enable",
+  );
+
+  if (originalNavigator) {
+    Object.defineProperty(globalThis, "navigator", originalNavigator);
+  } else {
+    delete globalThis.navigator;
+  }
+}
+
 delete globalThis.indexedDB;
 for (const key of [
   "cf_grid_size",

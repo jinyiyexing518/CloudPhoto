@@ -1,8 +1,14 @@
 import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "../../services/photoApi";
-import { BLANK_GIF, GRID_MEDIA_POLICY_MARKER, selectGridMediaSources } from "@cloudphoto/algorithm";
+import {
+  BLANK_GIF,
+  GRID_MEDIA_POLICY_MARKER,
+  selectGridMediaSources,
+  selectGridRetrySources,
+} from "@cloudphoto/algorithm";
 import { useAuth } from "../../contexts/AuthContext";
+import { reportLazyBoundaryFailure } from "../../pwa/deploymentRecovery";
 import {
   fallbackMediaSource,
   getMediaCandidates,
@@ -29,8 +35,56 @@ import { formatPhotoDate } from "../../utils/dateFormat";
 import { focusMenuItem, handleMenuKeyDown } from "../shared/menuKeyboard";
 import { useModalFocusBoundary } from "../shared/useModalFocusBoundary";
 
-const COVER_LOAD_DEADLINE_MS = 8_000;
-const COVER_SOURCE_ATTEMPT_MAX_MS = 4_000;
+const COVER_SOURCE_ATTEMPT_TIMEOUT_MS = 8_000;
+const COVER_TOTAL_LOAD_TIMEOUT_MS = 18_000;
+const MAX_CONCURRENT_COVER_SOURCE_ATTEMPTS = 6;
+let activeCoverSourceAttempts = 0;
+const pendingCoverSourceAttempts: Array<() => void> = [];
+
+function drainCoverSourceAttempts() {
+  while (
+    activeCoverSourceAttempts < MAX_CONCURRENT_COVER_SOURCE_ATTEMPTS
+    && pendingCoverSourceAttempts.length > 0
+  ) {
+    pendingCoverSourceAttempts.shift()?.();
+  }
+}
+
+function acquireCoverSourceAttempt(onGranted: (release: () => void) => void): () => void {
+  let cancelled = false;
+  let granted = false;
+  let released = false;
+  const release = () => {
+    if (!granted || released) return;
+    released = true;
+    activeCoverSourceAttempts = Math.max(0, activeCoverSourceAttempts - 1);
+    drainCoverSourceAttempts();
+  };
+  const grant = () => {
+    if (cancelled) return;
+    granted = true;
+    activeCoverSourceAttempts += 1;
+    onGranted(release);
+  };
+  if (activeCoverSourceAttempts < MAX_CONCURRENT_COVER_SOURCE_ATTEMPTS) {
+    grant();
+  } else {
+    pendingCoverSourceAttempts.push(grant);
+  }
+  return () => {
+    cancelled = true;
+    if (!granted) {
+      const queueIndex = pendingCoverSourceAttempts.indexOf(grant);
+      if (queueIndex >= 0) pendingCoverSourceAttempts.splice(queueIndex, 1);
+    }
+    release();
+  };
+}
+
+const replayDeferredPrivatePhotoCacheEnable = () =>
+  import("../../services/privateCacheReset").then(
+    (reset) => reset.replayDeferredPrivateCacheWrites(),
+  ).catch(reportLazyBoundaryFailure);
 
 function withCoverRequestState(
   source: string,
@@ -84,15 +138,17 @@ function PhotoCard({
   onThumbnailUpdate,
 }: Props) {
   const { user } = useAuth();
-  const isVideo = photo.contentType?.startsWith("video/") ?? false;
-  const isAudio = photo.contentType?.startsWith("audio/") ?? false;
-  const isGif = photo.contentType === "image/gif";
+  const normalizedContentType = photo.contentType?.split(";", 1)[0].trim().toLowerCase() ?? "";
+  const lowerPhotoName = photo.name.toLowerCase();
+  const isVideo = normalizedContentType.startsWith("video/");
+  const isAudio = normalizedContentType.startsWith("audio/");
+  const isGif = normalizedContentType === "image/gif" || lowerPhotoName.endsWith(".gif");
   const isAnimated = photo.isAnimated || isGif;
   // Motion photo = animated JPEG (Android/Google Motion Photo) — browser can't play the video part
   const isMotionPhoto = isAnimated && !isGif &&
-    (photo.contentType === "image/jpeg" || photo.contentType === "image/jpg");
-  const isHeic = photo.contentType === "image/heic" || photo.contentType === "image/heif" ||
-    photo.name.toLowerCase().endsWith(".heic") || photo.name.toLowerCase().endsWith(".heif");
+    (normalizedContentType === "image/jpeg" || normalizedContentType === "image/jpg");
+  const isHeic = normalizedContentType === "image/heic" || normalizedContentType === "image/heif" ||
+    lowerPhotoName.endsWith(".heic") || lowerPhotoName.endsWith(".heif");
   const derivativeImageSources = selectGridMediaSources(photo)
     .map(getPreferredMediaUrl);
   const originalImageUrl = getPreferredMediaUrl(photo.url);
@@ -112,6 +168,9 @@ function PhotoCard({
   const [imgFailed, setImgFailed] = useState(false);
   const [imageRetryKey, setImageRetryKey] = useState(0);
   const [coverAttempt, setCoverAttempt] = useState({ context: "", index: 0 });
+  const [coverLoadEligible, setCoverLoadEligible] = useState(priority);
+  const [startedCoverAttemptKey, setStartedCoverAttemptKey] = useState("");
+  const [expiredCoverLoadContext, setExpiredCoverLoadContext] = useState("");
   // GIF originals can be many MB. Keep the static thumbnail until the user
   // explicitly presses play instead of downloading every visible GIF.
   const [gifPaused, setGifPaused] = useState(isGif);
@@ -126,14 +185,24 @@ function PhotoCard({
   const menuRef = useRef<HTMLUListElement>(null);
   const mountedRef = useRef(true);
   const publishedRepairUrlRef = useRef<string | null>(null);
+  const coverAttemptReleaseRef = useRef<{ key: string; release: () => void } | null>(null);
   // Video cards render only server-persisted derivatives. Missing or broken
   // derivatives stay as a local placeholder until the user opens playback.
   const useVideoThumb = isVideo && !!videoPosterSrc && !videoThumbFailed;
   const retryVideoPosterSources = videoPosterSources.map((source) =>
     withCoverRequestState(source, imageRetryKey, true));
   const retryVideoPosterSrc = retryVideoPosterSources[0];
-  const retryLowDataImageSources = lowDataImageSources.map((source) =>
-    withCoverRequestState(source, imageRetryKey, true));
+  const retryGridImageSources = selectGridRetrySources(
+    lowDataImageSources,
+    originalImageUrl,
+    imageRetryKey > 0 && !isAnimated && !isHeic,
+  );
+  const retryLowDataImageSources = retryGridImageSources.map((source, index) =>
+    withCoverRequestState(
+      source,
+      imageRetryKey,
+      index < lowDataImageSources.length,
+    ));
   const retryDerivativeImageSources = derivativeImageSources.map((source) =>
     withCoverRequestState(source, imageRetryKey, true));
   const retryOriginalImageUrl = withCoverRequestState(originalImageUrl, imageRetryKey, false);
@@ -154,7 +223,7 @@ function PhotoCard({
   const coverDeadlineCandidates = coverDeadlineSources
     ? getMediaCandidates(coverDeadlineSources)
     : [];
-  const coverDeadlineEnabled = coverDeadlineSources !== null;
+  const coverUsesDeadline = coverDeadlineSources !== null;
   const coverDeadlineSourceKey = coverDeadlineCandidates.join("\n");
   const coverLoadContext = [
     user?.id ?? "anonymous",
@@ -169,13 +238,20 @@ function PhotoCard({
     ? coverAttempt.index
     : 0;
   const coverAttemptSource = coverDeadlineCandidates[coverAttemptIndex];
-  const coverAttemptTimeoutMs = Math.min(
-    COVER_SOURCE_ATTEMPT_MAX_MS,
-    Math.floor(COVER_LOAD_DEADLINE_MS / Math.max(coverDeadlineCandidates.length, 1)),
-  );
-  const coverAttemptElementKey = [
+  const coverAttemptAdmissionKey = [
     coverLoadContext,
     String(coverAttemptIndex),
+  ].join("\n");
+  const coverAttemptStarted = startedCoverAttemptKey === coverAttemptAdmissionKey;
+  const coverLoadExpired = expiredCoverLoadContext === coverLoadContext;
+  const coverAttemptSourceReady = !coverUsesDeadline || (!coverLoadExpired && coverAttemptStarted);
+  const coverDeadlineEnabled = coverUsesDeadline
+    && coverLoadEligible
+    && !coverLoadExpired
+    && (!coverAttemptSource || coverAttemptStarted);
+  const coverAttemptElementKey = [
+    coverAttemptAdmissionKey,
+    coverAttemptSourceReady ? "active" : "deferred",
   ].join("\n");
 
   useEffect(() => {
@@ -195,6 +271,67 @@ function PhotoCard({
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (priority) {
+      setCoverLoadEligible(true);
+      return;
+    }
+    const target = primaryActionRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") {
+      setCoverLoadEligible(true);
+      return;
+    }
+    setCoverLoadEligible(false);
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setCoverLoadEligible(true);
+      observer.disconnect();
+    }, { rootMargin: "600px 0px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [photo.name, priority]);
+
+  const releaseCoverAttempt = useCallback((key: string) => {
+    const current = coverAttemptReleaseRef.current;
+    if (!current || current.key !== key) return;
+    coverAttemptReleaseRef.current = null;
+    current.release();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !coverUsesDeadline
+      || !coverLoadEligible
+      || coverLoadExpired
+      || !coverAttemptSource
+    ) return;
+    let active = true;
+    const cancel = acquireCoverSourceAttempt((release) => {
+      if (!active) {
+        release();
+        return;
+      }
+      coverAttemptReleaseRef.current = {
+        key: coverAttemptAdmissionKey,
+        release,
+      };
+      setStartedCoverAttemptKey(coverAttemptAdmissionKey);
+    });
+    return () => {
+      active = false;
+      cancel();
+      if (coverAttemptReleaseRef.current?.key === coverAttemptAdmissionKey) {
+        coverAttemptReleaseRef.current = null;
+      }
+    };
+  }, [
+    coverAttemptAdmissionKey,
+    coverAttemptSource,
+    coverLoadExpired,
+    coverLoadEligible,
+    coverUsesDeadline,
+  ]);
 
   useEffect(() => {
     setVideoThumbFailed(false);
@@ -227,6 +364,31 @@ function PhotoCard({
   }, [isVideo, markDerivativeBroken, markImageFailed]);
 
   useEffect(() => {
+    if (
+      !coverUsesDeadline
+      || !coverLoadEligible
+      || coverLoadExpired
+      || imgLoaded
+      || imgFailed
+    ) return;
+    const context = coverLoadContext;
+    const timeoutId = window.setTimeout(() => {
+      if (coverLoadContextRef.current !== context) return;
+      setExpiredCoverLoadContext(context);
+      markCoverFailed();
+    }, COVER_TOTAL_LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    coverLoadContext,
+    coverLoadExpired,
+    coverLoadEligible,
+    coverUsesDeadline,
+    imgFailed,
+    imgLoaded,
+    markCoverFailed,
+  ]);
+
+  useEffect(() => {
     const element = coverImageRef.current;
     const expectedSource = coverAttemptSource;
     if (!element || !coverDeadlineEnabled) return;
@@ -253,6 +415,7 @@ function PhotoCard({
     const advanceOrFail = () => {
       if (!contextIsCurrent()) return;
       clearAttempt();
+      releaseCoverAttempt(coverAttemptAdmissionKey);
       if (coverAttemptIndex + 1 >= coverDeadlineCandidates.length) {
         markCoverFailed();
         return;
@@ -278,6 +441,7 @@ function PhotoCard({
         advanceOrFail();
         return;
       }
+      releaseCoverAttempt(coverAttemptAdmissionKey);
       promoteSuccessfulMediaUrl(expectedSource);
       markImageLoaded();
     };
@@ -287,7 +451,7 @@ function PhotoCard({
     element.addEventListener("error", handleError);
     timeoutId = window.setTimeout(
       advanceOrFail,
-      coverAttemptTimeoutMs,
+      COVER_SOURCE_ATTEMPT_TIMEOUT_MS,
     );
     if (element.complete && element.naturalWidth > 0) {
       void Promise.resolve().then(handleLoad);
@@ -298,9 +462,9 @@ function PhotoCard({
       clearAttempt();
     };
   }, [
+    coverAttemptAdmissionKey,
     coverAttemptIndex,
     coverAttemptSource,
-    coverAttemptTimeoutMs,
     coverDeadlineEnabled,
     coverDeadlineSourceKey,
     coverLoadContext,
@@ -308,9 +472,11 @@ function PhotoCard({
     markCoverFailed,
     markDerivativeBroken,
     markImageLoaded,
+    releaseCoverAttempt,
   ]);
 
   const retryImage = () => {
+    void replayDeferredPrivatePhotoCacheEnable();
     setImgLoaded(false);
     setImgFailed(false);
     setImageRetryKey((current) => current + 1);
@@ -550,9 +716,11 @@ function PhotoCard({
                 key={coverAttemptElementKey}
                 ref={coverImageRef}
                 crossOrigin="anonymous"
-                src={coverAttemptSource ?? retryVideoPosterSrc}
+                src={coverAttemptSourceReady
+                  ? (coverAttemptSource ?? retryVideoPosterSrc)
+                  : BLANK_GIF}
                 alt=""
-                loading={priority ? "eager" : "lazy"}
+                loading={coverAttemptSourceReady ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 className={imgLoaded ? "img-loaded" : "img-loading"}
               />
@@ -565,9 +733,11 @@ function PhotoCard({
               <img
                 key={coverAttemptElementKey}
                 ref={coverImageRef}
-                src={coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF}
+                src={coverAttemptSourceReady
+                  ? (coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF)
+                  : BLANK_GIF}
                 alt=""
-                loading={priority ? "eager" : "lazy"}
+                loading={coverAttemptSourceReady ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 className={imgLoaded ? "img-loaded" : "img-loading"}
               />
@@ -575,11 +745,15 @@ function PhotoCard({
               <img
                 key={gifUsesOriginal ? imageRetryKey : coverAttemptElementKey}
                 ref={coverImageRef}
-                src={coverAttemptSource ?? (isGif
-                  ? (gifInteractionBlocked ? retryStaticAnimatedSrc : retryGifDisplaySrc)
-                  : retryStaticAnimatedSrc)}
+                src={gifUsesOriginal
+                  ? retryGifDisplaySrc
+                  : coverAttemptSourceReady
+                    ? (coverAttemptSource ?? (isGif
+                      ? (gifInteractionBlocked ? retryStaticAnimatedSrc : retryGifDisplaySrc)
+                      : retryStaticAnimatedSrc))
+                    : BLANK_GIF}
                 alt=""
-                loading={priority ? "eager" : "lazy"}
+                loading={coverAttemptSourceReady ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 className={imgLoaded ? "img-loaded" : "img-loading"}
                 onLoad={gifUsesOriginal ? markImageLoaded : undefined}
@@ -595,9 +769,11 @@ function PhotoCard({
               <img
                 key={coverAttemptElementKey}
                 ref={coverImageRef}
-                src={coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF}
+                src={coverAttemptSourceReady
+                  ? (coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF)
+                  : BLANK_GIF}
                 alt=""
-                loading={priority ? "eager" : "lazy"}
+                loading={coverAttemptSourceReady ? "eager" : "lazy"}
                 fetchPriority={priority ? "high" : "auto"}
                 decoding="async"
                 className={imgLoaded ? "img-loaded" : imgFailed ? "img-error" : "img-loading"}

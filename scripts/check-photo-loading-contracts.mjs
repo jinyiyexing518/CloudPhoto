@@ -105,6 +105,22 @@ requireText(
 requireText(app, "const PhotoGallery = lazy(loadPhotoGallery);", "lazy gallery component");
 requireText(app, "void loadPhotoGallery();", "authenticated gallery preload");
 requireText(app, "正在加载照片视图…", "gallery chunk loading state");
+requireText(app, "function PhotoGridSkeleton(", "photo-grid skeleton loading surface");
+requireText(
+  app,
+  '<Suspense fallback={<PhotoGridSkeleton label="正在加载照片视图…" />}>',
+  "gallery chunk skeleton fallback",
+);
+requireText(
+  app,
+  'renderWorkspaceStatus(true)',
+  "initial authenticated photo skeleton",
+);
+requireText(
+  app,
+  "photo-page-preview-skeleton",
+  "progressive catalog cover skeleton",
+);
 assert(
   !app.includes('import WhatsNewPopup from "./components/whats-new/WhatsNewPopup";'),
   "WhatsNewPopup must not ship in the initial authenticated workspace chunk",
@@ -298,8 +314,38 @@ requireText(
 );
 requireText(
   cacheLifecycle,
-  "await reset.enablePrivateCacheWrites()",
-  "matching authenticated owner must reopen a restarted fail-closed worker",
+  "const enableResult = await reset.enableWrites(",
+  "authenticated preparation must explicitly observe worker enable availability",
+);
+requireText(
+  cacheLifecycle,
+  "controlDeferredPrivateCacheEnable?.(cacheGeneration);",
+  "generation-scoped delayed worker enable request",
+);
+requireText(
+  cacheLifecycle,
+  "activePrivateCacheOwner === authScope",
+  "authorization-scoped delayed worker enable fence",
+);
+requireText(
+  cacheLifecycle,
+  "generation === cacheGeneration",
+  "generation-scoped delayed worker enable fence",
+);
+requireText(
+  privateCacheReset,
+  'container.addEventListener(\n      "controllerchange"',
+  "controller-change delayed worker enable replay",
+);
+requireText(
+  privateCacheReset,
+  "container.ready.then(",
+  "registration-ready delayed worker enable replay",
+);
+requireText(
+  privateCacheReset,
+  'PrivateCacheEnableResult = "enabled" | "deferred" | "unavailable"',
+  "explicit worker enable availability result",
 );
 requireText(vite, "handlerWillStart", "private media request generation capture");
 requireText(vite, 'handler: "NetworkOnly"', "network-first private media delivery");
@@ -1092,16 +1138,89 @@ assert(!photoCard.includes("fetchMediaWithFallback"), "gallery cards must not di
 assert(!photoCard.includes("Range:"), "gallery cards must not directly request video bytes");
 requireText(photoCard, "photoCoverFailed", "terminal photo cover failure state");
 requireText(photoCard, "setImageRetryKey", "photo cover retry request remount");
-requireText(photoCard, "COVER_LOAD_DEADLINE_MS = 8_000", "total photo cover deadline");
-requireText(photoCard, "COVER_SOURCE_ATTEMPT_MAX_MS = 4_000", "per-source photo cover deadline");
 requireText(
   photoCard,
-  "COVER_LOAD_DEADLINE_MS / Math.max(coverDeadlineCandidates.length, 1)",
-  "candidate-count cover deadline allocation",
+  ").catch(reportLazyBoundaryFailure);",
+  "photo retry lazy-boundary failure reporting",
+);
+requireText(
+  photoCard,
+  "COVER_SOURCE_ATTEMPT_TIMEOUT_MS = 8_000",
+  "worker-compatible per-source photo cover deadline",
+);
+requireText(
+  photoCard,
+  "COVER_TOTAL_LOAD_TIMEOUT_MS = 18_000",
+  "bounded total photo cover loading state",
+);
+assert(
+  !photoCard.includes("COVER_LOAD_DEADLINE_MS / Math.max(coverDeadlineCandidates.length, 1)"),
+  "candidate count must not shorten a healthy source below the worker network/cache budget",
+);
+const coverSourceDeadline = Number(
+  photoCard.match(/COVER_SOURCE_ATTEMPT_TIMEOUT_MS = ([\d_]+)/)?.[1].replaceAll("_", ""),
+);
+const workerNetworkDeadline = Number(
+  vite.match(/Private media request timed out[\s\S]*?\}, ([\d_]+)\);/)?.[1].replaceAll("_", ""),
+);
+const workerCacheDeadline = Number(
+  privateCacheFence.match(/const mediaCacheDeadlineMs = ([\d_]+);/)?.[1].replaceAll("_", ""),
+);
+assert(
+  Number.isFinite(coverSourceDeadline)
+  && Number.isFinite(workerNetworkDeadline)
+  && Number.isFinite(workerCacheDeadline)
+  && coverSourceDeadline > workerNetworkDeadline + workerCacheDeadline,
+  "each cover source must outlive the worker network timeout plus bounded cache fallback",
 );
 requireText(photoCard, "coverLoadContextRef.current === context", "stale photo cover callback rejection");
 requireText(photoCard, "user?.role", "role-scoped photo cover attempt");
 requireText(photoCard, "getMediaCandidates(coverDeadlineSources)", "deadline-driven authorized fallback");
+requireText(
+  photoCard,
+  'rootMargin: "600px 0px"',
+  "near-viewport cover deadline activation",
+);
+requireText(
+  photoCard,
+  "coverUsesDeadline\n    && coverLoadEligible\n    && !coverLoadExpired\n    && (!coverAttemptSource || coverAttemptStarted)",
+  "offscreen lazy-cover deadline suppression",
+);
+requireText(
+  photoCard,
+  "const MAX_CONCURRENT_COVER_SOURCE_ATTEMPTS = 6;",
+  "bounded cover source concurrency",
+);
+requireText(
+  photoCard,
+  "acquireCoverSourceAttempt((release) =>",
+  "cover source admission gate",
+);
+requireText(
+  photoCard,
+  'loading={coverAttemptSourceReady ? "eager" : "lazy"}',
+  "deadline-aligned native image loading",
+);
+requireText(
+  photoCard,
+  'coverAttemptSourceReady ? "active" : "deferred"',
+  "admission-aligned cover element remount",
+);
+requireText(
+  photoCard,
+  "releaseCoverAttempt(coverAttemptAdmissionKey);",
+  "cover attempt slot release",
+);
+requireText(
+  photoCard,
+  "setExpiredCoverLoadContext(context);",
+  "total cover deadline terminal state",
+);
+requireText(
+  photoCard,
+  "coverAttemptSourceReady\n                  ? (coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF)",
+  "offscreen original request suppression",
+);
 requireText(photoCard, "if (!expectedSource) {", "zero-derivative terminal cover state");
 requireText(photoCard, "coverImageRef.current === element", "stale source element callback rejection");
 requireText(photoCard, "currentIndex !== coverAttemptIndex", "stale source attempt callback rejection");
@@ -1114,6 +1233,22 @@ requireText(
 requireText(photoCard, "gifUsesOriginal ? markImageLoaded : undefined", "GIF original deadline exemption");
 requireText(photoCard, "cf_cover=1", "bounded photo cover request marker");
 requireText(photoCard, "cf_cover_retry=", "photo cover retry request cache busting");
+requireText(photoCard, "selectGridRetrySources(", "intentional original cover retry fallback");
+requireText(
+  photoCard,
+  "imageRetryKey > 0 && !isAnimated && !isHeic",
+  "original cover fallback user-intent and format boundary",
+);
+requireText(
+  photoCard,
+  'normalizedContentType === "image/gif" || lowerPhotoName.endsWith(".gif")',
+  "historical GIF original fallback exclusion",
+);
+requireText(
+  photoCard,
+  "index < lowDataImageSources.length",
+  "original cover retry exclusion from derivative cache marker",
+);
 requireText(photoCard, "retryVideoPosterSources", "bounded video poster cover request");
 assert(!photoCard.includes("setGifDisplaySrc"), "GIF source tier must change atomically with pause state");
 requireText(photoCard, "封面加载失败，点击重试", "visible photo cover retry affordance");

@@ -1,5 +1,15 @@
 # 更新日志
 
+### 2026-09-18 — 修复历史照片封面失败与无效重试
+
+**性能与体验修复**
+- **🖼️ 缺少派生图也能主动恢复** — 时间线、重点片段和文件夹的被动加载继续只请求 thumbnail/preview；普通静态图片只有在用户明确点击“封面加载失败”后，才把 original 作为最后候选。GIF、Motion Photo、HEIC/HEIF 不会借重试下载不可控或不可解码的原文件，原图请求也不会带 `cf_cover=1` 进入派生封面缓存
+- **🚦 慢图不再被连接排队误判** — 600px 近视口外不挂载真实封面请求、不启动 deadline；进入加载窗口后最多同时执行 6 个来源，每个来源保留完整 8 秒 Service Worker 兼容预算，并用 18 秒总加载边界结束异常请求。浏览器同源连接排队不再让后两张健康 thumbnail 提前切到 preview，也不会形成重复流量
+- **🔐 延迟 Service Worker 安全补发缓存授权** — 首屏后移注册导致 worker 尚未 active 时，私有缓存 enable 会按 `userId:role` 和 generation 延迟重放；`ready` 与 `controllerchange` 合并为一次，注销、切号或角色变化会取消旧 scope，未 enable 期间继续 fail closed 且不阻断在线封面
+- **✨ 图库加载状态可见** — 首次目录、完整图库分页和 PhotoGallery/FolderView lazy chunk 统一显示 8 张卡片 skeleton；单卡封面与渐进预览在图片解码前保持更清晰的品牌色 shimmer，完成后淡入，失败后稳定进入可重试状态
+
+---
+
 ### 2026-09-18 — 登录首屏提速与后台流量降频
 
 **性能优化**

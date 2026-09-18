@@ -260,8 +260,8 @@ test("private Workbox cleanup stays behind an awaited dynamic boundary", async (
     assert.ok(!lifecycle.includes(marker), `static lifecycle shell must not own ${marker}`);
   }
   assert.doesNotMatch(cleanup, /cursor\.(?:value|primaryKey)/);
-  assert.match(lifecycle, /await reset\.resetPrivateCaches\(/);
-  assert.match(listLifecycle, /await reset\.resetPrivateCaches\(/);
+  assert.match(lifecycle, /await reset\.resetCaches\(/);
+  assert.match(listLifecycle, /await reset\.resetCaches\(/);
   assert.doesNotMatch(lifecycle, /listCleanupChain/);
   assert.match(reset, /await beginPrivateCacheReset\(/);
   assert.match(reset, /await cleanup\.purgePrivateWorkboxExpirationMetadata\(/);

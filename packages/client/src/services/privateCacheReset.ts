@@ -19,6 +19,22 @@ export type PrivateCacheReset = {
   failures: unknown[];
 };
 
+export type PrivateCacheEnableResult = "enabled" | "deferred" | "unavailable";
+
+type DeferredPrivateCacheEnable = {
+  isCurrent: () => boolean;
+};
+
+let deferredPrivateCacheEnable: DeferredPrivateCacheEnable | null = null;
+let deferredPrivateCacheEnableTask: Promise<boolean> | null = null;
+let deferredPrivateCacheContainer: ServiceWorkerContainer | null = null;
+
+function reportPrivateCacheFailure(error: unknown): void {
+  if (typeof window === "undefined") return;
+  (window as Window & { __CF_CACHE_ERROR__?: unknown }).__CF_CACHE_ERROR__ = error;
+  window.dispatchEvent(new Event("cf-private-cache-error"));
+}
+
 function cleanupFailure(step: string, cause: unknown): Error {
   return Object.assign(new Error("本地私有缓存暂不可用", { cause }), {
     name: "PrivateCacheCleanupError",
@@ -110,10 +126,121 @@ async function beginPrivateCacheFence(
   };
 }
 
-export async function enablePrivateCacheWrites(): Promise<void> {
-  const controller = await getPrivateCacheServiceWorker();
-  if (!controller) return;
+export async function enablePrivateCacheWrites(
+  isCurrent: () => boolean = () => true,
+): Promise<PrivateCacheEnableResult> {
+  if (
+    typeof navigator === "undefined"
+    || !("serviceWorker" in navigator)
+  ) {
+    return "unavailable";
+  }
+  const controller = await getPrivateCacheServiceWorker(isCurrent);
+  if (!controller || !isCurrent()) return "deferred";
   await sendPrivateCacheFenceMessage(controller, "enable");
+  return isCurrent() ? "enabled" : "deferred";
+}
+
+function detachDeferredPrivateCacheListener(): void {
+  deferredPrivateCacheContainer?.removeEventListener(
+    "controllerchange",
+    handleDeferredPrivateCacheControllerChange,
+  );
+  deferredPrivateCacheContainer = null;
+}
+
+function clearDeferredPrivateCacheEnable(
+  request?: DeferredPrivateCacheEnable,
+): void {
+  if (request && deferredPrivateCacheEnable !== request) return;
+  deferredPrivateCacheEnable = null;
+  detachDeferredPrivateCacheListener();
+}
+
+function handleDeferredPrivateCacheControllerChange(): void {
+  void replayDeferredPrivateCacheWrites();
+}
+
+function watchDeferredPrivateCacheEnable(): void {
+  if (
+    typeof navigator === "undefined"
+    || !("serviceWorker" in navigator)
+  ) {
+    clearDeferredPrivateCacheEnable();
+    return;
+  }
+  const container = navigator.serviceWorker;
+  if (deferredPrivateCacheContainer !== container) {
+    detachDeferredPrivateCacheListener();
+    deferredPrivateCacheContainer = container;
+    container.addEventListener(
+      "controllerchange",
+      handleDeferredPrivateCacheControllerChange,
+    );
+  }
+  void container.ready.then(
+    () => replayDeferredPrivateCacheWrites(),
+    (error) => {
+      const request = deferredPrivateCacheEnable;
+      if (request?.isCurrent()) reportPrivateCacheFailure(error);
+    },
+  );
+}
+
+export function deferPrivateCacheWrites(
+  isCurrentGeneration: (generation: number) => boolean,
+  initialGeneration: number,
+): (generation?: number) => void {
+  let generation = initialGeneration;
+  const request = {
+    isCurrent: () => isCurrentGeneration(generation),
+  };
+  deferredPrivateCacheEnable = request;
+  watchDeferredPrivateCacheEnable();
+  return (nextGeneration?: number) => {
+    if (nextGeneration !== undefined) {
+      generation = nextGeneration;
+      return;
+    }
+    clearDeferredPrivateCacheEnable(request);
+  };
+}
+
+export async function replayDeferredPrivateCacheWrites(): Promise<boolean> {
+  const request = deferredPrivateCacheEnable;
+  if (!request) return false;
+  if (!request.isCurrent()) {
+    clearDeferredPrivateCacheEnable(request);
+    return false;
+  }
+  if (deferredPrivateCacheEnableTask) return deferredPrivateCacheEnableTask;
+
+  const task = (async () => {
+    try {
+      const result = await enablePrivateCacheWrites(request.isCurrent);
+      if (result === "unavailable") {
+        clearDeferredPrivateCacheEnable(request);
+        return false;
+      }
+      if (result !== "enabled" || !request.isCurrent()) return false;
+      clearDeferredPrivateCacheEnable(request);
+      return true;
+    } catch (error) {
+      if (request.isCurrent()) reportPrivateCacheFailure(error);
+      return false;
+    }
+  })();
+  deferredPrivateCacheEnableTask = task;
+  try {
+    return await task;
+  } finally {
+    if (deferredPrivateCacheEnableTask === task) {
+      deferredPrivateCacheEnableTask = null;
+    }
+    if (deferredPrivateCacheEnable && deferredPrivateCacheEnable !== request) {
+      void replayDeferredPrivateCacheWrites();
+    }
+  }
 }
 
 export async function beginPrivateCacheReset(
@@ -295,3 +422,11 @@ export function resetPrivateCaches(
     if (timeout !== undefined) globalThis.clearTimeout(timeout);
   });
 }
+
+export {
+  deferPrivateCacheWrites as deferWrites,
+  enablePrivateCacheWrites as enableWrites,
+  removeLegacyPrivateLocalData as removeLegacyData,
+  resetPrivateCaches as resetCaches,
+  storePrivateCacheOwner as storeOwner,
+};

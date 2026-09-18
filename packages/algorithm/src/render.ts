@@ -23,6 +23,22 @@ export function selectGridMediaSources({
   return [thumbnailUrl, previewUrl].filter((source): source is string => Boolean(source));
 }
 
+/**
+ * Keeps passive grids derivative-only, but makes an explicit retry useful by
+ * allowing the original as the final user-requested fallback.
+ */
+export function selectGridRetrySources(
+  derivativeSources: readonly string[],
+  originalUrl: string,
+  retryRequested: boolean,
+): string[] {
+  const sources = [...derivativeSources];
+  if (retryRequested && originalUrl && !sources.includes(originalUrl)) {
+    sources.push(originalUrl);
+  }
+  return sources;
+}
+
 interface ViewerMediaSource {
   originalUrl: string;
   thumbnailUrl?: string;

@@ -28,7 +28,7 @@ export function invalidatePhotoListCaches(): Promise<void> {
   const expectedGeneration = invalidatePrivatePhotoListCacheGeneration();
   const deletePhotoListCache = async () => {
     const reset = await import("./privateCacheReset.ts");
-    await reset.resetPrivateCaches(
+    await reset.resetCaches(
       [PHOTO_LIST_CACHE_NAME],
       activeWrites,
       false,

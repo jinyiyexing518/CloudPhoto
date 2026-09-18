@@ -352,6 +352,7 @@ function ProgressivePhotoPreviewImage({
   const source = sources.find((candidate): candidate is string => !!candidate);
   const sourceKey = sources.filter(Boolean).join("\n");
   const [failedSourceKey, setFailedSourceKey] = useState<string | null>(null);
+  const [loadedSourceKey, setLoadedSourceKey] = useState<string | null>(null);
 
   if (!source || failedSourceKey === sourceKey) {
     return (
@@ -362,17 +363,48 @@ function ProgressivePhotoPreviewImage({
   }
 
   return (
-    <img
-      src={source}
-      alt={photo.originalName ?? "照片"}
-      loading={priority ? "eager" : "lazy"}
-      fetchPriority={priority ? "high" : "auto"}
-      onError={(event) => {
-        if (!fallbackMediaSource(event.currentTarget, sources)) {
-          setFailedSourceKey(sourceKey);
-        }
-      }}
-    />
+    <>
+      {loadedSourceKey !== sourceKey && (
+        <span className="photo-page-preview-skeleton" aria-hidden="true" />
+      )}
+      <img
+        className={loadedSourceKey === sourceKey
+          ? "photo-page-preview-image photo-page-preview-image--loaded"
+          : "photo-page-preview-image photo-page-preview-image--loading"}
+        src={source}
+        alt={photo.originalName ?? "照片"}
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+        onLoad={() => setLoadedSourceKey(sourceKey)}
+        onError={(event) => {
+          setLoadedSourceKey(null);
+          if (!fallbackMediaSource(event.currentTarget, sources)) {
+            setFailedSourceKey(sourceKey);
+          }
+        }}
+      />
+    </>
+  );
+}
+
+const PHOTO_GRID_SKELETON_COUNT = 8;
+
+function PhotoGridSkeleton({ label = "正在加载照片封面…" }: { label?: string }) {
+  return (
+    <section className="photo-grid-loading" role="status" aria-live="polite" aria-busy="true">
+      <span className="photo-grid-loading-label">{label}</span>
+      <div className="photo-grid photo-grid--skeleton" aria-hidden="true">
+        {Array.from({ length: PHOTO_GRID_SKELETON_COUNT }, (_, index) => (
+          <div className="photo-grid-skeleton-card" key={index}>
+            <span className="photo-grid-skeleton-cover" />
+            <span className="photo-grid-skeleton-copy">
+              <span className="photo-grid-skeleton-line photo-grid-skeleton-line--primary" />
+              <span className="photo-grid-skeleton-line photo-grid-skeleton-line--secondary" />
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -2383,18 +2415,15 @@ function AppContent() {
   }, [canInstall, pwaInstall.mode]);
   const workspaceUnavailable = loading || loadError || photos.length === 0;
   const renderPhotoListProgress = () => (
-    <div className="loading" role="status" aria-live="polite">
-      <div className="loading-spinner" />
-      <span>
-        正在加载完整图库
-        {photoListProgress.total > 0
-          ? `（${photoListProgress.loaded} / ${photoListProgress.total}）`
-          : "…"}
-      </span>
-    </div>
+    <PhotoGridSkeleton
+      label={photoListProgress.total > 0
+        ? `已加载 ${photoListProgress.loaded} / ${photoListProgress.total} 张，正在加载完整图库…`
+        : "正在加载完整图库…"}
+    />
   );
-  const renderWorkspaceStatus = () => {
+  const renderWorkspaceStatus = (showPhotoSkeleton = false) => {
     if (loading) {
+      if (showPhotoSkeleton) return <PhotoGridSkeleton />;
       return (
         <div className="loading">
           <div className="loading-spinner" />
@@ -2992,7 +3021,7 @@ function AppContent() {
               hidden={activeTab !== "timeline"}
             >
               {workspaceUnavailable
-                ? (activeTab === "timeline" ? renderWorkspaceStatus() : null)
+                ? (activeTab === "timeline" ? renderWorkspaceStatus(true) : null)
                 : !photoListComplete ? (
                   <ProgressivePhotoPreview
                     photos={photos}
@@ -3035,7 +3064,7 @@ function AppContent() {
                     </div>
                   )}
                   <OnThisDayCard photos={photos} onJumpToPhoto={jumpToTimelinePhoto} />
-                  <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
+                  <Suspense fallback={<PhotoGridSkeleton label="正在加载照片视图…" />}>
                     <PhotoGallery
                       key={`timeline:${photoCacheScope}:${resolvedPhotoWorkspaceId ?? "unresolved"}`}
                       photos={filteredPhotos}
@@ -3078,7 +3107,7 @@ function AppContent() {
               hidden={activeTab !== "moments"}
             >
               {workspaceUnavailable
-                ? (activeTab === "moments" ? renderWorkspaceStatus() : null)
+                ? (activeTab === "moments" ? renderWorkspaceStatus(true) : null)
                 : !photoListComplete
                   ? (activeTab === "moments" ? renderPhotoListProgress() : null)
                 : (momentsMounted || activeTab === "moments") ? (
@@ -3088,7 +3117,7 @@ function AppContent() {
                 recovery
                 onError={reportLazyBoundaryFailure}
               >
-              <Suspense fallback={<div className="loading"><div className="loading-spinner" /><span>正在加载照片视图…</span></div>}>
+              <Suspense fallback={<PhotoGridSkeleton label="正在加载照片视图…" />}>
                 <PhotoGallery
                   key={`moments:${photoCacheScope}:${resolvedPhotoWorkspaceId ?? "unresolved"}`}
                   photos={importantPhotos}
@@ -3129,7 +3158,7 @@ function AppContent() {
               hidden={activeTab !== "folder"}
             >
               {workspaceUnavailable
-                ? (activeTab === "folder" ? renderWorkspaceStatus() : null)
+                ? (activeTab === "folder" ? renderWorkspaceStatus(true) : null)
                 : !photoListComplete
                   ? (activeTab === "folder" ? renderPhotoListProgress() : null)
                 : (folderMounted || activeTab === "folder") ? (
@@ -3139,7 +3168,7 @@ function AppContent() {
                 recovery
                 onError={reportLazyBoundaryFailure}
               >
-              <Suspense fallback={null}><FolderView
+              <Suspense fallback={<PhotoGridSkeleton label="正在加载文件夹照片…" />}><FolderView
                 key={currentGroupId || "personal"}
                 photos={photos}
                 onDelete={handleDelete}

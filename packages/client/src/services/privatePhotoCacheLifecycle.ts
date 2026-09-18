@@ -10,6 +10,7 @@ const PRIVATE_CLEANUP_MARKER_KEY = "cloudphoto_private_cleanup_v2";
 let cacheGeneration = 0;
 let activePrivateCacheOwner: string | null = null;
 let cleanupChain: Promise<void> = Promise.resolve();
+let controlDeferredPrivateCacheEnable: ((generation?: number) => void) | null = null;
 const activePersistentWrites = new Set<Promise<void>>();
 const resetListeners = new Set<(scopeReset: boolean) => void>();
 const loadPrivateCacheReset = () => import("./privateCacheReset.ts");
@@ -42,6 +43,7 @@ export function registerPrivatePhotoCacheWrite(operation: Promise<void>): () => 
 
 export function invalidatePrivatePhotoListCacheGeneration(): number {
   cacheGeneration += 1;
+  controlDeferredPrivateCacheEnable?.(cacheGeneration);
   for (const reset of resetListeners) reset(false);
   return cacheGeneration;
 }
@@ -70,6 +72,8 @@ function removeScopedPrivateLocalData(): void {
 function invalidatePrivateCacheOwnership(): void {
   cacheGeneration += 1;
   activePrivateCacheOwner = null;
+  controlDeferredPrivateCacheEnable?.();
+  controlDeferredPrivateCacheEnable = null;
   for (const reset of resetListeners) reset(true);
   removeScopedPrivateLocalData();
 }
@@ -80,7 +84,7 @@ function queueCacheDeletion(resumeCaching = false): Promise<void> {
 
   const deletePrivateCaches = async () => {
     const reset = await loadPrivateCacheReset();
-    await reset.resetPrivateCaches(
+    await reset.resetCaches(
       PRIVATE_CACHE_NAMES,
       activePersistentWrites,
       true,
@@ -125,15 +129,26 @@ export async function preparePrivatePhotoCachesForScope(
       : waitForPrivatePhotoCacheCleanup();
     const expectedGeneration = cacheGeneration;
     const reset = await loadPrivateCacheReset();
-    reset.removeLegacyPrivateLocalData();
+    reset.removeLegacyData();
     await pendingCleanup;
     if (expectedGeneration !== cacheGeneration) return false;
-    if (owner === authScope && cleanupComplete) {
-      await reset.enablePrivateCacheWrites();
-      if (expectedGeneration !== cacheGeneration) return false;
-    }
+    const enableResult = await reset.enableWrites(
+      () => expectedGeneration === cacheGeneration,
+    );
+    if (expectedGeneration !== cacheGeneration) return false;
     activePrivateCacheOwner = authScope;
-    reset.storePrivateCacheOwner(authScope);
+    reset.storeOwner(authScope);
+    controlDeferredPrivateCacheEnable?.();
+    controlDeferredPrivateCacheEnable = null;
+    if (enableResult === "deferred") {
+      controlDeferredPrivateCacheEnable = reset.deferWrites(
+        (generation) => (
+          generation === cacheGeneration
+          && activePrivateCacheOwner === authScope
+        ),
+        expectedGeneration,
+      );
+    }
     return true;
   } catch (error) {
     if (!cleanupStarted) {

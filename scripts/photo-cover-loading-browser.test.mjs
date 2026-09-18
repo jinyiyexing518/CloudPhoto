@@ -111,9 +111,13 @@ function buildFixtureClient() {
     VITE_BLOB_MEDIA_BASE: "/media",
     VITE_MEDIA_PROXY_BASE: "/media",
   };
-  const command = process.env.npm_execpath ? process.execPath : "yarn";
-  const args = process.env.npm_execpath
-    ? [process.env.npm_execpath, "workspace", "cloudphoto-client", "build"]
+  const packageRunner = process.env.npm_execpath;
+  const usingYarn = packageRunner && /(?:^|[\\/])yarn(?:\.js|\.cjs)?$/i.test(packageRunner);
+  const command = packageRunner ? process.execPath : "yarn";
+  const args = packageRunner
+    ? usingYarn
+      ? [packageRunner, "workspace", "cloudphoto-client", "build"]
+      : [packageRunner, "--workspace", "cloudphoto-client", "run", "build"]
     : ["workspace", "cloudphoto-client", "build"];
   fixtureClientBuild = new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -235,13 +239,17 @@ function userForToken(authorization) {
   }
 }
 
-function photosFor(userId) {
+function photosFor(userId, includeDerivatives = true) {
   return Array.from({ length: PHOTO_COUNT }, (_, index) => ({
     name: `${userId}/photo-${index + 1}.jpg`,
     originalName: `photo-${index + 1}.jpg`,
     url: `/media/${userId}/original-${index + 1}.jpg?sig=${userId}`,
-    thumbnailUrl: `/media/${userId}/thumb-${index + 1}.png?sig=${userId}`,
-    previewUrl: `/media/${userId}/preview-${index + 1}.png?sig=${userId}`,
+    ...(includeDerivatives
+      ? {
+          thumbnailUrl: `/media/${userId}/thumb-${index + 1}.png?sig=${userId}`,
+          previewUrl: `/media/${userId}/preview-${index + 1}.png?sig=${userId}`,
+        }
+      : {}),
     size: 1024,
     lastModified: "2026-08-12T08:00:00.000Z",
     createdAt: "2026-08-12T08:00:00.000Z",
@@ -264,8 +272,11 @@ function contentType(pathname) {
 async function createFixtureServer({
   fenceMode = "pending",
   initialMediaMode = "success",
+  includeDerivatives = true,
+  initialPhotoListDelayMs = 0,
 } = {}) {
   let mediaMode = initialMediaMode;
+  let photoListDelayMs = initialPhotoListDelayMs;
   const stalledMediaResponses = new Set();
   const stats = {
     apiPhotos: 0,
@@ -489,8 +500,11 @@ async function createFixtureServer({
     if (url.pathname === "/api/photos") {
       stats.apiPhotos += 1;
       const user = userForToken(request.headers.authorization);
+      if (photoListDelayMs > 0) await sleep(photoListDelayMs);
       response.writeHead(user ? 200 : 401, { "content-type": "application/json" });
-      response.end(JSON.stringify(user ? photosFor(user.id) : { error: "Unauthorized" }));
+      response.end(JSON.stringify(
+        user ? photosFor(user.id, includeDerivatives) : { error: "Unauthorized" },
+      ));
       return;
     }
     if (url.pathname.startsWith("/api/")) {
@@ -499,7 +513,7 @@ async function createFixtureServer({
       return;
     }
     if (url.pathname.startsWith("/media/")) {
-      stats.media.push({ mode: mediaMode, path: url.pathname });
+      stats.media.push({ mode: mediaMode, path: url.pathname, search: url.search });
       if (
         mediaMode === "stall"
         || (mediaMode === "stall-thumbnail" && url.pathname.endsWith("/thumb-1.png"))
@@ -519,6 +533,7 @@ async function createFixtureServer({
           "cache-control": "no-store",
           "content-type": "image/png",
         });
+        if (mediaMode === "slow-success") await sleep(4_500);
         response.end(PNG);
       }
       return;
@@ -544,6 +559,9 @@ async function createFixtureServer({
     stats,
     setMediaMode(next) {
       mediaMode = next;
+    },
+    setPhotoListDelay(next) {
+      photoListDelayMs = next;
     },
     releaseStalledMedia() {
       for (const response of stalledMediaResponses) response.destroy();
@@ -659,7 +677,11 @@ async function coverState(page) {
       cardCount: cards.length,
       loading: cards.filter((card) => card.querySelector(".photo-skeleton, .img-loading")).length,
       errors: cards.filter((card) => card.querySelector(".photo-thumb-error")).length,
-      loaded: images.filter((image) => image?.complete && image.naturalWidth > 0).length,
+      loaded: cards.filter((card, index) =>
+        !card.querySelector(".photo-thumb-error")
+        && images[index]?.complete
+        && images[index].naturalWidth > 0
+      ).length,
       imagePaths: images.map((image) => {
         if (!image?.src) return null;
         const url = new URL(image.src);
@@ -819,6 +841,183 @@ test("pending worker readiness cannot block authorized cover network delivery", 
   }
 });
 
+test("a legacy photo without derivatives loads its original only after explicit retry", async (t) => {
+  const executable = await findBrowser();
+  if (!executable) {
+    t.skip("No Chromium browser is installed");
+    return;
+  }
+  await buildFixtureClient();
+  await mkdir(evidenceRoot, { recursive: true });
+  const fixture = await createFixtureServer({
+    fenceMode: "disabled",
+    initialMediaMode: "success",
+    includeDerivatives: false,
+  });
+  const browser = await launchBrowser(executable);
+  const page = await openPage(browser, bootstrapSource(jwt("owner-a")));
+  try {
+    await setViewport(page, 1280, 900, false);
+    await navigate(page, fixture.origin);
+    await waitForCards(page);
+    await ensureServiceWorkerControl(page, fixture.origin);
+    await waitFor(async () => (await coverState(page)).errors === PHOTO_COUNT);
+    const before = await coverState(page);
+    await page.screenshot(join(evidenceRoot, "photo-covers-missing-derivatives-before.png"));
+    assert.equal(before.loaded, 0);
+    assert.equal(before.loading, 0);
+    assert.equal(before.errors, PHOTO_COUNT);
+    assert.equal(
+      fixture.stats.media.length,
+      0,
+      "passive legacy cards must not download full originals",
+    );
+
+    await page.evaluate(`(() => {
+      for (const error of document.querySelectorAll(".photo-thumb-error")) {
+        error.closest(".photo-card-primary")?.click();
+      }
+    })()`);
+    await waitFor(async () => {
+      const state = await coverState(page);
+      return state.loaded === PHOTO_COUNT && state.errors === 0;
+    }, 15_000);
+    const after = await coverState(page);
+    await page.screenshot(join(evidenceRoot, "photo-covers-missing-derivatives-after.png"));
+
+    assert.equal(after.loaded, PHOTO_COUNT);
+    assert.equal(after.errors, 0);
+    assert.ok(
+      after.imagePaths.every((source) => source?.includes("/original-")),
+      "explicit retry must render the available original source",
+    );
+    assert.equal(
+      fixture.stats.media.length,
+      PHOTO_COUNT,
+      "each explicit retry must issue exactly one original request",
+    );
+    assert.ok(
+      fixture.stats.media.every(({ path, search }) =>
+        path.includes("/original-")
+        && search.includes("cf_cover_retry=1")
+        && !search.includes("cf_cover=1")),
+      "original retry requests must stay out of the derivative cache policy",
+    );
+  } finally {
+    page.close();
+    await browser.dispose();
+    await fixture.close();
+  }
+});
+
+test("initial catalog and lazy gallery waits render cover skeleton grids", async (t) => {
+  const executable = await findBrowser();
+  if (!executable) {
+    t.skip("No Chromium browser is installed");
+    return;
+  }
+  await buildFixtureClient();
+  await mkdir(evidenceRoot, { recursive: true });
+  const fixture = await createFixtureServer({
+    fenceMode: "disabled",
+    initialPhotoListDelayMs: 1_200,
+  });
+  const browser = await launchBrowser(executable);
+  const page = await openPage(browser, bootstrapSource(jwt("owner-a")));
+  try {
+    await setViewport(page, 390, 844, true);
+    await navigate(page, fixture.origin);
+    const skeletonCount = await waitFor(() => page.evaluate(
+      `document.querySelectorAll(".photo-grid-skeleton-card").length`,
+    ), 10_000);
+    await page.screenshot(join(evidenceRoot, "photo-catalog-skeleton-mobile.png"));
+    assert.equal(skeletonCount, PHOTO_COUNT);
+
+    await waitForCards(page);
+    await waitFor(async () => (await coverState(page)).loaded === PHOTO_COUNT);
+    assert.equal(
+      await page.evaluate(`document.querySelectorAll(".photo-grid-skeleton-card").length`),
+      0,
+      "catalog skeleton cards must leave the accessibility and visual tree after content arrives",
+    );
+  } finally {
+    page.close();
+    await browser.dispose();
+    await fixture.close();
+  }
+});
+
+test("a slow successful cover keeps a full worker-compatible source budget", async (t) => {
+  const executable = await findBrowser();
+  if (!executable) {
+    t.skip("No Chromium browser is installed");
+    return;
+  }
+  await buildFixtureClient();
+  await mkdir(evidenceRoot, { recursive: true });
+  const fixture = await createFixtureServer({
+    fenceMode: "disabled",
+    initialMediaMode: "success",
+  });
+  const browser = await launchBrowser(executable);
+  const page = await openPage(browser, bootstrapSource(jwt("owner-a")));
+  try {
+    await setViewport(page, 1280, 1400, false);
+    await navigate(page, fixture.origin);
+    await waitForCards(page);
+    await ensureServiceWorkerControl(page, fixture.origin);
+    await waitFor(async () => (await coverState(page)).loaded === PHOTO_COUNT);
+
+    fixture.setMediaMode("slow-success");
+    const mediaBeforeSlowSuccess = fixture.stats.media.length;
+    await navigate(page, fixture.origin);
+    await waitForCards(page);
+    assert.equal(
+      await waitFor(() => page.evaluate(
+        `document.querySelectorAll(".photo-card .photo-skeleton").length`,
+      ), 3_000),
+      PHOTO_COUNT,
+      "slow cover requests must render a visible skeleton for every pending card",
+    );
+    await page.screenshot(join(evidenceRoot, "photo-covers-slow-success-loading.png"));
+    await waitFor(async () => {
+      const state = await coverState(page);
+      return state.loaded === PHOTO_COUNT && state.loading === 0 && state.errors === 0;
+    }, 12_000);
+    const slowSuccess = await coverState(page);
+    const requests = fixture.stats.media.slice(mediaBeforeSlowSuccess);
+    await page.screenshot(join(evidenceRoot, "photo-covers-slow-success.png"));
+    if (!requests.every(({ path }) => path.includes("/thumb-"))) {
+      console.error(JSON.stringify({ slowSuccess, requests }, null, 2));
+    }
+
+    assert.equal(slowSuccess.loaded, PHOTO_COUNT);
+    assert.equal(slowSuccess.errors, 0);
+    assert.equal(
+      await page.evaluate(`document.querySelectorAll(".photo-card .photo-skeleton").length`),
+      0,
+      "cover skeletons must disappear after decoded images render",
+    );
+    assert.ok(
+      requests.every(({ path }) => path.includes("/thumb-")),
+      "slow successful thumbnails must not waste preview or alternate-route traffic",
+    );
+    assert.equal(
+      new Set(requests.map(({ path }) => path)).size,
+      PHOTO_COUNT,
+      "every slow thumbnail must finish without advancing to another source tier",
+    );
+    assert.ok(
+      requests.length <= PHOTO_COUNT + 2,
+      "browser navigation races may refetch at most two lazy thumbnails",
+    );
+  } finally {
+    page.close();
+    await browser.dispose();
+    await fixture.close();
+  }
+});
+
 test("disabled cache plus a stalled authorized source advances then terminates", async (t) => {
   const executable = await findBrowser();
   if (!executable) {
@@ -883,7 +1082,7 @@ test("disabled cache plus a stalled authorized source advances then terminates",
     await waitFor(async () => {
       const state = await coverState(page);
       return state.errors === PHOTO_COUNT && state.loading === 0;
-    }, 12_000);
+    }, 22_000);
     const terminal = await coverState(page);
     await page.screenshot(join(evidenceRoot, "photo-covers-source-terminal.png"));
     const cacheStats = await fenceControl(page);

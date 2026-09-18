@@ -315,6 +315,28 @@ for (const [label, pages, expected] of [
     0,
     "initial grid original-media request count must stay at zero",
   );
+  assert.deepEqual(
+    renderPolicy.selectGridRetrySources([], originalUrl, false),
+    [],
+    "a grid without user retry intent must not request the original",
+  );
+  assert.deepEqual(
+    renderPolicy.selectGridRetrySources([], originalUrl, true),
+    [originalUrl],
+    "an explicit cover retry must recover a legacy photo with no derivatives",
+  );
+  assert.deepEqual(
+    renderPolicy.selectGridRetrySources(
+      ["/media/personal/user-a/_th_large-original.webp"],
+      originalUrl,
+      true,
+    ),
+    [
+      "/media/personal/user-a/_th_large-original.webp",
+      originalUrl,
+    ],
+    "an explicit retry must retain the derivative before the original fallback",
+  );
 }
 
 assert.equal(
