@@ -24,9 +24,28 @@ test("pause gates dispatch without aborting active XHRs", () => {
 
 test("video cover work remains inside the weighted worker boundary", () => {
   const worker = appSource.indexOf("worker: async (queueItem, controls)");
-  const thumbnail = appSource.indexOf("const thumbnail = await videoThumbnailPromise", worker);
+  const thumbnail = appSource.indexOf("const thumbnail = await thumbnailPromise", worker);
   const workerEnd = appSource.indexOf("\n        },\n      });", worker);
   assert.ok(worker >= 0 && thumbnail > worker && workerEnd > thumbnail);
+});
+
+test("upload runtime stays behind explicit upload intent", () => {
+  assert.match(
+    appSource,
+    /const loadUploadWorkflow = \(\) => Promise\.all\(\[\s*import\("\.\/services\/uploadApi"\),\s*import\("\.\/transfer\/uploadQueue"\),\s*import\("\.\/services\/uploadRetry"\),\s*\]\)/s,
+  );
+  assert.match(
+    appSource,
+    /const uploadWorkflowPromise = loadUploadWorkflow\(\)\.catch[\s\S]*const uploadWorkflow = await uploadWorkflowPromise/s,
+  );
+  assert.doesNotMatch(
+    appSource,
+    /import\s+\{[^}]*runWeightedUploadQueue[^}]*\}\s+from "\.\/transfer\/uploadQueue"/s,
+  );
+  assert.doesNotMatch(
+    appSource,
+    /import\s+\{[^}]*uploadPhotoWithProgress[^}]*\}\s+from "\.\/services\/photoApi"/s,
+  );
 });
 
 test("failed batches keep truthful final progress through refresh and report both outcomes", () => {

@@ -26,10 +26,24 @@ import {
   parseRetryAfterMs,
   UploadRequestError,
 } from "./uploadRetry";
+import { AuthSessionChangedError } from "./uploadSession";
+import {
+  publishPhotoThumbnailResult,
+} from "./photoThumbnailPersistence";
 import {
   detectUploadMediaType,
   photoDerivativeStrategy,
 } from "../uploadLocation";
+
+export { AuthSessionChangedError } from "./uploadSession";
+export {
+  isVideoThumbnailPersistencePending,
+  markPhotoThumbnailPersistencePending,
+  markVideoThumbnailPersistencePending,
+  subscribeToPhotoThumbnailResults,
+  subscribeToVideoThumbnailPersistence,
+  subscribeToVideoThumbnailResults,
+} from "./photoThumbnailPersistence";
 
 const VIDEO_THUMB_WIDTH = 400;
 const VIDEO_THUMB_QUALITY = 0.75;
@@ -40,13 +54,6 @@ function proxyPhoto(photo: Photo): Photo {
     ...photo,
     ...routed,
   };
-}
-
-export class AuthSessionChangedError extends Error {
-  constructor(message = "登录状态已变更，上传已停止") {
-    super(message);
-    this.name = "AuthSessionChangedError";
-  }
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────
@@ -323,54 +330,11 @@ export function extractImageThumbnail(file: File): Promise<Blob | null> {
 }
 
 const persistedPlaybackThumbnails = new Set<string>();
-const pendingVideoThumbnailPersistence = new Set<string>();
 const videoThumbnailWrites = new Map<string, Promise<string | null>>();
-const videoThumbnailPersistenceListeners = new Set<
-  (blobName: string, pending: boolean, thumbnailUrl?: string) => void
->();
-const videoThumbnailResultListeners = new Set<
-  (blobName: string, thumbnailUrl: string) => void
->();
 
 function videoThumbnailPersistenceKey(blobName: string): string {
   return `${getAuthGeneration()}:${blobName}`;
 }
-
-export function markVideoThumbnailPersistencePending(
-  blobName: string,
-  pending: boolean,
-  thumbnailUrl?: string,
-): void {
-  if (pending) pendingVideoThumbnailPersistence.add(blobName);
-  else pendingVideoThumbnailPersistence.delete(blobName);
-  for (const listener of videoThumbnailPersistenceListeners) {
-    listener(blobName, pending, thumbnailUrl);
-  }
-}
-
-export const markPhotoThumbnailPersistencePending =
-  markVideoThumbnailPersistencePending;
-
-export function isVideoThumbnailPersistencePending(blobName: string): boolean {
-  return pendingVideoThumbnailPersistence.has(blobName);
-}
-
-export function subscribeToVideoThumbnailPersistence(
-  listener: (blobName: string, pending: boolean, thumbnailUrl?: string) => void,
-): () => void {
-  videoThumbnailPersistenceListeners.add(listener);
-  return () => videoThumbnailPersistenceListeners.delete(listener);
-}
-
-export function subscribeToVideoThumbnailResults(
-  listener: (blobName: string, thumbnailUrl: string) => void,
-): () => void {
-  videoThumbnailResultListeners.add(listener);
-  return () => videoThumbnailResultListeners.delete(listener);
-}
-
-export const subscribeToPhotoThumbnailResults =
-  subscribeToVideoThumbnailResults;
 
 export async function extractVideoElementThumbnail(
   video: HTMLVideoElement,
@@ -511,9 +475,7 @@ export async function setPhotoThumbnail(
         ? getPreferredMediaUrl(json.thumbnailUrl)
         : null;
       if (thumbnailUrl) {
-        for (const listener of videoThumbnailResultListeners) {
-          listener(blobName, thumbnailUrl);
-        }
+        publishPhotoThumbnailResult(blobName, thumbnailUrl);
       }
       return thumbnailUrl;
     } catch {

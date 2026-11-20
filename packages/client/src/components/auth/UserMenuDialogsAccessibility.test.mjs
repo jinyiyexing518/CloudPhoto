@@ -11,8 +11,10 @@ const shortcutsHelpDialog = read("./ShortcutsHelpDialog.tsx");
 const installGuideDialog = read("./InstallGuideDialog.tsx");
 
 test("user-menu dialogs restore through the connected avatar trigger", () => {
-  assert.match(authenticatedApp, /import ShortcutsHelpDialog from "\.\/components\/auth\/ShortcutsHelpDialog"/);
-  assert.match(authenticatedApp, /import InstallGuideDialog from "\.\/components\/auth\/InstallGuideDialog"/);
+  assert.match(authenticatedApp, /const ShortcutsHelpDialog = lazy\(loadShortcutsHelpDialog\)/);
+  assert.match(authenticatedApp, /const InstallGuideDialog = lazy\(loadInstallGuideDialog\)/);
+  assert.match(authenticatedApp, /import\("\.\/components\/auth\/ShortcutsHelpDialog"\)/);
+  assert.match(authenticatedApp, /import\("\.\/components\/auth\/InstallGuideDialog"\)/);
   assert.match(
     authenticatedApp,
     /closeUserMenu\(true\);[\s\S]*?setShowShortcutsHelp\(true\)/,

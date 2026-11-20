@@ -21,7 +21,7 @@ import {
   type VideoPlaybackSession,
   type VideoPlaybackStatus,
 } from "./videoPlaybackSession";
-import { persistVideoPlaybackThumbnail } from "./uploadApi";
+import { reportLazyBoundaryFailure } from "../pwa/deploymentRecovery";
 import {
   markVideoCoverRepaired,
   videoPlaybackCoverFrameInformation,
@@ -172,23 +172,37 @@ export function useResilientVideoPlayback({
       if (!capture.shouldCapture) return;
       setSession(capture.session);
       const requestToken = requestTokenRef.current;
-      void persistVideoPlaybackThumbnail(current.photoName, video).then((thumbnailUrl) => {
-        if (!thumbnailUrl) return;
-        markVideoCoverRepaired(current.photoName);
-        const active = sessionRef.current;
-        if (
-          requestToken !== requestTokenRef.current
-          || !active
-          || active.key !== key
-          || active.photoName !== current.photoName
-        ) {
-          return;
-        }
-        onThumbnailCapturedRef.current?.({
-          photoName: current.photoName,
-          thumbnailUrl,
-        });
-      });
+      void import("./uploadApi")
+        .then(({ persistVideoPlaybackThumbnail }) => {
+          const active = sessionRef.current;
+          if (
+            requestToken !== requestTokenRef.current
+            || !active
+            || active.key !== key
+            || active.photoName !== current.photoName
+          ) {
+            return null;
+          }
+          return persistVideoPlaybackThumbnail(current.photoName, video);
+        })
+        .then((thumbnailUrl) => {
+          if (!thumbnailUrl) return;
+          markVideoCoverRepaired(current.photoName);
+          const active = sessionRef.current;
+          if (
+            requestToken !== requestTokenRef.current
+            || !active
+            || active.key !== key
+            || active.photoName !== current.photoName
+          ) {
+            return;
+          }
+          onThumbnailCapturedRef.current?.({
+            photoName: current.photoName,
+            thumbnailUrl,
+          });
+        })
+        .catch(reportLazyBoundaryFailure);
     };
     return {
       onPlay: (event) => controller.onPlay(key, event.currentTarget),

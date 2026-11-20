@@ -20,7 +20,6 @@ import {
   useVideoCoverRepair,
 } from "../../services/videoCoverRepair";
 import { usePhotoCoverRepair } from "../../services/photoCoverRepair";
-import { persistImageElementThumbnail } from "../../services/uploadApi";
 import {
   getPhotoActionLabel,
   getPhotoCardGroupLabel,
@@ -507,16 +506,23 @@ function PhotoCard({
         photoCoverRepairState.strategy === "client"
         && getMediaCandidates([retryOriginalImageUrl]).includes(expectedSource)
       ) {
-        void persistImageElementThumbnail(photo.name, element).then((thumbnailUrl) => {
-          if (
-            !thumbnailUrl
-            || !mountedRef.current
-            || coverLoadContextRef.current !== context
-          ) {
-            return;
-          }
-          setClientPersistedThumbnailUrl(thumbnailUrl);
-        });
+        void import("../../services/uploadApi")
+          .then(({ persistImageElementThumbnail }) => (
+            contextIsCurrent()
+              ? persistImageElementThumbnail(photo.name, element)
+              : null
+          ))
+          .then((thumbnailUrl) => {
+            if (
+              !thumbnailUrl
+              || !mountedRef.current
+              || coverLoadContextRef.current !== context
+            ) {
+              return;
+            }
+            setClientPersistedThumbnailUrl(thumbnailUrl);
+          })
+          .catch(reportLazyBoundaryFailure);
       }
     };
     const handleError = () => advanceOrFail();

@@ -8,13 +8,12 @@ import {
   getAuthGeneration,
   subscribeToAuthChanges,
 } from "./http";
+import { reportLazyBoundaryFailure } from "../pwa/deploymentRecovery";
 import {
-  extractVideoElementThumbnail,
   isVideoThumbnailPersistencePending,
-  setVideoThumbnail,
   subscribeToVideoThumbnailPersistence,
   subscribeToVideoThumbnailResults,
-} from "./uploadApi";
+} from "./photoThumbnailPersistence";
 import {
   VideoCoverRepairQueue,
   VideoCoverBrokenRegistry,
@@ -190,6 +189,14 @@ function repairVideoCover(
       sampling = true;
       const generation = routeGeneration;
       void (async () => {
+        let uploadApi;
+        try {
+          uploadApi = await import("./uploadApi");
+        } catch (error) {
+          reportLazyBoundaryFailure(error);
+          throw error;
+        }
+        const { extractVideoElementThumbnail, setVideoThumbnail } = uploadApi;
         let bestCandidate: { score: number; thumbnail: Blob } | null = null;
         for (const time of videoCoverRepairCandidateTimes(video.duration)) {
           await waitForVideoFrame(video, time, samplingController.signal);

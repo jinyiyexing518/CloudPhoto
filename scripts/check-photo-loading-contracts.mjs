@@ -37,6 +37,9 @@ const photoApi = read("packages/client/src/services/photoApi.ts");
 const photoPaging = read("packages/client/src/services/photoPaging.ts");
 const maintenanceBackfillPaging = read("packages/client/src/services/maintenanceBackfillPaging.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
+const thumbnailPersistence = read(
+  "packages/client/src/services/photoThumbnailPersistence.ts",
+);
 const photoCoverRepair = read("packages/client/src/services/photoCoverRepair.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
 const videoPlayback = read("packages/client/src/services/videoPlaybackSession.ts");
@@ -1339,8 +1342,11 @@ requireText(uploadApi, "video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA", 
 requireText(uploadApi, "const thumbnailUrl = await setVideoThumbnail(blobName, thumbnail)", "playback thumbnail endpoint reuse");
 requireText(uploadApi, "if (!persisted) persistedPlaybackThumbnails.delete(persistenceKey)", "failed playback thumbnail retry");
 requireText(uploadApi, "videoThumbnailWrites.get(persistenceKey)", "auth-scoped thumbnail endpoint write dedupe");
-requireText(uploadApi, "videoThumbnailPersistenceListeners", "thumbnail reservation subscribers");
-requireText(uploadApi, "videoThumbnailResultListeners", "thumbnail result subscribers");
+requireText(thumbnailPersistence, "videoThumbnailPersistenceListeners", "thumbnail reservation subscribers");
+requireText(thumbnailPersistence, "videoThumbnailResultListeners", "thumbnail result subscribers");
+requireText(videoCoverRepair, 'import("./uploadApi")', "deferred video repair runtime");
+requireText(videoCoverRepair, "reportLazyBoundaryFailure(error)", "video repair deployment recovery");
+requireText(resilientVideoPlayback, 'import("./uploadApi")', "deferred playback thumbnail runtime");
 requireText(app, "subscribeToPhotoThumbnailResults(handleThumbnailUpdate)", "stale-viewer thumbnail publication");
 requireText(app, "markPhotoThumbnailPersistencePending(uploadedPhoto.name, true)", "upload-time repair reservation");
 requireText(app, "persistedThumbnailUrl ?? undefined", "upload-time repair release result");

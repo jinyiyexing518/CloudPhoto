@@ -11,7 +11,6 @@ import {
   recordMomentViewApi,
   MomentInsight,
   ManagedMomentsUnavailableError,
-  uploadPhotoWithProgress,
   setPhotoVoiceMemo as apiSetVoiceMemo,
   updatePhotoTakenAt,
   updatePhotoGps,
@@ -24,6 +23,7 @@ import {
   captureRecentShareLinksContext,
   isRecentShareLinksContextCurrent,
 } from "../../services/share/shareLinksStore";
+import { reportLazyBoundaryFailure } from "../../pwa/deploymentRecovery";
 import { copyText } from "../../services/share/clipboard";
 import {
   fallbackMediaSource,
@@ -1295,10 +1295,12 @@ function PhotoGallery({
     const file = new File([blob], `voice${ext}`, { type: mimeType });
     const photoRef = selectedPhoto;
     try {
+      const { uploadPhotoWithProgress } = await import("../../services/uploadApi");
       const result = await uploadPhotoWithProgress(file, () => {}, userName, undefined, "_voice", photoRef.groupId);
       await apiSetVoiceMemo(photoRef.name, result.name, userName);
       setSelectedPhoto((prev) => prev ? { ...prev, voiceMemoName: result.name, voiceMemoUrl: result.url } : null);
-    } catch {
+    } catch (error) {
+      reportLazyBoundaryFailure(error);
       setVoiceError("语音备注上传失败，请重试");
     } finally {
       setVoiceState("idle");

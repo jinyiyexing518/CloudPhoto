@@ -73,6 +73,7 @@
 - **注册表单按意图加载** — 默认登录页不再携带注册字段、校验和提交逻辑；注册 Tab hover/focus 预载同一个 lazy Promise，打开后保持表单状态并继续在提交前预载工作区。入口由 28.48 kB 降至 26.58 kB（gzip 10.31 kB → 9.91 kB），注册逻辑成为独立 2.79 kB chunk
 - **注册资源失败不再拖垮登录** — 注册 lazy chunk 被网络或浏览器策略瞬时拦截时，loader 对 reject 和 Vite `preventDefault()` 后的 fulfilled-undefined 都解析为注册专用 fallback；登录 tab 继续可用，用户可通过统一的“刷新新版”恢复
 - **群组管理按意图加载** — 新建群组和群组设置从认证工作区初始包拆为独立 lazy chunk，hover/focus 复用缓存 Promise 预热；加载或跨部署失败时仍可关闭、按 Esc 退出并保持焦点隔离。`AuthenticatedApp` 从 167.61 kB / gzip 54.65 kB 降至 161.05 kB / gzip 52.95 kB
+- **上传与辅助对话框按意图加载** — 上传 API、加权队列、重试策略、语音备注上传和客户端封面持久化不再从时间线/文件夹静态回流，只在真实上传、播放捕获或封面修复发生时加载；快捷键帮助与安装指引也各自独立分包。`AuthenticatedApp` 从 168,811 B / gzip 53,175 B 降至 157,600 B / gzip 约 50.35 kB（raw -6.6%，gzip 约 -5.3%），新增交互块继续排除在 HTML preload 与 Service Worker 首装预缓存外
 - **更新弹窗 Idle 延后加载** — `WhatsNewPopup` 从 `AuthenticatedApp` 拆为独立 lazy chunk，照片列表 `loading=true` 时不挂载也不请求 changelog；`loading` 结束后仅在 `requestIdleCallback({ timeout: 2000 })`（含 `setTimeout` 兼容 fallback）空闲窗口挂载，且切回 loading/卸载会取消旧任务，避免迟到弹窗覆盖加载态。`AuthenticatedApp` 初始 chunk 从 95.43 kB 降至 92.59 kB（gzip 30.80 kB → 29.98 kB），并新增 `WhatsNewPopup-*.js` 3.81 kB chunk
 - **最近更新完整模态键盘路径** — 打开后显式聚焦关闭按钮，Escape 关闭，Tab/Shift+Tab 基于每次按键时的可见控件动态循环；键盘聚焦/交互会 pin 弹窗并清空自动淡出计时器，关闭动画完成或组件卸载后仅向仍连接的原控件恢复焦点。更新摘要使用原生 `button` 与稳定 `aria-expanded`/`aria-controls` 关联
 - **共享模态焦点与快捷键隔离** — Settings 与最近更新复用同一套动态焦点枚举、Tab 首尾循环和 connected-only 恢复能力；Settings 的 Escape 继续走维护/回收站 guard，普通键只阻断冒泡而不破坏输入、复制粘贴。全局快捷键额外拒绝 IME、已处理事件、交互目标、打开的 aria-modal 与重复刷新/Tab mutation

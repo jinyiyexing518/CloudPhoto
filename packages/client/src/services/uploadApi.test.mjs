@@ -25,3 +25,9 @@ test("server-unsupported image uploads persist a bounded WebP fallback", () => {
   assert.match(source, /export async function setPhotoThumbnail/);
   assert.match(source, /persistImageElementThumbnail/);
 });
+
+test("upload runtime delegates lightweight session and thumbnail events", () => {
+  assert.match(source, /import \{ AuthSessionChangedError \} from "\.\/uploadSession"/);
+  assert.match(source, /publishPhotoThumbnailResult\(blobName, thumbnailUrl\)/);
+  assert.match(source, /from "\.\/photoThumbnailPersistence"/);
+});

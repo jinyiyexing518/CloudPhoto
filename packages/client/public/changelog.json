@@ -1,5 +1,15 @@
 [
   {
+    "id": "2026-11-20-authenticated-upload-intent-split",
+    "date": "2026-11-20",
+    "icon": "⚡",
+    "title": "登录后工作区首包继续减重",
+    "type": "improvement",
+    "desc": "上传队列、重试、缩略图处理和仅交互时使用的对话框改为按意图下载，浏览照片时不再提前解析这些功能。",
+    "details": "AuthenticatedApp 生产 JavaScript 从 168,811 B / gzip 53,175 B 降至 157,600 B / gzip 约 50.35 kB，raw 减少 6.6%，gzip 约减少 5.3%。上传 API、加权队列和重试策略成为三个独立延迟块，只在拖入、粘贴或选择文件后与媒体类型检测并行加载；语音备注上传、客户端图片封面持久化、视频封面修复和播放中封面捕获也改为在真实操作发生时加载，避免从 PhotoGallery 或 FolderView 静态回流。快捷键帮助与安装指引分别成为独立 lazy chunk。轻量 auth-session error、进度计算和缩略图事件总线仍留在主路径，保证切号取消、进度显示和跨视图封面发布不变；动态加载失败继续进入统一跨部署恢复。Service Worker 首装预缓存保持 14 项、约 196.44 KiB，新增交互块全部排除在预缓存外。",
+    "seq": 1795168423204
+  },
+  {
     "id": "2026-11-20-photo-cover-self-repair",
     "date": "2026-11-20",
     "icon": "🖼️",

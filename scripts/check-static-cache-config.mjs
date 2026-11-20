@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
+import { gzipSync } from "zlib";
 import { inspectPng } from "./png-contract.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -379,6 +380,13 @@ function checkHashedAssets(configPath) {
   if (authenticatedAppChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred AuthenticatedApp chunk");
   }
+  const authenticatedAppBytes = readFileSync(authenticatedAppChunks[0]);
+  if (authenticatedAppBytes.length > 157_800) {
+    fail(configPath, "deferred AuthenticatedApp chunk must stay at or below 157,800 B");
+  }
+  if (gzipSync(authenticatedAppBytes).length > 50_500) {
+    fail(configPath, "deferred AuthenticatedApp chunk must stay at or below 50,500 B gzip");
+  }
   const registerFormChunks = currentAssets.filter((asset) =>
     /^RegisterForm-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
   );
@@ -390,6 +398,36 @@ function checkHashedAssets(configPath) {
   );
   if (whatsNewPopupChunks.length !== 1) {
     fail(configPath, "built assets must contain one deferred WhatsNewPopup chunk");
+  }
+  const uploadApiChunks = currentAssets.filter((asset) =>
+    /^uploadApi-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (uploadApiChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred upload API chunk");
+  }
+  const uploadQueueChunks = currentAssets.filter((asset) =>
+    /^uploadQueue-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (uploadQueueChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred upload queue chunk");
+  }
+  const uploadRetryChunks = currentAssets.filter((asset) =>
+    /^uploadRetry-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (uploadRetryChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred upload retry chunk");
+  }
+  const shortcutsHelpChunks = currentAssets.filter((asset) =>
+    /^ShortcutsHelpDialog-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (shortcutsHelpChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred shortcuts help chunk");
+  }
+  const installGuideChunks = currentAssets.filter((asset) =>
+    /^InstallGuideDialog-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
+  );
+  if (installGuideChunks.length !== 1) {
+    fail(configPath, "built assets must contain one deferred install guide chunk");
   }
   const pwaInstallEntryChunks = currentAssets.filter((asset) =>
     /^PwaInstallEntry-[A-Za-z0-9_-]{8,}\.js$/.test(basename(asset))
@@ -485,6 +523,13 @@ function checkHashedAssets(configPath) {
     }
   }
   const serviceWorkerPath = join(dirname(configPath), "sw.js");
+  const indexHtmlPath = join(dirname(configPath), "index.html");
+  let indexHtml;
+  try {
+    indexHtml = readFileSync(indexHtmlPath, "utf8");
+  } catch (error) {
+    fail(configPath, `cannot inspect built HTML: ${error.message}`);
+  }
   let serviceWorker;
   try {
     serviceWorker = readFileSync(serviceWorkerPath, "utf8");
@@ -536,6 +581,20 @@ function checkHashedAssets(configPath) {
   }
   if (serviceWorker.includes(`assets/${basename(whatsNewPopupChunks[0])}`)) {
     fail(configPath, "deferred WhatsNewPopup chunk must not be downloaded by the precache");
+  }
+  for (const asset of [
+    ...uploadApiChunks,
+    ...uploadQueueChunks,
+    ...uploadRetryChunks,
+    ...shortcutsHelpChunks,
+    ...installGuideChunks,
+  ]) {
+    if (indexHtml.includes(`assets/${basename(asset)}`)) {
+      fail(configPath, `interaction-only chunk must not be preloaded by HTML: ${basename(asset)}`);
+    }
+    if (serviceWorker.includes(`assets/${basename(asset)}`)) {
+      fail(configPath, `interaction-only chunk must not be downloaded by the precache: ${basename(asset)}`);
+    }
   }
   if (serviceWorker.includes(`assets/${basename(pwaInstallEntryChunks[0])}`)) {
     fail(configPath, "PWA install entry must stay out of the app-shell precache");

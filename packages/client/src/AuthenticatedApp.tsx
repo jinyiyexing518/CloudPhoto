@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import "./authenticated.css";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractImageThumbnail, extractVideoThumbnail, setPhotoThumbnail, markPhotoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, subscribeToPhotoThumbnailResults, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, PhotoCatalogUpdatingError, PHOTO_PAGE_SIZE, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, getAuthGeneration, subscribeToAuthChanges, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, PhotoCatalogUpdatingError, PHOTO_PAGE_SIZE, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
 import {
@@ -33,6 +33,11 @@ import {
   claimPrivateCacheDegradationNotice,
   logPrivateCacheDegradation,
 } from "./services/privateCacheDegradationNotice";
+import {
+  markPhotoThumbnailPersistencePending,
+  subscribeToPhotoThumbnailResults,
+} from "./services/photoThumbnailPersistence";
+import { AuthSessionChangedError } from "./services/uploadSession";
 import { classifyGlobalFileIntent } from "./keyboard/globalFileIntentEligibility";
 import {
   detectUploadMediaType,
@@ -65,6 +70,15 @@ const PhotoGallery = lazy(loadPhotoGallery);
 const FolderView = lazy(() => import("./components/gallery/FolderView"));
 const loadWhatsNewPopup = () => import("./components/whats-new/WhatsNewPopup");
 const WhatsNewPopup = lazy(loadWhatsNewPopup);
+const loadShortcutsHelpDialog = () => import("./components/auth/ShortcutsHelpDialog");
+const ShortcutsHelpDialog = lazy(loadShortcutsHelpDialog);
+const loadInstallGuideDialog = () => import("./components/auth/InstallGuideDialog");
+const InstallGuideDialog = lazy(loadInstallGuideDialog);
+const loadUploadWorkflow = () => Promise.all([
+  import("./services/uploadApi"),
+  import("./transfer/uploadQueue"),
+  import("./services/uploadRetry"),
+]);
 import { FilterState, emptyFilter, GridSize } from "./components/gallery/FilterBar";
 import GroupSwitcher from "./components/groups/GroupSwitcher";
 import WorkspaceFab from "./components/home/floating/WorkspaceFab";
@@ -76,8 +90,6 @@ import { useToast } from "./contexts/ToastContext";
 import OnThisDayCard from "./components/on-this-day/OnThisDayCard";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { focusMenuItem, handleMenuKeyDown } from "./components/shared/menuKeyboard";
-import ShortcutsHelpDialog from "./components/auth/ShortcutsHelpDialog";
-import InstallGuideDialog from "./components/auth/InstallGuideDialog";
 import DeploymentRecoveryNotice from "./components/shared/DeploymentRecoveryNotice";
 import { isScrollableModalTouchTarget, restoreFocus } from "./components/shared/modalFocus";
 import { getPwaInstallGuidance } from "./pwa/installPrompt";
@@ -142,20 +154,10 @@ import {
   type FolderRenameOperation,
 } from "./transfer/folderRenameState";
 import {
-  aggregateUploadProgress,
-  formatUploadResultSummary,
-  getUploadConcurrencyPolicy,
-  getUploadProgressPercent,
-  runWeightedUploadQueue,
-  sampleUploadSpeed,
   type UploadAggregateProgress,
 } from "./transfer/uploadQueue";
-import {
-  computeUploadRetryDelayMs,
-  isRetryableUploadError,
-  type UploadRequestError,
-  waitForUploadRetry,
-} from "./services/uploadRetry";
+import { getUploadProgressPercent } from "./transfer/uploadProgress";
+import type { UploadRequestError } from "./services/uploadRetry";
 import { hasValidGps } from "./utils/gpsCoordinates";
 const MemoryMap = lazy(() => import("./components/memory-map/MemoryMap"));
 const TimeCapsule = lazy(() => import("./components/time-capsule/TimeCapsule"));
@@ -1728,6 +1730,10 @@ function AppContent() {
       showToast(transferGuardMessage, "info");
       return;
     }
+    const uploadWorkflowPromise = loadUploadWorkflow().catch((error: unknown) => {
+      reportLazyBoundaryFailure(error);
+      return null;
+    });
     const IMAGE_MAX = 20 * 1024 * 1024;   // 20 MB
     const VIDEO_MAX = 200 * 1024 * 1024;  // 200 MB
 
@@ -1762,6 +1768,30 @@ function AppContent() {
       showToast("已有上传任务正在进行，请等待完成后再试", "error");
       return;
     }
+    const uploadWorkflow = await uploadWorkflowPromise;
+    if (!uploadWorkflow) {
+      showToast("上传功能加载失败，请刷新新版后重试", "error");
+      return;
+    }
+    const [uploadApi, uploadQueue, uploadRetry] = uploadWorkflow;
+    const {
+      extractImageThumbnail,
+      extractVideoThumbnail,
+      setPhotoThumbnail,
+      uploadPhotoWithProgress,
+    } = uploadApi;
+    const {
+      aggregateUploadProgress,
+      formatUploadResultSummary,
+      getUploadConcurrencyPolicy,
+      runWeightedUploadQueue,
+      sampleUploadSpeed,
+    } = uploadQueue;
+    const {
+      computeUploadRetryDelayMs,
+      isRetryableUploadError,
+      waitForUploadRetry,
+    } = uploadRetry;
     const uploadAuthGeneration = getAuthGeneration();
     const uploadDisplayName = user?.displayName || undefined;
     const uploadWorkspaceId = currentGroupId;
@@ -2487,7 +2517,11 @@ function AppContent() {
 
       {/* Keyboard shortcuts help overlay */}
       {showShortcutsHelp && (
-        <ShortcutsHelpDialog onClose={() => setShowShortcutsHelp(false)} />
+        <AuxiliaryLazyBoundary label="快捷键帮助">
+          <Suspense fallback={null}>
+            <ShortcutsHelpDialog onClose={() => setShowShortcutsHelp(false)} />
+          </Suspense>
+        </AuxiliaryLazyBoundary>
       )}
       {locationBanner && (
         <div className="location-banner" key={locationBanner}>
@@ -2647,12 +2681,16 @@ function AppContent() {
         </AuxiliaryLazyBoundary>
       )}
       {showInstallGuide && (
-        <InstallGuideDialog
-          instructions={installGuideText}
-          isStandalone={isStandalone}
-          onClose={() => setShowInstallGuide(false)}
-          restoreFocusTo={installGuideRestoreFocusRef.current}
-        />
+        <AuxiliaryLazyBoundary label="安装指引">
+          <Suspense fallback={null}>
+            <InstallGuideDialog
+              instructions={installGuideText}
+              isStandalone={isStandalone}
+              onClose={() => setShowInstallGuide(false)}
+              restoreFocusTo={installGuideRestoreFocusRef.current}
+            />
+          </Suspense>
+        </AuxiliaryLazyBoundary>
       )}
 
       <main id="workspace-main" className="app-main" data-workspace-policy={PHOTO_WORKSPACE_POLICY_MARKER}>

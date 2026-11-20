@@ -33,6 +33,10 @@ const mediaThumb = await readFile(
   "utf8",
 );
 const uploadApi = await readFile(new URL("./uploadApi.ts", import.meta.url), "utf8");
+const thumbnailPersistence = await readFile(
+  new URL("./photoThumbnailPersistence.ts", import.meta.url),
+  "utf8",
+);
 const app = await readFile(new URL("../AuthenticatedApp.tsx", import.meta.url), "utf8");
 
 test("known-broken cover facts are auth and workspace scoped", () => {
@@ -94,9 +98,10 @@ test("explicit repair reuses the viewer element and remains stale-session safe",
     /requestToken !== requestTokenRef\.current[\s\S]{0,180}active\.key !== key/,
   );
   assert.match(hook, /canCaptureVideoPlaybackThumbnail\(current\.source\)/);
-  assert.match(uploadApi, /videoThumbnailResultListeners/);
-  assert.match(uploadApi, /listener\(blobName, thumbnailUrl\)/);
-  assert.match(app, /subscribeToVideoThumbnailResults\(handleThumbnailUpdate\)/);
+  assert.match(uploadApi, /publishPhotoThumbnailResult\(blobName, thumbnailUrl\)/);
+  assert.match(thumbnailPersistence, /videoThumbnailResultListeners/);
+  assert.match(thumbnailPersistence, /listener\(blobName, thumbnailUrl\)/);
+  assert.match(app, /subscribeToPhotoThumbnailResults\(handleThumbnailUpdate\)/);
 });
 
 test("published thumbnails cannot mutate another workspace or an absent photo", () => {
