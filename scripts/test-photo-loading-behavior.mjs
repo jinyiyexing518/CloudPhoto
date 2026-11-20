@@ -1372,6 +1372,7 @@ assert.deepEqual(
 const cacheControlSources = await Promise.all([
   "packages/server/src/functions/photos/uploadPhoto.ts",
   "packages/server/src/functions/photos/backfillThumbnails.ts",
+  "packages/server/src/functions/photos/repairPhotoCover.ts",
   "packages/server/src/functions/photos/setVideoThumbnail.ts",
 ].map(async (path) => [path, await readFile(join(root, path), "utf8")]));
 const cacheControlValues = cacheControlSources.flatMap(([path, source]) =>
@@ -1382,7 +1383,7 @@ const nginxSource = await readFile(join(root, "infra/nginx.conf"), "utf8");
 const nginxCacheControl = /add_header Cache-Control "([^"]*max-age[^"]*)" always;/.exec(nginxSource)?.[1];
 assert(nginxCacheControl, "Nginx cache policy must cover 200/206/HEAD");
 cacheControlValues.push({ path: "infra/nginx.conf", value: nginxCacheControl });
-assert.equal(cacheControlValues.length, 7, "six Blob writes and one Nginx response policy are required");
+assert.equal(cacheControlValues.length, 9, "eight Blob writes and one Nginx response policy are required");
 for (const { path, value } of cacheControlValues) {
   const directives = value.toLowerCase().split(",").map((part) => part.trim());
   const maxAge = Number(directives.find((part) => part.startsWith("max-age="))?.split("=")[1]);

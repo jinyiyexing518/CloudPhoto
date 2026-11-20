@@ -7901,6 +7901,37 @@ body {
   font-weight: 600;
   text-align: center;
 }
+.photo-thumb-client-repair {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.2) 0 16%, transparent 17%),
+    linear-gradient(145deg, #334155, #172033);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  pointer-events: none;
+  text-align: center;
+}
+.photo-cover-repair-status {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 1;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 650;
+  pointer-events: none;
+  white-space: nowrap;
+}
 
 .photo-grid-loading {
   display: grid;

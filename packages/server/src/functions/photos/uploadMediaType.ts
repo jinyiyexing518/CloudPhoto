@@ -6,7 +6,7 @@ const MIME_ALIASES = new Map([
   ["image/heif-sequence", "image/heif"],
 ]);
 
-const KNOWN_MIME = new Set([
+export const ACCEPTED_IMAGE_MIME_TYPES = [
   "image/jpeg",
   "image/png",
   "image/gif",
@@ -15,6 +15,24 @@ const KNOWN_MIME = new Set([
   "image/heif",
   "image/bmp",
   "image/tiff",
+] as const;
+
+const SERVER_DERIVATIVE_IMAGE_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/tiff",
+]);
+
+const CLIENT_DERIVATIVE_IMAGE_MIME = new Set([
+  "image/heic",
+  "image/heif",
+  "image/bmp",
+]);
+
+const KNOWN_MIME = new Set([
+  ...ACCEPTED_IMAGE_MIME_TYPES,
   "video/mp4",
   "video/quicktime",
   "video/webm",
@@ -29,6 +47,18 @@ const KNOWN_MIME = new Set([
   "audio/mpeg",
   "audio/aac",
 ]);
+
+export type PhotoDerivativeStrategy = "server" | "client" | "none";
+
+export function photoDerivativeStrategy(
+  contentType: string | null | undefined,
+): PhotoDerivativeStrategy {
+  const normalized = (contentType ?? "").split(";")[0].trim().toLowerCase();
+  const canonical = MIME_ALIASES.get(normalized) ?? normalized;
+  if (SERVER_DERIVATIVE_IMAGE_MIME.has(canonical)) return "server";
+  if (CLIENT_DERIVATIVE_IMAGE_MIME.has(canonical)) return "client";
+  return "none";
+}
 
 const EXTENSION_MIME = new Map([
   ["jpg", "image/jpeg"],
@@ -99,6 +129,8 @@ export function resolveUploadMediaType(
 }
 
 export default {
+  ACCEPTED_IMAGE_MIME_TYPES,
   isGenericUploadMimeType,
+  photoDerivativeStrategy,
   resolveUploadMediaType,
 };

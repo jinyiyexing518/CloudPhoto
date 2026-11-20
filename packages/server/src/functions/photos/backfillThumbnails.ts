@@ -13,6 +13,7 @@ import {
   encodeBackfillCursor,
 } from "./backfillCursor";
 import { expectedPhotoDerivativeNames } from "./photoDerivatives";
+import { photoDerivativeStrategy } from "./uploadMediaType";
 import {
   beginPhotoCatalogMutation,
   finishPhotoCatalogMutation,
@@ -32,8 +33,6 @@ function getSharp(): typeof sharpT | null {
     return null;
   }
 }
-
-const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
 
 function getMeta(metadata: Record<string, string> | undefined, key: string): string | undefined {
   if (!metadata) return undefined;
@@ -135,9 +134,12 @@ app.http("backfillThumbnails", {
         // produced by the upload/playback thumbnail endpoint.
         const mime = blob.properties.contentType ?? "";
         const isVideo = mime.startsWith("video/");
-        if (!THUMBNAIL_MIME.has(mime) && !isVideo) { skipped++; continue; }
+        if (photoDerivativeStrategy(mime) !== "server" && !isVideo) {
+          skipped++;
+          continue;
+        }
 
-        // All animated images in THUMBNAIL_MIME get a first-frame static WebP thumbnail:
+        // All server-decodable animated images get a first-frame static WebP thumbnail:
         // - Motion photos (animated JPEG): sharp processes JPEG portion, ignores video track.
         // - GIFs: sharp extracts frame 0 → fast gallery placeholder while full GIF loads.
         // - Animated WebPs: same first-frame extraction.

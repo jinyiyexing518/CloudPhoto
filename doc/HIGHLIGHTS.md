@@ -47,7 +47,7 @@
 - **服务端照片目录分页** — 个人与群组目录按授权 scope、revision、不可变 active snapshot 和稳定时间键执行 Cosmos keyset 分页，每页默认 24 张；summary 通过 ETag 原子换代，同一存储容器内的 Blob ETag fence 以带 heartbeat 的 mutation token 集合和双层 rebuild owner 跨 Functions 实例串联写入、扫描、发布与分页前后校验，失去 lease 的恢复任务、迟到旧重建、pending Blob copy 和 session-stale Cosmos 读都无法发布旧目录；热路径不再扫描 Blob prefix、逐项 HEAD 或签发整库 SAS，冷启动先显示只读 derivative 预览，完整消费者与私有缓存只接受 exact-total 完成结果
 - **SAS 安全复用** — Workbox 仍以完整 SAS 查询作为私有缓存键；仅当同一资源的旧 URL 尚有 10 分钟以上有效期且不早于新 URL 过期时才复用，绝不以缓存命中换取更短可用期
 - **自适应查看器 URL**（`getViewerSrc`）— `physicalPx = innerWidth × DPR × 0.85`；≤450px 优先 thumbnail，其余优先 preview；缺少 preview 时继续复用 thumbnail，只有没有任何派生图才回退 original
-- **封面近视口有界调度** — 时间线、重点片段和文件夹仍只被动请求 thumbnail/preview；600px 近视口外不挂载真实媒体或启动 deadline，进入窗口后最多 6 路并发、每来源 8 秒并受 18 秒总边界约束，避免浏览器连接排队把健康慢图误切到 preview。只有用户明确重试普通静态图片时才允许 original 作为最后候选，且不会进入派生封面缓存
+- **封面近视口有界调度与自修复** — 时间线、重点片段和文件夹仍只被动请求 thumbnail/preview；600px 近视口外不挂载真实媒体或启动 deadline，进入窗口后最多 6 路来源加载、每来源 8 秒并受 18 秒总边界约束。缺失或损坏派生图的 JPEG/PNG/GIF/WebP/TIFF 另通过全局并发 2 的轻量 API 修复，服务端在 24 MiB 上限和 catalog fence 内最多读取一次原图并持久化 400px/2048px WebP。HEIC/HEIF/BMP 在上传时由浏览器尝试生成封面；历史文件只有用户明确点击后才加载 original 并持久化，无法解码时显示真实格式说明
 - **视频封面体积压缩** — `setVideoThumbnail` 端点用 sharp 将 canvas 截帧（最大 1920×1080，~500KB）缩至 400px 再存储，体积缩小 **10–15×**
 - **视频按意图加载** — 网格只渲染持久化的 WebP 封面，不创建 video 元素；用户明确打开视频后才挂载 `preload="auto"` 播放器，由浏览器按 Range 获取起播数据
 - **视频中途卡死自恢复** — 同源 `/media` 用 2-byte Range 严格验证 `206`，跨域 Blob 由媒体元素 no-CORS 播放能力验证；播放态连续 4 秒无进展才有限换线，即使 `readyState=4` 也不会掩盖停滞，并恢复原时间点、播放意图、音量、静音与倍速。direct 不尝试 tainted canvas 截帧，pause/seek/切后台不会误切，两条线路都失败时结束 loading 并提供原位重试

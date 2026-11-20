@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import "./authenticated.css";
-import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractVideoThumbnail, setVideoThumbnail, markVideoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, subscribeToVideoThumbnailResults, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, PhotoCatalogUpdatingError, PHOTO_PAGE_SIZE, Photo, ManagedShareLink } from "./services/photoApi";
+import { listPhotos, getCachedPhotos, getPersistedPhotos, uploadPhotoWithProgress, deletePhoto, movePhotoToFolder, renameFolderApi, setPhotoFavorite, listManagedShareLinks, extractImageThumbnail, extractVideoThumbnail, setPhotoThumbnail, markPhotoThumbnailPersistencePending, getAuthGeneration, subscribeToAuthChanges, subscribeToPhotoThumbnailResults, selectFresherMediaUrl, proxyPhoto, authCacheOwner, isAuthorizationDriftError, AuthSessionChangedError, PhotoCatalogUpdatingError, PHOTO_PAGE_SIZE, Photo, ManagedShareLink } from "./services/photoApi";
 import { invalidatePhotoListCaches } from "./services/photoListCache";
 import { PHOTO_WORKSPACE_POLICY_MARKER, privatePhotoListCacheKey, resolvePhotoWorkspaceRequest, shouldRefreshPhotoWorkspace } from "./services/photoLoadingPolicy";
 import {
@@ -40,6 +40,7 @@ import {
   isVideoUploadType,
   mergeUploadedPhoto,
   normalizeExifGps,
+  photoDerivativeStrategy,
 } from "./uploadLocation";
 import { applyAuthoritativeGpsUpdate } from "./photoGpsState";
 import {
@@ -1905,9 +1906,11 @@ function AppContent() {
           }
           if (batchController.signal.aborted) throw batchAbortReason();
 
-          const videoThumbnailPromise = isVideoUploadType(uploadMediaType)
+          const thumbnailPromise = isVideoUploadType(uploadMediaType)
           ? extractVideoThumbnail(uploadFile).catch(() => null)
-          : Promise.resolve<Blob | null>(null);
+          : photoDerivativeStrategy(uploadMediaType) === "client"
+            ? extractImageThumbnail(uploadFile).catch(() => null)
+            : Promise.resolve<Blob | null>(null);
 
           let gpsLat: string | undefined;
           let gpsLon: string | undefined;
@@ -1971,9 +1974,11 @@ function AppContent() {
           }
           }
           if (!uploadedPhoto) throw new Error(`Upload did not complete: ${uploadFile.name}`);
-          const uploadedVideoNeedsThumbnail = isVideoUploadType(uploadMediaType);
-          if (uploadedVideoNeedsThumbnail) {
-            markVideoThumbnailPersistencePending(uploadedPhoto.name, true);
+          const uploadedMediaNeedsThumbnail =
+            isVideoUploadType(uploadMediaType)
+            || photoDerivativeStrategy(uploadMediaType) === "client";
+          if (uploadedMediaNeedsThumbnail) {
+            markPhotoThumbnailPersistencePending(uploadedPhoto.name, true);
           }
 
           if (
@@ -1989,17 +1994,17 @@ function AppContent() {
           }
           }
 
-          if (uploadedVideoNeedsThumbnail) {
+          if (uploadedMediaNeedsThumbnail) {
             let persistedThumbnailUrl: string | null = null;
             try {
-              const thumbnail = await videoThumbnailPromise;
+              const thumbnail = await thumbnailPromise;
               if (
                 thumbnail
                 && uploadAuthGeneration === getAuthGeneration()
                 && currentGroupIdRef.current === uploadWorkspaceId
                 && !batchController.signal.aborted
               ) {
-                const thumbnailUrl = await setVideoThumbnail(uploadedPhoto.name, thumbnail);
+                const thumbnailUrl = await setPhotoThumbnail(uploadedPhoto.name, thumbnail);
                 persistedThumbnailUrl = thumbnailUrl;
                 if (
                   thumbnailUrl
@@ -2017,7 +2022,7 @@ function AppContent() {
                 }
               }
             } finally {
-              markVideoThumbnailPersistencePending(
+              markPhotoThumbnailPersistencePending(
                 uploadedPhoto.name,
                 false,
                 persistedThumbnailUrl ?? undefined,
@@ -2154,7 +2159,7 @@ function AppContent() {
   }, [mutatePhotos]);
 
   useEffect(
-    () => subscribeToVideoThumbnailResults(handleThumbnailUpdate),
+    () => subscribeToPhotoThumbnailResults(handleThumbnailUpdate),
     [handleThumbnailUpdate],
   );
 

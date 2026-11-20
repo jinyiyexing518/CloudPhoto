@@ -37,6 +37,7 @@ const photoApi = read("packages/client/src/services/photoApi.ts");
 const photoPaging = read("packages/client/src/services/photoPaging.ts");
 const maintenanceBackfillPaging = read("packages/client/src/services/maintenanceBackfillPaging.ts");
 const uploadApi = read("packages/client/src/services/uploadApi.ts");
+const photoCoverRepair = read("packages/client/src/services/photoCoverRepair.ts");
 const media = read("packages/client/src/services/mediaRoute.ts");
 const videoPlayback = read("packages/client/src/services/videoPlaybackSession.ts");
 const resilientVideoPlayback = read("packages/client/src/services/useResilientVideoPlayback.ts");
@@ -54,6 +55,8 @@ const vite = read("packages/client/vite.config.mts");
 const nginx = read("infra/nginx.conf");
 const setup = read("infra/setup.sh");
 const upload = read("packages/server/src/functions/photos/uploadPhoto.ts");
+const uploadMediaType = read("packages/server/src/functions/photos/uploadMediaType.ts");
+const repairPhotoCover = read("packages/server/src/functions/photos/repairPhotoCover.ts");
 const updatePhotoMetadata = read("packages/server/src/functions/photos/updatePhotoMetadata.ts");
 const deletePhoto = read("packages/server/src/functions/photos/deletePhoto.ts");
 const movePhoto = read("packages/server/src/functions/photos/movePhoto.ts");
@@ -1236,8 +1239,8 @@ requireText(photoCard, "cf_cover_retry=", "photo cover retry request cache busti
 requireText(photoCard, "selectGridRetrySources(", "intentional original cover retry fallback");
 requireText(
   photoCard,
-  "imageRetryKey > 0 && !isAnimated && !isHeic",
-  "original cover fallback user-intent and format boundary",
+  "imageRetryKey > 0 && !isAnimated",
+  "original cover fallback user-intent boundary",
 );
 requireText(
   photoCard,
@@ -1259,6 +1262,20 @@ requireText(mediaThumb, '"video-thumb-placeholder"', "shared missing video deriv
 requireText(mediaThumb, '"photo-thumb-placeholder"', "shared missing photo derivative placeholder");
 requireText(renderPolicy, ".filter((source): source is string => Boolean(source))", "preview-only source normalization");
 requireText(photoCard, "useVideoCoverRepair", "visible-card repair hook");
+requireText(photoCard, "usePhotoCoverRepair", "visible image repair hook");
+requireText(photoCard, "persistImageElementThumbnail", "explicit client-format cover persistence");
+requireText(photoCard, "正在修复封面…", "server cover repair skeleton status");
+requireText(
+  photoCard,
+  "封面加载失败，正在后台修复…",
+  "broken derivative repair keeps a terminal retry state visible",
+);
+requireText(photoCard, "暂无封面，点击生成", "client-format cover repair action");
+requireText(
+  photoCard,
+  "当前浏览器无法生成 ${clientCoverFormatLabel} 封面",
+  "honest unsupported client-format state",
+);
 requireText(photoCard, "markDerivativeBroken", "broken derivative repair transition");
 requireText(photoCard, "isLowInformationVideoCoverImage", "successful derivative content check");
 requireText(photoCard, "isLowInformationVideoCoverImage(element)", "deadline-aware video poster inspection");
@@ -1324,10 +1341,33 @@ requireText(uploadApi, "if (!persisted) persistedPlaybackThumbnails.delete(persi
 requireText(uploadApi, "videoThumbnailWrites.get(persistenceKey)", "auth-scoped thumbnail endpoint write dedupe");
 requireText(uploadApi, "videoThumbnailPersistenceListeners", "thumbnail reservation subscribers");
 requireText(uploadApi, "videoThumbnailResultListeners", "thumbnail result subscribers");
-requireText(app, "subscribeToVideoThumbnailResults(handleThumbnailUpdate)", "stale-viewer thumbnail publication");
-requireText(app, "markVideoThumbnailPersistencePending(uploadedPhoto.name, true)", "upload-time repair reservation");
+requireText(app, "subscribeToPhotoThumbnailResults(handleThumbnailUpdate)", "stale-viewer thumbnail publication");
+requireText(app, "markPhotoThumbnailPersistencePending(uploadedPhoto.name, true)", "upload-time repair reservation");
 requireText(app, "persistedThumbnailUrl ?? undefined", "upload-time repair release result");
 requireText(app, "onThumbnailUpdate={handleThumbnailUpdate}", "persisted playback thumbnail grid publication");
+requireText(photoCoverRepair, "PHOTO_COVER_REPAIR_CONCURRENCY = 2", "bounded image repair concurrency");
+requireText(photoCoverRepair, "PHOTO_COVER_REPAIR_REQUEST_TIMEOUT_MS = 35_000", "bounded image repair request");
+requireText(photoCoverRepair, "requestIdleCallback", "idle image repair scheduling");
+requireText(photoCoverRepair, "subscribeToAuthChanges", "auth-bound image repair cancellation");
+requireText(photoCoverRepair, "activeRepairControllers", "active image repair cancellation");
+requireText(photoCoverRepair, "pendingRepairs.splice(0)", "queued image repair cancellation");
+requireText(photoCoverRepair, "inFlightRepairs", "image repair request dedupe");
+requireText(photoCoverRepair, "successfulRepairs", "image repair success reuse");
+requireText(
+  photoCoverRepair,
+  "if (!active || generation !== getAuthGeneration()) return;",
+  "only stale or unmounted image repairs are silently discarded",
+);
+assert(
+  !photoCoverRepair.includes('error instanceof DOMException && error.name === "AbortError"'),
+  "same-generation image repair timeouts must publish a terminal failure",
+);
+requireText(photoCoverRepair, "/photos/repair-cover?", "dedicated lightweight image repair endpoint");
+requireText(
+  photoCoverRepair,
+  'nextInitialState.strategy === "server"',
+  "server-capable automatic image repair boundary",
+);
 
 // Route probes and fallback are finite, body-free, bounded, and cancel losers.
 requireText(media, 'method: "HEAD"', "body-free media probe");
@@ -1376,12 +1416,12 @@ requireText(download, "canAccessPhotoPath", "download path authorization");
 requireText(download, 'request.query.get("filename")', "client filename fast path");
 assert(!download.includes("getProperties()"), "download ticket generation must not read Blob metadata");
 
-// Local video frame extraction runs while the original upload is in flight.
-const thumbnailPromise = app.indexOf("videoThumbnailPromise");
+// Local video/client-image cover extraction runs while the original upload is in flight.
+const thumbnailPromise = app.indexOf("const thumbnailPromise =");
 const originalUpload = app.indexOf("await uploadPhotoWithProgress", thumbnailPromise);
-const thumbnailPersist = app.indexOf("await videoThumbnailPromise", originalUpload);
-assert(thumbnailPromise >= 0 && thumbnailPromise < originalUpload, "video cover extraction must start before upload");
-assert(thumbnailPersist > originalUpload, "video cover persistence must wait for the original blob");
+const thumbnailPersist = app.indexOf("await thumbnailPromise", originalUpload);
+assert(thumbnailPromise >= 0 && thumbnailPromise < originalUpload, "cover extraction must start before upload");
+assert(thumbnailPersist > originalUpload, "cover persistence must wait for the original blob");
 
 const walk = (directory) => readdirSync(directory).flatMap((name) => {
   const path = join(directory, name);
@@ -1390,14 +1430,20 @@ const walk = (directory) => readdirSync(directory).flatMap((name) => {
 const clientSources = walk(join(root, "packages/client/src"))
   .filter((path) => /\.[jt]sx?$/.test(path));
 const directImageConstructors = clientSources
-  .filter((path) => path !== join(root, "packages/client/src/services/mediaRoute.ts"))
+  .filter((path) => ![
+    join(root, "packages/client/src/services/mediaRoute.ts"),
+    join(root, "packages/client/src/services/uploadApi.ts"),
+  ].includes(path))
   .filter((path) => readFileSync(path, "utf8").includes("new Image()"));
 assert.deepEqual(directImageConstructors, [], "programmatic image loads must use shared fallback");
+requireText(uploadApi, "const objectUrl = URL.createObjectURL(file);", "local upload image decoder source");
+requireText(uploadApi, "URL.revokeObjectURL(objectUrl);", "local upload image decoder cleanup");
 
 // Private browser freshness remains below the two-hour SAS lifetime.
 for (const [name, source] of [
   ["upload", upload],
   ["backfill", backfill],
+  ["cover repair", repairPhotoCover],
   ["video thumbnail", setVideoThumb],
   ["nginx media", nginx],
 ]) {
@@ -1468,6 +1514,7 @@ requireText(backfillCursor, "export const BACKFILL_PAGE_SIZE = 200", "shared bou
 requireText(backfillCursor, "value.context !== expectedContext", "scope-bound backfill cursor");
 requireText(backfill, "storedThumbName !== thumbName", "matching thumbnail metadata");
 requireText(backfill, "storedPreviewName !== previewName", "matching preview metadata");
+requireText(backfill, 'photoDerivativeStrategy(mime) !== "server"', "TIFF-capable backfill strategy");
 requireText(backfill, "const needsPreview = !isVideo", "video preview generation exclusion");
 const missingVideoThumbnailSkip = backfill.indexOf("if (isVideo && !thumbExists)");
 assert(missingVideoThumbnailSkip >= 0, "video backfill must recognize missing derivatives");
@@ -1476,6 +1523,11 @@ assert(
   "video backfill must skip before any original body download",
 );
 requireText(setVideoThumb, "MAX_THUMBNAIL_BYTES", "bounded thumbnail upload");
+requireText(setVideoThumb, 'route: "photos/set-thumbnail"', "generic client thumbnail endpoint");
+requireText(uploadApi, "export async function setPhotoThumbnail(", "generic client thumbnail writer");
+requireText(uploadApi, "return setPhotoThumbnail(blobName, thumbnail);", "video thumbnail compatibility wrapper");
+requireText(uploadApi, "export function extractImageThumbnail(", "client-format upload thumbnail extraction");
+requireText(uploadApi, "persistImageElementThumbnail", "explicit original image thumbnail persistence");
 assert.equal(
   (listPhotos.match(/listBlobsFlat\(/g) ?? []).length,
   1,
@@ -1492,6 +1544,34 @@ requireText(upload, "await isGroupMember(groupId, payload.userId)", "group uploa
 requireText(upload, 'request.query.get("uploadId")', "upload idempotency key");
 requireText(upload, 'conditions: { ifNoneMatch: "*" }', "idempotent original create");
 requireText(upload, "syncPhotoLocationFromBlob(blockBlobClient, blobName, scope)", "idempotent GPS reconciliation");
+requireText(upload, 'photoDerivativeStrategy(mimeType) === "server"', "shared upload derivative strategy");
+for (const mime of ['"image/tiff"', '"image/heic"', '"image/heif"', '"image/bmp"']) {
+  requireText(uploadMediaType, mime, `accepted image strategy ${mime}`);
+}
+requireText(uploadMediaType, "SERVER_DERIVATIVE_IMAGE_MIME", "server derivative format set");
+requireText(uploadMediaType, "CLIENT_DERIVATIVE_IMAGE_MIME", "client derivative format set");
+requireText(repairPhotoCover, "MAX_REPAIR_SOURCE_BYTES = 24 * 1024 * 1024", "bounded repair source");
+requireText(repairPhotoCover, "canAccessPhotoPath(blobName, payload, isGroupMember)", "repair authorization");
+requireText(repairPhotoCover, "coverRepairAdmission.tryAcquire", "bounded server repair admission");
+requireText(repairPhotoCover, '"Retry-After"', "repair overload retry guidance");
+requireText(repairPhotoCover, "beginPhotoCatalogMutation(scope, [blobName])", "repair catalog mutation fence");
+requireText(repairPhotoCover, "renewPhotoCatalogMutation(catalogMutation)", "repair catalog heartbeat");
+requireText(repairPhotoCover, "finishPhotoCatalogMutation(catalogMutation)", "repair catalog finalization");
+assert.equal(
+  (repairPhotoCover.match(/downloadToBuffer\(\)/g) ?? []).length,
+  1,
+  "one repair attempt must download the original at most once",
+);
+requireText(repairPhotoCover, "conditions: { ifMatch: properties.etag }", "repair metadata ETag fence");
+requireText(repairPhotoCover, '"client_thumbnail_required"', "client-format repair handoff");
+requireText(repairPhotoCover, '"decode_failed"', "decode-specific repair failure");
+requireText(repairPhotoCover, '"storage_write_failed"', "storage-specific repair failure");
+requireText(repairPhotoCover, 'route: "photos/repair-cover"', "repair route registration");
+assert(
+  repairPhotoCover.indexOf('"decode_failed"')
+    < repairPhotoCover.indexOf("thumbnailClient.uploadData(thumbnail"),
+  "thumbnail decode errors must be classified before storage writes",
+);
 requireText(trash, "thumbnailUrl:", "trash thumbnail contract");
 requireText(trash, "previewUrl:", "trash preview contract");
 requireText(restore, "syncPhotoLocationFromBlob(blockBlobClient, blobName, scope)", "restore GPS conditional reconciliation");

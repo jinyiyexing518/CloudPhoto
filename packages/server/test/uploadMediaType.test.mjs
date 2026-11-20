@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import uploadMediaType from "../dist/src/functions/photos/uploadMediaType.js";
 
-const { resolveUploadMediaType } = uploadMediaType;
+const {
+  photoDerivativeStrategy,
+  resolveUploadMediaType,
+} = uploadMediaType;
 
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x00]);
 const heic = Buffer.from([
@@ -25,4 +28,24 @@ test("legacy uploads infer JPEG and HEIC from extension or bounded signatures", 
 test("a known media MIME remains authoritative", () => {
   assert.equal(resolveUploadMediaType("image/png", "camera.jpg", jpeg), "image/png");
   assert.equal(resolveUploadMediaType("video/quicktime", "clip.mov"), "video/quicktime");
+});
+
+test("every accepted image format has an explicit cover-generation strategy", () => {
+  for (const mime of [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/tiff",
+  ]) {
+    assert.equal(photoDerivativeStrategy(mime), "server", mime);
+  }
+  for (const mime of [
+    "image/heic",
+    "image/heif",
+    "image/bmp",
+  ]) {
+    assert.equal(photoDerivativeStrategy(mime), "client", mime);
+  }
+  assert.equal(photoDerivativeStrategy("video/mp4"), "none");
 });

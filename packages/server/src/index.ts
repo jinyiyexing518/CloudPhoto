@@ -4,6 +4,7 @@ import "./functions/photos/backfillPhotoMetadata";
 import "./functions/photos/backfillThumbnails";
 import "./functions/photos/readOnlyPhotoLocationRecovery";
 import "./functions/photos/setVideoThumbnail";
+import "./functions/photos/repairPhotoCover";
 import "./functions/photos/deletePhoto";
 import "./functions/photos/updatePhotoMetadata";
 import "./functions/photos/movePhoto";

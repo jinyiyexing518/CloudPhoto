@@ -19,6 +19,8 @@ import {
   isLowInformationVideoCoverImage,
   useVideoCoverRepair,
 } from "../../services/videoCoverRepair";
+import { usePhotoCoverRepair } from "../../services/photoCoverRepair";
+import { persistImageElementThumbnail } from "../../services/uploadApi";
 import {
   getPhotoActionLabel,
   getPhotoCardGroupLabel,
@@ -149,18 +151,11 @@ function PhotoCard({
     (normalizedContentType === "image/jpeg" || normalizedContentType === "image/jpg");
   const isHeic = normalizedContentType === "image/heic" || normalizedContentType === "image/heif" ||
     lowerPhotoName.endsWith(".heic") || lowerPhotoName.endsWith(".heif");
-  const derivativeImageSources = selectGridMediaSources(photo)
+  const listedDerivativeImageSources = selectGridMediaSources(photo)
     .map(getPreferredMediaUrl);
   const originalImageUrl = getPreferredMediaUrl(photo.url);
-  const lowDataImageSources = derivativeImageSources;
-  const lowDataImageSrc = lowDataImageSources[0] ?? BLANK_GIF;
-  const staticAnimatedSrc = derivativeImageSources[0] ?? BLANK_GIF;
   const { targetRef: videoRepairTargetRef, state: videoRepairState, markDerivativeBroken } =
     useVideoCoverRepair(photo);
-  const videoPosterSources = videoRepairState.thumbnailUrl
-    ? [videoRepairState.thumbnailUrl]
-    : derivativeImageSources;
-  const videoPosterSrc = videoPosterSources[0];
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
@@ -169,6 +164,8 @@ function PhotoCard({
   const [imageRetryKey, setImageRetryKey] = useState(0);
   const [coverAttempt, setCoverAttempt] = useState({ context: "", index: 0 });
   const [coverLoadEligible, setCoverLoadEligible] = useState(priority);
+  const [clientPersistedThumbnailUrl, setClientPersistedThumbnailUrl] =
+    useState<string | null>(null);
   const [startedCoverAttemptKey, setStartedCoverAttemptKey] = useState("");
   const [expiredCoverLoadContext, setExpiredCoverLoadContext] = useState("");
   // GIF originals can be many MB. Keep the static thumbnail until the user
@@ -186,6 +183,25 @@ function PhotoCard({
   const mountedRef = useRef(true);
   const publishedRepairUrlRef = useRef<string | null>(null);
   const coverAttemptReleaseRef = useRef<{ key: string; release: () => void } | null>(null);
+  const photoCoverRepairState = usePhotoCoverRepair(photo, {
+    eligible: coverLoadEligible,
+    derivativeBroken: imgFailed && listedDerivativeImageSources.length > 0,
+    retryKey: imageRetryKey,
+  });
+  const derivativeImageSources = [
+    photoCoverRepairState.thumbnailUrl,
+    clientPersistedThumbnailUrl,
+    ...listedDerivativeImageSources,
+    photoCoverRepairState.previewUrl,
+  ].filter((source, index, sources): source is string =>
+    Boolean(source) && sources.indexOf(source) === index);
+  const lowDataImageSources = derivativeImageSources;
+  const lowDataImageSrc = lowDataImageSources[0] ?? BLANK_GIF;
+  const staticAnimatedSrc = derivativeImageSources[0] ?? BLANK_GIF;
+  const videoPosterSources = videoRepairState.thumbnailUrl
+    ? [videoRepairState.thumbnailUrl]
+    : derivativeImageSources;
+  const videoPosterSrc = videoPosterSources[0];
   // Video cards render only server-persisted derivatives. Missing or broken
   // derivatives stay as a local placeholder until the user opens playback.
   const useVideoThumb = isVideo && !!videoPosterSrc && !videoThumbFailed;
@@ -195,7 +211,7 @@ function PhotoCard({
   const retryGridImageSources = selectGridRetrySources(
     lowDataImageSources,
     originalImageUrl,
-    imageRetryKey > 0 && !isAnimated && !isHeic,
+    imageRetryKey > 0 && !isAnimated,
   );
   const retryLowDataImageSources = retryGridImageSources.map((source, index) =>
     withCoverRequestState(
@@ -255,14 +271,23 @@ function PhotoCard({
   ].join("\n");
 
   useEffect(() => {
-    const repairedUrl = videoRepairState.thumbnailUrl;
+    const repairedUrl = photoCoverRepairState.thumbnailUrl
+      ?? clientPersistedThumbnailUrl
+      ?? videoRepairState.thumbnailUrl;
     if (!repairedUrl || publishedRepairUrlRef.current === repairedUrl) return;
     publishedRepairUrlRef.current = repairedUrl;
     onThumbnailUpdate?.(photo.name, repairedUrl);
-  }, [onThumbnailUpdate, photo.name, videoRepairState.thumbnailUrl]);
+  }, [
+    clientPersistedThumbnailUrl,
+    onThumbnailUpdate,
+    photo.name,
+    photoCoverRepairState.thumbnailUrl,
+    videoRepairState.thumbnailUrl,
+  ]);
 
   useEffect(() => {
     publishedRepairUrlRef.current = null;
+    setClientPersistedThumbnailUrl(null);
   }, [photo.name]);
 
   useEffect(() => {
@@ -344,7 +369,41 @@ function PhotoCard({
     setImgFailed(false);
   }, [lowDataImageSrc, staticAnimatedSrc, originalImageUrl]);
 
-  const photoCoverFailed = imgFailed && !isVideo && !isAudio;
+  const automaticImageCoverRepairPending = (
+    !isVideo
+    && !isAudio
+    && photoCoverRepairState.strategy === "server"
+    && (
+      photoCoverRepairState.phase === "idle"
+      || photoCoverRepairState.phase === "queued"
+      || photoCoverRepairState.phase === "repairing"
+    )
+    && (listedDerivativeImageSources.length === 0 || imgFailed)
+  );
+  const imageCoverRepairPending = (
+    automaticImageCoverRepairPending
+    && listedDerivativeImageSources.length === 0
+  );
+  const brokenImageCoverRepairPending = (
+    automaticImageCoverRepairPending
+    && listedDerivativeImageSources.length > 0
+    && imgFailed
+  );
+  const clientCoverNeedsCapture = (
+    !isVideo
+    && !isAudio
+    && !clientPersistedThumbnailUrl
+    && photoCoverRepairState.strategy === "client"
+    && imageRetryKey === 0
+    && (listedDerivativeImageSources.length === 0 || imgFailed)
+  );
+  const photoCoverFailed = imgFailed
+    && !isVideo
+    && !isAudio
+    && !imageCoverRepairPending
+    && !clientCoverNeedsCapture;
+  const clientCoverUnavailable = photoCoverFailed
+    && photoCoverRepairState.strategy === "client";
   const markImageLoaded = useCallback(() => {
     setImgFailed(false);
     setImgLoaded(true);
@@ -444,6 +503,21 @@ function PhotoCard({
       releaseCoverAttempt(coverAttemptAdmissionKey);
       promoteSuccessfulMediaUrl(expectedSource);
       markImageLoaded();
+      if (
+        photoCoverRepairState.strategy === "client"
+        && getMediaCandidates([retryOriginalImageUrl]).includes(expectedSource)
+      ) {
+        void persistImageElementThumbnail(photo.name, element).then((thumbnailUrl) => {
+          if (
+            !thumbnailUrl
+            || !mountedRef.current
+            || coverLoadContextRef.current !== context
+          ) {
+            return;
+          }
+          setClientPersistedThumbnailUrl(thumbnailUrl);
+        });
+      }
     };
     const handleError = () => advanceOrFail();
 
@@ -472,7 +546,10 @@ function PhotoCard({
     markCoverFailed,
     markDerivativeBroken,
     markImageLoaded,
+    photo.name,
+    photoCoverRepairState.strategy,
     releaseCoverAttempt,
+    retryOriginalImageUrl,
   ]);
 
   const retryImage = () => {
@@ -510,18 +587,29 @@ function PhotoCard({
   };
   const groupLabel = getPhotoCardGroupLabel(labelInput);
   const primaryActionLabel = photoCoverFailed
-    ? `重试加载 ${displayName} 封面`
-    : getPhotoPrimaryActionLabel(labelInput);
+    ? clientCoverUnavailable
+      ? getPhotoPrimaryActionLabel(labelInput)
+      : `重试加载 ${displayName} 封面`
+    : clientCoverNeedsCapture
+      ? `为 ${displayName} 生成封面`
+      : getPhotoPrimaryActionLabel(labelInput);
   const descriptionId = useId();
   const deleteDialogTitleId = useId();
   const deleteDialogDescriptionId = useId();
   const videoRepairStatus = videoRepairState.phase === "queued" || videoRepairState.phase === "repairing"
     ? "正在生成封面"
     : "打开视频后生成封面";
+  const clientCoverFormatLabel = isHeic
+    ? "HEIC"
+    : normalizedContentType === "image/bmp" || lowerPhotoName.endsWith(".bmp")
+      ? "BMP"
+      : "此格式";
   const primaryDescriptionIds = [
     photo.subject ? `${descriptionId}-subject` : null,
     photo.createdBy ? `${descriptionId}-creator` : null,
     isVideo && !useVideoThumb ? `${descriptionId}-video-status` : null,
+    imageCoverRepairPending ? `${descriptionId}-cover-repair-status` : null,
+    clientCoverNeedsCapture ? `${descriptionId}-cover-client-status` : null,
     photoCoverFailed ? `${descriptionId}-cover-status` : null,
   ].filter(Boolean).join(" ");
 
@@ -645,7 +733,9 @@ function PhotoCard({
     event.currentTarget.focus({ preventScroll: true });
     if (selectionMode) {
       onSelect?.(event);
-    } else if (photoCoverFailed) {
+    } else if (clientCoverNeedsCapture) {
+      retryImage();
+    } else if (photoCoverFailed && !clientCoverUnavailable) {
       retryImage();
     } else {
       onClick();
@@ -702,7 +792,11 @@ function PhotoCard({
             className="photo-thumbnail"
             data-media-policy={GRID_MEDIA_POLICY_MARKER}
           >
-            {!isAudio && !imgLoaded && !imgFailed && (!isVideo || useVideoThumb) && <span className="photo-skeleton" />}
+            {!isAudio
+              && !imgLoaded
+              && (!imgFailed || imageCoverRepairPending)
+              && (!isVideo || useVideoThumb)
+              && <span className="photo-skeleton" />}
             {isAudio ? (
               <>
                 <span className="audio-thumb-placeholder" aria-hidden="true">
@@ -733,6 +827,7 @@ function PhotoCard({
               <img
                 key={coverAttemptElementKey}
                 ref={coverImageRef}
+                crossOrigin={photoCoverRepairState.strategy === "client" ? "anonymous" : undefined}
                 src={coverAttemptSourceReady
                   ? (coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF)
                   : BLANK_GIF}
@@ -745,6 +840,7 @@ function PhotoCard({
               <img
                 key={gifUsesOriginal ? imageRetryKey : coverAttemptElementKey}
                 ref={coverImageRef}
+                crossOrigin={photoCoverRepairState.strategy === "client" ? "anonymous" : undefined}
                 src={gifUsesOriginal
                   ? retryGifDisplaySrc
                   : coverAttemptSourceReady
@@ -769,6 +865,7 @@ function PhotoCard({
               <img
                 key={coverAttemptElementKey}
                 ref={coverImageRef}
+                crossOrigin={photoCoverRepairState.strategy === "client" ? "anonymous" : undefined}
                 src={coverAttemptSourceReady
                   ? (coverAttemptSource ?? retryLowDataImageSources[0] ?? BLANK_GIF)
                   : BLANK_GIF}
@@ -779,13 +876,35 @@ function PhotoCard({
                 className={imgLoaded ? "img-loaded" : imgFailed ? "img-error" : "img-loading"}
               />
             )}
+            {imageCoverRepairPending && (
+              <span
+                id={`${descriptionId}-cover-repair-status`}
+                className="photo-cover-repair-status"
+                role="status"
+              >
+                正在修复封面…
+              </span>
+            )}
+            {clientCoverNeedsCapture && (
+              <span
+                id={`${descriptionId}-cover-client-status`}
+                className="photo-thumb-client-repair"
+                role="status"
+              >
+                {clientCoverFormatLabel} 暂无封面，点击生成
+              </span>
+            )}
             {photoCoverFailed && (
               <span
                 id={`${descriptionId}-cover-status`}
                 className="photo-thumb-error"
                 role="status"
               >
-                封面加载失败，点击重试
+                {clientCoverUnavailable
+                  ? `当前浏览器无法生成 ${clientCoverFormatLabel} 封面`
+                  : brokenImageCoverRepairPending
+                    ? "封面加载失败，正在后台修复…"
+                    : "封面加载失败，点击重试"}
               </span>
             )}
             {isVideo && <span className="photo-video-badge">▶</span>}

@@ -2028,6 +2028,7 @@ test("wires every active-photo mutation through the durable catalog fence", () =
     ["../src/functions/photos/backfillPhotoMetadata.ts", "await blockBlobClient.setMetadata(", true],
     ["../src/functions/photos/backfillThumbnails.ts", "await thumbClient.uploadData(", true],
     ["../src/functions/photos/setVideoThumbnail.ts", "await thumbClient.uploadData(", true],
+    ["../src/functions/photos/repairPhotoCover.ts", "await thumbnailClient.uploadData(", true],
   ];
 
   for (const [relativePath, mutation, renewsBeforeCall] of mutationFiles) {

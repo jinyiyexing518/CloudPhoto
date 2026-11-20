@@ -33,7 +33,9 @@ import {
   uploadGpsMetadata,
 } from "./uploadGps";
 import {
+  ACCEPTED_IMAGE_MIME_TYPES,
   isGenericUploadMimeType,
+  photoDerivativeStrategy,
   resolveUploadMediaType,
 } from "./uploadMediaType";
 import exifr from "exifr";
@@ -52,13 +54,7 @@ function getSharp(): typeof sharpT | null {
   }
 }
 
-/** MIME types for which we generate a 400 px WebP thumbnail (first-frame for animated). */
-const THUMBNAIL_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
-
-const ALLOWED_IMAGE_MIME = new Set([
-  "image/jpeg", "image/jpg", "image/png", "image/gif",
-  "image/webp", "image/heic", "image/heif", "image/bmp", "image/tiff",
-]);
+const ALLOWED_IMAGE_MIME = new Set(ACCEPTED_IMAGE_MIME_TYPES);
 const ALLOWED_VIDEO_MIME = new Set([
   "video/mp4", "video/quicktime", "video/webm",
   "video/x-msvideo", "video/mpeg", "video/3gpp", "video/3gpp2",
@@ -343,7 +339,7 @@ app.http("uploadPhoto", {
         const willGenerateThumb =
           !ALLOWED_VIDEO_MIME.has(mimeType) &&
           !ALLOWED_AUDIO_MIME.has(mimeType) &&
-          THUMBNAIL_MIME.has(mimeType);
+          photoDerivativeStrategy(mimeType) === "server";
         const isAnimated = !isVideoUpload && !isAudioUpload && detectAnimated(buf, mimeType);
 
       // Use client-supplied takenAt as the base; EXIF will override it below for images

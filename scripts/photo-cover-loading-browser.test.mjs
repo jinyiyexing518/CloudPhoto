@@ -239,11 +239,24 @@ function userForToken(authorization) {
   }
 }
 
-function photosFor(userId, includeDerivatives = true) {
+function photosFor(
+  userId,
+  includeDerivatives = true,
+  contentTypeValue = "image/jpeg",
+) {
+  const extension = contentTypeValue === "image/heic"
+    ? "heic"
+    : contentTypeValue === "image/heif"
+      ? "heif"
+      : contentTypeValue === "image/bmp"
+        ? "bmp"
+        : contentTypeValue === "image/tiff"
+          ? "tiff"
+          : "jpg";
   return Array.from({ length: PHOTO_COUNT }, (_, index) => ({
-    name: `${userId}/photo-${index + 1}.jpg`,
-    originalName: `photo-${index + 1}.jpg`,
-    url: `/media/${userId}/original-${index + 1}.jpg?sig=${userId}`,
+    name: `personal/${userId}/_/photo-${index + 1}.${extension}`,
+    originalName: `photo-${index + 1}.${extension}`,
+    url: `/media/${userId}/original-${index + 1}.${extension}?sig=${userId}`,
     ...(includeDerivatives
       ? {
           thumbnailUrl: `/media/${userId}/thumb-${index + 1}.png?sig=${userId}`,
@@ -253,7 +266,7 @@ function photosFor(userId, includeDerivatives = true) {
     size: 1024,
     lastModified: "2026-08-12T08:00:00.000Z",
     createdAt: "2026-08-12T08:00:00.000Z",
-    contentType: "image/jpeg",
+    contentType: contentTypeValue,
   }));
 }
 
@@ -274,12 +287,19 @@ async function createFixtureServer({
   initialMediaMode = "success",
   includeDerivatives = true,
   initialPhotoListDelayMs = 0,
+  coverRepairMode = "success",
+  coverRepairDelayMs = 0,
+  photoContentType = "image/jpeg",
 } = {}) {
   let mediaMode = initialMediaMode;
   let photoListDelayMs = initialPhotoListDelayMs;
   const stalledMediaResponses = new Set();
   const stats = {
     apiPhotos: 0,
+    coverRepairs: [],
+    activeCoverRepairs: 0,
+    maxActiveCoverRepairs: 0,
+    persistedThumbnails: [],
     media: [],
   };
   const fenceScript = fenceMode === "pending" ? `
@@ -503,8 +523,67 @@ async function createFixtureServer({
       if (photoListDelayMs > 0) await sleep(photoListDelayMs);
       response.writeHead(user ? 200 : 401, { "content-type": "application/json" });
       response.end(JSON.stringify(
-        user ? photosFor(user.id, includeDerivatives) : { error: "Unauthorized" },
+        user
+          ? photosFor(user.id, includeDerivatives, photoContentType)
+          : { error: "Unauthorized" },
       ));
+      return;
+    }
+    if (url.pathname === "/api/photos/repair-cover") {
+      const user = userForToken(request.headers.authorization);
+      const blobName = url.searchParams.get("blobName") ?? "";
+      stats.coverRepairs.push({
+        blobName,
+        force: url.searchParams.get("force"),
+        userId: user?.id ?? null,
+      });
+      if (!user) {
+        response.writeHead(401, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      if (coverRepairMode !== "success") {
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "Cover repair unavailable" }));
+        return;
+      }
+      stats.activeCoverRepairs += 1;
+      stats.maxActiveCoverRepairs = Math.max(
+        stats.maxActiveCoverRepairs,
+        stats.activeCoverRepairs,
+      );
+      try {
+        if (coverRepairDelayMs > 0) await sleep(coverRepairDelayMs);
+        const match = blobName.match(/photo-(\d+)\.[^.]+$/);
+        const index = match?.[1] ?? "1";
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          thumbnailUrl: `/media/${user.id}/repaired-thumb-${index}.png?sig=${user.id}`,
+          previewUrl: `/media/${user.id}/repaired-preview-${index}.png?sig=${user.id}`,
+        }));
+      } finally {
+        stats.activeCoverRepairs -= 1;
+      }
+      return;
+    }
+    if (url.pathname === "/api/photos/set-thumbnail") {
+      const user = userForToken(request.headers.authorization);
+      const blobName = url.searchParams.get("blobName") ?? "";
+      if (!user) {
+        response.writeHead(401, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      for await (const _chunk of request) {
+        // Consume the bounded synthetic WebP body before replying.
+      }
+      stats.persistedThumbnails.push({ blobName, userId: user.id });
+      const match = blobName.match(/photo-(\d+)\.[^.]+$/);
+      const index = match?.[1] ?? "1";
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        thumbnailUrl: `/media/${user.id}/client-thumb-${index}.png?sig=${user.id}`,
+      }));
       return;
     }
     if (url.pathname.startsWith("/api/")) {
@@ -582,7 +661,8 @@ function bootstrapSource(token) {
       if (!location.origin.startsWith("http://127.0.0.1:")) return;
       const activeToken = sessionStorage.getItem("__cover_test_token")
         ?? ${JSON.stringify(token)};
-      localStorage.setItem("cloudphoto_token", activeToken);
+      if (activeToken) localStorage.setItem("cloudphoto_token", activeToken);
+      else localStorage.removeItem("cloudphoto_token");
       localStorage.removeItem("cloudphoto_private_cache_owner_v1");
       localStorage.removeItem("cloudphoto_private_cleanup_v2");
       window.__coverProbe = { cacheDeletes: 0, indexedDbOpens: 0 };
@@ -701,7 +781,9 @@ test("pending worker readiness cannot block authorized cover network delivery", 
   }
   await buildFixtureClient();
   await mkdir(evidenceRoot, { recursive: true });
-  const fixture = await createFixtureServer();
+  const fixture = await createFixtureServer({
+    coverRepairMode: "failure",
+  });
   const browser = await launchBrowser(executable);
   const ownerAToken = jwt("owner-a");
   const ownerBToken = jwt("owner-b");
@@ -766,10 +848,19 @@ test("pending worker readiness cannot block authorized cover network delivery", 
     fixture.setMediaMode("stall");
     await navigate(page, fixture.origin);
     await waitForCards(page);
-    await waitFor(async () => {
-      const state = await coverState(page);
-      return state.errors === PHOTO_COUNT && state.loading === 0;
-    }, 20_000);
+    try {
+      await waitFor(async () => {
+        const state = await coverState(page);
+        return state.errors === PHOTO_COUNT && state.loading === 0;
+      }, 20_000);
+    } catch (error) {
+      console.error(JSON.stringify({
+        redPath: "stalled-response-body",
+        state: await coverState(page),
+        recentMediaRequests: fixture.stats.media.slice(-40),
+      }, null, 2));
+      throw error;
+    }
     const stalled = await coverState(page);
     observations.push({ phase: "stalled-response-body", ...stalled });
 
@@ -841,7 +932,7 @@ test("pending worker readiness cannot block authorized cover network delivery", 
   }
 });
 
-test("a legacy photo without derivatives loads its original only after explicit retry", async (t) => {
+test("a legacy photo without derivatives self-repairs without downloading the original", async (t) => {
   const executable = await findBrowser();
   if (!executable) {
     t.skip("No Chromium browser is installed");
@@ -853,6 +944,77 @@ test("a legacy photo without derivatives loads its original only after explicit 
     fenceMode: "disabled",
     initialMediaMode: "success",
     includeDerivatives: false,
+    coverRepairDelayMs: 120,
+  });
+  const browser = await launchBrowser(executable);
+  const ownerToken = jwt("owner-a");
+  const page = await openPage(browser, bootstrapSource(null));
+  try {
+    await setViewport(page, 1280, 900, false);
+    await navigate(page, fixture.origin);
+    await ensureServiceWorkerControl(page, fixture.origin);
+    await page.evaluate(
+      `sessionStorage.setItem("__cover_test_token", ${JSON.stringify(ownerToken)})`,
+    );
+    await navigate(page, fixture.origin);
+    await waitForCards(page);
+    await waitFor(async () => {
+      const state = await coverState(page);
+      return state.loaded === PHOTO_COUNT
+        && state.loading === 0
+        && state.errors === 0
+        && state.imagePaths.every((source) => source?.includes("/repaired-thumb-"));
+    }, 15_000);
+    const after = await coverState(page);
+    await page.screenshot(join(evidenceRoot, "photo-covers-missing-derivatives-repaired.png"));
+
+    assert.equal(after.loaded, PHOTO_COUNT);
+    assert.equal(after.errors, 0);
+    assert.ok(
+      after.imagePaths.every((source) => source?.includes("/repaired-thumb-")),
+      `missing derivatives must render the repaired thumbnail: ${JSON.stringify(after.imagePaths)}`,
+    );
+    assert.equal(
+      fixture.stats.coverRepairs.length,
+      PHOTO_COUNT,
+      `each missing derivative must issue exactly one bounded repair request: ${JSON.stringify(fixture.stats.coverRepairs)}`,
+    );
+    assert.ok(
+      fixture.stats.coverRepairs.every(({ blobName, userId }) =>
+        blobName.startsWith("personal/owner-a/")
+        && userId === "owner-a"),
+      "cover repair requests must stay inside the authenticated photo scope",
+    );
+    assert.ok(
+      fixture.stats.maxActiveCoverRepairs <= 2,
+      "automatic cover repair must keep a bounded global concurrency",
+    );
+    assert.ok(
+      fixture.stats.media.every(({ path }) =>
+        path.includes("/repaired-thumb-")
+        && !path.includes("/original-")),
+      "automatic repair must never download original media into the passive grid",
+    );
+  } finally {
+    page.close();
+    await browser.dispose();
+    await fixture.close();
+  }
+});
+
+test("a client-decodable HEIC original persists a WebP cover only after explicit intent", async (t) => {
+  const executable = await findBrowser();
+  if (!executable) {
+    t.skip("No Chromium browser is installed");
+    return;
+  }
+  await buildFixtureClient();
+  await mkdir(evidenceRoot, { recursive: true });
+  const fixture = await createFixtureServer({
+    fenceMode: "disabled",
+    initialMediaMode: "success",
+    includeDerivatives: false,
+    photoContentType: "image/heic",
   });
   const browser = await launchBrowser(executable);
   const page = await openPage(browser, bootstrapSource(jwt("owner-a")));
@@ -861,47 +1023,44 @@ test("a legacy photo without derivatives loads its original only after explicit 
     await navigate(page, fixture.origin);
     await waitForCards(page);
     await ensureServiceWorkerControl(page, fixture.origin);
-    await waitFor(async () => (await coverState(page)).errors === PHOTO_COUNT);
-    const before = await coverState(page);
-    await page.screenshot(join(evidenceRoot, "photo-covers-missing-derivatives-before.png"));
-    assert.equal(before.loaded, 0);
-    assert.equal(before.loading, 0);
-    assert.equal(before.errors, PHOTO_COUNT);
     assert.equal(
-      fixture.stats.media.length,
-      0,
-      "passive legacy cards must not download full originals",
+      await waitFor(() => page.evaluate(
+        `document.querySelectorAll(".photo-thumb-client-repair").length`,
+      )),
+      PHOTO_COUNT,
+      "client-only formats must show an honest generation action instead of an error loop",
     );
+    assert.equal(fixture.stats.coverRepairs.length, 0);
+    assert.equal(fixture.stats.media.length, 0, "passive HEIC cards must not download originals");
 
     await page.evaluate(`(() => {
-      for (const error of document.querySelectorAll(".photo-thumb-error")) {
-        error.closest(".photo-card-primary")?.click();
+      for (const action of document.querySelectorAll(".photo-card-primary")) {
+        action.click();
       }
     })()`);
     await waitFor(async () => {
       const state = await coverState(page);
-      return state.loaded === PHOTO_COUNT && state.errors === 0;
-    }, 15_000);
-    const after = await coverState(page);
-    await page.screenshot(join(evidenceRoot, "photo-covers-missing-derivatives-after.png"));
+      return state.loaded === PHOTO_COUNT
+        && state.errors === 0
+        && state.imagePaths.every((source) => source?.includes("/client-thumb-"));
+    }, 20_000);
+    await page.screenshot(join(evidenceRoot, "photo-covers-heic-client-repaired.png"));
 
-    assert.equal(after.loaded, PHOTO_COUNT);
-    assert.equal(after.errors, 0);
+    const originalRequests = fixture.stats.media.filter(({ path }) =>
+      path.includes("/original-"));
+    assert.equal(originalRequests.length, PHOTO_COUNT);
     assert.ok(
-      after.imagePaths.every((source) => source?.includes("/original-")),
-      "explicit retry must render the available original source",
-    );
-    assert.equal(
-      fixture.stats.media.length,
-      PHOTO_COUNT,
-      "each explicit retry must issue exactly one original request",
-    );
-    assert.ok(
-      fixture.stats.media.every(({ path, search }) =>
-        path.includes("/original-")
-        && search.includes("cf_cover_retry=1")
+      originalRequests.every(({ search }) =>
+        search.includes("cf_cover_retry=1")
         && !search.includes("cf_cover=1")),
-      "original retry requests must stay out of the derivative cache policy",
+      "HEIC originals must remain explicit-retry traffic outside the derivative cache policy",
+    );
+    assert.equal(fixture.stats.persistedThumbnails.length, PHOTO_COUNT);
+    assert.ok(
+      fixture.stats.persistedThumbnails.every(({ blobName, userId }) =>
+        blobName.startsWith("personal/owner-a/")
+        && userId === "owner-a"),
+      "client-generated covers must persist only inside the authenticated scope",
     );
   } finally {
     page.close();
@@ -958,6 +1117,7 @@ test("a slow successful cover keeps a full worker-compatible source budget", asy
   const fixture = await createFixtureServer({
     fenceMode: "disabled",
     initialMediaMode: "success",
+    coverRepairMode: "failure",
   });
   const browser = await launchBrowser(executable);
   const page = await openPage(browser, bootstrapSource(jwt("owner-a")));
@@ -1079,10 +1239,22 @@ test("disabled cache plus a stalled authorized source advances then terminates",
     await setViewport(page, 1280, 900, false);
     await navigate(page, fixture.origin);
     await waitForCards(page);
-    await waitFor(async () => {
-      const state = await coverState(page);
-      return state.errors === PHOTO_COUNT && state.loading === 0;
-    }, 22_000);
+    try {
+      await waitFor(async () => {
+        const state = await coverState(page);
+        return state.errors === PHOTO_COUNT && state.loading === 0;
+      }, 22_000);
+    } catch (error) {
+      console.error(JSON.stringify({
+        redPath: "disabled-cache-stalled-terminal",
+        state: await coverState(page),
+        recentMediaRequests: fixture.stats.media.slice(-40),
+        cacheStats: await fenceControl(page).catch((controlError) => ({
+          controlError: controlError.message,
+        })),
+      }, null, 2));
+      throw error;
+    }
     const terminal = await coverState(page);
     await page.screenshot(join(evidenceRoot, "photo-covers-source-terminal.png"));
     const cacheStats = await fenceControl(page);

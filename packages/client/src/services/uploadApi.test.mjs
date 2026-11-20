@@ -17,3 +17,11 @@ test("XHR cancellation and idempotent direct fallback remain wired", () => {
   assert.match(source, /if \(!recoverMisroutedProxy \|\| !uploadId \|\| targetUrl === directUploadUrl\) return false/);
   assert.match(source, /void uploadOnce\(directUploadUrl, false\)\.then\(resolve, reject\)/);
 });
+
+test("server-unsupported image uploads persist a bounded WebP fallback", () => {
+  assert.match(source, /photoDerivativeStrategy\(detectedContentType\) === "client"/);
+  assert.match(source, /export function extractImageThumbnail\(file: File\)/);
+  assert.match(source, /export async function extractImageElementThumbnail/);
+  assert.match(source, /export async function setPhotoThumbnail/);
+  assert.match(source, /persistImageElementThumbnail/);
+});

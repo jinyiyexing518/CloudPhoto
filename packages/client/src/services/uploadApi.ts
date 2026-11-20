@@ -1,11 +1,12 @@
 /**
- * Upload API — file upload with progress, video thumbnail extraction.
+ * Upload API — file upload with progress and client-side thumbnail extraction.
  *
  * Separation of concerns:
  *  - uploadPhoto         : simple fire-and-forget upload (small files)
  *  - uploadPhotoWithProgress : XHR-based upload with per-byte progress callback
  *  - extractVideoThumbnail   : client-side frame extraction via <video> + canvas
- *  - setVideoThumbnail       : POST extracted thumbnail to server
+ *  - extractImageThumbnail   : client-side fallback for server-unsupported images
+ *  - setPhotoThumbnail       : POST extracted thumbnail to server
  */
 
 import { API_BASE } from "../utils/apiBase";
@@ -25,7 +26,10 @@ import {
   parseRetryAfterMs,
   UploadRequestError,
 } from "./uploadRetry";
-import { detectUploadMediaType } from "../uploadLocation";
+import {
+  detectUploadMediaType,
+  photoDerivativeStrategy,
+} from "../uploadLocation";
 
 const VIDEO_THUMB_WIDTH = 400;
 const VIDEO_THUMB_QUALITY = 0.75;
@@ -56,6 +60,9 @@ export async function uploadPhoto(
   groupId?: string,
 ): Promise<Photo> {
   const detectedContentType = await detectUploadMediaType(file);
+  const thumbnailPromise = photoDerivativeStrategy(detectedContentType) === "client"
+    ? extractImageThumbnail(file).catch(() => null)
+    : Promise.resolve<Blob | null>(null);
   const params = new URLSearchParams({ filename: file.name });
   if (uploadedBy) params.set("uploadedBy", uploadedBy);
   if (subject) params.set("subject", subject);
@@ -84,7 +91,11 @@ export async function uploadPhoto(
     const msg = await response.json().catch(() => ({ error: "Upload failed" }));
     throw new Error((msg as { error?: string }).error ?? `上传失败: ${file.name}`);
   }
-  return proxyPhoto(await response.json() as Photo);
+  const photo = proxyPhoto(await response.json() as Photo);
+  const thumbnail = await thumbnailPromise;
+  if (!thumbnail) return photo;
+  const thumbnailUrl = await setPhotoThumbnail(photo.name, thumbnail);
+  return thumbnailUrl ? { ...photo, thumbnailUrl } : photo;
 }
 
 /**
@@ -288,6 +299,29 @@ export function extractVideoThumbnail(file: File): Promise<Blob | null> {
   });
 }
 
+export function extractImageThumbnail(file: File): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    let settled = false;
+    const finish = (thumbnail: Blob | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      image.onload = null;
+      image.onerror = null;
+      URL.revokeObjectURL(objectUrl);
+      resolve(thumbnail);
+    };
+    const timeoutId = window.setTimeout(() => finish(null), 15_000);
+    image.onload = () => {
+      void extractImageElementThumbnail(image).then(finish, () => finish(null));
+    };
+    image.onerror = () => finish(null);
+    image.src = objectUrl;
+  });
+}
+
 const persistedPlaybackThumbnails = new Set<string>();
 const pendingVideoThumbnailPersistence = new Set<string>();
 const videoThumbnailWrites = new Map<string, Promise<string | null>>();
@@ -314,6 +348,9 @@ export function markVideoThumbnailPersistencePending(
   }
 }
 
+export const markPhotoThumbnailPersistencePending =
+  markVideoThumbnailPersistencePending;
+
 export function isVideoThumbnailPersistencePending(blobName: string): boolean {
   return pendingVideoThumbnailPersistence.has(blobName);
 }
@@ -331,6 +368,9 @@ export function subscribeToVideoThumbnailResults(
   videoThumbnailResultListeners.add(listener);
   return () => videoThumbnailResultListeners.delete(listener);
 }
+
+export const subscribeToPhotoThumbnailResults =
+  subscribeToVideoThumbnailResults;
 
 export async function extractVideoElementThumbnail(
   video: HTMLVideoElement,
@@ -352,6 +392,55 @@ export async function extractVideoElementThumbnail(
   return new Promise<Blob | null>((resolve) => {
     canvas.toBlob(resolve, "image/webp", VIDEO_THUMB_QUALITY);
   });
+}
+
+export async function extractImageElementThumbnail(
+  image: HTMLImageElement,
+): Promise<Blob | null> {
+  if (image.naturalWidth <= 0 || image.naturalHeight <= 0) return null;
+  const scale = Math.min(1, VIDEO_THUMB_WIDTH / image.naturalWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  try {
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  } catch {
+    return null;
+  }
+  return new Promise<Blob | null>((resolve) => {
+    try {
+      canvas.toBlob(resolve, "image/webp", VIDEO_THUMB_QUALITY);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+const persistedImageThumbnails = new Set<string>();
+
+export async function persistImageElementThumbnail(
+  blobName: string,
+  image: HTMLImageElement,
+): Promise<string | null> {
+  const authGeneration = getAuthGeneration();
+  const persistenceKey = videoThumbnailPersistenceKey(blobName);
+  if (persistedImageThumbnails.has(persistenceKey)) return null;
+  persistedImageThumbnails.add(persistenceKey);
+  let persisted = false;
+  try {
+    const thumbnail = await extractImageElementThumbnail(image);
+    if (!thumbnail || authGeneration !== getAuthGeneration()) return null;
+    const thumbnailUrl = await setPhotoThumbnail(blobName, thumbnail);
+    if (authGeneration !== getAuthGeneration()) return null;
+    persisted = Boolean(thumbnailUrl);
+    return thumbnailUrl;
+  } catch {
+    return null;
+  } finally {
+    if (!persisted) persistedImageThumbnails.delete(persistenceKey);
+  }
 }
 
 /**
@@ -395,7 +484,7 @@ export async function persistVideoPlaybackThumbnail(
  * POST a client-extracted thumbnail frame to the server.
  * Returns the fresh SAS URL for the uploaded thumbnail, or null on failure.
  */
-export async function setVideoThumbnail(
+export async function setPhotoThumbnail(
   blobName: string,
   thumbnail: Blob,
 ): Promise<string | null> {
@@ -439,4 +528,11 @@ export async function setVideoThumbnail(
       videoThumbnailWrites.delete(persistenceKey);
     }
   }
+}
+
+export async function setVideoThumbnail(
+  blobName: string,
+  thumbnail: Blob,
+): Promise<string | null> {
+  return setPhotoThumbnail(blobName, thumbnail);
 }

@@ -6,6 +6,7 @@ import {
   isImageUploadType,
   mergeUploadedPhoto,
   normalizeExifGps,
+  photoDerivativeStrategy,
 } from "./uploadLocation.ts";
 
 function fileLike(name, type, bytes) {
@@ -40,6 +41,16 @@ test("image detection survives missing, generic, and nonstandard browser MIME va
   assert.equal(await detectUploadMediaType(fileLike("camera.jfif", "image/jfif", jpeg)), "image/jpeg");
   assert.equal(await detectUploadMediaType(fileLike("voice.mp4", "audio/mp4", [])), null);
   assert.equal(isImageUploadType("image/heic"), true);
+});
+
+test("accepted image formats declare server or client derivative generation", () => {
+  for (const mime of ["image/jpeg", "image/png", "image/gif", "image/webp", "image/tiff"]) {
+    assert.equal(photoDerivativeStrategy(mime), "server", mime);
+  }
+  for (const mime of ["image/heic", "image/heif", "image/bmp"]) {
+    assert.equal(photoDerivativeStrategy(mime), "client", mime);
+  }
+  assert.equal(photoDerivativeStrategy("video/mp4"), "none");
 });
 
 test("client EXIF coordinates are accepted only as a complete finite in-range pair", () => {
@@ -109,6 +120,9 @@ test("the legacy upload flow uses detected media, merges responses, and refreshe
   ]);
 
   assert.match(app, /detectUploadMediaType\(uploadFile\)/);
+  assert.match(app, /photoDerivativeStrategy\(uploadMediaType\) === "client"/);
+  assert.match(app, /extractImageThumbnail\(uploadFile\)/);
+  assert.match(app, /setPhotoThumbnail\(uploadedPhoto\.name, thumbnail\)/);
   assert.match(app, /normalizeExifGps\(await exifrLib\.gps\(uploadFile\)\)/);
   assert.match(app, /mergeUploadedPhoto\(previous, uploadedPhoto\)/);
   assert.match(app, /setLocationIndexRevision\(\(revision\) => revision \+ 1\)/);

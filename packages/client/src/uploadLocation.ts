@@ -9,6 +9,20 @@ const IMAGE_MIME_TYPES = new Set([
   "image/tiff",
 ]);
 
+const SERVER_DERIVATIVE_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/tiff",
+]);
+
+const CLIENT_DERIVATIVE_IMAGE_MIME_TYPES = new Set([
+  "image/heic",
+  "image/heif",
+  "image/bmp",
+]);
+
 const VIDEO_MIME_TYPES = new Set([
   "video/mp4",
   "video/quicktime",
@@ -58,6 +72,18 @@ interface UploadFileLike {
 interface ExifGpsLike {
   latitude?: unknown;
   longitude?: unknown;
+}
+
+export type PhotoDerivativeStrategy = "server" | "client" | "none";
+
+export function photoDerivativeStrategy(
+  type: string | null | undefined,
+): PhotoDerivativeStrategy {
+  const normalized = (type ?? "").split(";")[0].trim().toLowerCase();
+  const canonical = MIME_ALIASES.get(normalized) ?? normalized;
+  if (SERVER_DERIVATIVE_IMAGE_MIME_TYPES.has(canonical)) return "server";
+  if (CLIENT_DERIVATIVE_IMAGE_MIME_TYPES.has(canonical)) return "client";
+  return "none";
 }
 
 function normalizedDeclaredType(type: string): string | null {
