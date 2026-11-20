@@ -971,6 +971,12 @@ const http = await import(httpUrl);
   const uploadLocationUrl = await compileTypeScript(
     "packages/client/src/uploadLocation.ts",
   );
+  const uploadSessionUrl = await compileTypeScript(
+    "packages/client/src/services/uploadSession.ts",
+  );
+  const photoThumbnailPersistenceUrl = await compileTypeScript(
+    "packages/client/src/services/photoThumbnailPersistence.ts",
+  );
   const uploadApi = await importTypeScript(
     "packages/client/src/services/uploadApi.ts",
     (source) => source
@@ -978,7 +984,12 @@ const http = await import(httpUrl);
       .replace('"../uploadLocation"', JSON.stringify(uploadLocationUrl))
       .replace('"./http"', JSON.stringify(httpUrl))
       .replace('"./mediaRoute"', JSON.stringify(mediaStubUrl))
-      .replace('"./uploadRetry"', JSON.stringify(uploadRetryUrl)),
+      .replace('"./uploadRetry"', JSON.stringify(uploadRetryUrl))
+      .replaceAll('"./uploadSession"', JSON.stringify(uploadSessionUrl))
+      .replaceAll(
+        '"./photoThumbnailPersistence"',
+        JSON.stringify(photoThumbnailPersistenceUrl),
+      ),
   );
   const file = { name: "photo.jpg", type: "image/jpeg" };
   await assert.rejects(
